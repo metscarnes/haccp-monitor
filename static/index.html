@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HACCP Monitor — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+
+<header>
+  <h1>HACCP — <span>Au Comptoir des Lilas</span></h1>
+  <span id="statut-global" class="inconnu">Chargement…</span>
+</header>
+
+<div id="bandeau-alerte"></div>
+
+<nav>
+  <button class="active" data-vue="dashboard">Tableau de bord</button>
+  <button data-vue="historique">Historique</button>
+  <button data-vue="alertes">Alertes</button>
+  <button data-vue="rapports">Rapports</button>
+</nav>
+
+<main>
+
+  <!-- ===== VUE DASHBOARD ===== -->
+  <div id="vue-dashboard">
+    <div class="spinner" id="spinner-dashboard"></div>
+  </div>
+
+  <!-- ===== VUE HISTORIQUE ===== -->
+  <div id="vue-historique">
+    <div class="historique-controles">
+      <div>
+        <label>Enceinte</label>
+        <select id="select-enceinte-historique"></select>
+      </div>
+      <div>
+        <label>Période</label>
+        <select id="select-periode">
+          <option value="24h">24 heures</option>
+          <option value="7j">7 jours</option>
+          <option value="30j">30 jours</option>
+          <option value="custom">Personnalisée</option>
+        </select>
+      </div>
+      <div id="dates-custom" style="display:none; gap:.5rem; align-items:center">
+        <input type="date" id="date-debut">
+        <span>→</span>
+        <input type="date" id="date-fin">
+      </div>
+      <button class="btn btn-primaire" id="btn-charger-historique">Afficher</button>
+      <button class="btn btn-secondaire" id="btn-exporter-csv">Exporter CSV</button>
+    </div>
+
+    <div class="stats-bande" id="stats-bande"></div>
+
+    <div class="chart-principal-wrap">
+      <h3 id="titre-chart-historique">Température</h3>
+      <div class="chart-canvas-wrap">
+        <canvas id="chart-historique"></canvas>
+      </div>
+    </div>
+
+    <div id="tableau-historique-wrap" style="display:none">
+      <h3 class="tableau-titre" id="tableau-historique-titre"></h3>
+      <div class="tableau-scroll">
+        <table class="tableau-historique" id="tableau-historique"></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== VUE ALERTES ===== -->
+  <div id="vue-alertes">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h2 style="font-size:1.05rem;">Alertes actives et historique</h2>
+      <label style="font-size:.85rem; font-weight:600;">
+        <input type="checkbox" id="toggle-historique-alertes" style="margin-right:.3rem;">
+        Afficher les alertes fermées
+      </label>
+    </div>
+    <div class="liste-alertes" id="liste-alertes">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- ===== VUE RAPPORTS ===== -->
+  <div id="vue-rapports">
+    <div class="rapport-form">
+      <div>
+        <label>Type de rapport</label>
+        <select id="select-type-rapport">
+          <option value="journalier">Journalier</option>
+          <option value="mensuel">Mensuel</option>
+        </select>
+      </div>
+      <div>
+        <label>Date début</label>
+        <input type="date" id="rapport-date-debut">
+      </div>
+      <div>
+        <label>Date fin</label>
+        <input type="date" id="rapport-date-fin">
+      </div>
+      <button class="btn btn-primaire" id="btn-generer-rapport">Générer le rapport</button>
+    </div>
+    <h3 style="margin-bottom:.75rem; font-size:.95rem; color:var(--brun);">Rapports générés</h3>
+    <div class="liste-rapports" id="liste-rapports">
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="/static/js/charts.js"></script>
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>

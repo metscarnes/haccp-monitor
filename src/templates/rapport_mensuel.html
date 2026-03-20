@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #3D2008; background: #fff; }
+
+  .entete { background: #3D2008; color: #F5ECD7; padding: 18px 24px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .entete h1 { font-size: 15pt; font-weight: 700; margin-bottom: 4px; }
+  .entete .sous-titre { font-size: 9pt; color: #D4A574; }
+  .entete .meta { text-align: right; font-size: 8.5pt; color: #D4A574; line-height: 1.6; }
+
+  .bandeau-conformite { padding: 10px 24px; font-size: 11pt; font-weight: 700; text-align: center; letter-spacing: .05em; }
+  .bandeau-conformite.conforme     { background: #e6f4eb; color: #2D7D46; border-bottom: 2px solid #2D7D46; }
+  .bandeau-conformite.non-conforme { background: #fce8e8; color: #C93030; border-bottom: 2px solid #C93030; }
+
+  .section-etablissement { padding: 12px 24px; background: #FFF9F0; border-bottom: 1px solid #e8ddd0; }
+  .section-etablissement table { width: 100%; border-collapse: collapse; }
+  .section-etablissement td { padding: 2px 8px 2px 0; font-size: 9pt; }
+  .section-etablissement td:first-child { font-weight: 600; color: #6B3A1F; width: 140px; }
+
+  .corps { padding: 16px 24px; }
+  h2 { font-size: 11pt; color: #6B3A1F; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 1.5px solid #D4A574; }
+  h3 { font-size: 10pt; color: #3D2008; margin: 12px 0 6px; }
+
+  table.recap { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; }
+  table.recap th { background: #3D2008; color: #F5ECD7; padding: 6px 8px; text-align: left; font-weight: 600; }
+  table.recap td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  table.recap tr:nth-child(even) td { background: #FFF9F0; }
+
+  .ok        { color: #2D7D46; font-weight: 700; }
+  .non-ok    { color: #C93030; font-weight: 700; }
+  .attention { color: #E8913A; font-weight: 700; }
+
+  /* Indicateurs KPI mois */
+  .kpi-grille { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 100px; text-align: center; border: 1px solid #e0d5c8; border-radius: 6px; padding: 10px 8px; background: #FFF9F0; }
+  .kpi .val { font-size: 18pt; font-weight: 800; }
+  .kpi .lbl { font-size: 7.5pt; color: #6B3A1F; margin-top: 3px; }
+
+  /* Tableau enceinte mois */
+  .bloc-enceinte { border: 1px solid #ddd; border-radius: 6px; margin-bottom: 16px; overflow: hidden; page-break-inside: avoid; }
+  .bloc-enceinte-entete { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #F5ECD7; }
+  .bloc-enceinte-entete .nom { font-weight: 700; font-size: 10.5pt; }
+  .bloc-enceinte-entete .badge { font-size: 8pt; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .badge.ok           { background: #e6f4eb; color: #2D7D46; }
+  .badge.non-conforme { background: #fce8e8; color: #C93030; }
+
+  .bloc-enceinte-corps { padding: 10px 12px; }
+
+  table.detail { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
+  table.detail th { background: #F5ECD7; color: #3D2008; padding: 4px 8px; text-align: left; font-weight: 600; }
+  table.detail td { padding: 4px 8px; border-bottom: 1px solid #f0ebe3; }
+
+  /* Alertes mois */
+  table.alertes-mois { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-top: 6px; }
+  table.alertes-mois th { background: #fce8e8; color: #C93030; padding: 4px 8px; text-align: left; }
+  table.alertes-mois td { padding: 4px 8px; border-bottom: 1px solid #fce8e8; }
+
+  .pied { margin-top: 20px; padding: 10px 24px; border-top: 1px solid #ddd; font-size: 8pt; color: #999; display: flex; justify-content: space-between; }
+
+  @page { margin: 1.5cm 1cm; size: A4; }
+</style>
+</head>
+<body>
+
+<div class="entete">
+  <div>
+    <div class="sous-titre">Mets Carnés Holding — Rapport HACCP</div>
+    <h1>Rapport mensuel</h1>
+    <div class="sous-titre">{{ date_debut.strftime('%B %Y') | capitalize }}</div>
+  </div>
+  <div class="meta">
+    Généré le {{ genere_le.strftime('%d/%m/%Y à %H:%M') }} UTC<br>
+    {{ boutique.nom }}<br>
+    Période : {{ date_debut.strftime('%d/%m/%Y') }} → {{ date_fin.strftime('%d/%m/%Y') }}
+  </div>
+</div>
+
+<div class="bandeau-conformite {{ 'conforme' if conforme else 'non-conforme' }}">
+  {% if conforme %}✅ MOIS CONFORME — aucun dépassement de seuil enregistré
+  {% else %}❌ NON CONFORME — des dépassements ont été détectés ce mois{% endif %}
+</div>
+
+<div class="section-etablissement">
+  <table>
+    <tr><td>Établissement</td><td>{{ boutique.nom }}</td><td>Adresse</td><td>{{ boutique.adresse or '—' }}</td></tr>
+    <tr><td>SIRET</td><td>{{ boutique.siret or '—' }}</td>
+        <td>Période analysée</td><td>{{ date_debut.strftime('%d/%m/%Y') }} au {{ date_fin.strftime('%d/%m/%Y') }}</td></tr>
+  </table>
+</div>
+
+<div class="corps">
+
+  <!-- KPI globaux du mois -->
+  <h2>Vue d'ensemble du mois</h2>
+  {% set total_nc = enceintes | map(attribute='non_conformites') | map('length') | sum %}
+  {% set total_duree = enceintes | map(attribute='duree_depassement_minutes') | sum %}
+  {% set total_releves = enceintes | map(attribute='stats') | selectattr('nb_releves') | map(attribute='nb_releves') | sum %}
+
+  <div class="kpi-grille">
+    <div class="kpi">
+      <div class="val">{{ enceintes | length }}</div>
+      <div class="lbl">Enceintes surveillées</div>
+    </div>
+    <div class="kpi">
+      <div class="val {{ 'non-ok' if total_nc > 0 else 'ok' }}">{{ total_nc }}</div>
+      <div class="lbl">Non-conformités</div>
+    </div>
+    <div class="kpi">
+      <div class="val {{ 'non-ok' if total_duree > 0 else 'ok' }}">{{ total_duree }} min</div>
+      <div class="lbl">Temps cumulé hors seuil</div>
+    </div>
+    <div class="kpi">
+      <div class="val">{{ total_releves }}</div>
+      <div class="lbl">Relevés enregistrés</div>
+    </div>
+    <div class="kpi">
+      <div class="val {{ 'ok' if conforme else 'non-ok' }}">{{ 'OK' if conforme else 'NON' }}</div>
+      <div class="lbl">Conformité globale</div>
+    </div>
+  </div>
+
+  <!-- Tableau synthèse -->
+  <h2>Synthèse par enceinte</h2>
+  <table class="recap">
+    <thead>
+      <tr>
+        <th>Enceinte</th><th>Seuils (°C)</th>
+        <th>T° min</th><th>T° moy</th><th>T° max</th>
+        <th>Hum. moy</th><th>Relevés</th>
+        <th>Nb NC</th><th>Durée hors seuil</th><th>Statut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for enc in enceintes %}
+      <tr>
+        <td><strong>{{ enc.nom }}</strong></td>
+        <td>{{ enc.seuil_temp_min }}–{{ enc.seuil_temp_max }}</td>
+        <td>{% if enc.stats.temp_min is not none %}{{ "%.1f"|format(enc.stats.temp_min) }}°C{% else %}—{% endif %}</td>
+        <td>{% if enc.stats.temp_moy is not none %}{{ "%.1f"|format(enc.stats.temp_moy) }}°C{% else %}—{% endif %}</td>
+        <td class="{{ 'non-ok' if enc.stats.temp_max and enc.stats.temp_max > enc.seuil_temp_max else '' }}">
+          {% if enc.stats.temp_max is not none %}{{ "%.1f"|format(enc.stats.temp_max) }}°C{% else %}—{% endif %}
+        </td>
+        <td>{% if enc.stats.hum_moy is not none %}{{ "%.0f"|format(enc.stats.hum_moy) }}%{% else %}—{% endif %}</td>
+        <td>{{ enc.stats.nb_releves or 0 }}</td>
+        <td class="{{ 'non-ok' if enc.non_conformites|length > 0 else 'ok' }}">{{ enc.non_conformites|length }}</td>
+        <td>{% if enc.duree_depassement_minutes > 0 %}<span class="non-ok">{{ enc.duree_depassement_minutes }} min</span>{% else %}—{% endif %}</td>
+        <td class="{{ 'ok' if enc.conforme else 'non-ok' }}">{{ 'CONFORME' if enc.conforme else 'NON CONFORME' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Détail par enceinte -->
+  <h2>Détail des non-conformités</h2>
+  {% for enc in enceintes %}
+  <div class="bloc-enceinte">
+    <div class="bloc-enceinte-entete">
+      <div>
+        <span class="nom">{{ enc.nom }}</span>
+        <span style="font-size:8.5pt; color:#6B3A1F; margin-left:8px">{{ enc.type.replace('_',' ') }} — seuils {{ enc.seuil_temp_min }}°C / {{ enc.seuil_temp_max }}°C</span>
+      </div>
+      <span class="badge {{ 'ok' if enc.conforme else 'non-conforme' }}">
+        {{ 'CONFORME' if enc.conforme else 'NON CONFORME' }}
+      </span>
+    </div>
+    <div class="bloc-enceinte-corps">
+      {% if enc.non_conformites %}
+      <table class="alertes-mois">
+        <thead><tr><th>Type</th><th>Début</th><th>Fin</th><th>Valeur mesurée</th><th>Seuil dépassé</th></tr></thead>
+        <tbody>
+          {% for a in enc.non_conformites %}
+          <tr>
+            <td>{{ {'temperature_haute': 'T° trop haute', 'temperature_basse': 'T° trop basse'}.get(a.type, a.type) }}</td>
+            <td>{{ a.debut[:16].replace('T', ' ') if a.debut else '—' }}</td>
+            <td>{{ a.fin[:16].replace('T', ' ') if a.fin else '<span class="non-ok">En cours</span>' }}</td>
+            <td class="non-ok">{{ "%.1f"|format(a.valeur) if a.valeur else '—' }}°C</td>
+            <td>{{ "%.1f"|format(a.seuil) if a.seuil else '—' }}°C</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if enc.duree_depassement_minutes > 0 %}
+      <p style="font-size:8.5pt; margin-top:6px; color:#C93030; font-weight:600">
+        Durée totale hors seuil : {{ enc.duree_depassement_minutes }} minutes
+      </p>
+      {% endif %}
+      {% else %}
+      <p style="font-size:8.5pt; color:#2D7D46; font-weight:600">✅ Aucune non-conformité détectée sur la période.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Note réglementaire -->
+  <h2>Mentions réglementaires</h2>
+  <p style="font-size:8.5pt; color:#555; line-height:1.6">
+    Ce rapport est généré automatiquement par le système de monitoring HACCP de Mets Carnés Holding.
+    Les relevés sont horodatés et archivés conformément au Règlement (CE) 852/2004 et au Règlement (CE) 853/2004.
+    Les données sont conservées 12 mois (relevés bruts) et 3 ans (alertes) conformément aux obligations PMS.
+    Ce document peut être présenté lors d'un contrôle de la DDPP (Direction Départementale de la Protection des Populations).
+  </p>
+
+</div>
+
+<div class="pied">
+  <span>Document généré automatiquement — Système HACCP Monitor v1.0 — Mets Carnés Holding</span>
+  <span>{{ boutique.nom }} — {{ date_debut.strftime('%B %Y') | capitalize }}</span>
+</div>
+
+</body>
+</html>

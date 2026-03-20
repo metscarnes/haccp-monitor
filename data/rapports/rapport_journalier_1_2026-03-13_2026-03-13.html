@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DejaVu Sans', Arial, sans-serif; font-size: 10pt; color: #3D2008; background: #fff; }
+
+  /* En-tête */
+  .entete { background: #3D2008; color: #F5ECD7; padding: 18px 24px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .entete h1 { font-size: 15pt; font-weight: 700; margin-bottom: 4px; }
+  .entete .sous-titre { font-size: 9pt; color: #D4A574; }
+  .entete .meta { text-align: right; font-size: 8.5pt; color: #D4A574; line-height: 1.6; }
+
+  /* Bandeau conformité */
+  .bandeau-conformite { padding: 10px 24px; font-size: 11pt; font-weight: 700; text-align: center; letter-spacing: .05em; }
+  .bandeau-conformite.conforme     { background: #e6f4eb; color: #2D7D46; border-bottom: 2px solid #2D7D46; }
+  .bandeau-conformite.non-conforme { background: #fce8e8; color: #C93030; border-bottom: 2px solid #C93030; }
+
+  /* Infos établissement */
+  .section-etablissement { padding: 12px 24px; background: #FFF9F0; border-bottom: 1px solid #e8ddd0; }
+  .section-etablissement table { width: 100%; border-collapse: collapse; }
+  .section-etablissement td { padding: 2px 8px 2px 0; font-size: 9pt; }
+  .section-etablissement td:first-child { font-weight: 600; color: #6B3A1F; width: 140px; }
+
+  /* Corps */
+  .corps { padding: 16px 24px; }
+  h2 { font-size: 11pt; color: #6B3A1F; margin: 16px 0 8px; padding-bottom: 4px; border-bottom: 1.5px solid #D4A574; }
+
+  /* Tableau récapitulatif */
+  table.recap { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 9pt; }
+  table.recap th { background: #3D2008; color: #F5ECD7; padding: 6px 8px; text-align: left; font-weight: 600; }
+  table.recap td { padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  table.recap tr:nth-child(even) td { background: #FFF9F0; }
+
+  .ok          { color: #2D7D46; font-weight: 700; }
+  .non-ok      { color: #C93030; font-weight: 700; }
+  .attention   { color: #E8913A; font-weight: 700; }
+
+  /* Carte enceinte */
+  .carte { border: 1px solid #ddd; border-radius: 6px; margin-bottom: 14px; overflow: hidden; page-break-inside: avoid; }
+  .carte-entete { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #F5ECD7; }
+  .carte-entete .nom { font-weight: 700; font-size: 10.5pt; }
+  .carte-entete .type { font-size: 8pt; color: #6B3A1F; }
+  .carte-entete .badge { font-size: 8pt; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .badge.ok           { background: #e6f4eb; color: #2D7D46; }
+  .badge.non-conforme { background: #fce8e8; color: #C93030; }
+
+  .carte-corps { padding: 10px 12px; }
+  .stats-ligne { display: flex; gap: 8px; margin-bottom: 8px; }
+  .stat { flex: 1; text-align: center; background: #FFF9F0; border-radius: 4px; padding: 6px 4px; }
+  .stat .val { font-size: 14pt; font-weight: 800; }
+  .stat .lbl { font-size: 7.5pt; color: #6B3A1F; margin-top: 2px; }
+
+  /* Tableau non-conformités */
+  table.nc { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-top: 6px; }
+  table.nc th { background: #fce8e8; color: #C93030; padding: 4px 8px; text-align: left; }
+  table.nc td { padding: 4px 8px; border-bottom: 1px solid #fce8e8; }
+
+  /* Pied de page */
+  .pied { margin-top: 20px; padding: 10px 24px; border-top: 1px solid #ddd; font-size: 8pt; color: #999; display: flex; justify-content: space-between; }
+  .pied .hash { font-family: monospace; font-size: 7pt; }
+
+  @page { margin: 1.5cm 1cm; size: A4; }
+</style>
+</head>
+<body>
+
+<div class="entete">
+  <div>
+    <div class="sous-titre">Mets Carnés Holding — Rapport HACCP</div>
+    <h1>Rapport journalier</h1>
+    <div class="sous-titre">13 March 2026</div>
+  </div>
+  <div class="meta">
+    Généré le 14/03/2026 à 01:37 UTC<br>
+    Au Comptoir des Lilas
+  </div>
+</div>
+
+<div class="bandeau-conformite conforme">
+  ✅ JOURNÉE CONFORME — aucun dépassement de seuil
+</div>
+
+<div class="section-etablissement">
+  <table>
+    <tr><td>Établissement</td><td>Au Comptoir des Lilas</td><td>Adresse</td><td>122 rue de Paris, Les Lilas, 93260</td></tr>
+    <tr><td>SIRET</td><td>—</td><td>Date du rapport</td><td>13/03/2026</td></tr>
+  </table>
+</div>
+
+<div class="corps">
+
+  <h2>Récapitulatif des enceintes</h2>
+  <table class="recap">
+    <thead>
+      <tr>
+        <th>Enceinte</th><th>Seuils (°C)</th>
+        <th>Min</th><th>Moy</th><th>Max</th>
+        <th>Humidité moy</th><th>Relevés</th>
+        <th>Dépassements</th><th>Durée dép.</th><th>Conformité</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+      <tr>
+        <td><strong>Chambre froide positive 1</strong></td>
+        <td>0.0–4.0</td>
+        <td>1.6°C</td>
+        <td>2.5°C</td>
+        <td class="">
+          3.4°C
+        </td>
+        <td>75%</td>
+        <td>576</td>
+        <td class="ok">0</td>
+        <td>—</td>
+        <td class="ok">CONFORME</td>
+      </tr>
+      
+      <tr>
+        <td><strong>Chambre froide positive 2</strong></td>
+        <td>0.0–4.0</td>
+        <td>2.3°C</td>
+        <td>3.0°C</td>
+        <td class="non-ok">
+          6.2°C
+        </td>
+        <td>78%</td>
+        <td>576</td>
+        <td class="ok">0</td>
+        <td>—</td>
+        <td class="ok">CONFORME</td>
+      </tr>
+      
+      <tr>
+        <td><strong>Vitrine réfrigérée</strong></td>
+        <td>0.0–4.0</td>
+        <td>2.2°C</td>
+        <td>3.5°C</td>
+        <td class="non-ok">
+          4.8°C
+        </td>
+        <td>65%</td>
+        <td>576</td>
+        <td class="ok">0</td>
+        <td>—</td>
+        <td class="ok">CONFORME</td>
+      </tr>
+      
+      <tr>
+        <td><strong>Laboratoire</strong></td>
+        <td>10.0–15.0</td>
+        <td>9.9°C</td>
+        <td>12.0°C</td>
+        <td class="">
+          14.1°C
+        </td>
+        <td>55%</td>
+        <td>576</td>
+        <td class="ok">0</td>
+        <td>—</td>
+        <td class="ok">CONFORME</td>
+      </tr>
+      
+    </tbody>
+  </table>
+
+  <h2>Détail par enceinte</h2>
+  
+  <div class="carte">
+    <div class="carte-entete">
+      <div>
+        <div class="nom">Chambre froide positive 1</div>
+        <div class="type">chambre froide positive — seuils : 0.0°C / 4.0°C</div>
+      </div>
+      <span class="badge ok">
+        CONFORME
+      </span>
+    </div>
+    <div class="carte-corps">
+      <div class="stats-ligne">
+        <div class="stat">
+          <div class="val ">
+            1.6°C
+          </div>
+          <div class="lbl">Temp. min</div>
+        </div>
+        <div class="stat">
+          <div class="val">2.5°C</div>
+          <div class="lbl">Temp. moyenne</div>
+        </div>
+        <div class="stat">
+          <div class="val ">
+            3.4°C
+          </div>
+          <div class="lbl">Temp. max</div>
+        </div>
+        <div class="stat">
+          <div class="val">75%</div>
+          <div class="lbl">Humidité moy.</div>
+        </div>
+        <div class="stat">
+          <div class="val">576</div>
+          <div class="lbl">Relevés</div>
+        </div>
+      </div>
+
+      
+      <p style="font-size:8.5pt; color:#2D7D46; margin-top:4px">✅ Aucun dépassement de seuil sur cette journée.</p>
+      
+    </div>
+  </div>
+  
+  <div class="carte">
+    <div class="carte-entete">
+      <div>
+        <div class="nom">Chambre froide positive 2</div>
+        <div class="type">chambre froide positive — seuils : 0.0°C / 4.0°C</div>
+      </div>
+      <span class="badge ok">
+        CONFORME
+      </span>
+    </div>
+    <div class="carte-corps">
+      <div class="stats-ligne">
+        <div class="stat">
+          <div class="val ">
+            2.3°C
+          </div>
+          <div class="lbl">Temp. min</div>
+        </div>
+        <div class="stat">
+          <div class="val">3.0°C</div>
+          <div class="lbl">Temp. moyenne</div>
+        </div>
+        <div class="stat">
+          <div class="val non-ok">
+            6.2°C
+          </div>
+          <div class="lbl">Temp. max</div>
+        </div>
+        <div class="stat">
+          <div class="val">78%</div>
+          <div class="lbl">Humidité moy.</div>
+        </div>
+        <div class="stat">
+          <div class="val">576</div>
+          <div class="lbl">Relevés</div>
+        </div>
+      </div>
+
+      
+      <p style="font-size:8.5pt; color:#2D7D46; margin-top:4px">✅ Aucun dépassement de seuil sur cette journée.</p>
+      
+    </div>
+  </div>
+  
+  <div class="carte">
+    <div class="carte-entete">
+      <div>
+        <div class="nom">Vitrine réfrigérée</div>
+        <div class="type">vitrine — seuils : 0.0°C / 4.0°C</div>
+      </div>
+      <span class="badge ok">
+        CONFORME
+      </span>
+    </div>
+    <div class="carte-corps">
+      <div class="stats-ligne">
+        <div class="stat">
+          <div class="val ">
+            2.2°C
+          </div>
+          <div class="lbl">Temp. min</div>
+        </div>
+        <div class="stat">
+          <div class="val">3.5°C</div>
+          <div class="lbl">Temp. moyenne</div>
+        </div>
+        <div class="stat">
+          <div class="val non-ok">
+            4.8°C
+          </div>
+          <div class="lbl">Temp. max</div>
+        </div>
+        <div class="stat">
+          <div class="val">65%</div>
+          <div class="lbl">Humidité moy.</div>
+        </div>
+        <div class="stat">
+          <div class="val">576</div>
+          <div class="lbl">Relevés</div>
+        </div>
+      </div>
+
+      
+      <p style="font-size:8.5pt; color:#2D7D46; margin-top:4px">✅ Aucun dépassement de seuil sur cette journée.</p>
+      
+    </div>
+  </div>
+  
+  <div class="carte">
+    <div class="carte-entete">
+      <div>
+        <div class="nom">Laboratoire</div>
+        <div class="type">laboratoire — seuils : 10.0°C / 15.0°C</div>
+      </div>
+      <span class="badge ok">
+        CONFORME
+      </span>
+    </div>
+    <div class="carte-corps">
+      <div class="stats-ligne">
+        <div class="stat">
+          <div class="val non-ok">
+            9.9°C
+          </div>
+          <div class="lbl">Temp. min</div>
+        </div>
+        <div class="stat">
+          <div class="val">12.0°C</div>
+          <div class="lbl">Temp. moyenne</div>
+        </div>
+        <div class="stat">
+          <div class="val ">
+            14.1°C
+          </div>
+          <div class="lbl">Temp. max</div>
+        </div>
+        <div class="stat">
+          <div class="val">55%</div>
+          <div class="lbl">Humidité moy.</div>
+        </div>
+        <div class="stat">
+          <div class="val">576</div>
+          <div class="lbl">Relevés</div>
+        </div>
+      </div>
+
+      
+      <p style="font-size:8.5pt; color:#2D7D46; margin-top:4px">✅ Aucun dépassement de seuil sur cette journée.</p>
+      
+    </div>
+  </div>
+  
+
+</div>
+
+<div class="pied">
+  <span>Document généré automatiquement — Système HACCP Monitor v1.0 — Mets Carnés Holding</span>
+  <span>Page 1</span>
+</div>
+
+</body>
+</html>
