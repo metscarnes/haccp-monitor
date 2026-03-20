@@ -105,14 +105,6 @@ CREATE TABLE IF NOT EXISTS rapports (
 SEED_SQL = """
 INSERT OR IGNORE INTO boutiques (id, nom, adresse, siret)
 VALUES (1, 'Au Comptoir des Lilas', '122 rue de Paris, Les Lilas, 93260', '');
-
-INSERT OR IGNORE INTO enceintes
-    (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max)
-VALUES
-    (1, 1, 'Chambre froide positive 1', 'chambre_froide_positive', 'chambre_froide_1', 0.0, 4.0, 90.0),
-    (2, 1, 'Chambre froide positive 2', 'chambre_froide_positive', 'chambre_froide_2', 0.0, 4.0, 90.0),
-    (3, 1, 'Vitrine réfrigérée',        'vitrine',                 'vitrine',          0.0, 4.0, 85.0),
-    (4, 1, 'Laboratoire',               'laboratoire',             'laboratoire',     10.0, 15.0, 75.0);
 """
 
 # ---------------------------------------------------------------------------

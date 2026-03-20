@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 from src.database import (
-    get_db, get_enceinte, get_latest_releve,
+    get_db, get_enceinte, get_enceintes, get_latest_releve,
     create_enceinte, update_enceinte, get_alerte_en_cours,
+    get_boutiques,
 )
 
 router = APIRouter(prefix="/api/enceintes", tags=["enceintes"])
@@ -29,6 +30,19 @@ class EnceinteMaj(BaseModel):
     seuil_hum_max: Optional[float] = None
     delai_alerte_minutes: Optional[int] = None
     actif: Optional[bool] = None
+
+
+@router.get("")
+async def lister_enceintes(boutique_id: Optional[int] = Query(None)):
+    async with get_db() as db:
+        if boutique_id is not None:
+            rows = await get_enceintes(db, boutique_id)
+        else:
+            boutiques = await get_boutiques(db)
+            rows = []
+            for b in boutiques:
+                rows.extend(await get_enceintes(db, b["id"]))
+    return [{"id": e["id"], "nom": e["nom"], "type": e["type"], "boutique_id": e["boutique_id"]} for e in rows]
 
 
 @router.post("", status_code=201)

@@ -410,4 +410,137 @@ main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
   .rapport-form > * { width: 100%; }
   .alerte-ligne { grid-template-columns: auto 1fr; }
   .alerte-duree { grid-column: 2; }
+  .config-grille { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---- Vue Configuration ---- */
+
+#vue-configuration {
+  display: none;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 1.5rem;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.config-section {
+  background: var(--fond-carte);
+  border-radius: var(--radius);
+  box-shadow: var(--ombre);
+  padding: 1.5rem;
+}
+
+.config-titre {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--brun);
+  margin-bottom: 1.25rem;
+  padding-bottom: .6rem;
+  border-bottom: 2px solid var(--creme);
+}
+
+.config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.config-champ {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.config-champ label {
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--brun);
+}
+
+.config-champ input,
+.config-champ select {
+  padding: .55rem .75rem;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 8px;
+  background: #fff;
+  font-size: .92rem;
+  color: var(--noyer);
+  transition: border-color .15s;
+}
+
+.config-champ input:focus,
+.config-champ select:focus {
+  outline: none;
+  border-color: var(--brun);
+}
+
+.requis { color: var(--alerte); }
+
+.config-grille {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+.config-actions {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-top: .25rem;
+}
+
+.config-msg {
+  padding: .6rem .9rem;
+  border-radius: 8px;
+  font-size: .88rem;
+  font-weight: 600;
+}
+.config-msg-ok     { background: #e6f4eb; color: var(--ok); }
+.config-msg-erreur { background: #fdecea; color: var(--alerte); }
+
+/* Liste enceintes configurées */
+.liste-config-enceintes {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.config-enceinte-ligne {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .75rem 1rem;
+  background: var(--ivoire);
+  border-radius: 8px;
+  border: 1px solid #e8d9c4;
+}
+
+.config-enceinte-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+
+.config-enceinte-info strong {
+  font-size: .95rem;
+  color: var(--noyer);
+}
+
+.config-enceinte-type {
+  font-size: .78rem;
+  color: var(--brun);
+  text-transform: capitalize;
+}
+
+.config-enceinte-seuils {
+  font-size: .8rem;
+  color: var(--brun);
+  white-space: nowrap;
+}
+
+.btn-sm {
+  padding: .35rem .75rem;
+  font-size: .82rem;
 }

@@ -60,21 +60,23 @@ function typeAlerteLabel(type) {
 // Navigation entre vues
 // ---------------------------------------------------------------------------
 
-const VUES = ['dashboard', 'historique', 'alertes', 'rapports'];
+const VUES = ['dashboard', 'historique', 'alertes', 'rapports', 'configuration'];
 
 function afficherVue(nom) {
   VUES.forEach(v => {
     const el = document.getElementById(`vue-${v}`);
-    el.style.display = v !== nom ? 'none' : (v === 'dashboard' ? 'flex' : 'block');
+    const flexVues = ['dashboard', 'configuration'];
+    el.style.display = v !== nom ? 'none' : (flexVues.includes(v) ? 'flex' : 'block');
   });
   document.querySelectorAll('nav button').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.vue === nom);
   });
 
   // Chargements spécifiques à chaque vue
-  if (nom === 'historique') chargerSelectEnceinteHistorique();
-  if (nom === 'alertes')    chargerAlertes();
-  if (nom === 'rapports')   chargerRapports();
+  if (nom === 'historique')    chargerSelectEnceinteHistorique();
+  if (nom === 'alertes')       chargerAlertes();
+  if (nom === 'rapports')      chargerRapports();
+  if (nom === 'configuration') chargerConfigEnceintes();
 }
 
 document.querySelectorAll('nav button').forEach(btn => {
@@ -492,6 +494,134 @@ document.getElementById('btn-generer-rapport').addEventListener('click', async (
     btn.textContent = 'Générer le rapport';
   }
 });
+
+// ---------------------------------------------------------------------------
+// VUE CONFIGURATION
+// ---------------------------------------------------------------------------
+
+let enceinteEnEdition = null; // null = mode création, id = mode édition
+
+async function chargerConfigEnceintes() {
+  const conteneur = document.getElementById('liste-config-enceintes');
+  conteneur.innerHTML = '<div class="spinner"></div>';
+  try {
+    const enceintes = await apiFetch(`/api/boutiques/${BOUTIQUE_ID}/enceintes`);
+    if (!enceintes.length) {
+      conteneur.innerHTML = '<p style="color:var(--brun); padding:.5rem 0">Aucune enceinte configurée.</p>';
+      return;
+    }
+    conteneur.innerHTML = enceintes.map(e => `
+      <div class="config-enceinte-ligne" data-id="${e.id}">
+        <div class="config-enceinte-info">
+          <strong>${e.nom}</strong>
+          <span class="config-enceinte-type">${e.type.replace(/_/g, ' ')}</span>
+        </div>
+        <div class="config-enceinte-seuils">
+          T° : ${e.seuil_temp_min ?? '—'}°C → ${e.seuil_temp_max ?? '—'}°C
+          · Hum. max : ${e.seuil_hum_max ?? '—'}%
+        </div>
+        <button class="btn btn-secondaire btn-sm btn-editer-enceinte" data-id="${e.id}">Modifier</button>
+      </div>`).join('');
+
+    conteneur.querySelectorAll('.btn-editer-enceinte').forEach(btn => {
+      btn.addEventListener('click', () => chargerEditionEnceinte(parseInt(btn.dataset.id)));
+    });
+  } catch (e) {
+    conteneur.innerHTML = '<p style="color:var(--alerte)">Erreur de chargement.</p>';
+  }
+}
+
+async function chargerEditionEnceinte(id) {
+  try {
+    const enc = await apiFetch(`/api/enceintes/${id}`);
+    enceinteEnEdition = id;
+
+    document.getElementById('enc-nom').value       = enc.nom ?? '';
+    document.getElementById('enc-type').value      = enc.type ?? '';
+    document.getElementById('enc-sonde').value     = enc.sonde_zigbee_id ?? '';
+    document.getElementById('enc-temp-min').value  = enc.seuil_temp_min ?? 0;
+    document.getElementById('enc-temp-max').value  = enc.seuil_temp_max ?? 4;
+    document.getElementById('enc-hum-max').value   = enc.seuil_hum_max ?? 90;
+    document.getElementById('enc-delai').value     = enc.delai_alerte_minutes ?? 5;
+
+    document.querySelector('.config-titre').textContent = `Modifier l'enceinte`;
+    document.getElementById('btn-sauver-enceinte').textContent = 'Enregistrer les modifications';
+    document.getElementById('btn-annuler-enceinte').style.display = '';
+
+    document.getElementById('form-enceinte').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    afficherMsgConfig('Erreur lors du chargement de l\'enceinte.', 'erreur');
+  }
+}
+
+function resetFormEnceinte() {
+  enceinteEnEdition = null;
+  document.getElementById('form-enceinte').reset();
+  document.getElementById('enc-temp-min').value = 0;
+  document.getElementById('enc-temp-max').value = 4;
+  document.getElementById('enc-hum-max').value  = 90;
+  document.getElementById('enc-delai').value    = 5;
+  document.querySelector('.config-titre').textContent = 'Ajouter une enceinte';
+  document.getElementById('btn-sauver-enceinte').textContent = 'Ajouter l\'enceinte';
+  document.getElementById('btn-annuler-enceinte').style.display = 'none';
+  afficherMsgConfig('', '');
+}
+
+function afficherMsgConfig(texte, type) {
+  const el = document.getElementById('config-msg');
+  if (!texte) { el.style.display = 'none'; return; }
+  el.textContent  = texte;
+  el.className    = `config-msg config-msg-${type}`;
+  el.style.display = '';
+}
+
+document.getElementById('form-enceinte').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btn-sauver-enceinte');
+  btn.disabled = true;
+
+  const payload = {
+    nom:                    document.getElementById('enc-nom').value.trim(),
+    type:                   document.getElementById('enc-type').value,
+    sonde_zigbee_id:        document.getElementById('enc-sonde').value.trim() || null,
+    seuil_temp_min:         parseFloat(document.getElementById('enc-temp-min').value),
+    seuil_temp_max:         parseFloat(document.getElementById('enc-temp-max').value),
+    seuil_hum_max:          parseFloat(document.getElementById('enc-hum-max').value),
+    delai_alerte_minutes:   parseInt(document.getElementById('enc-delai').value),
+  };
+
+  try {
+    if (enceinteEnEdition) {
+      // Mise à jour
+      const res = await fetch(`/api/enceintes/${enceinteEnEdition}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      afficherMsgConfig('Enceinte mise à jour avec succès.', 'ok');
+    } else {
+      // Création
+      const res = await fetch('/api/enceintes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, boutique_id: BOUTIQUE_ID }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      afficherMsgConfig('Enceinte ajoutée avec succès.', 'ok');
+    }
+    resetFormEnceinte();
+    // Vider le cache enceintes pour forcer le rechargement
+    enceintesCachees = [];
+    chargerConfigEnceintes();
+  } catch (err) {
+    afficherMsgConfig('Erreur : ' + err.message, 'erreur');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btn-annuler-enceinte').addEventListener('click', resetFormEnceinte);
 
 // ---------------------------------------------------------------------------
 // Démarrage + polling
