@@ -46,11 +46,19 @@ MQTT_TOPIC   = os.getenv("MQTT_TOPIC",   "zigbee2mqtt/#")
 DELAI_PERTE_SIGNAL_S = int(os.getenv("DELAI_PERTE_SIGNAL_S", str(15 * 60)))
 
 # ---------------------------------------------------------------------------
-# État en mémoire : dernière réception par enceinte_id
+# État en mémoire
 # ---------------------------------------------------------------------------
 
 _derniere_reception: dict[int, datetime] = {}   # enceinte_id → datetime UTC
 _loop: Optional[asyncio.AbstractEventLoop] = None
+
+# Cache des devices Zigbee2MQTT issus de bridge/devices
+_zigbee_devices: list[dict] = []
+
+
+def get_zigbee_devices() -> list[dict]:
+    """Retourne la liste des sondes Zigbee2MQTT détectées (température/humidité)."""
+    return _zigbee_devices
 
 
 # ---------------------------------------------------------------------------
@@ -298,7 +306,9 @@ async def demarrer_subscriber() -> asyncio.Task:
     client.on_message    = _on_message
     client.on_disconnect = _on_disconnect
 
-    client.connect_async(MQTT_BROKER, MQTT_PORT, keepalive=60)
+    await asyncio.get_running_loop().run_in_executor(
+        None, lambda: client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
+    )
     client.loop_start()
     logger.info("Subscriber MQTT démarré (%s:%d)", MQTT_BROKER, MQTT_PORT)
 
