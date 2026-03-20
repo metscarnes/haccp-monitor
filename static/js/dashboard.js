@@ -464,10 +464,69 @@ async function chargerRapports() {
   const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   document.getElementById('rapport-date-debut').value = hier;
   document.getElementById('rapport-date-fin').value   = hier;
+  document.getElementById('csv-date').value           = hier;
   // Historique : date de début = il y a 24h par défaut
   document.getElementById('date-debut').value = hier;
   document.getElementById('date-fin').value   = aujourd_hui;
 })();
+
+// ---------------------------------------------------------------------------
+// RAPPORT CSV PAR JOUR
+// ---------------------------------------------------------------------------
+
+document.getElementById('btn-charger-csv').addEventListener('click', async () => {
+  const btn  = document.getElementById('btn-charger-csv');
+  const jour = document.getElementById('csv-date').value;
+  const zone = document.getElementById('csv-rapport-resultat');
+
+  if (!jour) { alert('Choisissez une date.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Chargement…';
+  zone.innerHTML = '<div class="spinner"></div>';
+
+  try {
+    const data = await apiFetch(`/api/rapports/csv/rapport/${jour}`);
+
+    if (!data.sondes || !data.sondes.length) {
+      zone.innerHTML = `<p style="color:var(--brun); padding:1rem 0">Aucun CSV disponible pour le ${jour}.</p>`;
+      return;
+    }
+
+    zone.innerHTML = `
+      <div class="csv-rapport-grille">
+        ${data.sondes.map(s => {
+          const conforme = s.temp_max <= 4;  // indicateur visuel simple
+          return `
+          <div class="csv-rapport-carte">
+            <div class="csv-carte-entete">
+              <strong>${s.sonde.replace(/_/g, ' ')}</strong>
+              <span class="badge ${s.temp_max > 4 ? 'badge-alerte' : 'badge-ok'}">
+                ${s.temp_max > 4 ? 'Hors seuil' : 'Conforme'}
+              </span>
+            </div>
+            <div class="csv-carte-stats">
+              <div><span class="csv-stat-label">Min</span><span class="csv-stat-val">${s.temp_min} °C</span></div>
+              <div><span class="csv-stat-label">Moy</span><span class="csv-stat-val">${s.temp_moy} °C</span></div>
+              <div><span class="csv-stat-label">Max</span><span class="csv-stat-val csv-stat-max ${s.temp_max > 4 ? 'csv-hors-seuil' : ''}">${s.temp_max} °C</span></div>
+              ${s.hum_min !== null ? `<div><span class="csv-stat-label">Hum.</span><span class="csv-stat-val">${s.hum_min}–${s.hum_max} %</span></div>` : ''}
+              <div><span class="csv-stat-label">Relevés</span><span class="csv-stat-val">${s.nb_releves}</span></div>
+            </div>
+            <a class="btn btn-secondaire csv-dl-btn"
+               href="/api/rapports/csv/telecharger/${encodeURIComponent(s.sonde)}/${jour}"
+               download="${s.fichier}">
+              ⬇ Télécharger CSV
+            </a>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch (e) {
+    zone.innerHTML = `<p style="color:#c00; padding:.5rem 0">Erreur : ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Charger';
+  }
+});
 
 document.getElementById('btn-generer-rapport').addEventListener('click', async () => {
   const btn = document.getElementById('btn-generer-rapport');

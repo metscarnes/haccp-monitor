@@ -571,18 +571,77 @@ async def get_dashboard_boutique(db: aiosqlite.Connection, boutique_id: int) -> 
 
 
 # ---------------------------------------------------------------------------
-# Purge (rétention)
+# Export CSV + Purge (rétention)
 # ---------------------------------------------------------------------------
+
+CSV_EXPORT_DIR = Path(__file__).parent.parent / "data" / "exports"
+
+# Relevés bruts gardés en base (le reste est exporté en CSV)
+RETENTION_RELEVES_JOURS = 30
+# Alertes gardées en base
+RETENTION_ALERTES_JOURS = 365 * 3
+
+
+async def exporter_jour_csv(
+    db: aiosqlite.Connection,
+    enceinte_id: int,
+    nom_enceinte: str,
+    jour: datetime,
+) -> Optional[Path]:
+    """
+    Exporte les relevés d'une enceinte pour un jour donné dans un fichier CSV.
+    Retourne le chemin du fichier créé, ou None si aucun relevé.
+    Nom du fichier : {nom_enceinte}_{YYYY-MM-DD}.csv
+    """
+    import csv
+
+    debut = jour.replace(hour=0, minute=0, second=0, microsecond=0)
+    fin   = debut + timedelta(days=1)
+
+    cursor = await db.execute(
+        """
+        SELECT horodatage, temperature, humidite, batterie, qualite_signal
+        FROM releves
+        WHERE enceinte_id = ? AND horodatage >= ? AND horodatage < ?
+        ORDER BY horodatage ASC
+        """,
+        (enceinte_id, debut.isoformat(), fin.isoformat()),
+    )
+    rows = await cursor.fetchall()
+    if not rows:
+        return None
+
+    # Sanitize nom pour le filesystem (retire les caractères interdits)
+    nom_safe = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in nom_enceinte)
+    dossier = CSV_EXPORT_DIR / nom_safe
+    dossier.mkdir(parents=True, exist_ok=True)
+
+    fichier = dossier / f"{nom_safe}_{debut.strftime('%Y-%m-%d')}.csv"
+
+    # Ne pas réécrire si le fichier existe déjà (idempotent)
+    if fichier.exists():
+        return fichier
+
+    with fichier.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["horodatage", "temperature", "humidite", "batterie", "qualite_signal"])
+        for row in rows:
+            writer.writerow([row[0], row[1], row[2], row[3], row[4]])
+
+    logger.info("📄 CSV exporté : %s (%d relevés)", fichier, len(rows))
+    return fichier
+
 
 async def purger_anciens_releves(db: aiosqlite.Connection) -> dict:
     """
     Applique la politique de rétention :
-    - Relevés bruts > 12 mois : supprimés
+    - Relevés bruts > 30 jours : supprimés (après export CSV)
     - Alertes > 3 ans : supprimées
+    Lance aussi VACUUM pour libérer l'espace sur la SD card.
     """
     now = datetime.now(timezone.utc)
-    limite_releves = (now - timedelta(days=365)).isoformat()
-    limite_alertes = (now - timedelta(days=365 * 3)).isoformat()
+    limite_releves = (now - timedelta(days=RETENTION_RELEVES_JOURS)).isoformat()
+    limite_alertes = (now - timedelta(days=RETENTION_ALERTES_JOURS)).isoformat()
 
     cur_r = await db.execute(
         "DELETE FROM releves WHERE horodatage < ?", (limite_releves,)
@@ -591,6 +650,9 @@ async def purger_anciens_releves(db: aiosqlite.Connection) -> dict:
         "DELETE FROM alertes WHERE created_at < ?", (limite_alertes,)
     )
     await db.commit()
+
+    # VACUUM libère l'espace disque sur la SD (important sur Pi Zero)
+    await db.execute("VACUUM")
 
     return {
         "releves_supprimes": cur_r.rowcount,

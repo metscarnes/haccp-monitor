@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import paho.mqtt.client as mqtt
@@ -29,6 +29,11 @@ from src.database import (
     marquer_alerte_notifiee,
     get_destinataires,
     create_enceinte,
+    get_enceintes,
+    get_boutiques,
+    exporter_jour_csv,
+    purger_anciens_releves,
+    RETENTION_RELEVES_JOURS,
 )
 from src.alert_manager import envoyer_alerte
 
@@ -308,6 +313,52 @@ async def _watchdog_perte_signal() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Export CSV quotidien + purge SQLite
+# ---------------------------------------------------------------------------
+
+async def _tache_export_et_purge() -> None:
+    """
+    Tourne en arrière-plan.
+    Au démarrage : exporte les jours manquants depuis 30 jours.
+    Ensuite : toutes les 24h, exporte hier + purge la base.
+    """
+    # Export de rattrapage au démarrage
+    await _exporter_jours_manquants()
+
+    while True:
+        # Attendre minuit (simplification : on attend 24h)
+        await asyncio.sleep(24 * 3600)
+
+        hier = datetime.now(timezone.utc) - timedelta(days=1)
+        await _exporter_jour(hier)
+
+        async with get_db() as db:
+            stats = await purger_anciens_releves(db)
+            logger.info(
+                "🗑️  Purge SQLite : %d relevés supprimés, %d alertes supprimées",
+                stats["releves_supprimes"], stats["alertes_supprimees"],
+            )
+
+
+async def _exporter_jours_manquants() -> None:
+    """Au démarrage, exporte tous les jours non encore exportés dans la fenêtre de rétention."""
+    now = datetime.now(timezone.utc)
+    for delta in range(1, RETENTION_RELEVES_JOURS):
+        jour = now - timedelta(days=delta)
+        await _exporter_jour(jour)
+
+
+async def _exporter_jour(jour: datetime) -> None:
+    """Exporte les relevés de toutes les enceintes pour un jour donné."""
+    async with get_db() as db:
+        boutiques = await get_boutiques(db)
+        for boutique in boutiques:
+            enceintes = await get_enceintes(db, boutique["id"])
+            for enc in enceintes:
+                await exporter_jour_csv(db, enc["id"], enc["nom"], jour)
+
+
+# ---------------------------------------------------------------------------
 # Client MQTT — thread dédié (API classique, fiable)
 # ---------------------------------------------------------------------------
 
@@ -371,6 +422,7 @@ async def demarrer_subscriber() -> asyncio.Task:
     logger.info("Thread MQTT démarré")
 
     watchdog_task = asyncio.create_task(_watchdog_perte_signal(), name="watchdog_signal")
+    asyncio.create_task(_tache_export_et_purge(), name="export_purge")
     return watchdog_task
 
 
