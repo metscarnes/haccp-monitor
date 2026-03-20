@@ -267,7 +267,7 @@ async def _watchdog_perte_signal() -> None:
 # Client MQTT (callbacks paho → asyncio)
 # ---------------------------------------------------------------------------
 
-def _on_connect(client, userdata, flags, rc, properties=None):
+def _on_connect(client, userdata, flags, rc):
     if rc == 0:
         client.subscribe(MQTT_TOPIC)
         logger.info("MQTT connecté — abonné à %s", MQTT_TOPIC)
@@ -284,7 +284,7 @@ def _on_message(client, userdata, msg):
     )
 
 
-def _on_disconnect(client, userdata, rc, properties=None):
+def _on_disconnect(client, userdata, rc):
     if rc != 0:
         logger.warning("MQTT déconnecté (code %d) — reconnexion automatique", rc)
 
@@ -301,14 +301,12 @@ async def demarrer_subscriber() -> asyncio.Task:
     global _loop
     _loop = asyncio.get_running_loop()
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    client = mqtt.Client()
     client.on_connect    = _on_connect
     client.on_message    = _on_message
     client.on_disconnect = _on_disconnect
 
-    await asyncio.get_running_loop().run_in_executor(
-        None, lambda: client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
-    )
+    client.connect(MQTT_BROKER, MQTT_PORT, keepalive=60)
     client.loop_start()
     logger.info("Subscriber MQTT démarré (%s:%d)", MQTT_BROKER, MQTT_PORT)
 
