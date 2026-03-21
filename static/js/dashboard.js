@@ -462,12 +462,12 @@ async function chargerRapports() {
 (function() {
   const aujourd_hui = new Date().toISOString().slice(0, 10);
   const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-  document.getElementById('rapport-date-debut').value = hier;
-  document.getElementById('rapport-date-fin').value   = hier;
-  document.getElementById('csv-date').value           = hier;
-  // Historique : date de début = il y a 24h par défaut
-  document.getElementById('date-debut').value = hier;
-  document.getElementById('date-fin').value   = aujourd_hui;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('rapport-date-debut', hier);
+  set('rapport-date-fin',   hier);
+  set('csv-date',           hier);
+  set('date-debut',         hier);
+  set('date-fin',           aujourd_hui);
 })();
 
 // ---------------------------------------------------------------------------
