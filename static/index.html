@@ -113,6 +113,16 @@
     <div class="liste-rapports" id="liste-rapports">
       <div class="spinner"></div>
     </div>
+
+    <h3 style="margin-top:2rem; margin-bottom:.75rem; font-size:.95rem; color:var(--brun);">Rapport journalier depuis CSV</h3>
+    <div class="rapport-form">
+      <div>
+        <label>Date</label>
+        <input type="date" id="csv-date">
+      </div>
+      <button class="btn btn-primaire" id="btn-charger-csv">Charger</button>
+    </div>
+    <div id="csv-rapport-resultat"></div>
   </div>
 
 
@@ -141,8 +151,9 @@
         </div>
 
         <div class="config-champ">
-          <label for="enc-sonde">ID sonde Zigbee</label>
-          <input type="text" id="enc-sonde" placeholder="Ex : 0x00158d0001234567">
+          <label for="enc-sonde">Friendly name Zigbee2MQTT</label>
+          <input type="text" id="enc-sonde" placeholder="Ex : chambre_froide_1">
+          <span class="config-champ-aide">Doit correspondre exactement au nom configuré dans Zigbee2MQTT (topic : zigbee2mqtt/<strong>friendly_name</strong>)</span>
         </div>
 
         <div class="config-grille">
@@ -184,7 +195,7 @@
 
 </main>
 
-<script src="/static/js/charts.js"></script>
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/charts.js?v=3"></script>
+<script src="/static/js/dashboard.js?v=3"></script>
 </body>
 </html>

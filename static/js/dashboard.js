@@ -1,3 +1,4 @@
+/* v3 */
 /**
  * dashboard.js — Logique principale du dashboard HACCP
  *
@@ -75,7 +76,7 @@ function afficherVue(nom) {
   // Chargements spécifiques à chaque vue
   if (nom === 'historique')    chargerSelectEnceinteHistorique();
   if (nom === 'alertes')       chargerAlertes();
-  if (nom === 'rapports')      chargerRapports();
+  if (nom === 'rapports')      { chargerRapports(); initDatesRapports(); }
   if (nom === 'configuration') chargerConfigEnceintes();
 }
 
@@ -458,16 +459,23 @@ async function chargerRapports() {
   }
 }
 
-// Préremplir les dates du formulaire rapport
-(function() {
+// Préremplir les dates (appelé à l'ouverture de la vue rapports)
+function initDatesRapports() {
   const aujourd_hui = new Date().toISOString().slice(0, 10);
   const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   set('rapport-date-debut', hier);
   set('rapport-date-fin',   hier);
   set('csv-date',           hier);
-  set('date-debut',         hier);
-  set('date-fin',           aujourd_hui);
+}
+
+// Préremplir les dates du formulaire historique au chargement
+(function() {
+  const aujourd_hui = new Date().toISOString().slice(0, 10);
+  const hier = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('date-debut', hier);
+  set('date-fin',   aujourd_hui);
 })();
 
 // ---------------------------------------------------------------------------
