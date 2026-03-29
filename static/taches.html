@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Tâches HACCP — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="taches-body">
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="taches-header">
+    <a href="/hub.html" class="taches-btn-retour" aria-label="Retour accueil">← Hub</a>
+    <div class="taches-header-centre">
+      <div class="taches-titre">TÂCHES HACCP</div>
+      <div id="taches-date" class="taches-date" aria-live="polite"></div>
+    </div>
+    <div id="taches-horloge" class="taches-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       BARRE OPÉRATEUR
+  ============================================================= -->
+  <div id="operateur-bar" class="operateur-bar operateur-bar--vide">
+    <span class="operateur-label">👤 Opérateur :</span>
+    <div id="operateur-boutons" class="operateur-boutons">
+      <!-- Boutons prénom injectés par taches.js -->
+      <span class="operateur-placeholder">Chargement…</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       COLONNES — En retard | À faire | Fait
+  ============================================================= -->
+  <main class="taches-colonnes" id="taches-colonnes">
+
+    <!-- En retard -->
+    <section class="taches-colonne taches-colonne--retard" aria-label="Tâches en retard">
+      <div class="taches-colonne-titre">
+        <span class="taches-colonne-dot taches-colonne-dot--retard"></span>
+        EN RETARD
+        <span class="taches-colonne-nb" id="nb-retard">0</span>
+      </div>
+      <div class="taches-liste" id="liste-retard">
+        <div class="taches-vide">✓ Aucune tâche en retard</div>
+      </div>
+    </section>
+
+    <!-- À faire -->
+    <section class="taches-colonne taches-colonne--afaire" aria-label="Tâches à faire">
+      <div class="taches-colonne-titre">
+        <span class="taches-colonne-dot taches-colonne-dot--afaire"></span>
+        À FAIRE
+        <span class="taches-colonne-nb" id="nb-afaire">0</span>
+      </div>
+      <div class="taches-liste" id="liste-afaire">
+        <div class="taches-vide">Chargement…</div>
+      </div>
+    </section>
+
+    <!-- Fait -->
+    <section class="taches-colonne taches-colonne--fait" aria-label="Tâches faites">
+      <div class="taches-colonne-titre">
+        <span class="taches-colonne-dot taches-colonne-dot--fait"></span>
+        FAIT
+        <span class="taches-colonne-nb" id="nb-fait">0</span>
+      </div>
+      <div class="taches-liste" id="liste-fait">
+        <div class="taches-vide">Aucune validation aujourd'hui</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       MODAL — Formulaire de validation
+  ============================================================= -->
+  <div id="modal-overlay" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="modal-titre">
+    <div class="modal-boite" id="modal-boite">
+
+      <div class="modal-entete">
+        <div class="modal-icone" id="modal-icone" aria-hidden="true">📋</div>
+        <div>
+          <div class="modal-titre" id="modal-titre">Validation</div>
+          <div class="modal-sous-titre" id="modal-sous-titre"></div>
+        </div>
+        <button class="modal-fermer" id="modal-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <form class="modal-form" id="modal-form" novalidate>
+        <!-- Champs spécifiques injectés par JS -->
+        <div id="modal-champs-specifiques"></div>
+
+        <!-- Conformité (toujours présente) -->
+        <fieldset class="modal-fieldset">
+          <legend class="modal-fieldset-titre">Conformité</legend>
+          <div class="modal-conforme-choix">
+            <label class="modal-conforme-label modal-conforme-label--oui">
+              <input type="radio" name="conforme" value="oui" required>
+              <span>✅ Conforme</span>
+            </label>
+            <label class="modal-conforme-label modal-conforme-label--non">
+              <input type="radio" name="conforme" value="non">
+              <span>❌ Non conforme</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <!-- Commentaire -->
+        <div class="modal-champ">
+          <label class="modal-champ-label" for="modal-commentaire">Commentaire <span class="modal-optionnel">(optionnel)</span></label>
+          <textarea id="modal-commentaire" class="modal-textarea" rows="2" placeholder="Observation, action corrective…"></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="modal-actions">
+          <button type="button" id="modal-annuler" class="btn-outline">Annuler</button>
+          <button type="submit" id="modal-valider" class="btn-valider">
+            <span id="modal-valider-texte">Valider ✓</span>
+          </button>
+        </div>
+
+        <div id="modal-erreur" class="modal-erreur" hidden></div>
+      </form>
+
+    </div>
+  </div>
+
+  <script src="/static/js/taches.js"></script>
+</body>
+</html>

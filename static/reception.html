@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Réception — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="recep-body">
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="recep-header">
+    <a href="/hub.html" class="taches-btn-retour" aria-label="Retour accueil">← Hub</a>
+    <div class="taches-header-centre">
+      <div class="taches-titre">RÉCEPTION</div>
+      <div id="recep-date" class="taches-date" aria-live="polite"></div>
+    </div>
+    <div id="recep-horloge" class="taches-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       INDICATEUR D'ÉTAPES
+  ============================================================= -->
+  <nav class="recep-steps" aria-label="Étapes de la fiche">
+    <div class="recep-step recep-step--actif" id="step-ind-1">
+      <span class="recep-step-nb">1</span>
+      <span class="recep-step-libelle">Entête</span>
+    </div>
+    <div class="recep-step-sep"></div>
+    <div class="recep-step" id="step-ind-2">
+      <span class="recep-step-nb">2</span>
+      <span class="recep-step-libelle">Produits</span>
+    </div>
+    <div class="recep-step-sep"></div>
+    <div class="recep-step" id="step-ind-3">
+      <span class="recep-step-nb">3</span>
+      <span class="recep-step-libelle">Finalisation</span>
+    </div>
+  </nav>
+
+  <!-- ============================================================
+       CORPS PRINCIPAL — Wizard + Historique
+  ============================================================= -->
+  <div class="recep-layout">
+
+    <!-- ── COLONNE GAUCHE : Wizard ── -->
+    <div class="recep-col-wizard" id="recep-wizard">
+
+      <!-- ── ÉTAPE 1 : Entête réception ── -->
+      <div id="recep-step-1" class="recep-step-panel">
+        <form id="form-entete" novalidate>
+
+          <div class="recep-section-titre">Fournisseur &amp; livraison</div>
+
+          <div class="recep-grille-2">
+            <div class="recep-champ recep-champ--wide">
+              <label class="recep-champ-label" for="rcp-fournisseur">Fournisseur <span class="requis">*</span></label>
+              <div class="recep-fourn-row">
+                <select id="rcp-fournisseur" class="recep-input" name="fournisseur_id">
+                  <option value="">— Sélectionner —</option>
+                  <!-- Rempli par JS -->
+                </select>
+                <span class="recep-fourn-ou">ou</span>
+                <input id="rcp-fourn-libre" class="recep-input" type="text"
+                       name="fournisseur_nom_libre"
+                       placeholder="Saisie libre…">
+              </div>
+            </div>
+            <div class="recep-champ">
+              <label class="recep-champ-label" for="rcp-bl">N° BL</label>
+              <input id="rcp-bl" class="recep-input" type="text" name="numero_bon_livraison"
+                     placeholder="Ex : BL-20260329-001">
+            </div>
+          </div>
+
+          <div class="recep-grille-2">
+            <div class="recep-champ">
+              <label class="recep-champ-label" for="rcp-operateur">Opérateur <span class="requis">*</span></label>
+              <select id="rcp-operateur" class="recep-input" name="operateur" required>
+                <option value="">— Sélectionner —</option>
+              </select>
+            </div>
+            <div class="recep-champ">
+              <label class="recep-champ-label" for="rcp-heure">Heure de livraison</label>
+              <input id="rcp-heure" class="recep-input" type="time" name="heure_livraison">
+            </div>
+          </div>
+
+          <div class="recep-section-titre" style="margin-top:.5rem">Contrôle du camion</div>
+
+          <div class="recep-grille-2">
+            <div class="recep-champ">
+              <label class="recep-champ-label" for="rcp-temp-camion">Température camion (°C)</label>
+              <input id="rcp-temp-camion" class="recep-input recep-input--nb" type="number"
+                     step="0.1" name="temperature_camion" placeholder="0.0">
+            </div>
+            <div class="recep-champ">
+              <label class="recep-champ-label">Propreté camion</label>
+              <div class="recep-radio-choix">
+                <label class="recep-radio-label">
+                  <input type="radio" name="proprete_camion" value="S">
+                  <span>✓ Satisfaisant</span>
+                </label>
+                <label class="recep-radio-label">
+                  <input type="radio" name="proprete_camion" value="NS">
+                  <span>✗ Non satisfaisant</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="recep-champ">
+            <label class="recep-champ-label" for="rcp-commentaire-entete">Commentaire</label>
+            <textarea id="rcp-commentaire-entete" class="recep-textarea" rows="2"
+                      name="commentaire" placeholder="Observation sur la livraison…"></textarea>
+          </div>
+
+          <div class="recep-actions">
+            <button type="submit" class="btn-valider">Continuer → Produits</button>
+          </div>
+          <div id="recep-erreur-1" class="recep-erreur" hidden></div>
+        </form>
+      </div>
+
+      <!-- ── ÉTAPE 2 : Lignes produits ── -->
+      <div id="recep-step-2" class="recep-step-panel" hidden>
+
+        <div class="recep-recap-entete" id="recep-recap-entete">
+          <!-- Rempli par JS -->
+        </div>
+
+        <!-- Liste des lignes saisies -->
+        <div class="recep-lignes-liste" id="recep-lignes-liste">
+          <div class="recep-vide" id="recep-lignes-vide">Aucun produit ajouté</div>
+        </div>
+
+        <!-- Formulaire ajout produit (accordion) -->
+        <div class="recep-ajout-zone">
+          <button type="button" id="recep-btn-ajouter" class="recep-btn-ajouter">
+            ＋ Ajouter un produit
+          </button>
+
+          <form id="form-ligne" class="recep-ligne-form" hidden novalidate>
+            <div class="recep-section-titre">Nouveau produit</div>
+
+            <div class="recep-champ">
+              <label class="recep-champ-label" for="lg-nom">Nom du produit <span class="requis">*</span></label>
+              <input id="lg-nom" class="recep-input" type="text" name="produit_nom" required
+                     placeholder="Ex : Entrecôte, Saucisses merguez…">
+            </div>
+
+            <div class="recep-grille-3">
+              <div class="recep-champ">
+                <label class="recep-champ-label" for="lg-temp">Température (°C)</label>
+                <input id="lg-temp" class="recep-input recep-input--nb" type="number"
+                       step="0.1" name="temperature_produit" placeholder="0.0">
+              </div>
+              <div class="recep-champ">
+                <label class="recep-champ-label" for="lg-dlc">DLC</label>
+                <input id="lg-dlc" class="recep-input" type="date" name="dlc">
+              </div>
+              <div class="recep-champ">
+                <label class="recep-champ-label" for="lg-lot">N° lot</label>
+                <input id="lg-lot" class="recep-input" type="text" name="numero_lot"
+                       placeholder="Ex : FR-2026…">
+              </div>
+            </div>
+
+            <div class="recep-grille-2">
+              <div class="recep-champ">
+                <label class="recep-champ-label">Intégrité emballage</label>
+                <div class="recep-radio-choix">
+                  <label class="recep-radio-label">
+                    <input type="radio" name="integrite_emballage" value="S">
+                    <span>✓ OK</span>
+                  </label>
+                  <label class="recep-radio-label">
+                    <input type="radio" name="integrite_emballage" value="NS">
+                    <span>✗ NOK</span>
+                  </label>
+                </div>
+              </div>
+              <div class="recep-champ">
+                <label class="recep-champ-label">Conformité produit</label>
+                <div class="recep-radio-choix">
+                  <label class="recep-radio-label">
+                    <input type="radio" name="conforme_ligne" value="oui">
+                    <span>✓ Conforme</span>
+                  </label>
+                  <label class="recep-radio-label">
+                    <input type="radio" name="conforme_ligne" value="non">
+                    <span>✗ NC</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="recep-actions">
+              <button type="button" id="recep-btn-annuler-ligne" class="btn-outline">Annuler</button>
+              <button type="submit" class="btn-valider" style="background:var(--brun)">Ajouter ce produit</button>
+            </div>
+            <div id="recep-erreur-ligne" class="recep-erreur" hidden></div>
+          </form>
+        </div>
+
+        <div class="recep-actions recep-actions--step">
+          <button type="button" id="recep-btn-back-1" class="btn-outline">← Retour</button>
+          <button type="button" id="recep-btn-next-3" class="btn-valider" disabled
+                  id="recep-btn-finaliser">Finaliser →</button>
+        </div>
+        <div id="recep-erreur-2" class="recep-erreur" hidden></div>
+      </div>
+
+      <!-- ── ÉTAPE 3 : Finalisation ── -->
+      <div id="recep-step-3" class="recep-step-panel" hidden>
+
+        <!-- Récapitulatif -->
+        <div id="recep-recap-final" class="recep-recap-final">
+          <!-- Rempli par JS -->
+        </div>
+
+        <form id="form-final" novalidate>
+          <div class="recep-section-titre">Conformité globale de la réception</div>
+
+          <div class="recep-conforme-choix">
+            <label class="recep-conforme-label recep-conforme-label--oui">
+              <input type="radio" name="conforme_global" value="oui" required>
+              <span class="recep-conforme-icone">✅</span>
+              <span class="recep-conforme-texte">Réception conforme</span>
+              <span class="recep-conforme-aide">Tous les produits acceptés</span>
+            </label>
+            <label class="recep-conforme-label recep-conforme-label--non">
+              <input type="radio" name="conforme_global" value="non">
+              <span class="recep-conforme-icone">❌</span>
+              <span class="recep-conforme-texte">Non conforme</span>
+              <span class="recep-conforme-aide">Au moins un problème détecté</span>
+            </label>
+          </div>
+
+          <!-- Zone NC (affichée si non-conforme) -->
+          <div id="recep-nc-zone" class="recep-nc-zone" hidden>
+            <div class="recep-section-titre">Détails non-conformité</div>
+            <div class="recep-nc-grid">
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_temperature"> Température hors norme
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_dlc"> DLC dépassée ou incorrecte
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_emballage"> Emballage endommagé
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_aspect"> Aspect / odeur anormal
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_etiquetage"> Étiquetage absent / incorrect
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_autre"> Autre
+              </label>
+            </div>
+            <div class="recep-champ" style="margin-top:.5rem">
+              <label class="recep-champ-label" for="rcp-nc-commentaire">Commentaires NC</label>
+              <textarea id="rcp-nc-commentaire" class="recep-textarea" rows="2"
+                        placeholder="Description des non-conformités, actions prises…"></textarea>
+            </div>
+            <div class="recep-nc-options">
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_refuse"> Livraison refusée
+              </label>
+              <label class="recep-nc-label">
+                <input type="checkbox" name="nc_ddpp"> Information DDPP
+              </label>
+            </div>
+          </div>
+
+          <div class="recep-actions recep-actions--step">
+            <button type="button" id="recep-btn-back-2" class="btn-outline">← Retour</button>
+            <button type="submit" id="recep-btn-finaliser" class="btn-valider">
+              <span id="recep-btn-finaliser-texte">✓ Clôturer la fiche</span>
+            </button>
+          </div>
+          <div id="recep-erreur-3" class="recep-erreur" hidden></div>
+        </form>
+      </div>
+
+      <!-- ── RÉSULTAT ── -->
+      <div id="recep-resultat" class="recep-resultat" hidden>
+        <!-- Rempli par JS -->
+      </div>
+
+    </div><!-- /.recep-col-wizard -->
+
+    <!-- ── COLONNE DROITE : Historique ── -->
+    <div class="recep-col-histo">
+      <div class="recep-histo-panel">
+        <div class="recep-histo-titre">
+          📦 Réceptions récentes
+          <button class="etiq-btn-refresh" id="recep-refresh-histo" aria-label="Actualiser">↺</button>
+        </div>
+        <div id="recep-histo-liste" class="recep-histo-liste">
+          <div class="recep-vide">Chargement…</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.recep-layout -->
+
+  <script src="/static/js/reception.js"></script>
+</body>
+</html>

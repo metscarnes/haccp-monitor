@@ -16,7 +16,7 @@ from pathlib import Path
 from dotenv import load_dotenv  # pip install python-dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.database import init_db, get_db, purger_anciens_releves
@@ -164,3 +164,13 @@ if STATIC_DIR.exists():
     @app.get("/", include_in_schema=False)
     async def index():
         return FileResponse(str(STATIC_DIR / "index.html"))
+
+    @app.get("/{page}.html", include_in_schema=False)
+    async def html_page(page: str):
+        """Sert tout fichier .html de static/ à la racine de l'app.
+        Permet d'accéder à /hub.html, /taches.html, /etiquettes.html, etc.
+        """
+        path = STATIC_DIR / f"{page}.html"
+        if path.exists():
+            return FileResponse(str(path))
+        return RedirectResponse("/")

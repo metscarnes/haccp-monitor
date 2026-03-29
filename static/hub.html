@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>HACCP — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="hub-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <div class="hub-titre">Au Comptoir des Lilas</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+    <a href="/admin.html" class="hub-btn-admin">⚙&nbsp;Admin</a>
+  </header>
+
+  <!-- ========================================================
+       BANDEAU — Connexion perdue (orange, discret)
+  ========================================================= -->
+  <div id="hub-bandeau-connexion" class="hub-bandeau-connexion" hidden>
+    ⚠ Connexion au serveur perdue — vérifiez le Raspberry Pi
+  </div>
+
+  <!-- ========================================================
+       BANDEAU — Tâches en retard (rouge, pulsant, cliquable)
+  ========================================================= -->
+  <div id="hub-bandeau-retard" class="hub-bandeau" hidden role="alert" aria-live="assertive">
+    <!-- Texte injecté par hub.js -->
+  </div>
+
+  <!-- ========================================================
+       GRILLE 2×2 — 4 modules
+  ========================================================= -->
+  <main class="hub-grille" role="main">
+
+    <!-- ── Tâches HACCP ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-taches"
+       href="/taches.html" aria-label="Tâches HACCP">
+      <span class="hub-tuile-badge" id="badge-taches" hidden aria-label="tâches en retard">0</span>
+      <div class="hub-tuile-icone" aria-hidden="true">✅</div>
+      <div class="hub-tuile-titre">TÂCHES HACCP</div>
+      <div class="hub-tuile-statut" id="statut-taches">Chargement…</div>
+    </a>
+
+    <!-- ── Étiquettes DLC ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-etiquettes"
+       href="/etiquettes.html" aria-label="Étiquettes DLC">
+      <div class="hub-tuile-icone" aria-hidden="true">🏷️</div>
+      <div class="hub-tuile-titre">ÉTIQUETTES DLC</div>
+      <div class="hub-tuile-statut" id="statut-etiquettes">Chargement…</div>
+    </a>
+
+    <!-- ── Réception ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-reception"
+       href="/reception.html" aria-label="Contrôles réception">
+      <div class="hub-tuile-icone" aria-hidden="true">📦</div>
+      <div class="hub-tuile-titre">RÉCEPTION</div>
+      <div class="hub-tuile-statut" id="statut-reception">Chargement…</div>
+    </a>
+
+    <!-- ── Températures (Phase 1) ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-temperatures"
+       href="/" aria-label="Dashboard températures">
+      <div class="hub-tuile-icone" aria-hidden="true">🌡️</div>
+      <div class="hub-tuile-titre">TEMPÉRATURES</div>
+      <div class="hub-tuile-statut" id="statut-temperatures">Chargement…</div>
+    </a>
+
+  </main>
+
+  <script src="/static/js/hub.js"></script>
+</body>
+</html>
