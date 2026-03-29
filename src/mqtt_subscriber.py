@@ -219,7 +219,7 @@ async def _traiter_message(topic: str, payload_bytes: bytes) -> None:
 # Vérification des seuils et gestion des alertes
 # ---------------------------------------------------------------------------
 
-async def _verifier_seuils(db, enceinte, temperature, _humidite, batterie, now):
+async def _verifier_seuils(db, enceinte, temperature, humidite, batterie, now):
     eid = enceinte["id"]
 
     if temperature > enceinte["seuil_temp_max"]:

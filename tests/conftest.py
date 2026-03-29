@@ -53,12 +53,20 @@ async def app_client():
 @pytest_asyncio.fixture
 async def db():
     """Connexion aiosqlite isolée : schéma + seed frais à chaque test."""
-    from src.database import init_db, get_db, SEED_SQL
+    from src.database import init_db, get_db, SEED_SQL, SEED_SQL_PHASE2
     await init_db()
     async with get_db() as conn:
         # Vider toutes les tables pour isolation totale entre tests
-        for table in ("releves", "alertes", "rapports", "destinataires", "enceintes", "boutiques"):
+        phase2_tables = (
+            "tache_validations", "tache_types",
+            "plan_nettoyage", "pieges", "personnel",
+            "non_conformites_fournisseur", "reception_lignes", "receptions", "fournisseurs",
+            "etiquettes_generees", "regles_dlc", "produits",
+        )
+        phase1_tables = ("releves", "alertes", "rapports", "destinataires", "enceintes", "boutiques")
+        for table in phase2_tables + phase1_tables:
             await conn.execute(f"DELETE FROM {table}")
         await conn.executescript(SEED_SQL)
+        await conn.executescript(SEED_SQL_PHASE2)
         await conn.commit()
         yield conn

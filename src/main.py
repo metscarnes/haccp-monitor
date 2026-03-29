@@ -20,11 +20,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.database import init_db, get_db, purger_anciens_releves
-from src.api.routes_boutiques import router as router_boutiques
-from src.api.routes_enceintes import router as router_enceintes
-from src.api.routes_releves   import router as router_releves
-from src.api.routes_alertes   import router as router_alertes
-from src.api.routes_rapports  import router as router_rapports
+from src.api.routes_boutiques  import router as router_boutiques
+from src.api.routes_enceintes  import router as router_enceintes
+from src.api.routes_releves    import router as router_releves
+from src.api.routes_alertes    import router as router_alertes
+from src.api.routes_rapports   import router as router_rapports
+from src.api.routes_etiquettes import router as router_etiquettes
+from src.api.routes_reception  import router as router_reception
+from src.api.routes_taches     import router as router_taches
+from src.api.routes_admin      import router as router_admin
 
 load_dotenv()
 
@@ -75,8 +79,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="HACCP Monitor — Au Comptoir des Lilas",
-    version="1.0.0",
-    description="Monitoring des températures HACCP — Mets Carnés Holding",
+    version="2.0.0",
+    description="Monitoring HACCP complet — Mets Carnés Holding (Phase 2 : DLC, Réception, Tâches)",
     lifespan=lifespan,
 )
 
@@ -87,12 +91,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes API
+# Routes API — Phase 1
 app.include_router(router_boutiques)
 app.include_router(router_enceintes)
 app.include_router(router_releves)
 app.include_router(router_alertes)
 app.include_router(router_rapports)
+
+# Routes API — Phase 2
+app.include_router(router_etiquettes)
+app.include_router(router_reception)
+app.include_router(router_taches)
+app.include_router(router_admin)
 
 
 # ---------------------------------------------------------------------------
