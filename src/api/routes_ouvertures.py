@@ -9,7 +9,7 @@ GET    /api/ouvertures/suggestions      → autocomplete produits (réceptions r
 
 import io
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -101,7 +101,7 @@ async def creer_ouverture(
         ouverture_id = cursor.lastrowid
 
         # Construire le nom de fichier avec l'id
-        now_str = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         filename = f"OUV-{now_str}-{ouverture_id}.jpg"
         filepath = PHOTOS_DIR / filename
 
@@ -136,7 +136,7 @@ async def suggestions_ouvertures(
     1. Produits issus de réceptions des 21 derniers jours (triés par date DESC, dédupliqués)
     2. Reste du catalogue matière_première
     """
-    cutoff = (datetime.utcnow() - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
 
     like = f"%{q}%" if q else None
 
