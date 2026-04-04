@@ -20,7 +20,7 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent.parent / "data" / "haccp.db"
+DB_PATH = Path(__file__).parent.parent / "haccp.db"
 
 # ---------------------------------------------------------------------------
 # Schéma
@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS enceintes (
     delai_alerte_minutes  INTEGER DEFAULT 5,
     actif                 BOOLEAN DEFAULT 1,
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(boutique_id, nom),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -235,6 +236,7 @@ CREATE TABLE IF NOT EXISTS personnel (
     boutique_id INTEGER NOT NULL,
     prenom      TEXT    NOT NULL,
     actif       BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, prenom),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -279,6 +281,7 @@ CREATE TABLE IF NOT EXISTS pieges (
     identifiant TEXT    NOT NULL,
     localisation TEXT,
     actif       BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, type, identifiant),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -289,6 +292,7 @@ CREATE TABLE IF NOT EXISTS plan_nettoyage (
     surface_equipement TEXT   NOT NULL,
     frequence         TEXT    NOT NULL,
     actif             BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, local, surface_equipement, frequence),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 """

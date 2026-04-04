@@ -24,14 +24,95 @@ except ImportError:
 # Chemins
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).parent.parent
-DB_PATH = ROOT / "data" / "haccp.db"
+DB_PATH = ROOT / "haccp.db"
 XLSX_PATH = ROOT / "data" / "extraction_matiere_premiere.xlsx"
 
 # ---------------------------------------------------------------------------
 # Schéma Phase 2 (CREATE TABLE IF NOT EXISTS — idempotent)
 # ---------------------------------------------------------------------------
 PHASE2_SCHEMA = """
+PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
+
+-- ===========================================================================
+-- PHASE 1
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS boutiques (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom        TEXT NOT NULL,
+    adresse    TEXT,
+    siret      TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS enceintes (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id           INTEGER NOT NULL,
+    nom                   TEXT NOT NULL,
+    type                  TEXT NOT NULL,
+    sonde_zigbee_id       TEXT,
+    seuil_temp_min        REAL    DEFAULT 0.0,
+    seuil_temp_max        REAL    DEFAULT 4.0,
+    seuil_hum_max         REAL    DEFAULT 90.0,
+    delai_alerte_minutes  INTEGER DEFAULT 5,
+    actif                 BOOLEAN DEFAULT 1,
+    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(boutique_id, nom),
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+CREATE TABLE IF NOT EXISTS releves (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    enceinte_id    INTEGER NOT NULL,
+    temperature    REAL    NOT NULL,
+    humidite       REAL,
+    batterie       INTEGER,
+    qualite_signal INTEGER,
+    horodatage     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (enceinte_id) REFERENCES enceintes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_releves_enceinte_date
+    ON releves(enceinte_id, horodatage);
+
+CREATE TABLE IF NOT EXISTS alertes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    enceinte_id INTEGER NOT NULL,
+    type        TEXT    NOT NULL,
+    valeur      REAL,
+    seuil       REAL,
+    debut       DATETIME NOT NULL,
+    fin         DATETIME,
+    notifie     BOOLEAN  DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (enceinte_id) REFERENCES enceintes(id)
+);
+
+CREATE TABLE IF NOT EXISTS destinataires (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom       TEXT NOT NULL,
+    email     TEXT,
+    telephone TEXT,
+    actif     BOOLEAN DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS rapports (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id INTEGER NOT NULL,
+    type        TEXT    NOT NULL,
+    date_debut  DATE    NOT NULL,
+    date_fin    DATE    NOT NULL,
+    conforme    BOOLEAN,
+    fichier_path TEXT,
+    sha256      TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+-- ===========================================================================
+-- PHASE 2
+-- ===========================================================================
 
 CREATE TABLE IF NOT EXISTS produits (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,6 +232,7 @@ CREATE TABLE IF NOT EXISTS personnel (
     boutique_id INTEGER NOT NULL,
     prenom      TEXT    NOT NULL,
     actif       BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, prenom),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -195,6 +277,7 @@ CREATE TABLE IF NOT EXISTS pieges (
     identifiant  TEXT    NOT NULL,
     localisation TEXT,
     actif        BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, type, identifiant),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -205,11 +288,22 @@ CREATE TABLE IF NOT EXISTS plan_nettoyage (
     surface_equipement TEXT    NOT NULL,
     frequence          TEXT    NOT NULL,
     actif              BOOLEAN DEFAULT 1,
+    UNIQUE(boutique_id, local, surface_equipement, frequence),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 """
 
 SEED_PHASE2 = """
+INSERT OR IGNORE INTO boutiques (id, nom, adresse, siret)
+VALUES (1, 'Au Comptoir des Lilas', '122 rue de Paris, Les Lilas, 93260', '');
+
+INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes)
+VALUES
+(1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 5),
+(2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 5),
+(3, 1, 'Vitrine',          'vitrine',        'vitrine_1',          0.0,  4.0, 90.0, 5),
+(4, 1, 'Laboratoire',      'laboratoire',    'laboratoire_1',     10.0, 15.0, 80.0, 5);
+
 INSERT OR IGNORE INTO regles_dlc (boutique_id, categorie, dlc_jours, note) VALUES
 (1, 'viande_hachee',         1,   'Viande hachée fraîche'),
 (1, 'viande_pieces',         3,   'Pièces de viande entières'),
@@ -321,11 +415,53 @@ def dedup_table(cur, table, boutique_id, key_col):
 
 
 # ---------------------------------------------------------------------------
+# Purge ancienne base
+# ---------------------------------------------------------------------------
+def _purge_old_db(db_path: Path):
+    """Purge les doublons dans une base existante, garde le plus petit id."""
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {r[0] for r in cur.fetchall()}
+
+    specs = [
+        ("personnel",      "prenom"),
+        ("pieges",         "type, identifiant"),
+        ("plan_nettoyage", "local, surface_equipement, frequence"),
+        ("enceintes",      "nom"),
+    ]
+    for table, key_cols in specs:
+        if table not in tables:
+            continue
+        cur.execute(f"""
+            DELETE FROM {table}
+            WHERE boutique_id = 1
+              AND id NOT IN (
+                  SELECT MIN(id) FROM {table}
+                  WHERE boutique_id = 1
+                  GROUP BY {key_cols}
+              )
+        """)
+        deleted = cur.rowcount
+        status = f"{deleted} doublon(s) supprime(s)" if deleted else "ok"
+        print(f"  {table}: {status}")
+
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Script principal
 # ---------------------------------------------------------------------------
 def main():
-    print(f"Base : {DB_PATH}")
+    print(f"Base cible : {DB_PATH}")
     print(f"Excel : {XLSX_PATH}")
+
+    # Purge des doublons dans data/haccp.db (ancienne base) si elle existe
+    old_db = ROOT / "data" / "haccp.db"
+    if old_db.exists() and old_db != DB_PATH:
+        print(f"\n[0/4] Purge doublons dans {old_db.name} (ancienne base)...")
+        _purge_old_db(old_db)
 
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA foreign_keys = ON")
