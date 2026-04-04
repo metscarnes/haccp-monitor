@@ -305,8 +305,8 @@ INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, se
 VALUES
 (1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 5),
 (2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 5),
-(3, 1, 'Vitrine',          'vitrine',        'vitrine_1',          0.0,  4.0, 90.0, 5),
-(4, 1, 'Laboratoire',      'laboratoire',    'laboratoire_1',     10.0, 15.0, 80.0, 5);
+(3, 1, 'vitrine',          'vitrine',        'vitrine',            0.0,  4.0, 90.0, 5),
+(4, 1, 'laboratoire',      'laboratoire',    'laboratoire',       10.0, 15.0, 80.0, 5);
 """
 
 SEED_SQL_PHASE2 = """
