@@ -43,6 +43,30 @@ header {
 header h1 { font-size: 1.05rem; font-weight: 600; letter-spacing: .02em; }
 header h1 span { color: var(--creme); }
 
+.btn-retour-hub {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  background: rgba(255,255,255,.12);
+  border: 1.5px solid rgba(255,255,255,.30);
+  color: var(--ivoire);
+  padding: .4rem .9rem;
+  border-radius: 8px;
+  font-size: .9rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.btn-retour-hub:hover { background: rgba(255,255,255,.22); }
+
+.config-enceinte-zigbee {
+  font-size: .78rem;
+  color: var(--brun);
+  margin-top: .2rem;
+}
+
 #statut-global {
   font-size: .8rem;
   padding: .3rem .8rem;

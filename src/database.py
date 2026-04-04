@@ -546,6 +546,18 @@ async def update_enceinte(
     return True
 
 
+async def delete_enceinte(db: aiosqlite.Connection, enceinte_id: int) -> bool:
+    """Supprime une enceinte et toutes ses données associées."""
+    cur = await db.execute("SELECT id FROM enceintes WHERE id = ?", (enceinte_id,))
+    if not await cur.fetchone():
+        return False
+    await db.execute("DELETE FROM releves WHERE enceinte_id = ?", (enceinte_id,))
+    await db.execute("DELETE FROM alertes WHERE enceinte_id = ?", (enceinte_id,))
+    await db.execute("DELETE FROM enceintes WHERE id = ?", (enceinte_id,))
+    await db.commit()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Boutiques
 # ---------------------------------------------------------------------------
