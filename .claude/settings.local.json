@@ -7,7 +7,10 @@
       "Bash(tasklist)",
       "Bash(netstat -ano)",
       "Bash(sshpass -p campiglia ssh -o StrictHostKeyChecking=no campiglia@192.168.1.83 \"sudo systemctl restart haccp-backend && sleep 3 && sudo systemctl status haccp-backend --no-pager -l | tail -30\")",
-      "Bash(ssh -o StrictHostKeyChecking=no -o BatchMode=yes campiglia@192.168.1.83 \"echo ok\")"
+      "Bash(ssh -o StrictHostKeyChecking=no -o BatchMode=yes campiglia@192.168.1.83 \"echo ok\")",
+      "Read(//c/Users/campi/OneDrive/Création d''''''''entreprise/Boucherie/SoftWare/**)",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import sys; print\\(sys.stdin.buffer.read\\(\\).decode\\(''''utf-8'''', errors=''''replace''''\\)\\)\")"
     ]
   }
 }
