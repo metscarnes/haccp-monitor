@@ -128,8 +128,8 @@ async def system_status():
     try:
         c = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2)
         c.connect(
-            os.getenv("MQTT_BROKER", "localhost"),
-            int(os.getenv("MQTT_PORT", "1883")),
+            os.getenv("MQTT_BROKER") or "localhost",
+            int(os.getenv("MQTT_PORT") or "1883"),
             keepalive=5,
         )
         c.disconnect()
