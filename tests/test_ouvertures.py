@@ -21,8 +21,9 @@ async def _seed_produit_et_personnel(db):
     """Insère un produit matière_première et un personnel, retourne (produit_id, personnel_id)."""
     cursor = await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES (?, ?, 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES (?, ?, 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """,
         ("VB-PALERON", "VBR06"),
     )
@@ -141,14 +142,16 @@ async def test_get_suggestions_retourne_matieres_premieres(app_client, db):
     # Insérer quelques produits
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('PAV-ENTRECOTE', 'PAV01', 'pav', 4, 'SOUS_VIDE', 3)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('PAV-ENTRECOTE', 'PAV01', 'pav', 4, 'SOUS_VIDE', 3, 1, '0°C à +4°C')
         """
     )
     await db.commit()
@@ -170,8 +173,9 @@ async def test_get_suggestions_recentes_en_premier(app_client, db):
     # Produit en réception récente
     cursor = await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
     produit_recept_id = cursor.lastrowid
@@ -179,8 +183,9 @@ async def test_get_suggestions_recentes_en_premier(app_client, db):
     # Produit catalogue seul
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-BASSE-COTE', 'VBR10', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-BASSE-COTE', 'VBR10', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
 
@@ -220,14 +225,16 @@ async def test_get_suggestions_filtre_q(app_client, db):
     """GET /api/ouvertures/suggestions?q=PAL → filtre sur nom."""
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-BASSE-COTE', 'VBR10', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-BASSE-COTE', 'VBR10', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
     await db.commit()
@@ -245,8 +252,9 @@ async def test_get_suggestions_filtre_q_code(app_client, db):
     """GET /api/ouvertures/suggestions?q=VBR → filtre sur code_unique."""
     await db.execute(
         """
-        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours)
-        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0)
+        INSERT INTO produits (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+                              boutique_id, temperature_conservation)
+        VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0, 1, '0°C à +4°C')
         """
     )
     await db.commit()

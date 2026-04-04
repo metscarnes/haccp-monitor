@@ -112,11 +112,16 @@ CREATE TABLE IF NOT EXISTS rapports (
 
 CREATE TABLE IF NOT EXISTS produits (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id              INTEGER NOT NULL,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
     nom                      TEXT    NOT NULL,
-    categorie                TEXT    NOT NULL,
-    dlc_jours                INTEGER NOT NULL,
-    temperature_conservation TEXT    NOT NULL,
+    code_unique              TEXT    UNIQUE,
+    espece                   TEXT,
+    etape                    INTEGER,
+    coupe_niveau             TEXT,
+    conditionnement          TEXT    DEFAULT 'SOUS_VIDE',
+    categorie                TEXT    NOT NULL DEFAULT 'matiere_premiere',
+    dlc_jours                INTEGER NOT NULL DEFAULT 0,
+    temperature_conservation TEXT    NOT NULL DEFAULT '0°C à +4°C',
     format_etiquette         TEXT    DEFAULT 'standard_60x40',
     actif                    BOOLEAN DEFAULT 1,
     created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -193,6 +198,7 @@ CREATE INDEX IF NOT EXISTS idx_receptions_boutique_date
 CREATE TABLE IF NOT EXISTS reception_lignes (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_id        INTEGER NOT NULL,
+    produit_id          INTEGER,
     produit_nom         TEXT    NOT NULL,
     temperature_produit REAL,
     integrite_emballage TEXT,
@@ -201,7 +207,8 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     quantite            REAL,
     heure_stockage      TEXT,
     conforme            BOOLEAN,
-    FOREIGN KEY (reception_id) REFERENCES receptions(id)
+    FOREIGN KEY (reception_id) REFERENCES receptions(id),
+    FOREIGN KEY (produit_id)   REFERENCES produits(id)
 );
 
 CREATE TABLE IF NOT EXISTS non_conformites_fournisseur (
@@ -404,6 +411,15 @@ async def init_db() -> None:
         await db.executescript(SCHEMA_SQL)
         await db.executescript(SEED_SQL)
         await db.executescript(SEED_SQL_PHASE2)
+        # Migrations incrémentales (idempotentes via IGNORE sur les erreurs)
+        migrations = [
+            "ALTER TABLE reception_lignes ADD COLUMN produit_id INTEGER REFERENCES produits(id)",
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass  # Colonne déjà présente
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
 
