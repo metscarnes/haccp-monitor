@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Ouverture sous-vide — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* ── Layout global ────────────────────────────────────────── */
+    html, body.ouv-body { height: 100%; overflow: hidden; }
+    body.ouv-body {
+      display: flex;
+      flex-direction: column;
+      background: var(--ivoire);
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    .ouv-header {
+      height: 56px;
+      background: var(--noyer);
+      color: var(--ivoire);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.3);
+    }
+    .ouv-btn-retour {
+      background: rgba(255,255,255,.12);
+      border: 1.5px solid rgba(255,255,255,.30);
+      color: var(--ivoire);
+      padding: .4rem .9rem;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 40px;
+      transition: background .15s;
+    }
+    .ouv-btn-retour:hover { background: rgba(255,255,255,.22); }
+    .ouv-header-titre {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .ouv-horloge {
+      font-size: .85rem;
+      color: var(--creme);
+      min-width: 48px;
+      text-align: right;
+    }
+
+    /* ── Progress dots ────────────────────────────────────────── */
+    .ouv-progress {
+      height: 48px;
+      background: var(--fond-carte);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.8rem;
+      border-bottom: 1px solid rgba(107,58,31,.15);
+      flex-shrink: 0;
+    }
+    .ouv-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: rgba(107,58,31,.22);
+      transition: background .25s, transform .25s;
+    }
+    .ouv-dot.actif   { background: var(--brun); transform: scale(1.35); }
+    .ouv-dot.complet { background: var(--ok); }
+
+    /* ── Bandeau produit (step 3) ─────────────────────────────── */
+    .ouv-bandeau-produit {
+      background: var(--brun);
+      color: var(--ivoire);
+      padding: .65rem 1rem;
+      font-size: .95rem;
+      font-weight: 600;
+      text-align: center;
+      flex-shrink: 0;
+      letter-spacing: .02em;
+    }
+
+    /* ── Main / Slider ────────────────────────────────────────── */
+    .ouv-main {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ── Steps (base) ─────────────────────────────────────────── */
+    .ouv-step {
+      position: absolute;
+      inset: 0;
+      transform: translateX(100%);
+      transition: transform 250ms ease;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .ouv-step.actif  { transform: translateX(0); }
+    .ouv-step.gauche { transform: translateX(-100%); }
+
+    /* ── ÉTAPE 1 — Photo ──────────────────────────────────────── */
+    #ouv-step-1 {
+      padding: 2rem;
+      align-items: center;
+      justify-content: center;
+      gap: 2.5rem;
+    }
+    .ouv-btn-camera {
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: var(--brun);
+      color: var(--ivoire);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 28px rgba(107,58,31,.45);
+      transition: transform .12s, box-shadow .12s;
+      gap: .6rem;
+    }
+    .ouv-btn-camera:active {
+      transform: scale(.96);
+      box-shadow: 0 3px 12px rgba(107,58,31,.3);
+    }
+    .ouv-btn-camera-icone { font-size: 3.5rem; line-height: 1; }
+    .ouv-btn-camera-label {
+      font-size: .8rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-align: center;
+      padding: 0 .5rem;
+    }
+    .ouv-photo-apercu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .75rem;
+    }
+    .ouv-photo-vignette {
+      width: 110px;
+      height: 110px;
+      object-fit: cover;
+      border-radius: var(--radius);
+      border: 3px solid var(--ok);
+      box-shadow: var(--ombre);
+    }
+    .ouv-photo-ok {
+      color: var(--ok);
+      font-size: .95rem;
+      font-weight: 700;
+    }
+
+    /* ── ÉTAPE 2 — Produit ────────────────────────────────────── */
+    #ouv-step-2 { padding: 1rem 1.25rem 1rem; }
+    .ouv-search-wrap {
+      position: relative;
+      margin-bottom: .75rem;
+      flex-shrink: 0;
+    }
+    .ouv-search {
+      width: 100%;
+      padding: .9rem 1rem .9rem 3rem;
+      border-radius: var(--radius);
+      border: 2px solid var(--creme);
+      background: white;
+      font-size: 1.1rem;
+      color: var(--noyer);
+      outline: none;
+      transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    .ouv-search:focus { border-color: var(--brun); }
+    .ouv-search-icon {
+      position: absolute;
+      left: .9rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1.15rem;
+      pointer-events: none;
+    }
+    .ouv-section-label {
+      font-size: .75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--brun);
+      padding: .3rem 0 .5rem;
+      flex-shrink: 0;
+    }
+    .ouv-produits-liste {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+      padding-bottom: .5rem;
+    }
+    .ouv-produit-carte {
+      background: var(--fond-carte);
+      border-radius: var(--radius);
+      box-shadow: var(--ombre);
+      padding: .85rem 1rem;
+      border-left: 5px solid var(--creme);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 70px;
+      flex-shrink: 0;
+      transition: background .12s, transform .1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ouv-produit-carte:active { transform: scale(.985); background: #EDE3CC; }
+    .ouv-produit-carte.recent { border-left-color: var(--ok); }
+    .ouv-produit-info { display: flex; flex-direction: column; gap: .2rem; flex: 1; }
+    .ouv-produit-nom  { font-size: 1.05rem; font-weight: 700; color: var(--noyer); }
+    .ouv-produit-espece { font-size: .82rem; color: var(--brun); }
+    .ouv-produit-recu { font-size: .78rem; font-weight: 700; color: var(--ok); }
+    .ouv-produit-code {
+      font-size: .75rem;
+      color: var(--hors-ligne);
+      white-space: nowrap;
+      margin-left: .75rem;
+      flex-shrink: 0;
+    }
+    .ouv-sous-label {
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--hors-ligne);
+      padding: .6rem 0 .35rem;
+      flex-shrink: 0;
+    }
+    .ouv-liste-vide {
+      color: var(--hors-ligne);
+      text-align: center;
+      padding: 2rem 0;
+      font-size: .95rem;
+    }
+
+    /* ── ÉTAPE 3 — Personnel ──────────────────────────────────── */
+    #ouv-step-3 {
+      padding: 1.5rem;
+      gap: 1.25rem;
+    }
+    .ouv-section-titre {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--noyer);
+      flex-shrink: 0;
+    }
+    .ouv-personnel-grille {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      flex-shrink: 0;
+    }
+    .ouv-btn-prenom {
+      padding: .85rem 1.5rem;
+      border-radius: 10px;
+      border: 2.5px solid var(--creme);
+      background: var(--fond-carte);
+      color: var(--noyer);
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 64px;
+      transition: background .15s, border-color .15s, color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ouv-btn-prenom.selectionne {
+      background: var(--brun);
+      border-color: var(--brun);
+      color: var(--ivoire);
+    }
+    .ouv-erreur {
+      background: #FFF0F0;
+      color: var(--alerte);
+      border-radius: 8px;
+      padding: .6rem 1rem;
+      font-size: .9rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .ouv-btn-enregistrer {
+      width: 100%;
+      padding: 1.1rem;
+      background: var(--ok);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      min-height: 64px;
+      margin-top: auto;
+      letter-spacing: .03em;
+      transition: opacity .15s;
+    }
+    .ouv-btn-enregistrer:disabled { opacity: .42; cursor: not-allowed; }
+    .ouv-btn-enregistrer:not(:disabled):active { opacity: .82; }
+
+    /* ── CONFIRMATION ─────────────────────────────────────────── */
+    #ouv-step-confirm {
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      text-align: center;
+      padding: 2rem;
+    }
+    .ouv-check {
+      font-size: 5rem;
+      line-height: 1;
+      animation: ouv-pop .35s cubic-bezier(.34,1.56,.64,1);
+    }
+    @keyframes ouv-pop {
+      from { transform: scale(0); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    .ouv-confirm-titre {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--ok);
+    }
+    .ouv-confirm-detail {
+      font-size: 1rem;
+      color: var(--brun);
+      font-weight: 600;
+    }
+    .ouv-confirm-actions {
+      display: flex;
+      flex-direction: column;
+      gap: .75rem;
+      width: 100%;
+      max-width: 360px;
+    }
+    .ouv-btn-meme-produit,
+    .ouv-btn-nouvelle {
+      width: 100%;
+      padding: 1rem;
+      border-radius: var(--radius);
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 64px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ouv-btn-meme-produit {
+      background: var(--brun);
+      color: var(--ivoire);
+      border: none;
+    }
+    .ouv-btn-nouvelle {
+      background: var(--fond-carte);
+      color: var(--noyer);
+      border: 2px solid var(--creme);
+    }
+    .ouv-confirm-countdown {
+      font-size: .82rem;
+      color: var(--hors-ligne);
+    }
+  </style>
+</head>
+<body class="ouv-body">
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="ouv-header">
+    <button class="ouv-btn-retour" id="ouv-btn-retour" aria-label="Retour">← Retour</button>
+    <div class="ouv-header-titre">OUVERTURE SOUS-VIDE</div>
+    <div class="ouv-horloge" id="ouv-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       BARRE DE PROGRESSION (3 dots)
+  ============================================================= -->
+  <div class="ouv-progress" id="ouv-progress" aria-hidden="true">
+    <div class="ouv-dot actif" id="dot-1"></div>
+    <div class="ouv-dot"       id="dot-2"></div>
+    <div class="ouv-dot"       id="dot-3"></div>
+  </div>
+
+  <!-- ============================================================
+       BANDEAU PRODUIT — visible à l'étape 3 seulement
+  ============================================================= -->
+  <div class="ouv-bandeau-produit" id="ouv-bandeau-produit"
+       hidden aria-live="polite"></div>
+
+  <!-- ============================================================
+       CONTENU PRINCIPAL — Wizard
+  ============================================================= -->
+  <main class="ouv-main" role="main">
+
+    <!-- ── ÉTAPE 1 : Photo ── -->
+    <section class="ouv-step actif" id="ouv-step-1"
+             aria-label="Étape 1 — Prendre la photo">
+
+      <div class="ouv-photo-apercu" id="ouv-apercu" hidden>
+        <img id="ouv-photo-vignette" class="ouv-photo-vignette" alt="Aperçu de la photo">
+        <div class="ouv-photo-ok">✓ Photo prise</div>
+      </div>
+
+      <button class="ouv-btn-camera" id="ouv-btn-camera"
+              aria-label="Prendre la photo avec la caméra">
+        <span class="ouv-btn-camera-icone" aria-hidden="true">📷</span>
+        <span class="ouv-btn-camera-label">PRENDRE LA PHOTO</span>
+      </button>
+
+      <input type="file" accept="image/*" capture="environment"
+             id="ouv-input-photo" hidden aria-hidden="true">
+    </section>
+
+    <!-- ── ÉTAPE 2 : Choix produit ── -->
+    <section class="ouv-step" id="ouv-step-2"
+             aria-label="Étape 2 — Choisir le produit">
+
+      <div class="ouv-search-wrap">
+        <span class="ouv-search-icon" aria-hidden="true">🔍</span>
+        <input type="search" class="ouv-search" id="ouv-search"
+               placeholder="Rechercher un produit…"
+               autocomplete="off" inputmode="search"
+               aria-label="Rechercher un produit">
+      </div>
+
+      <div class="ouv-section-label" id="ouv-section-label">Produits en stock</div>
+
+      <div class="ouv-produits-liste" id="ouv-produits-liste"
+           role="list" aria-label="Liste des produits">
+        <div class="ouv-liste-vide" id="ouv-liste-vide">Chargement…</div>
+      </div>
+
+    </section>
+
+    <!-- ── ÉTAPE 3 : Opérateur + Confirmation ── -->
+    <section class="ouv-step" id="ouv-step-3"
+             aria-label="Étape 3 — Opérateur">
+
+      <div class="ouv-section-titre">Qui ouvre ?</div>
+
+      <div class="ouv-personnel-grille" id="ouv-personnel-grille"
+           role="group" aria-label="Sélection opérateur">
+        <!-- Boutons injectés par JS -->
+      </div>
+
+      <div class="ouv-erreur" id="ouv-erreur-3" hidden role="alert">
+        Veuillez sélectionner un opérateur.
+      </div>
+
+      <button class="ouv-btn-enregistrer" id="ouv-btn-enregistrer"
+              disabled aria-disabled="true">
+        ✔&nbsp;Enregistrer l'ouverture
+      </button>
+
+    </section>
+
+    <!-- ── CONFIRMATION ── -->
+    <section class="ouv-step" id="ouv-step-confirm"
+             aria-label="Ouverture enregistrée" aria-live="assertive">
+
+      <div class="ouv-check" aria-hidden="true">✅</div>
+      <div class="ouv-confirm-titre">Ouverture enregistrée</div>
+      <div class="ouv-confirm-detail" id="ouv-confirm-detail"></div>
+
+      <div class="ouv-confirm-actions">
+        <button class="ouv-btn-meme-produit" id="ouv-btn-meme-produit">
+          ↩&nbsp;Même produit
+        </button>
+        <button class="ouv-btn-nouvelle" id="ouv-btn-nouvelle">
+          ✦&nbsp;Nouvelle ouverture
+        </button>
+      </div>
+
+      <div class="ouv-confirm-countdown" id="ouv-confirm-countdown"
+           aria-live="polite"></div>
+
+    </section>
+
+  </main>
+
+  <script src="/static/js/ouverture.js"></script>
+</body>
+</html>

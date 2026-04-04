@@ -196,6 +196,7 @@ async def suggestions_ouvertures(
             "code_unique": row["code_unique"],
             "espece": row["espece"],
             "is_recent": True,
+            "last_reception": row["last_reception"],
         }
         for row in recent_rows
     ]
@@ -207,6 +208,7 @@ async def suggestions_ouvertures(
                 "code_unique": row["code_unique"],
                 "espece": row["espece"],
                 "is_recent": False,
+                "last_reception": None,
             })
 
     return results
