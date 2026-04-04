@@ -128,20 +128,21 @@ async def test_numero_lot_premier_du_jour(db):
 @pytest.mark.anyio
 async def test_numero_lot_increment(db):
     from src.database import get_next_numero_lot, create_etiquette
-    jour = date(2026, 3, 29)
-    # Insérer une étiquette pour simuler un lot existant
+    jour = date.today()
+    jour_str = jour.strftime("%Y%m%d")
+    dlc_str = (jour + timedelta(days=1)).isoformat()
     await create_etiquette(db, {
         "boutique_id": 1,
         "produit_nom": "Test",
         "type_date": "fabrication",
-        "date_etiquette": "2026-03-29",
-        "dlc": "2026-03-30",
+        "date_etiquette": jour.isoformat(),
+        "dlc": dlc_str,
         "operateur": "Éric",
-        "numero_lot": "MC-20260329-0001",
+        "numero_lot": f"MC-{jour_str}-0001",
         "lot_type": "interne",
     })
     numero = await get_next_numero_lot(db, 1, jour)
-    assert numero == "MC-20260329-0002"
+    assert numero == f"MC-{jour_str}-0002"
 
 
 # ---------------------------------------------------------------------------
