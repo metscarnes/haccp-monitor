@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_database.py::test_insert_et_lecture_releve -v --tb=long)",
+      "Bash(python -m pytest tests/ -q --tb=short)",
+      "Bash(python -m pytest tests/ -q --tb=no)",
+      "Read(//c/Users/campi/OneDrive/Création d''''''''entreprise/Boucherie/SoftWare/**)",
+      "Bash(pip show:*)",
+      "Bash(ipconfig)"
+    ]
+  }
+}
