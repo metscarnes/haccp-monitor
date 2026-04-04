@@ -43,13 +43,13 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
-MQTT_BROKER          = os.getenv("MQTT_BROKER",  "localhost")
-MQTT_PORT            = int(os.getenv("MQTT_PORT", "1883"))
-MQTT_TOPIC           = os.getenv("MQTT_TOPIC",   "zigbee2mqtt/#")
-DELAI_PERTE_SIGNAL_S = int(os.getenv("DELAI_PERTE_SIGNAL_S", str(15 * 60)))
+MQTT_BROKER          = os.getenv("MQTT_BROKER") or "localhost"
+MQTT_PORT            = int(os.getenv("MQTT_PORT") or "1883")
+MQTT_TOPIC           = os.getenv("MQTT_TOPIC")   or "zigbee2mqtt/#"
+DELAI_PERTE_SIGNAL_S = int(os.getenv("DELAI_PERTE_SIGNAL_S") or str(15 * 60))
 
 # Boutique par défaut pour l'auto-création
-BOUTIQUE_ID_DEFAUT = int(os.getenv("BOUTIQUE_ID", "1"))
+BOUTIQUE_ID_DEFAUT = int(os.getenv("BOUTIQUE_ID") or "1")
 
 # ---------------------------------------------------------------------------
 # État en mémoire

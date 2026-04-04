@@ -3,7 +3,11 @@
     "allow": [
       "Bash(python -m pytest tests/test_database.py::test_insert_et_lecture_releve -v --tb=long)",
       "Bash(python -m pytest tests/ -q --tb=short)",
-      "Bash(python -m pytest tests/ -q --tb=no)"
+      "Bash(python -m pytest tests/ -q --tb=no)",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Bash(sshpass -p campiglia ssh -o StrictHostKeyChecking=no campiglia@192.168.1.83 \"sudo systemctl restart haccp-backend && sleep 3 && sudo systemctl status haccp-backend --no-pager -l | tail -30\")",
+      "Bash(ssh -o StrictHostKeyChecking=no -o BatchMode=yes campiglia@192.168.1.83 \"echo ok\")"
     ]
   }
 }
