@@ -29,6 +29,7 @@ from src.api.routes_etiquettes import router as router_etiquettes
 from src.api.routes_reception  import router as router_reception
 from src.api.routes_taches     import router as router_taches
 from src.api.routes_admin      import router as router_admin
+from src.api.routes_ouvertures import router as router_ouvertures
 
 load_dotenv()
 
@@ -103,6 +104,7 @@ app.include_router(router_etiquettes)
 app.include_router(router_reception)
 app.include_router(router_taches)
 app.include_router(router_admin)
+app.include_router(router_ouvertures)
 
 
 # ---------------------------------------------------------------------------

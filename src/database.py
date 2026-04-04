@@ -295,6 +295,29 @@ CREATE TABLE IF NOT EXISTS plan_nettoyage (
     UNIQUE(boutique_id, local, surface_equipement, frequence),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
+
+-- ===========================================================================
+-- PHASE 2 — Module Ouvertures
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS ouvertures (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    produit_id         INTEGER NOT NULL,
+    personnel_id       INTEGER NOT NULL,
+    photo_filename     TEXT    NOT NULL,
+    timestamp          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    source             TEXT    DEFAULT 'catalogue',
+    reception_ligne_id INTEGER,
+    FOREIGN KEY (produit_id)         REFERENCES produits(id),
+    FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ouvertures_produit
+    ON ouvertures(produit_id);
+
+CREATE INDEX IF NOT EXISTS idx_ouvertures_timestamp
+    ON ouvertures(timestamp);
 """
 
 SEED_SQL = """
