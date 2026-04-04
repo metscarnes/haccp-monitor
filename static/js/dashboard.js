@@ -582,16 +582,39 @@ async function chargerConfigEnceintes() {
         <div class="config-enceinte-info">
           <strong>${e.nom}</strong>
           <span class="config-enceinte-type">${e.type.replace(/_/g, ' ')}</span>
+          <span class="config-enceinte-zigbee" title="Friendly name Zigbee2MQTT">
+            ${e.sonde_zigbee_id ? '📡 ' + e.sonde_zigbee_id : '<em style="color:#aaa">Aucune sonde</em>'}
+          </span>
         </div>
         <div class="config-enceinte-seuils">
           T° : ${e.seuil_temp_min ?? '—'}°C → ${e.seuil_temp_max ?? '—'}°C
           · Hum. max : ${e.seuil_hum_max ?? '—'}%
         </div>
-        <button class="btn btn-secondaire btn-sm btn-editer-enceinte" data-id="${e.id}">Modifier</button>
+        <div style="display:flex; gap:.5rem;">
+          <button class="btn btn-secondaire btn-sm btn-editer-enceinte" data-id="${e.id}">Modifier</button>
+          <button class="btn btn-sm btn-supprimer-enceinte" data-id="${e.id}" data-nom="${e.nom}"
+            style="background:#fdecea; color:#c93030; border:1px solid #f5c6c6;">Supprimer</button>
+        </div>
       </div>`).join('');
 
     conteneur.querySelectorAll('.btn-editer-enceinte').forEach(btn => {
       btn.addEventListener('click', () => chargerEditionEnceinte(parseInt(btn.dataset.id)));
+    });
+
+    conteneur.querySelectorAll('.btn-supprimer-enceinte').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id  = parseInt(btn.dataset.id);
+        const nom = btn.dataset.nom;
+        if (!confirm(`Supprimer "${nom}" et toutes ses mesures ? Cette action est irréversible.`)) return;
+        try {
+          const res = await fetch(`/api/enceintes/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error(await res.text());
+          enceintesCachees = [];
+          chargerConfigEnceintes();
+        } catch (err) {
+          alert('Erreur lors de la suppression : ' + err.message);
+        }
+      });
     });
   } catch (e) {
     conteneur.innerHTML = '<p style="color:var(--alerte)">Erreur de chargement.</p>';

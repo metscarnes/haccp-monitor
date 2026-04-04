@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from src.database import (
     get_db, get_enceinte, get_enceintes, get_latest_releve,
-    create_enceinte, update_enceinte, get_alerte_en_cours,
+    create_enceinte, update_enceinte, delete_enceinte, get_alerte_en_cours,
     get_boutiques,
 )
 
@@ -59,6 +59,15 @@ async def detail_enceinte(enceinte_id: int):
     if not enc:
         raise HTTPException(404, "Enceinte introuvable")
     return enc
+
+
+@router.delete("/{enceinte_id}", status_code=200)
+async def supprimer_enceinte(enceinte_id: int):
+    async with get_db() as db:
+        ok = await delete_enceinte(db, enceinte_id)
+    if not ok:
+        raise HTTPException(404, "Enceinte introuvable")
+    return {"ok": True}
 
 
 @router.put("/{enceinte_id}")
