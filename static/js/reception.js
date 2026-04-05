@@ -1,86 +1,159 @@
 'use strict';
 /* ============================================================
-   reception.js — Fiche de contrôle réception (3 étapes)
+   reception.js — Module Réception marchandises (wizard v2)
    Au Comptoir des Lilas — Mets Carnés Holding
 
-   Responsabilités :
-   - Étape 1 : Entête réception (fournisseur, BL, opérateur, camion)
-   - Étape 2 : Lignes produits (ajout unitaire)
-   - Étape 3 : Finalisation (conformité globale + NC éventuelles)
-   - Historique des réceptions récentes (colonne droite)
+   Flux : Personnel → Camion → Photo BL / Fournisseur
+          → Produits (boucle) → Récap & Clôture → Confirmation
    ============================================================ */
 
-// ── Références DOM ────────────────────────────────────────────
-const elDate        = document.getElementById('recep-date');
-const elHorloge     = document.getElementById('recep-horloge');
+// ── Références DOM ─────────────────────────────────────────
+const elHorloge        = document.getElementById('rec-horloge');
+const elBtnRetour      = document.getElementById('rec-btn-retour');
+const elProgress       = document.getElementById('rec-progress');
+const elBandeau        = document.getElementById('rec-bandeau');
+const DOTS             = [0,1,2,3,4].map(i => document.getElementById(`dot-${i}`));
 
-// Steps
-const elStep1       = document.getElementById('recep-step-1');
-const elStep2       = document.getElementById('recep-step-2');
-const elStep3       = document.getElementById('recep-step-3');
-const elResultat    = document.getElementById('recep-resultat');
+const elStep0          = document.getElementById('rec-step-0');
+const elStep1          = document.getElementById('rec-step-1');
+const elStep2          = document.getElementById('rec-step-2');
+const elStep3          = document.getElementById('rec-step-3');
+const elStep4          = document.getElementById('rec-step-4');
+const elStepConfirm    = document.getElementById('rec-step-confirm');
+const STEPS            = [elStep0, elStep1, elStep2, elStep3, elStep4, elStepConfirm];
 
-// Step indicators
-const elStepInd1    = document.getElementById('step-ind-1');
-const elStepInd2    = document.getElementById('step-ind-2');
-const elStepInd3    = document.getElementById('step-ind-3');
+// Étape 0
+const elPersonnelGrille   = document.getElementById('rec-personnel-grille');
+const elChargementPerso   = document.getElementById('rec-chargement-personnel');
 
-// Step 1
-const elFormEntete  = document.getElementById('form-entete');
-const elFournisseur = document.getElementById('rcp-fournisseur');
-const elFournLibre  = document.getElementById('rcp-fourn-libre');
-const elOperateur   = document.getElementById('rcp-operateur');
-const elErreur1     = document.getElementById('recep-erreur-1');
+// Étape 1
+const elHeure             = document.getElementById('rec-heure');
+const elTempCamion        = document.getElementById('rec-temp-camion');
+const elPropreteOk        = document.getElementById('rec-proprete-ok');
+const elPropreteNc        = document.getElementById('rec-proprete-nc');
+const elCamionBadge       = document.getElementById('rec-camion-badge');
+const elBtnCamionSuivant  = document.getElementById('rec-btn-camion-suivant');
 
-// Step 2
-const elRecapEntete = document.getElementById('recep-recap-entete');
-const elLignesListe = document.getElementById('recep-lignes-liste');
-const elLignesVide  = document.getElementById('recep-lignes-vide');
-const elBtnAjouter  = document.getElementById('recep-btn-ajouter');
-const elFormLigne   = document.getElementById('form-ligne');
-const elBtnAnnulerLigne = document.getElementById('recep-btn-annuler-ligne');
-const elBtnNextStep3    = document.getElementById('recep-btn-next-3');
-const elBtnBack1    = document.getElementById('recep-btn-back-1');
-const elErreur2     = document.getElementById('recep-erreur-2');
-const elErreurLigne = document.getElementById('recep-erreur-ligne');
+// Étape 2
+const elPhotoZone         = document.getElementById('rec-photo-zone');
+const elInputPhoto        = document.getElementById('rec-input-photo');
+const elPhotoIcone        = document.getElementById('rec-photo-icone');
+const elPhotoTitre        = document.getElementById('rec-photo-titre');
+const elPhotoVignette     = document.getElementById('rec-photo-vignette');
+const elFournSearch       = document.getElementById('rec-fourn-search');
+const elFournResults      = document.getElementById('rec-fourn-results');
+const elFournSelWrap      = document.getElementById('rec-fourn-sel-wrap');
+const elFournSelNom       = document.getElementById('rec-fourn-sel-nom');
+const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
+const elFournClear        = document.getElementById('rec-fourn-clear');
+const elErreur2           = document.getElementById('rec-erreur-2');
+const elBtnCreerFiche     = document.getElementById('rec-btn-creer-fiche');
 
-// Step 3
-const elRecapFinal  = document.getElementById('recep-recap-final');
-const elFormFinal   = document.getElementById('form-final');
-const elNcZone      = document.getElementById('recep-nc-zone');
-const elBtnBack2    = document.getElementById('recep-btn-back-2');
-const elBtnFinaliser    = document.getElementById('recep-btn-finaliser');
-const elBtnFinalTexte   = document.getElementById('recep-btn-finaliser-texte');
-const elErreur3         = document.getElementById('recep-erreur-3');
+// Étape 3
+const elNbProduits        = document.getElementById('rec-nb-produits');
+const elLignesListe       = document.getElementById('rec-lignes-liste');
+const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
+const elProdSelNom        = document.getElementById('rec-prod-sel-nom');
+const elProdSelCode       = document.getElementById('rec-prod-sel-code');
+const elBtnChangerProduit = document.getElementById('rec-btn-changer-produit');
+const elProdSearchWrap    = document.getElementById('rec-produit-search-wrap');
+const elProdSearch        = document.getElementById('rec-prod-search');
+const elProdAutoComplete  = document.getElementById('rec-prod-autocomplete');
+const elTempProduit       = document.getElementById('rec-temp-produit');
+const elTempVerdict       = document.getElementById('rec-temp-produit-verdict');
+const elLot               = document.getElementById('rec-lot');
+const elDlc               = document.getElementById('rec-dlc');
+const elPh                = document.getElementById('rec-ph');
+const elPhPlage           = document.getElementById('rec-ph-plage');
+const elBtnAjouter        = document.getElementById('rec-btn-ajouter');
+const elBtnTerminer       = document.getElementById('rec-btn-terminer');
 
-// Historique
-const elHistoListe  = document.getElementById('recep-histo-liste');
+// Critères visuels
+const CRITERES = ['couleur', 'consistance', 'exsudat', 'odeur'];
 
-// ── État ──────────────────────────────────────────────────────
-let receptionId   = null;     // ID créé en step 1
-let etapeActuelle = 1;
-let lignes        = [];       // lignes saisies en step 2 (cache local)
-let enteteData    = {};       // données step 1 (pour affichage recap)
+// Étape 4
+const elRecapCamionInfo   = document.getElementById('rec-recap-camion-info');
+const elRecapCamionBadge  = document.getElementById('rec-recap-camion-badge');
+const elConformiteGlobale = document.getElementById('rec-conformite-globale');
+const elRecapLignes       = document.getElementById('rec-recap-lignes');
+const elChkRefuse         = document.getElementById('rec-chk-refuse');
+const elChkDdpp           = document.getElementById('rec-chk-ddpp');
+const elCommentaireNc     = document.getElementById('rec-commentaire-nc');
+const elErreur4           = document.getElementById('rec-erreur-4');
+const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
 
-// ── Horloge / date ────────────────────────────────────────────
+// Confirmation
+const elConfirmDetail     = document.getElementById('rec-confirm-detail');
+const elConfirmBadge      = document.getElementById('rec-confirm-badge');
+const elConfirmCountdown  = document.getElementById('rec-confirm-countdown');
+const elBtnHub            = document.getElementById('rec-btn-hub');
+
+// Dialog inactivité
+const elDialogInactivite  = document.getElementById('rec-dialog-inactivite');
+const elDialogContinuer   = document.getElementById('rec-dialog-continuer');
+const elDialogQuitter     = document.getElementById('rec-dialog-quitter');
+
+
+// ── État ───────────────────────────────────────────────────
+let etape              = 0;
+let personnelId        = null;
+let personnelPrenom    = null;
+let propreteCamion     = 'satisfaisant';
+let photoBlFile        = null;
+let photoBlObjectUrl   = null;
+let fournisseurId      = null;
+let receptionId        = null;
+let lignesAjoutees     = [];      // [{id, produit_nom, conforme, temp, lot}]
+let produitSelectionne = null;    // objet produit complet
+let criteres           = {};      // {couleur:1, consistance:1, exsudat:1, odeur:1}
+let timerInactivite    = null;
+let timerConfirmation  = null;
+let debounceTimer      = null;
+let tousProduits       = [];
+let tousFournisseurs   = [];
+let textesAide         = {};
+
+
+// ── Horloge ────────────────────────────────────────────────
 function majHorloge() {
-  const now = new Date();
-  elDate.textContent = now.toLocaleDateString('fr-FR', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  });
-  elHorloge.textContent = now.toLocaleTimeString('fr-FR', {
+  elHorloge.textContent = new Date().toLocaleTimeString('fr-FR', {
     hour: '2-digit', minute: '2-digit',
   });
 }
 setInterval(majHorloge, 1000);
 majHorloge();
 
-// Heure de livraison par défaut
-document.getElementById('rcp-heure').value = new Date()
-  .toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-  .replace(':', ':');
 
-// ── Fetch helper ──────────────────────────────────────────────
+// ── Inactivité ─────────────────────────────────────────────
+const DELAI_INACTIVITE = 5 * 60 * 1000;
+
+function resetInactivite() {
+  if (elDialogInactivite && !elDialogInactivite.hidden) return;
+  clearTimeout(timerInactivite);
+  timerInactivite = setTimeout(() => {
+    if (lignesAjoutees.length > 0 && etape < 5) {
+      elDialogInactivite.hidden = false;
+    } else {
+      window.location.href = '/hub.html';
+    }
+  }, DELAI_INACTIVITE);
+}
+
+document.addEventListener('click',      resetInactivite, true);
+document.addEventListener('touchstart', resetInactivite, { passive: true, capture: true });
+document.addEventListener('input',      resetInactivite, true);
+resetInactivite();
+
+elDialogContinuer.addEventListener('click', () => {
+  elDialogInactivite.hidden = true;
+  resetInactivite();
+});
+elDialogQuitter.addEventListener('click', () => {
+  window.location.href = '/hub.html';
+});
+
+
+// ── Fetch helper ───────────────────────────────────────────
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, { cache: 'no-store', ...options });
   if (!res.ok) {
@@ -90,395 +163,676 @@ async function apiFetch(url, options = {}) {
   return res.json();
 }
 
-// ── Chargement données ────────────────────────────────────────
-async function chargerFournisseurs() {
-  try {
-    const fourn = await apiFetch('/api/fournisseurs');
-    fourn.forEach(f => {
-      const opt = document.createElement('option');
-      opt.value = f.id;
-      opt.textContent = f.nom;
-      elFournisseur.appendChild(opt);
+
+// ── Navigation wizard ──────────────────────────────────────
+function allerEtape(cible) {
+  etape = cible;
+
+  // STEPS: [step0, step1, step2, step3, step4, confirm] — indices 0..5
+  // "confirm" est l'index 5 mais la numérotation logique est aussi 5
+  const idx = Math.min(cible, STEPS.length - 1);
+
+  STEPS.forEach((el, i) => {
+    el.classList.remove('actif', 'gauche');
+    if (i < idx)      el.classList.add('gauche');
+    else if (i === idx) el.classList.add('actif');
+  });
+
+  // Progress dots : étapes 0-4 (cible 5 = confirm → cacher dots)
+  const estConfirm = (cible >= 5);
+  elProgress.hidden = estConfirm;
+  if (!estConfirm) {
+    DOTS.forEach((dot, i) => {
+      dot.classList.remove('actif', 'complet');
+      if (i < cible)      dot.classList.add('complet');
+      else if (i === cible) dot.classList.add('actif');
     });
-  } catch { /* pas bloquant */ }
+  }
+
+  // Bandeau personnel
+  elBandeau.hidden = (cible === 0 || estConfirm);
+  if (cible > 0 && !estConfirm && personnelPrenom) {
+    elBandeau.textContent = `👤 ${personnelPrenom}`;
+  }
+
+  // Bouton retour
+  elBtnRetour.hidden = estConfirm;
 }
 
+
+// ── Retour ─────────────────────────────────────────────────
+elBtnRetour.addEventListener('click', () => {
+  if (etape === 0) {
+    window.location.href = '/hub.html';
+  } else if (etape === 3) {
+    // Retour depuis produits : pas possible si fiche déjà créée → aller à étape 2
+    allerEtape(2);
+  } else if (etape <= 4) {
+    allerEtape(etape - 1);
+  }
+});
+
+
+// ── ÉTAPE 0 : Personnel ────────────────────────────────────
 async function chargerPersonnel() {
   try {
-    const personnel = await apiFetch('/api/admin/personnel');
-    personnel.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p.prenom;
-      opt.textContent = p.prenom;
-      elOperateur.appendChild(opt);
-    });
-  } catch { /* pas bloquant */ }
-}
-
-// ── Historique ────────────────────────────────────────────────
-async function chargerHistorique() {
-  elHistoListe.innerHTML = '<div class="recep-vide">Chargement…</div>';
-  try {
-    const receptions = await apiFetch('/api/receptions?limit=20');
-    if (!receptions || receptions.length === 0) {
-      elHistoListe.innerHTML = '<div class="recep-vide">Aucune réception enregistrée</div>';
-      return;
-    }
-    elHistoListe.innerHTML = receptions.map(r => {
-      const date = new Date(r.date_reception).toLocaleDateString('fr-FR', {
-        day: '2-digit', month: 'short',
+    const liste = await apiFetch('/api/admin/personnel');
+    elChargementPerso.remove();
+    liste.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className    = 'rec-btn-prenom';
+      btn.textContent  = p.prenom;
+      btn.dataset.id   = p.id;
+      btn.dataset.prenom = p.prenom;
+      btn.addEventListener('click', () => {
+        personnelId     = p.id;
+        personnelPrenom = p.prenom;
+        // Initialiser l'heure à maintenant
+        const now = new Date();
+        elHeure.value = now.toTimeString().slice(0, 5);
+        allerEtape(1);
       });
-      const conformeCls = r.conforme === 1 ? 'recep-histo-ok'
-                        : r.conforme === 0 ? 'recep-histo-nc' : '';
-      const conformeLabel = r.conforme === 1 ? '✓' : r.conforme === 0 ? '✗ NC' : '…';
-      return `<div class="recep-histo-ligne">
-        <div class="recep-histo-main">
-          <span class="recep-histo-fourn">${escHtml(r.fournisseur_nom ?? '—')}</span>
-          <span class="recep-histo-badge ${conformeCls}">${conformeLabel}</span>
-        </div>
-        <div class="recep-histo-meta">
-          ${date}
-          ${r.numero_bon_livraison ? ` · BL ${escHtml(r.numero_bon_livraison)}` : ''}
-          · ${r.nb_lignes ?? 0} produit${(r.nb_lignes ?? 0) > 1 ? 's' : ''}
-        </div>
-      </div>`;
-    }).join('');
+      elPersonnelGrille.appendChild(btn);
+    });
+    if (!liste.length) {
+      elPersonnelGrille.innerHTML = '<div class="rec-chargement">Aucun personnel enregistré.</div>';
+    }
   } catch {
-    elHistoListe.innerHTML = '<div class="recep-vide recep-vide--erreur">⚠ Erreur chargement</div>';
+    elChargementPerso.textContent = 'Impossible de charger le personnel.';
   }
 }
 
-// ── Navigation étapes ─────────────────────────────────────────
-function allerEtape(n) {
-  etapeActuelle = n;
-  elStep1.hidden = n !== 1;
-  elStep2.hidden = n !== 2;
-  elStep3.hidden = n !== 3;
-  elResultat.hidden = true;
 
-  // Step indicators
-  [elStepInd1, elStepInd2, elStepInd3].forEach((el, i) => {
-    el.classList.remove('recep-step--actif', 'recep-step--fait');
-    if (i + 1 < n)    el.classList.add('recep-step--fait');
-    if (i + 1 === n)  el.classList.add('recep-step--actif');
+// ── ÉTAPE 1 : Camion ───────────────────────────────────────
+function majBadgeCamion() {
+  const temp = parseFloat(elTempCamion.value);
+  const proprete = propreteCamion;
+
+  if (isNaN(temp)) {
+    elCamionBadge.className = 'rec-badge neutre';
+    elCamionBadge.textContent = '— Non évalué';
+    return;
+  }
+
+  const tempOk    = temp < 2;
+  const propreteOk = (proprete === 'satisfaisant');
+  const conforme  = tempOk && propreteOk;
+
+  if (conforme) {
+    elCamionBadge.className = 'rec-badge conforme';
+    elCamionBadge.textContent = '✓ Conforme';
+  } else {
+    elCamionBadge.className = 'rec-badge nc';
+    elCamionBadge.textContent = '✗ Non conforme';
+  }
+}
+
+elTempCamion.addEventListener('input', majBadgeCamion);
+
+elPropreteOk.addEventListener('click', () => {
+  propreteCamion = 'satisfaisant';
+  elPropreteOk.classList.add('ok-sel');
+  elPropreteNc.classList.remove('nc-sel');
+  elPropreteOk.setAttribute('aria-pressed', 'true');
+  elPropreteNc.setAttribute('aria-pressed', 'false');
+  majBadgeCamion();
+});
+
+elPropreteNc.addEventListener('click', () => {
+  propreteCamion = 'non_satisfaisant';
+  elPropreteNc.classList.add('nc-sel');
+  elPropreteOk.classList.remove('ok-sel');
+  elPropreteNc.setAttribute('aria-pressed', 'true');
+  elPropreteOk.setAttribute('aria-pressed', 'false');
+  majBadgeCamion();
+});
+
+elBtnCamionSuivant.addEventListener('click', () => {
+  allerEtape(2);
+});
+
+
+// ── ÉTAPE 2 : Photo BL + Fournisseur ──────────────────────
+// Photo
+elPhotoZone.addEventListener('click', () => elInputPhoto.click());
+elPhotoZone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elInputPhoto.click(); }
+});
+
+elInputPhoto.addEventListener('change', () => {
+  const file = elInputPhoto.files[0];
+  if (!file) return;
+  photoBlFile = file;
+  if (photoBlObjectUrl) URL.revokeObjectURL(photoBlObjectUrl);
+  photoBlObjectUrl = URL.createObjectURL(file);
+  elPhotoVignette.src = photoBlObjectUrl;
+  elPhotoVignette.hidden = false;
+  elPhotoIcone.textContent = '✅';
+  elPhotoTitre.textContent = 'Photo prise';
+});
+
+// Fournisseur
+async function chargerFournisseurs() {
+  try {
+    tousFournisseurs = await apiFetch('/api/fournisseurs');
+  } catch {
+    tousFournisseurs = [];
+  }
+}
+
+function afficherFournisseurs(liste) {
+  elFournResults.innerHTML = '';
+  if (!liste.length) {
+    elFournResults.hidden = true;
+    return;
+  }
+  liste.slice(0, 10).forEach(f => {
+    const div = document.createElement('div');
+    div.className = 'rec-fourn-item';
+    div.textContent = f.nom;
+    div.addEventListener('click', () => selectionnerFournisseur(f));
+    elFournResults.appendChild(div);
   });
-
-  // Scroll to top
-  document.getElementById('recep-wizard').scrollTop = 0;
+  elFournResults.hidden = false;
 }
 
-// ── Étape 1 : Soumission entête ───────────────────────────────
-elFormEntete.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  elErreur1.hidden = true;
+function selectionnerFournisseur(f) {
+  fournisseurId = f.id;
+  elFournSelNom.textContent = f.nom;
+  elFournSelWrap.hidden = false;
+  elFournSearchWrap.hidden = true;
+  elFournResults.hidden = true;
+}
 
-  const fournId  = elFournisseur.value;
-  const fournLib = elFournLibre.value.trim();
-  const operateur = elOperateur.value;
+elFournClear.addEventListener('click', () => {
+  fournisseurId = null;
+  elFournSelWrap.hidden = true;
+  elFournSearchWrap.hidden = false;
+  elFournSearch.value = '';
+  elFournResults.hidden = true;
+});
 
-  if (!fournId && !fournLib) {
-    afficherErreur(elErreur1, 'Veuillez sélectionner ou saisir un fournisseur.');
-    return;
-  }
-  if (!operateur) {
-    afficherErreur(elErreur1, 'Veuillez sélectionner un opérateur.');
-    return;
-  }
+elFournSearch.addEventListener('input', () => {
+  const q = elFournSearch.value.trim().toLowerCase();
+  if (!q) { elFournResults.hidden = true; return; }
+  const filtres = tousFournisseurs.filter(f => f.nom.toLowerCase().includes(q));
+  afficherFournisseurs(filtres);
+});
 
-  // Récupérer le nom du fournisseur
-  const fournNom = fournLib || elFournisseur.options[elFournisseur.selectedIndex]?.text || '';
+// Créer la fiche
+elBtnCreerFiche.addEventListener('click', creerFiche);
 
-  const proprete = document.querySelector('[name="proprete_camion"]:checked')?.value;
-  const tempCamion = document.getElementById('rcp-temp-camion').value;
-  const heureLiv   = document.getElementById('rcp-heure').value;
-  const bl         = document.getElementById('rcp-bl').value.trim();
-  const commentaire = document.getElementById('rcp-commentaire-entete').value.trim();
-
-  const payload = {
-    fournisseur_id:       fournId ? parseInt(fournId) : null,
-    fournisseur_nom:      fournNom,
-    numero_bon_livraison: bl || null,
-    operateur,
-    heure_livraison:      heureLiv || null,
-    temperature_camion:   tempCamion ? parseFloat(tempCamion) : null,
-    proprete_camion:      proprete || null,
-    commentaire:          commentaire || null,
-  };
-
-  const btn = elFormEntete.querySelector('[type="submit"]');
-  btn.disabled = true;
-  btn.textContent = 'Création…';
+async function creerFiche() {
+  elErreur2.hidden = true;
+  elBtnCreerFiche.disabled = true;
+  elBtnCreerFiche.textContent = 'Création…';
 
   try {
-    const res = await apiFetch('/api/receptions', {
+    const fd = new FormData();
+    fd.append('personnel_id',    personnelId);
+    fd.append('heure_reception', elHeure.value || new Date().toTimeString().slice(0, 5));
+    if (elTempCamion.value !== '') {
+      fd.append('temperature_camion', elTempCamion.value);
+    }
+    fd.append('proprete_camion', propreteCamion);
+    if (fournisseurId) fd.append('fournisseur_principal_id', fournisseurId);
+    if (photoBlFile)   fd.append('photo_bl', photoBlFile, photoBlFile.name);
+
+    const rec = await apiFetch('/api/receptions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: fd,
     });
-    receptionId = res.id;
-    enteteData  = { ...payload, id: receptionId };
-    lignes      = [];
+    receptionId = rec.id;
 
-    afficherRecapEntete();
-    afficherLignes();
-    allerEtape(2);
+    // Réinitialiser le formulaire produit et passer à l'étape 3
+    reinitFormProduit();
+    majListeLignes();
+    allerEtape(3);
+
   } catch (err) {
-    afficherErreur(elErreur1, `Erreur : ${err.message}`);
+    elErreur2.textContent = `Erreur : ${err.message}`;
+    elErreur2.hidden = false;
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Continuer → Produits';
+    elBtnCreerFiche.disabled = false;
+    elBtnCreerFiche.textContent = 'Créer la fiche →';
   }
-});
-
-function afficherRecapEntete() {
-  const t = enteteData;
-  elRecapEntete.innerHTML = `
-    <div class="recep-recap-info">
-      <span class="recep-recap-fourn">${escHtml(t.fournisseur_nom)}</span>
-      ${t.numero_bon_livraison ? `<span class="recep-recap-bl">BL ${escHtml(t.numero_bon_livraison)}</span>` : ''}
-      <span class="recep-recap-op">par ${escHtml(t.operateur)}</span>
-      ${t.temperature_camion != null ? `<span class="recep-recap-temp">Camion ${t.temperature_camion}°C</span>` : ''}
-    </div>`;
 }
 
-// ── Étape 2 : Lignes produits ─────────────────────────────────
-elBtnAjouter.addEventListener('click', () => {
-  elFormLigne.hidden = false;
-  elBtnAjouter.hidden = true;
-  const premierInput = elFormLigne.querySelector('input[type="text"]');
-  if (premierInput) premierInput.focus();
-});
 
-elBtnAnnulerLigne.addEventListener('click', () => {
-  elFormLigne.reset();
-  elFormLigne.hidden = true;
-  elBtnAjouter.hidden = false;
-  elErreurLigne.hidden = true;
-});
-
-elFormLigne.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  elErreurLigne.hidden = true;
-
-  const nom = document.getElementById('lg-nom').value.trim();
-  if (!nom) {
-    afficherErreur(elErreurLigne, 'Veuillez saisir le nom du produit.');
-    return;
-  }
-
-  const tempVal     = document.getElementById('lg-temp').value;
-  const dlcVal      = document.getElementById('lg-dlc').value;
-  const lotVal      = document.getElementById('lg-lot').value.trim();
-  const integrite   = document.querySelector('[name="integrite_emballage"]:checked')?.value;
-  const conformeVal = document.querySelector('[name="conforme_ligne"]:checked')?.value;
-
-  const payload = {
-    produit_nom:         nom,
-    temperature_produit: tempVal ? parseFloat(tempVal) : null,
-    dlc:                 dlcVal || null,
-    numero_lot:          lotVal || null,
-    integrite_emballage: integrite || null,
-    conforme:            conformeVal ? conformeVal === 'oui' : null,
-  };
-
-  const btn = elFormLigne.querySelector('[type="submit"]');
-  btn.disabled = true;
-  btn.textContent = 'Ajout…';
-
+// ── ÉTAPE 3 : Produits ─────────────────────────────────────
+async function chargerProduits() {
   try {
-    const res = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    lignes.push({ ...payload, id: res.id });
-    afficherLignes();
-    elFormLigne.reset();
-    elFormLigne.hidden = true;
-    elBtnAjouter.hidden = false;
-    elBtnNextStep3.disabled = false;
-  } catch (err) {
-    afficherErreur(elErreurLigne, `Erreur : ${err.message}`);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Ajouter ce produit';
+    tousProduits = await apiFetch('/api/produits');
+  } catch {
+    tousProduits = [];
   }
-});
-
-function afficherLignes() {
-  if (!lignes.length) {
-    if (elLignesVide) elLignesVide.hidden = false;
-    return;
-  }
-  if (elLignesVide) elLignesVide.hidden = true;
-
-  elLignesListe.innerHTML = '<div class="recep-vide" id="recep-lignes-vide" hidden></div>'
-    + lignes.map((l, i) => {
-      const confCls = l.conforme === true ? 'recep-ligne-ok' : l.conforme === false ? 'recep-ligne-nc' : '';
-      const confLbl = l.conforme === true ? '✓' : l.conforme === false ? '✗ NC' : '—';
-      const dlcLbl  = l.dlc ? new Date(l.dlc).toLocaleDateString('fr-FR', {day:'2-digit',month:'short'}) : null;
-      return `<div class="recep-ligne-item ${confCls}" data-idx="${i}">
-        <span class="recep-ligne-nom">${escHtml(l.produit_nom)}</span>
-        <div class="recep-ligne-meta">
-          ${l.temperature_produit != null ? `<span>${l.temperature_produit}°C</span>` : ''}
-          ${dlcLbl ? `<span>DLC ${dlcLbl}</span>` : ''}
-          ${l.numero_lot ? `<span>${escHtml(l.numero_lot)}</span>` : ''}
-          ${l.integrite_emballage ? `<span>Emb. ${l.integrite_emballage}</span>` : ''}
-          <span class="recep-ligne-conf">${confLbl}</span>
-        </div>
-      </div>`;
-    }).join('');
 }
 
-elBtnBack1.addEventListener('click', () => allerEtape(1));
-
-elBtnNextStep3.addEventListener('click', () => {
-  if (!lignes.length) {
-    afficherErreur(elErreur2, 'Ajoutez au moins un produit avant de continuer.');
-    return;
+async function chargerTextesAide() {
+  try {
+    textesAide = await apiFetch('/api/receptions/textes-aide-visuel');
+  } catch {
+    textesAide = {};
   }
-  afficherRecapFinal();
-  allerEtape(3);
-});
-
-// ── Étape 3 : Finalisation ────────────────────────────────────
-function afficherRecapFinal() {
-  const ncCount = lignes.filter(l => l.conforme === false).length;
-  elRecapFinal.innerHTML = `
-    <div class="recep-recap-final-info">
-      <span class="recep-recap-final-fourn">${escHtml(enteteData.fournisseur_nom)}</span>
-      <span class="recep-recap-final-stat">${lignes.length} produit${lignes.length > 1 ? 's' : ''}
-        ${ncCount > 0 ? `— <strong style="color:var(--alerte)">${ncCount} NC</strong>` : '— tous conformes'}
-      </span>
-    </div>`;
 }
 
-// Afficher/masquer zone NC
-document.querySelectorAll('[name="conforme_global"]').forEach(r => {
-  r.addEventListener('change', () => {
-    elNcZone.hidden = r.value !== 'non';
+function filtrerProduits(q) {
+  if (!q) return tousProduits.slice(0, 12);
+  const ql = q.toLowerCase();
+  return tousProduits.filter(p =>
+    p.nom.toLowerCase().includes(ql) ||
+    (p.code_unique && p.code_unique.toLowerCase().includes(ql))
+  ).slice(0, 12);
+}
+
+function afficherAutoComplete(liste) {
+  elProdAutoComplete.innerHTML = '';
+  if (!liste.length) {
+    elProdAutoComplete.hidden = true;
+    return;
+  }
+  liste.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'rec-autocomplete-item';
+    div.setAttribute('role', 'option');
+    const nom  = document.createElement('span');
+    nom.textContent = p.nom;
+    const code = document.createElement('span');
+    code.className = 'rec-autocomplete-code';
+    code.textContent = p.code_unique || '';
+    div.appendChild(nom);
+    div.appendChild(code);
+    div.addEventListener('click', () => selectionnerProduit(p));
+    elProdAutoComplete.appendChild(div);
   });
+  elProdAutoComplete.hidden = false;
+}
+
+function selectionnerProduit(p) {
+  produitSelectionne = p;
+  elProdSelNom.textContent  = p.nom;
+  elProdSelCode.textContent = p.code_unique || '';
+  elProdSel.hidden      = false;
+  elProdSearchWrap.hidden = true;
+  elProdAutoComplete.hidden = true;
+  elProdSearch.value = '';
+
+  // Mise à jour aide visuelle selon l'espèce
+  majAideVisuel(p.espece);
+  // pH plage
+  const aideEspece = textesAide[p.espece];
+  elPhPlage.textContent = aideEspece ? `(norme : ${aideEspece.ph.normal})` : '';
+
+  majBtnAjouter();
+}
+
+function majAideVisuel(espece) {
+  const aide = textesAide[espece];
+  ['couleur', 'consistance', 'exsudat', 'odeur'].forEach(c => {
+    const el = document.getElementById(`rec-aide-${c}`);
+    if (el) el.textContent = aide ? `Normal : ${aide[c].normal}` : '';
+  });
+}
+
+elBtnChangerProduit.addEventListener('click', () => {
+  produitSelectionne = null;
+  elProdSel.hidden = true;
+  elProdSearchWrap.hidden = false;
+  elProdSearch.value = '';
+  afficherAutoComplete(tousProduits.slice(0, 12));
+  elProdSearch.focus();
+  majBtnAjouter();
+  elTempVerdict.textContent = '';
+  elTempVerdict.className = 'rec-temp-verdict';
 });
 
-elBtnBack2.addEventListener('click', () => allerEtape(2));
+elProdSearch.addEventListener('input', () => {
+  const q = elProdSearch.value.trim();
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    afficherAutoComplete(filtrerProduits(q));
+  }, 180);
+});
+elProdSearch.addEventListener('focus', () => {
+  if (!produitSelectionne) {
+    afficherAutoComplete(filtrerProduits(elProdSearch.value));
+  }
+});
+document.addEventListener('click', e => {
+  if (!elProdAutoComplete.contains(e.target) && e.target !== elProdSearch) {
+    elProdAutoComplete.hidden = true;
+  }
+}, true);
 
-elFormFinal.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  elErreur3.hidden = true;
+// Température produit → verdict temps réel
+function parseIntervalleTemp(str) {
+  if (!str) return null;
+  const m = str.match(/([-+]?\d+(?:\.\d+)?)\s*°C\s*à\s*([-+]?\d+(?:\.\d+)?)\s*°C/i);
+  if (!m) return null;
+  return { min: parseFloat(m[1]), max: parseFloat(m[2]) };
+}
 
-  const conformeVal = document.querySelector('[name="conforme_global"]:checked')?.value;
-  if (!conformeVal) {
-    afficherErreur(elErreur3, 'Veuillez indiquer la conformité globale.');
+function majVerdictTemp() {
+  const val = parseFloat(elTempProduit.value);
+  if (isNaN(val) || !produitSelectionne) {
+    elTempVerdict.textContent = '';
+    elTempVerdict.className = 'rec-temp-verdict';
     return;
   }
-  const conforme = conformeVal === 'oui';
+  const intervalle = parseIntervalleTemp(produitSelectionne.temperature_conservation);
+  if (!intervalle) {
+    elTempVerdict.textContent = '';
+    elTempVerdict.className = 'rec-temp-verdict';
+    return;
+  }
 
-  elBtnFinaliser.disabled    = true;
-  elBtnFinalTexte.textContent = 'Clôture…';
+  // Seuil renforcé si camion NC (temp > max-1)
+  const tempCamion = parseFloat(elTempCamion.value);
+  const camionNc = !isNaN(tempCamion) && tempCamion >= 2;
+  const seuilMax = camionNc ? (intervalle.max - 1) : intervalle.max;
 
-  try {
-    await apiFetch(`/api/receptions/${receptionId}/finaliser`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conforme }),
-    });
+  const conforme = val >= intervalle.min && val <= seuilMax;
+  elTempVerdict.textContent = conforme ? '✓ OK' : '✗ NC';
+  elTempVerdict.className   = 'rec-temp-verdict ' + (conforme ? 'ok' : 'nc');
+}
+elTempProduit.addEventListener('input', majVerdictTemp);
 
-    // Déclarer NC si nécessaire
-    if (!conforme) {
-      const natures = [];
-      if (document.querySelector('[name="nc_temperature"]')?.checked) natures.push('temperature');
-      if (document.querySelector('[name="nc_dlc"]')?.checked)         natures.push('dlc');
-      if (document.querySelector('[name="nc_emballage"]')?.checked)   natures.push('emballage');
-      if (document.querySelector('[name="nc_aspect"]')?.checked)      natures.push('aspect');
-      if (document.querySelector('[name="nc_etiquetage"]')?.checked)  natures.push('etiquetage');
-      if (document.querySelector('[name="nc_autre"]')?.checked)       natures.push('autre');
+// Critères visuels toggles
+function reinitCriteres() {
+  criteres = { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 };
+  CRITERES.forEach(c => {
+    const [btnOk, btnNc] = document.querySelectorAll(`[data-critere="${c}"]`);
+    btnOk.classList.add('ok-sel');
+    btnOk.setAttribute('aria-pressed', 'true');
+    btnNc.classList.remove('nc-sel');
+    btnNc.setAttribute('aria-pressed', 'false');
+    const obsEl = document.getElementById(`rec-obs-${c}`);
+    if (obsEl) { obsEl.value = ''; obsEl.hidden = true; }
+  });
+}
 
-      const ncPayload = {
-        reception_id:   receptionId,
-        operateur:      enteteData.operateur,
-        fournisseur_nom: enteteData.fournisseur_nom,
-        nature_nc:      natures.length > 0 ? natures : null,
-        commentaires:   document.getElementById('rcp-nc-commentaire')?.value.trim() || null,
-        refuse_livraison: document.querySelector('[name="nc_refuse"]')?.checked ?? false,
-        info_ddpp:      document.querySelector('[name="nc_ddpp"]')?.checked ?? false,
-      };
+document.querySelectorAll('[data-critere]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const c   = btn.dataset.critere;
+    const val = parseInt(btn.dataset.val, 10);
+    criteres[c] = val;
 
-      await apiFetch('/api/non-conformites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ncPayload),
-      }).catch(() => {}); // NC non bloquante
+    const [btnOk, btnNc] = document.querySelectorAll(`[data-critere="${c}"]`);
+    if (val === 1) {
+      btnOk.classList.add('ok-sel');
+      btnNc.classList.remove('nc-sel');
+      btnOk.setAttribute('aria-pressed', 'true');
+      btnNc.setAttribute('aria-pressed', 'false');
+    } else {
+      btnNc.classList.add('nc-sel');
+      btnOk.classList.remove('ok-sel');
+      btnNc.setAttribute('aria-pressed', 'true');
+      btnOk.setAttribute('aria-pressed', 'false');
     }
 
-    // Afficher résultat
-    afficherResultat(conforme);
-    allerEtape(99); // cache tous les steps
-    elResultat.hidden = false;
-    chargerHistorique();
-  } catch (err) {
-    afficherErreur(elErreur3, `Erreur : ${err.message}`);
-    elBtnFinaliser.disabled    = false;
-    elBtnFinalTexte.textContent = '✓ Clôturer la fiche';
-  }
+    const obsEl = document.getElementById(`rec-obs-${c}`);
+    if (obsEl) obsEl.hidden = (val === 1);
+  });
 });
 
-function afficherResultat(conforme) {
-  const cls    = conforme ? 'recep-resultat--ok' : 'recep-resultat--nc';
-  const titre  = conforme ? '✅ Réception conforme enregistrée' : '⚠ Réception NC enregistrée';
-  const detail = `${enteteData.fournisseur_nom} — ${lignes.length} produit${lignes.length > 1 ? 's' : ''}`;
-
-  elResultat.innerHTML = `
-    <div class="recep-resultat-boite ${cls}">
-      <div class="recep-resultat-titre">${titre}</div>
-      <div class="recep-resultat-detail">${escHtml(detail)}</div>
-      <div class="recep-resultat-actions">
-        <button type="button" onclick="nouvelleReception()" class="btn-valider" style="background:var(--brun)">
-          ＋ Nouvelle réception
-        </button>
-        <a href="/hub.html" class="btn-outline" style="display:inline-flex;align-items:center;text-decoration:none">
-          ← Retour Hub
-        </a>
-      </div>
-    </div>`;
+function majBtnAjouter() {
+  elBtnAjouter.disabled = (produitSelectionne === null);
 }
 
-function nouvelleReception() {
-  receptionId   = null;
-  lignes        = [];
-  enteteData    = {};
-  elFormEntete.reset();
-  elFormLigne.reset();
-  elFormFinal.reset();
-  elFormLigne.hidden = true;
-  elBtnAjouter.hidden = false;
-  elBtnNextStep3.disabled = true;
-  elNcZone.hidden = true;
-  document.getElementById('rcp-heure').value = new Date()
-    .toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  allerEtape(1);
+function reinitFormProduit() {
+  produitSelectionne = null;
+  elProdSel.hidden       = true;
+  elProdSearchWrap.hidden = false;
+  elProdSearch.value      = '';
+  elProdAutoComplete.hidden = true;
+  elTempProduit.value     = '';
+  elTempVerdict.textContent = '';
+  elTempVerdict.className = 'rec-temp-verdict';
+  elLot.value = '';
+  elDlc.value = '';
+  elPh.value  = '';
+  elPhPlage.textContent = '';
+  CRITERES.forEach(c => {
+    document.getElementById(`rec-aide-${c}`).textContent = '';
+  });
+  reinitCriteres();
+  majBtnAjouter();
 }
 
-// Exposer globalement pour le bouton inline
-window.nouvelleReception = nouvelleReception;
+function majListeLignes() {
+  elNbProduits.textContent = lignesAjoutees.length;
+  elLignesListe.innerHTML  = '';
+  lignesAjoutees.forEach(l => {
+    const carte = document.createElement('div');
+    carte.className = 'rec-ligne-carte';
 
-// ── Helpers ───────────────────────────────────────────────────
-function afficherErreur(el, msg) {
-  el.textContent = msg;
-  el.hidden = false;
+    const info = document.createElement('div');
+    info.className = 'rec-ligne-info';
+
+    const nom = document.createElement('div');
+    nom.className = 'rec-ligne-nom';
+    nom.textContent = l.produit_nom;
+
+    const detail = document.createElement('div');
+    detail.className = 'rec-ligne-detail';
+    const parts = [];
+    if (l.temperature_reception !== null && l.temperature_reception !== undefined) {
+      parts.push(`${l.temperature_reception}°C`);
+    }
+    if (l.numero_lot) parts.push(l.numero_lot);
+    detail.textContent = parts.join(' · ');
+
+    info.appendChild(nom);
+    if (parts.length) info.appendChild(detail);
+
+    const badge = document.createElement('span');
+    badge.className = 'rec-ligne-badge ' + (l.conforme ? 'ok' : 'nc');
+    badge.textContent = l.conforme ? '✓ OK' : '✗ NC';
+
+    carte.appendChild(info);
+    carte.appendChild(badge);
+    elLignesListe.appendChild(carte);
+  });
+
+  elBtnTerminer.disabled = (lignesAjoutees.length === 0);
 }
 
-function escHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+elBtnAjouter.addEventListener('click', ajouterLigne);
+
+async function ajouterLigne() {
+  if (!produitSelectionne || !receptionId) return;
+
+  elBtnAjouter.disabled = true;
+  elBtnAjouter.textContent = 'Ajout…';
+
+  const payload = {
+    produit_id: produitSelectionne.id,
+    couleur_conforme:     criteres.couleur,
+    consistance_conforme: criteres.consistance,
+    exsudat_conforme:     criteres.exsudat,
+    odeur_conforme:       criteres.odeur,
+  };
+
+  const obsC = document.getElementById('rec-obs-couleur').value.trim();
+  const obsT = document.getElementById('rec-obs-consistance').value.trim();
+  const obsE = document.getElementById('rec-obs-exsudat').value.trim();
+  const obsO = document.getElementById('rec-obs-odeur').value.trim();
+  if (obsC) payload.couleur_observation    = obsC;
+  if (obsT) payload.consistance_observation = obsT;
+  if (obsE) payload.exsudat_observation    = obsE;
+  if (obsO) payload.odeur_observation      = obsO;
+
+  const tv = parseFloat(elTempProduit.value);
+  if (!isNaN(tv)) payload.temperature_reception = tv;
+
+  const lot = elLot.value.trim();
+  if (lot) payload.numero_lot = lot;
+
+  const dlc = elDlc.value;
+  if (dlc) payload.dlc = dlc;
+
+  const ph = parseFloat(elPh.value);
+  if (!isNaN(ph)) payload.ph_valeur = ph;
+
+  try {
+    const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    lignesAjoutees.push({
+      id:                  ligne.id,
+      produit_nom:         produitSelectionne.nom,
+      conforme:            ligne.conforme,
+      temperature_reception: ligne.temperature_reception,
+      numero_lot:          ligne.numero_lot,
+    });
+
+    majListeLignes();
+    reinitFormProduit();
+
+    // Scroll vers le haut de la liste
+    document.querySelector('.rec-produits-liste-ajoutee').scrollTop = 9999;
+
+  } catch (err) {
+    alert(`Erreur lors de l'ajout : ${err.message}`);
+  } finally {
+    elBtnAjouter.disabled = !produitSelectionne;
+    elBtnAjouter.textContent = '+ Ajouter';
+  }
 }
 
-// ── Refresh historique ────────────────────────────────────────
-document.getElementById('recep-refresh-histo').addEventListener('click', chargerHistorique);
+elBtnTerminer.addEventListener('click', () => {
+  if (lignesAjoutees.length === 0) return;
+  remplirRecap();
+  allerEtape(4);
+});
 
-// ── Init ──────────────────────────────────────────────────────
+
+// ── ÉTAPE 4 : Récap + Clôture ──────────────────────────────
+function remplirRecap() {
+  // Camion
+  const tempCamion = parseFloat(elTempCamion.value);
+  const infoTexte  = [];
+  if (!isNaN(tempCamion)) infoTexte.push(`Température : ${tempCamion}°C`);
+  infoTexte.push(`Propreté : ${propreteCamion === 'satisfaisant' ? 'Satisfaisante' : 'Non satisfaisante'}`);
+  elRecapCamionInfo.innerHTML = infoTexte.join('<br>');
+
+  const camionOk = (isNaN(tempCamion) || tempCamion < 2) && (propreteCamion === 'satisfaisant');
+  elRecapCamionBadge.className = 'rec-badge ' + (camionOk ? 'conforme' : 'nc');
+  elRecapCamionBadge.textContent = camionOk ? '✓ Conforme' : '✗ NC';
+
+  // Conformité globale estimée (avant clôture serveur)
+  const toutesConformes = lignesAjoutees.every(l => l.conforme);
+  elConformiteGlobale.className = 'rec-conformite-globale ' + (toutesConformes && camionOk ? 'conforme' : 'nc');
+  elConformiteGlobale.textContent = toutesConformes && camionOk
+    ? '✓ Tout conforme'
+    : '✗ Présence de non-conformité(s)';
+
+  // Liste produits
+  elRecapLignes.innerHTML = '';
+  lignesAjoutees.forEach(l => {
+    const row = document.createElement('div');
+    row.className = 'rec-recap-ligne-item';
+
+    const left = document.createElement('div');
+    const nom  = document.createElement('div');
+    nom.className = 'rec-recap-ligne-nom';
+    nom.textContent = l.produit_nom;
+    const det = document.createElement('div');
+    det.className = 'rec-recap-ligne-detail';
+    const parts = [];
+    if (l.temperature_reception !== null && l.temperature_reception !== undefined) {
+      parts.push(`${l.temperature_reception}°C`);
+    }
+    if (l.numero_lot) parts.push(`Lot : ${l.numero_lot}`);
+    det.textContent = parts.join(' · ');
+    left.appendChild(nom);
+    if (parts.length) left.appendChild(det);
+
+    const badge = document.createElement('span');
+    badge.className = 'rec-ligne-badge ' + (l.conforme ? 'ok' : 'nc');
+    badge.textContent = l.conforme ? '✓ OK' : '✗ NC';
+
+    row.appendChild(left);
+    row.appendChild(badge);
+    elRecapLignes.appendChild(row);
+  });
+}
+
+elBtnCloturer.addEventListener('click', cloturerFiche);
+
+async function cloturerFiche() {
+  elErreur4.hidden = true;
+  elBtnCloturer.disabled = true;
+  elBtnCloturer.textContent = 'Clôture…';
+
+  const payload = {
+    livraison_refusee: elChkRefuse.checked,
+    information_ddpp:  elChkDdpp.checked,
+    commentaire_nc:    elCommentaireNc.value.trim() || null,
+  };
+
+  try {
+    const rec = await apiFetch(`/api/receptions/${receptionId}/cloturer`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    // Écran de confirmation
+    const conf = rec.conformite_globale === 'conforme';
+    elConfirmDetail.textContent = `${lignesAjoutees.length} produit(s) — par ${personnelPrenom}`;
+    elConfirmBadge.className   = 'rec-confirm-badge ' + (conf ? 'conforme' : 'nc');
+    elConfirmBadge.textContent = conf ? '✓ Conformité globale : OK' : '✗ Non-conformité(s) détectée(s)';
+
+    allerEtape(5);
+    demarrerCompteurConfirmation();
+
+  } catch (err) {
+    elErreur4.textContent = `Erreur : ${err.message}`;
+    elErreur4.hidden = false;
+  } finally {
+    elBtnCloturer.disabled = false;
+    elBtnCloturer.textContent = '✔ Clôturer la fiche';
+  }
+}
+
+
+// ── CONFIRMATION ───────────────────────────────────────────
+function demarrerCompteurConfirmation() {
+  let secondes = 5;
+  clearInterval(timerConfirmation);
+
+  function maj() {
+    elConfirmCountdown.textContent = `Retour au menu dans ${secondes}s…`;
+    if (secondes <= 0) {
+      clearInterval(timerConfirmation);
+      window.location.href = '/hub.html';
+    }
+    secondes--;
+  }
+  maj();
+  timerConfirmation = setInterval(maj, 1000);
+}
+
+elBtnHub.addEventListener('click', () => {
+  clearInterval(timerConfirmation);
+  window.location.href = '/hub.html';
+});
+
+
+// ── Initialisation ─────────────────────────────────────────
 async function init() {
-  await Promise.all([chargerFournisseurs(), chargerPersonnel(), chargerHistorique()]);
+  // Charger les données en parallèle
+  await Promise.all([
+    chargerPersonnel(),
+    chargerFournisseurs(),
+    chargerProduits(),
+    chargerTextesAide(),
+  ]);
+  reinitCriteres();
 }
 
 init();

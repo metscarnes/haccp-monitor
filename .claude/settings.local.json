@@ -10,7 +10,13 @@
       "Bash(ssh -o StrictHostKeyChecking=no -o BatchMode=yes campiglia@192.168.1.83 \"echo ok\")",
       "Read(//c/Users/campi/OneDrive/Création d''''''''entreprise/Boucherie/SoftWare/**)",
       "Bash(python -c \":*)",
-      "Bash(python -c \"import sys; print\\(sys.stdin.buffer.read\\(\\).decode\\(''''utf-8'''', errors=''''replace''''\\)\\)\")"
+      "Bash(python -c \"import sys; print\\(sys.stdin.buffer.read\\(\\).decode\\(''''utf-8'''', errors=''''replace''''\\)\\)\")",
+      "Bash(python -m pytest tests/test_reception_v2.py -x -q)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/test_reception_v2.py -q)",
+      "Bash(python -m pytest -q)",
+      "Bash(python -m pytest tests/test_ouvertures.py::test_get_suggestions_recentes_en_premier -q)",
+      "Bash(python -m pytest tests/test_reception_v2.py tests/test_ouvertures.py -q --ignore=tests/test_reception.py)"
     ]
   }
 }
