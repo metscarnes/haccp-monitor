@@ -2,14 +2,19 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#3D2008">
   <title>HACCP — Au Comptoir des Lilas</title>
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
 </head>
 <body class="hub-body">
 
@@ -19,7 +24,8 @@
   <header class="hub-header">
     <div class="hub-titre">Au Comptoir des Lilas</div>
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
-    <a href="/admin.html" class="hub-btn-admin">⚙&nbsp;Admin</a>
+    <!-- admin.html pending -->
+    <a href="/admin.html" class="hub-btn-admin" aria-label="Configuration">⚙&nbsp;Admin</a>
   </header>
 
   <!-- ========================================================
@@ -33,11 +39,13 @@
        BANDEAU — Tâches en retard (rouge, pulsant, cliquable)
   ========================================================= -->
   <div id="hub-bandeau-retard" class="hub-bandeau" hidden role="alert" aria-live="assertive">
-    <!-- Texte injecté par hub.js -->
   </div>
 
   <!-- ========================================================
-       GRILLE 2×2 — 4 modules
+       GRILLE — 5 tuiles, responsive
+       Phone (<480px):   1 col, stack vertical
+       Tablet portrait (480-767px): 2 col (first 4) + 1 below
+       Tablet landscape (768px+):   3 col (first 3) + 2 below
   ========================================================= -->
   <main class="hub-grille" role="main">
 

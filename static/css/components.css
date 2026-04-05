@@ -1,0 +1,469 @@
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  font-weight: 600;
+  font-size: var(--text-base);
+  min-height: var(--btn-min);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s, background 0.15s;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) { opacity: 0.88; }
+.btn:active:not(:disabled) { opacity: 0.82; transform: scale(0.98); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.btn-secondary {
+  background: var(--color-secondary);
+  color: var(--color-text);
+}
+
+.btn-success {
+  background: var(--color-ok);
+  color: white;
+}
+
+.btn-danger {
+  background: var(--color-alert);
+  color: white;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--color-accent);
+  border: 2px solid var(--color-secondary);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: var(--text-sm);
+  min-height: var(--btn-min-sm);
+}
+
+.btn-lg {
+  padding: 0.9rem 2rem;
+  font-size: var(--text-lg);
+  min-width: 200px;
+}
+
+/* ============================================================
+   FORM CONTROLS
+   ============================================================ */
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.form-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--color-secondary);
+  border-radius: var(--radius);
+  font-size: var(--text-base);
+  background: white;
+  color: var(--color-text);
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.input--error {
+  border-color: var(--color-alert);
+}
+
+.input::placeholder {
+  color: var(--color-offline);
+}
+
+input[type="date"].input,
+input[type="time"].input,
+select.input {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236B3A1F' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.form-help {
+  font-size: var(--text-xs);
+  color: var(--color-offline);
+}
+
+.form-error {
+  font-size: var(--text-xs);
+  color: var(--color-alert);
+  font-weight: 600;
+}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+
+.card {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.card-title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+/* ============================================================
+   TOGGLE BUTTONS (bistate)
+   ============================================================ */
+
+.toggle-pair {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 0.8rem;
+  border-radius: var(--radius-sm);
+  border: 2.5px solid var(--color-secondary);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  min-height: 56px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.toggle-btn.ok-sel {
+  background: #E8F5EC;
+  border-color: var(--color-ok);
+  color: var(--color-ok);
+}
+
+.toggle-btn.nc-sel {
+  background: #FDEDED;
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+}
+
+/* ============================================================
+   MODAL
+   ============================================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: 1rem;
+}
+
+.modal-overlay[hidden] {
+  display: none !important;
+}
+
+.modal-box {
+  background: var(--color-card);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 40px rgba(0,0,0,.25);
+  max-width: 560px;
+  width: 100%;
+  max-height: 90dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid rgba(107,58,31,.1);
+}
+
+.modal-icon {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  color: var(--color-text);
+  flex: 1;
+  line-height: 1.2;
+}
+
+.modal-subtitle {
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  margin-top: 0.2rem;
+}
+
+.modal-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: var(--color-offline);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background 0.15s;
+}
+
+.modal-close:hover {
+  background: rgba(107,58,31,.1);
+}
+
+.modal-body {
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  padding: 0 1.25rem 1.25rem;
+}
+
+.modal-fieldset {
+  border: 1.5px solid rgba(107,58,31,.2);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.modal-fieldset-title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: 0.1rem;
+}
+
+/* ============================================================
+   BADGE (page header style)
+   ============================================================ */
+
+.badge--info {
+  background: rgba(107,58,31,.1);
+  color: var(--color-accent);
+}
+
+/* ============================================================
+   PAGE HEADER
+   ============================================================ */
+
+.page-header {
+  background: var(--color-text);
+  color: var(--color-bg);
+  padding: 0 1rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  flex-shrink: 0;
+}
+
+.page-header--tall {
+  height: 64px;
+}
+
+.page-header-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.page-header-back {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(255,255,255,.12);
+  border: 1.5px solid rgba(255,255,255,.30);
+  color: var(--color-bg);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.page-header-back:hover {
+  background: rgba(255,255,255,.22);
+}
+
+.page-header-clock {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   CHECKBOX & RADIO
+   ============================================================ */
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-ok);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.checkbox-label,
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: var(--text-base);
+}
+
+.checkbox-label:hover,
+.radio-label:hover {
+  background: rgba(107,58,31,.05);
+}
+
+/* ============================================================
+   SELECT CUSTOM
+   ============================================================ */
+
+select.input {
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236B3A1F' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-card);
+  font-size: var(--text-sm);
+}
+
+.table thead tr {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.table th {
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 0.5rem 0.9rem;
+  border-bottom: 1px solid rgba(107,58,31,.1);
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: rgba(107,58,31,.03);
+}
+
+.table .conforme { color: var(--color-ok); font-weight: 700; }
+.table .non-conforme { color: var(--color-alert); font-weight: 700; }
+.table .val-alerte { color: var(--color-alert); font-weight: 700; }
+
+/* ============================================================
+   STATUS DOT
+   ============================================================ */
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot--ok       { background: var(--color-ok); }
+.status-dot--warning  { background: var(--color-warning); }
+.status-dot--alert    { background: var(--color-alert); }
+.status-dot--offline  { background: var(--color-offline); }
