@@ -25,22 +25,30 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 
 async def _seed_personnel_produit(db):
-    """Insère un personnel et un produit, retourne (personnel_id, produit_id)."""
-    cur = await db.execute(
-        "INSERT INTO personnel (boutique_id, prenom) VALUES (1, 'Éric')"
+    """Insère (ou récupère) un personnel et un produit, retourne (personnel_id, produit_id)."""
+    await db.execute(
+        "INSERT OR IGNORE INTO personnel (boutique_id, prenom) VALUES (1, 'Éric')"
     )
-    personnel_id = cur.lastrowid
+    cur = await db.execute(
+        "SELECT id FROM personnel WHERE boutique_id = 1 AND prenom = 'Éric'"
+    )
+    row = await cur.fetchone()
+    personnel_id = row[0]
 
-    cur2 = await db.execute(
+    await db.execute(
         """
-        INSERT INTO produits
+        INSERT OR IGNORE INTO produits
             (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
              boutique_id, temperature_conservation)
         VALUES ('VB-PALERON', 'VBR06', 'matiere_premiere', 1, 'SOUS_VIDE', 0,
                 1, '0°C à +4°C')
         """
     )
-    produit_id = cur2.lastrowid
+    cur2 = await db.execute(
+        "SELECT id FROM produits WHERE code_unique = 'VBR06'"
+    )
+    row2 = await cur2.fetchone()
+    produit_id = row2[0]
     await db.commit()
     return personnel_id, produit_id
 
