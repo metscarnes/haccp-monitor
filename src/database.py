@@ -176,39 +176,55 @@ CREATE TABLE IF NOT EXISTS fournisseurs (
 );
 
 CREATE TABLE IF NOT EXISTS receptions (
-    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id          INTEGER NOT NULL,
-    fournisseur_id       INTEGER,
-    fournisseur_nom      TEXT    NOT NULL,
-    numero_bon_livraison TEXT,
-    operateur            TEXT    NOT NULL,
-    date_reception       DATETIME DEFAULT CURRENT_TIMESTAMP,
-    heure_livraison      TEXT,
-    temperature_camion   REAL,
-    proprete_camion      TEXT,
-    conforme             BOOLEAN,
-    commentaire          TEXT,
-    FOREIGN KEY (boutique_id)    REFERENCES boutiques(id),
-    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    personnel_id             INTEGER NOT NULL,
+    date_reception           DATE    DEFAULT CURRENT_DATE,
+    heure_reception          TEXT    NOT NULL,
+    temperature_camion       REAL,
+    proprete_camion          TEXT    DEFAULT 'satisfaisant',
+    camion_conforme          INTEGER DEFAULT 1,
+    fournisseur_principal_id INTEGER,
+    photo_bl_filename        TEXT,
+    commentaire              TEXT,
+    conformite_globale       TEXT    DEFAULT 'conforme',
+    livraison_refusee        INTEGER DEFAULT 0,
+    information_ddpp         INTEGER DEFAULT 0,
+    commentaire_nc           TEXT,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (fournisseur_principal_id) REFERENCES fournisseurs(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_receptions_boutique_date
-    ON receptions(boutique_id, date_reception);
+CREATE INDEX IF NOT EXISTS idx_receptions_date
+    ON receptions(date_reception);
 
 CREATE TABLE IF NOT EXISTS reception_lignes (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    reception_id        INTEGER NOT NULL,
-    produit_id          INTEGER,
-    produit_nom         TEXT    NOT NULL,
-    temperature_produit REAL,
-    integrite_emballage TEXT,
-    dlc                 DATE,
-    numero_lot          TEXT,
-    quantite            REAL,
-    heure_stockage      TEXT,
-    conforme            BOOLEAN,
-    FOREIGN KEY (reception_id) REFERENCES receptions(id),
-    FOREIGN KEY (produit_id)   REFERENCES produits(id)
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_id              INTEGER NOT NULL,
+    produit_id                INTEGER NOT NULL,
+    fournisseur_id            INTEGER,
+    numero_lot                TEXT,
+    dlc                       DATE,
+    dluo                      DATE,
+    origine                   TEXT    DEFAULT 'France',
+    poids_kg                  REAL,
+    temperature_reception     REAL,
+    temperature_conforme      INTEGER,
+    couleur_conforme          INTEGER DEFAULT 1,
+    couleur_observation       TEXT,
+    consistance_conforme      INTEGER DEFAULT 1,
+    consistance_observation   TEXT,
+    exsudat_conforme          INTEGER DEFAULT 1,
+    exsudat_observation       TEXT,
+    odeur_conforme            INTEGER DEFAULT 1,
+    odeur_observation         TEXT,
+    ph_valeur                 REAL,
+    ph_conforme               INTEGER,
+    conforme                  INTEGER DEFAULT 1,
+    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_id)  REFERENCES receptions(id),
+    FOREIGN KEY (produit_id)    REFERENCES produits(id),
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
 );
 
 CREATE TABLE IF NOT EXISTS non_conformites_fournisseur (
@@ -411,15 +427,70 @@ async def init_db() -> None:
         await db.executescript(SCHEMA_SQL)
         await db.executescript(SEED_SQL)
         await db.executescript(SEED_SQL_PHASE2)
-        # Migrations incrémentales (idempotentes via IGNORE sur les erreurs)
-        migrations = [
-            "ALTER TABLE reception_lignes ADD COLUMN produit_id INTEGER REFERENCES produits(id)",
-        ]
+        # Migration : refonte schéma réception (tables vides en prod, recréation si ancien schéma)
+        cur = await db.execute("PRAGMA table_info(receptions)")
+        cols_rec = {row[1] for row in await cur.fetchall()}
+        if "personnel_id" not in cols_rec:
+            logger.info("Migration : refonte tables receptions / reception_lignes")
+            await db.execute("DROP TABLE IF EXISTS reception_lignes")
+            await db.execute("DROP TABLE IF EXISTS receptions")
+            await db.executescript("""
+CREATE TABLE IF NOT EXISTS receptions (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    personnel_id             INTEGER NOT NULL,
+    date_reception           DATE    DEFAULT CURRENT_DATE,
+    heure_reception          TEXT    NOT NULL,
+    temperature_camion       REAL,
+    proprete_camion          TEXT    DEFAULT 'satisfaisant',
+    camion_conforme          INTEGER DEFAULT 1,
+    fournisseur_principal_id INTEGER,
+    photo_bl_filename        TEXT,
+    commentaire              TEXT,
+    conformite_globale       TEXT    DEFAULT 'conforme',
+    livraison_refusee        INTEGER DEFAULT 0,
+    information_ddpp         INTEGER DEFAULT 0,
+    commentaire_nc           TEXT,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (fournisseur_principal_id) REFERENCES fournisseurs(id)
+);
+CREATE TABLE IF NOT EXISTS reception_lignes (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_id              INTEGER NOT NULL,
+    produit_id                INTEGER NOT NULL,
+    fournisseur_id            INTEGER,
+    numero_lot                TEXT,
+    dlc                       DATE,
+    dluo                      DATE,
+    origine                   TEXT    DEFAULT 'France',
+    poids_kg                  REAL,
+    temperature_reception     REAL,
+    temperature_conforme      INTEGER,
+    couleur_conforme          INTEGER DEFAULT 1,
+    couleur_observation       TEXT,
+    consistance_conforme      INTEGER DEFAULT 1,
+    consistance_observation   TEXT,
+    exsudat_conforme          INTEGER DEFAULT 1,
+    exsudat_observation       TEXT,
+    odeur_conforme            INTEGER DEFAULT 1,
+    odeur_observation         TEXT,
+    ph_valeur                 REAL,
+    ph_conforme               INTEGER,
+    conforme                  INTEGER DEFAULT 1,
+    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_id)   REFERENCES receptions(id),
+    FOREIGN KEY (produit_id)     REFERENCES produits(id),
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
+);
+""")
+
+        # Autres migrations incrémentales
+        migrations = []
         for sql in migrations:
             try:
                 await db.execute(sql)
             except Exception:
-                pass  # Colonne déjà présente
+                pass
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
 
@@ -1190,22 +1261,30 @@ async def update_fournisseur(db: aiosqlite.Connection, fournisseur_id: int, data
 # ---------------------------------------------------------------------------
 
 async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
+    """Crée une réception. data doit contenir personnel_id et heure_reception."""
+    temp = data.get("temperature_camion")
+    proprete = data.get("proprete_camion", "satisfaisant")
+    camion_conforme = 1
+    if temp is not None and temp >= 2.0:
+        camion_conforme = 0
+    if proprete == "non_satisfaisant":
+        camion_conforme = 0
+
     cursor = await db.execute(
         """
         INSERT INTO receptions
-            (boutique_id, fournisseur_id, fournisseur_nom, numero_bon_livraison,
-             operateur, heure_livraison, temperature_camion, proprete_camion, commentaire)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (personnel_id, heure_reception, temperature_camion, proprete_camion,
+             camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            data["boutique_id"],
-            data.get("fournisseur_id"),
-            data["fournisseur_nom"],
-            data.get("numero_bon_livraison"),
-            data["operateur"],
-            data.get("heure_livraison"),
-            data.get("temperature_camion"),
-            data.get("proprete_camion"),
+            data["personnel_id"],
+            data["heure_reception"],
+            temp,
+            proprete,
+            camion_conforme,
+            data.get("fournisseur_principal_id"),
+            data.get("photo_bl_filename"),
             data.get("commentaire"),
         ),
     )
@@ -1213,54 +1292,176 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
     return cursor.lastrowid
 
 
+def _parse_temp_max(temp_str: Optional[str]) -> Optional[float]:
+    """Parse '0°C à +4°C' → 4.0. Retourne None si non parsable."""
+    import re
+    if not temp_str:
+        return None
+    nums = re.findall(r'[+\-]?\d+(?:\.\d+)?', temp_str)
+    if not nums:
+        return None
+    return max(float(n) for n in nums)
+
+
 async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data: dict) -> int:
+    """Ajoute une ligne produit à une réception avec calcul automatique de conformité."""
+    # Récupérer la réception pour savoir si le camion était conforme
+    cur = await db.execute(
+        "SELECT temperature_camion FROM receptions WHERE id = ?", (reception_id,)
+    )
+    rec_row = await cur.fetchone()
+    temp_camion = rec_row["temperature_camion"] if rec_row else None
+
+    # Récupérer temperature_conservation du produit
+    cur2 = await db.execute(
+        "SELECT temperature_conservation FROM produits WHERE id = ?", (data["produit_id"],)
+    )
+    prod_row = await cur2.fetchone()
+    temp_conservation = prod_row["temperature_conservation"] if prod_row else None
+    temp_max = _parse_temp_max(temp_conservation)
+
+    # Calculer temperature_conforme
+    temp_recep = data.get("temperature_reception")
+    temperature_conforme: Optional[int] = None
+    if temp_recep is not None and temp_max is not None:
+        temperature_conforme = 1
+        if temp_recep > temp_max:
+            temperature_conforme = 0
+        # Seuil renforcé si camion non conforme (temp camion > 2°C)
+        elif temp_camion is not None and temp_camion > 2.0 and temp_recep > (temp_max - 1.0):
+            temperature_conforme = 0
+
+    # Calculer ph_conforme
+    ph_valeur = data.get("ph_valeur")
+    ph_conforme: Optional[int] = None
+    if ph_valeur is not None:
+        ph_conforme = 1 if 5.5 <= ph_valeur <= 5.7 else 0
+
+    # Conformité globale ligne
+    couleur_conforme     = int(data.get("couleur_conforme",     1))
+    consistance_conforme = int(data.get("consistance_conforme", 1))
+    exsudat_conforme     = int(data.get("exsudat_conforme",     1))
+    odeur_conforme       = int(data.get("odeur_conforme",       1))
+
+    conforme = 1
+    for flag in (temperature_conforme, ph_conforme,
+                 couleur_conforme, consistance_conforme,
+                 exsudat_conforme, odeur_conforme):
+        if flag is not None and flag == 0:
+            conforme = 0
+            break
+
     cursor = await db.execute(
         """
         INSERT INTO reception_lignes
-            (reception_id, produit_nom, temperature_produit, integrite_emballage,
-             dlc, numero_lot, quantite, heure_stockage, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (reception_id, produit_id, fournisseur_id, numero_lot, dlc, dluo,
+             origine, poids_kg, temperature_reception, temperature_conforme,
+             couleur_conforme, couleur_observation,
+             consistance_conforme, consistance_observation,
+             exsudat_conforme, exsudat_observation,
+             odeur_conforme, odeur_observation,
+             ph_valeur, ph_conforme, conforme)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
-            data["produit_nom"],
-            data.get("temperature_produit"),
-            data.get("integrite_emballage"),
-            data.get("dlc"),
+            data["produit_id"],
+            data.get("fournisseur_id"),
             data.get("numero_lot"),
-            data.get("quantite"),
-            data.get("heure_stockage"),
-            data.get("conforme"),
+            data.get("dlc"),
+            data.get("dluo"),
+            data.get("origine", "France"),
+            data.get("poids_kg"),
+            temp_recep,
+            temperature_conforme,
+            couleur_conforme,
+            data.get("couleur_observation"),
+            consistance_conforme,
+            data.get("consistance_observation"),
+            exsudat_conforme,
+            data.get("exsudat_observation"),
+            odeur_conforme,
+            data.get("odeur_observation"),
+            ph_valeur,
+            ph_conforme,
+            conforme,
         ),
     )
     await db.commit()
     return cursor.lastrowid
 
 
-async def finaliser_reception(
-    db: aiosqlite.Connection, reception_id: int, conforme: bool
-) -> None:
+async def cloturer_reception(
+    db: aiosqlite.Connection,
+    reception_id: int,
+    livraison_refusee: bool = False,
+    information_ddpp: bool = False,
+    commentaire_nc: Optional[str] = None,
+) -> Optional[dict]:
+    """Clôture une réception : calcule conformite_globale depuis les lignes."""
+    # Vérifier s'il y a des lignes non conformes
+    cur = await db.execute(
+        "SELECT COUNT(*) FROM reception_lignes WHERE reception_id = ? AND conforme = 0",
+        (reception_id,),
+    )
+    row = await cur.fetchone()
+    nb_nc = row[0] if row else 0
+    conformite_globale = "non_conforme" if nb_nc > 0 else "conforme"
+
     await db.execute(
-        "UPDATE receptions SET conforme = ? WHERE id = ?", (conforme, reception_id)
+        """
+        UPDATE receptions
+        SET conformite_globale = ?, livraison_refusee = ?,
+            information_ddpp = ?, commentaire_nc = ?
+        WHERE id = ?
+        """,
+        (conformite_globale, int(livraison_refusee),
+         int(information_ddpp), commentaire_nc, reception_id),
     )
     await db.commit()
+    return await get_reception(db, reception_id)
 
 
 async def get_receptions(
-    db: aiosqlite.Connection, boutique_id: int, limit: int = 50
+    db: aiosqlite.Connection,
+    date_debut: Optional[str] = None,
+    date_fin: Optional[str] = None,
+    fournisseur_id: Optional[int] = None,
+    limit: int = 50,
 ) -> list[dict]:
+    conditions = []
+    params: list = []
+
+    if date_debut:
+        conditions.append("r.date_reception >= ?")
+        params.append(date_debut)
+    if date_fin:
+        conditions.append("r.date_reception <= ?")
+        params.append(date_fin)
+    if fournisseur_id is not None:
+        conditions.append("r.fournisseur_principal_id = ?")
+        params.append(fournisseur_id)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
     cursor = await db.execute(
-        """
-        SELECT r.*, COUNT(rl.id) AS nb_lignes,
-               SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc
+        f"""
+        SELECT
+            r.*,
+            p.prenom            AS personnel_prenom,
+            f.nom               AS fournisseur_nom,
+            COUNT(rl.id)        AS nb_lignes,
+            SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc
         FROM receptions r
-        LEFT JOIN reception_lignes rl ON rl.reception_id = r.id
-        WHERE r.boutique_id = ?
+        LEFT JOIN personnel         p  ON p.id  = r.personnel_id
+        LEFT JOIN fournisseurs      f  ON f.id  = r.fournisseur_principal_id
+        LEFT JOIN reception_lignes  rl ON rl.reception_id = r.id
+        {where}
         GROUP BY r.id
-        ORDER BY r.date_reception DESC
+        ORDER BY r.created_at DESC
         LIMIT ?
         """,
-        (boutique_id, limit),
+        params + [limit],
     )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
@@ -1268,18 +1469,37 @@ async def get_receptions(
 
 async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional[dict]:
     cursor = await db.execute(
-        "SELECT * FROM receptions WHERE id = ?", (reception_id,)
+        """
+        SELECT r.*,
+               p.prenom AS personnel_prenom,
+               f.nom    AS fournisseur_nom
+        FROM receptions r
+        LEFT JOIN personnel    p ON p.id = r.personnel_id
+        LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
+        WHERE r.id = ?
+        """,
+        (reception_id,),
     )
     row = await cursor.fetchone()
     if not row:
         return None
     reception = dict(row)
-    # Lignes
-    cursor2 = await db.execute(
-        "SELECT * FROM reception_lignes WHERE reception_id = ? ORDER BY id",
+
+    cur2 = await db.execute(
+        """
+        SELECT rl.*,
+               pr.nom  AS produit_nom,
+               pr.espece,
+               fv.nom  AS fournisseur_nom
+        FROM reception_lignes rl
+        LEFT JOIN produits     pr ON pr.id = rl.produit_id
+        LEFT JOIN fournisseurs fv ON fv.id = rl.fournisseur_id
+        WHERE rl.reception_id = ?
+        ORDER BY rl.id
+        """,
         (reception_id,),
     )
-    lignes = await cursor2.fetchall()
+    lignes = await cur2.fetchall()
     reception["lignes"] = [dict(l) for l in lignes]
     return reception
 

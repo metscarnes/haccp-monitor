@@ -58,11 +58,20 @@ async def db():
     async with get_db() as conn:
         # Vider toutes les tables pour isolation totale entre tests
         phase2_tables = (
-            "ouvertures",
-            "tache_validations", "tache_types",
-            "plan_nettoyage", "pieges", "personnel",
-            "non_conformites_fournisseur", "reception_lignes", "receptions", "fournisseurs",
-            "etiquettes_generees", "regles_dlc", "produits",
+            # Enfants en premier (respecter les FK)
+            "ouvertures",                          # → produits, personnel, reception_lignes
+            "tache_validations",                   # → tache_types
+            "tache_types",
+            "plan_nettoyage",
+            "pieges",
+            "non_conformites_fournisseur",         # → receptions, reception_lignes
+            "reception_lignes",                    # → receptions, produits, fournisseurs
+            "receptions",                          # → personnel, fournisseurs (AVANT personnel)
+            "personnel",
+            "fournisseurs",
+            "etiquettes_generees",                 # → produits
+            "regles_dlc",
+            "produits",
         )
         phase1_tables = ("releves", "alertes", "rapports", "destinataires", "enceintes", "boutiques")
         for table in phase2_tables + phase1_tables:

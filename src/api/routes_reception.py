@@ -1,37 +1,129 @@
 """
-routes_reception.py — Module Contrôles Réception (fiches 8 et 9)
+routes_reception.py — Module Contrôles Réception (refonte v2)
 
-GET    /api/fournisseurs                → liste
-POST   /api/fournisseurs                → ajouter
-POST   /api/receptions                  → créer réception (étape 1)
-POST   /api/receptions/{id}/lignes      → ajouter ligne produit (étape 2)
-POST   /api/receptions/{id}/finaliser   → clôturer la fiche
-GET    /api/receptions                  → historique
-GET    /api/receptions/{id}             → détail
-POST   /api/non-conformites             → déclarer NC fournisseur
-GET    /api/non-conformites             → historique NC
+GET    /api/fournisseurs                          → liste
+POST   /api/fournisseurs                          → ajouter
+PUT    /api/fournisseurs/{id}                     → modifier
+
+POST   /api/receptions                            → créer réception (multipart)
+POST   /api/receptions/{id}/lignes                → ajouter ligne produit
+PUT    /api/receptions/{id}/cloturer              → clôturer la fiche
+GET    /api/receptions                            → historique (filtres)
+GET    /api/receptions/textes-aide-visuel         → référentiel contrôle visuel
+GET    /api/receptions/{id}                       → détail + lignes
+GET    /api/receptions/{id}/photo-bl              → BL photo (FileResponse)
 """
 
+import io
+import logging
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi.responses import FileResponse
+from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 from src.database import (
     get_db,
     get_fournisseurs, create_fournisseur, update_fournisseur,
-    create_reception, add_reception_ligne, finaliser_reception,
+    create_reception, add_reception_ligne, cloturer_reception,
     get_receptions, get_reception,
-    create_non_conformite, get_non_conformites,
+    get_non_conformites, create_non_conformite,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["reception"])
 
-BOUTIQUE_ID = 1
+BASE_DIR   = Path(__file__).parent.parent.parent
+PHOTOS_BL_DIR = BASE_DIR / "data" / "photos" / "bons_livraison"
+PHOTOS_BL_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_SIDE     = 1280
+JPEG_QUALITY = 80
 
 
 # ---------------------------------------------------------------------------
-# Schémas Pydantic
+# Compression photo (identique ouvertures)
+# ---------------------------------------------------------------------------
+
+def _compress_photo(raw_bytes: bytes) -> bytes:
+    img = Image.open(io.BytesIO(raw_bytes))
+    img = ImageOps.exif_transpose(img)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    w, h = img.size
+    if max(w, h) > MAX_SIDE:
+        if w >= h:
+            new_w, new_h = MAX_SIDE, int(h * MAX_SIDE / w)
+        else:
+            new_w, new_h = int(w * MAX_SIDE / h), MAX_SIDE
+        img = img.resize((new_w, new_h), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Référentiel aide visuel
+# ---------------------------------------------------------------------------
+
+TEXTES_AIDE_VISUEL = {
+    "Boeuf": {
+        "couleur":      {"normal": "Rouge vif",                  "anomalies": ["Brunâtre", "Grisâtre", "Verdâtre", "Taches noires"]},
+        "consistance":  {"normal": "Ferme, bonne tenue",         "anomalies": ["Molle", "Visqueuse", "Collante", "Déchirée"]},
+        "exsudat":      {"normal": "Poche ferme, peu de liquide","anomalies": ["Exsudation excessive", "Liquide laiteux ou trouble"]},
+        "odeur":        {"normal": "Acidulée, fruitée",          "anomalies": ["Ammoniacale", "Putride", "Soufrée", "Acide fort"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide (stress)", "> 5.8 : début d'altération"]},
+    },
+    "Veau": {
+        "couleur":      {"normal": "Rose pâle à rose vif",       "anomalies": ["Grisâtre", "Brunâtre", "Verdâtre"]},
+        "consistance":  {"normal": "Ferme, fine texture",        "anomalies": ["Molle", "Visqueuse", "Déchirée"]},
+        "exsudat":      {"normal": "Poche ferme, peu de liquide","anomalies": ["Exsudation excessive", "Liquide laiteux"]},
+        "odeur":        {"normal": "Douce, légèrement lactique", "anomalies": ["Ammoniaque", "Putride", "Acide fort"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide", "> 5.8 : début d'altération"]},
+    },
+    "Porc": {
+        "couleur":      {"normal": "Rose pâle",                  "anomalies": ["Grisâtre", "Brunâtre", "Pâle excessif (PSE)"]},
+        "consistance":  {"normal": "Ferme, bonne tenue",         "anomalies": ["Molle (PSE)", "Aqueuse", "Collante"]},
+        "exsudat":      {"normal": "Poche ferme, peu de liquide","anomalies": ["Exsudation excessive (PSE)", "Liquide trouble"]},
+        "odeur":        {"normal": "Neutre, légèrement sucrée",  "anomalies": ["Rance", "Putride", "Soufrée"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : viande PSE", "> 6.0 : viande DFD (sombre, dure)"]},
+    },
+    "Agneau": {
+        "couleur":      {"normal": "Rouge rosé",                 "anomalies": ["Brunâtre", "Grisâtre", "Décoloré"]},
+        "consistance":  {"normal": "Ferme, légèrement persillée","anomalies": ["Molle", "Collante"]},
+        "exsudat":      {"normal": "Peu de liquide",             "anomalies": ["Exsudation excessive", "Liquide trouble"]},
+        "odeur":        {"normal": "Caractéristique, légèrement sucrée","anomalies": ["Rance", "Putride", "Caprine forte"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide", "> 5.8 : altération"]},
+    },
+    "Volaille": {
+        "couleur":      {"normal": "Chair blanche à jaune pâle", "anomalies": ["Grisâtre", "Verdâtre", "Taches violacées"]},
+        "consistance":  {"normal": "Ferme, élastique",           "anomalies": ["Molle", "Visqueuse", "Aqueuse"]},
+        "exsudat":      {"normal": "Peu ou pas de liquide",      "anomalies": ["Exsudation abondante", "Liquide rosé trouble"]},
+        "odeur":        {"normal": "Neutre, légèrement animale", "anomalies": ["Acide", "Putride", "Soufrée"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide", "> 5.8 : altération"]},
+    },
+    "Gibier": {
+        "couleur":      {"normal": "Rouge foncé à bordeaux",     "anomalies": ["Noirâtre", "Verdâtre", "Grisâtre"]},
+        "consistance":  {"normal": "Ferme, dense",               "anomalies": ["Molle", "Collante"]},
+        "exsudat":      {"normal": "Peu de liquide",             "anomalies": ["Exsudation excessive", "Liquide trouble"]},
+        "odeur":        {"normal": "Caractéristique gibier, sauvage", "anomalies": ["Putride", "Ammoniaque forte"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide", "> 5.8 : altération"]},
+    },
+    "Cheval": {
+        "couleur":      {"normal": "Rouge foncé",                "anomalies": ["Brunâtre", "Grisâtre", "Noirâtre"]},
+        "consistance":  {"normal": "Ferme, dense",               "anomalies": ["Molle", "Collante"]},
+        "exsudat":      {"normal": "Peu de liquide",             "anomalies": ["Exsudation excessive"]},
+        "odeur":        {"normal": "Caractéristique, douce",     "anomalies": ["Rance", "Putride"]},
+        "ph":           {"normal": "Entre 5.5 et 5.7",           "anomalies": ["< 5.4 : trop acide", "> 5.8 : altération"]},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Pydantic models
 # ---------------------------------------------------------------------------
 
 class FournisseurCreate(BaseModel):
@@ -43,30 +135,30 @@ class FournisseurUpdate(BaseModel):
     actif: Optional[bool] = None
 
 
-class ReceptionCreate(BaseModel):
+class LigneCreate(BaseModel):
+    produit_id: int
     fournisseur_id: Optional[int] = None
-    fournisseur_nom: str
-    numero_bon_livraison: Optional[str] = None
-    operateur: str
-    heure_livraison: Optional[str] = None
-    temperature_camion: Optional[float] = None
-    proprete_camion: Optional[str] = None   # "S" | "NS"
-    commentaire: Optional[str] = None
-
-
-class ReceptionLigneCreate(BaseModel):
-    produit_nom: str
-    temperature_produit: Optional[float] = None
-    integrite_emballage: Optional[str] = None   # "S" | "NS"
-    dlc: Optional[str] = None
     numero_lot: Optional[str] = None
-    quantite: Optional[float] = None
-    heure_stockage: Optional[str] = None
-    conforme: Optional[bool] = None
+    dlc: Optional[str] = None
+    dluo: Optional[str] = None
+    origine: str = "France"
+    poids_kg: Optional[float] = None
+    temperature_reception: Optional[float] = None
+    couleur_conforme: int = 1
+    couleur_observation: Optional[str] = None
+    consistance_conforme: int = 1
+    consistance_observation: Optional[str] = None
+    exsudat_conforme: int = 1
+    exsudat_observation: Optional[str] = None
+    odeur_conforme: int = 1
+    odeur_observation: Optional[str] = None
+    ph_valeur: Optional[float] = None
 
 
-class ReceptionFinaliser(BaseModel):
-    conforme: bool
+class CloturerBody(BaseModel):
+    livraison_refusee: bool = False
+    information_ddpp: bool = False
+    commentaire_nc: Optional[str] = None
 
 
 class NonConformiteCreate(BaseModel):
@@ -79,7 +171,7 @@ class NonConformiteCreate(BaseModel):
     date_fabrication: Optional[str] = None
     dlc: Optional[str] = None
     nombre_barquettes: Optional[int] = None
-    nature_nc: Optional[list[str]] = None      # ["temperature", "dlc", ...]
+    nature_nc: Optional[list[str]] = None
     commentaires: Optional[str] = None
     refuse_livraison: bool = False
     nc_apres_livraison: bool = False
@@ -93,13 +185,13 @@ class NonConformiteCreate(BaseModel):
 @router.get("/fournisseurs")
 async def lister_fournisseurs():
     async with get_db() as db:
-        return await get_fournisseurs(db, BOUTIQUE_ID)
+        return await get_fournisseurs(db, boutique_id=1)
 
 
 @router.post("/fournisseurs", status_code=201)
 async def ajouter_fournisseur(body: FournisseurCreate):
     async with get_db() as db:
-        fid = await create_fournisseur(db, {"boutique_id": BOUTIQUE_ID, "nom": body.nom})
+        fid = await create_fournisseur(db, {"boutique_id": 1, "nom": body.nom})
         cursor = await db.execute("SELECT * FROM fournisseurs WHERE id = ?", (fid,))
         row = await cursor.fetchone()
     return dict(row) if row else {"id": fid}
@@ -119,38 +211,117 @@ async def modifier_fournisseur(fournisseur_id: int, body: FournisseurUpdate):
 # ---------------------------------------------------------------------------
 
 @router.post("/receptions", status_code=201)
-async def creer_reception(body: ReceptionCreate):
+async def creer_reception(
+    personnel_id:            int            = Form(...),
+    heure_reception:         str            = Form(...),
+    temperature_camion:      Optional[float]= Form(None),
+    proprete_camion:         str            = Form("satisfaisant"),
+    fournisseur_principal_id: Optional[int] = Form(None),
+    commentaire:             Optional[str]  = Form(None),
+    photo_bl:                Optional[UploadFile] = File(None),
+):
+    data = {
+        "personnel_id":            personnel_id,
+        "heure_reception":         heure_reception,
+        "temperature_camion":      temperature_camion,
+        "proprete_camion":         proprete_camion,
+        "fournisseur_principal_id": fournisseur_principal_id,
+        "commentaire":             commentaire,
+    }
+
     async with get_db() as db:
-        rid = await create_reception(db, {"boutique_id": BOUTIQUE_ID, **body.model_dump()})
-    return {"id": rid}
+        # Vérifier personnel
+        cur = await db.execute("SELECT id FROM personnel WHERE id = ?", (personnel_id,))
+        if not await cur.fetchone():
+            raise HTTPException(400, "personnel_id introuvable")
+
+        rid = await create_reception(db, data)
+
+        # Photo BL optionnelle
+        if photo_bl and photo_bl.filename:
+            from datetime import datetime, timezone
+            raw = await photo_bl.read()
+            jpeg = _compress_photo(raw)
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            filename = f"BL-{now_str}-{rid}.jpg"
+            (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+            await db.execute(
+                "UPDATE receptions SET photo_bl_filename = ? WHERE id = ?",
+                (filename, rid),
+            )
+            await db.commit()
+
+        cur2 = await db.execute(
+            "SELECT * FROM receptions WHERE id = ?", (rid,)
+        )
+        row = await cur2.fetchone()
+    return dict(row)
 
 
 @router.post("/receptions/{reception_id}/lignes", status_code=201)
-async def ajouter_ligne(reception_id: int, body: ReceptionLigneCreate):
+async def ajouter_ligne(reception_id: int, body: LigneCreate):
     async with get_db() as db:
-        # Vérifier que la réception existe
-        rec = await get_reception(db, reception_id)
-        if not rec:
+        cur = await db.execute(
+            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
+        )
+        if not await cur.fetchone():
             raise HTTPException(404, "Réception non trouvée")
+
+        cur2 = await db.execute(
+            "SELECT id FROM produits WHERE id = ?", (body.produit_id,)
+        )
+        if not await cur2.fetchone():
+            raise HTTPException(400, "produit_id introuvable")
+
         lid = await add_reception_ligne(db, reception_id, body.model_dump())
-    return {"id": lid}
+
+        cur3 = await db.execute(
+            "SELECT * FROM reception_lignes WHERE id = ?", (lid,)
+        )
+        row = await cur3.fetchone()
+    return dict(row)
 
 
-@router.post("/receptions/{reception_id}/finaliser")
-async def finaliser(reception_id: int, body: ReceptionFinaliser):
+@router.put("/receptions/{reception_id}/cloturer")
+async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
     async with get_db() as db:
-        rec = await get_reception(db, reception_id)
-        if not rec:
+        cur = await db.execute(
+            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
+        )
+        if not await cur.fetchone():
             raise HTTPException(404, "Réception non trouvée")
-        await finaliser_reception(db, reception_id, body.conforme)
-        reception = await get_reception(db, reception_id)
+
+        reception = await cloturer_reception(
+            db, reception_id,
+            livraison_refusee=body.livraison_refusee,
+            information_ddpp=body.information_ddpp,
+            commentaire_nc=body.commentaire_nc,
+        )
     return reception
 
 
+# IMPORTANT : cette route doit être AVANT /receptions/{id}
+@router.get("/receptions/textes-aide-visuel")
+async def textes_aide_visuel():
+    """Référentiel des critères de contrôle visuel par espèce."""
+    return TEXTES_AIDE_VISUEL
+
+
 @router.get("/receptions")
-async def historique_receptions(limit: int = 50):
+async def historique_receptions(
+    date_debut:    Optional[str] = Query(None, description="YYYY-MM-DD"),
+    date_fin:      Optional[str] = Query(None, description="YYYY-MM-DD"),
+    fournisseur_id: Optional[int] = Query(None),
+    limit:         int            = Query(50, ge=1, le=500),
+):
     async with get_db() as db:
-        return await get_receptions(db, BOUTIQUE_ID, limit=limit)
+        return await get_receptions(
+            db,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            fournisseur_id=fournisseur_id,
+            limit=limit,
+        )
 
 
 @router.get("/receptions/{reception_id}")
@@ -162,18 +333,35 @@ async def detail_reception(reception_id: int):
     return rec
 
 
+@router.get("/receptions/{reception_id}/photo-bl")
+async def get_photo_bl(reception_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+        )
+        row = await cur.fetchone()
+    if not row or not row["photo_bl_filename"]:
+        raise HTTPException(404, "Pas de photo BL pour cette réception")
+    filepath = PHOTOS_BL_DIR / row["photo_bl_filename"]
+    if not filepath.exists():
+        raise HTTPException(404, "Fichier photo introuvable")
+    return FileResponse(str(filepath), media_type="image/jpeg")
+
+
 # ---------------------------------------------------------------------------
-# Non-conformités
+# Non-conformités (inchangé)
 # ---------------------------------------------------------------------------
 
 @router.post("/non-conformites", status_code=201)
 async def declarer_non_conformite(body: NonConformiteCreate):
     async with get_db() as db:
-        nc_id = await create_non_conformite(db, {"boutique_id": BOUTIQUE_ID, **body.model_dump()})
+        nc_id = await create_non_conformite(
+            db, {"boutique_id": 1, **body.model_dump()}
+        )
     return {"id": nc_id}
 
 
 @router.get("/non-conformites")
 async def historique_non_conformites(limit: int = 50):
     async with get_db() as db:
-        return await get_non_conformites(db, BOUTIQUE_ID, limit=limit)
+        return await get_non_conformites(db, 1, limit=limit)
