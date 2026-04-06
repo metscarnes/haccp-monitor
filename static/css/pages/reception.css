@@ -536,15 +536,17 @@ body.rec-body {
 
 /* Verdict température produit */
 .rec-temp-verdict {
-  font-size: .78rem;
+  font-size: .8rem;
   font-weight: 700;
-  padding: .2rem .6rem;
-  border-radius: 12px;
-  display: inline-block;
-  margin-left: .5rem;
+  padding: .4rem .75rem;
+  border-radius: 8px;
+  display: block;
+  margin-top: .4rem;
 }
-.rec-temp-verdict.ok { background: #E8F5EC; color: var(--color-ok); }
-.rec-temp-verdict.nc { background: #FDEDED; color: var(--color-alert); }
+.rec-temp-verdict.ok,
+.rec-temp-verdict.conforme  { background: #E8F5EC; color: var(--color-ok); }
+.rec-temp-verdict.nc        { background: #FDEDED; color: var(--color-alert); }
+.rec-temp-verdict.attention { background: #FFF3CD; color: #856404; }
 
 /* Footer step 3 */
 .rec-step3-footer {

@@ -232,6 +232,9 @@
           </div>
         </div>
 
+        <!-- Badge verdict température temps réel -->
+        <div id="rec-temp-verdict" hidden class="rec-temp-verdict"></div>
+
         <!-- Recherche produit -->
         <div id="rec-produit-search-wrap" class="rec-form-group">
           <label class="rec-champ-label">Produit</label>
@@ -490,6 +493,24 @@
     </section>
 
   </main>
+
+  <!-- Dialog "Même fournisseur ?" -->
+  <div class="rec-dialog-overlay" id="rec-dialog-fourn" hidden
+       role="alertdialog" aria-modal="true"
+       aria-labelledby="rec-dlg-fourn-titre">
+    <div class="rec-dialog">
+      <div class="rec-dialog-titre" id="rec-dlg-fourn-titre">Même fournisseur ?</div>
+      <div class="rec-dialog-texte" id="rec-dlg-fourn-texte"></div>
+      <div class="rec-dialog-actions">
+        <button class="rec-dialog-btn rec-dialog-btn-continuer" id="rec-dialog-fourn-oui">
+          Oui
+        </button>
+        <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-dialog-fourn-non">
+          Non
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Dialog inactivité avec produits en cours -->
   <div class="rec-dialog-overlay" id="rec-dialog-inactivite" hidden

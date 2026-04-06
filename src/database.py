@@ -1404,15 +1404,37 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
     return cursor.lastrowid
 
 
-def _parse_temp_max(temp_str: Optional[str]) -> Optional[float]:
-    """Parse '0°C à +4°C' → 4.0. Retourne None si non parsable."""
+def parse_temperature_range(temp_str: Optional[str]) -> Optional[tuple]:
+    """Parse '0°C à +4°C' → (0.0, 4.0). Retourne None si non parsable."""
     import re
     if not temp_str:
         return None
     nums = re.findall(r'[+\-]?\d+(?:\.\d+)?', temp_str)
-    if not nums:
+    if len(nums) < 2:
         return None
-    return max(float(n) for n in nums)
+    vals = [float(n) for n in nums]
+    return (min(vals), max(vals))
+
+
+def _calc_temperature_conforme(temp_recep: Optional[float], temp_conservation: Optional[str]) -> Optional[int]:
+    """
+    Calcule la conformité température selon les plages HACCP.
+    Retourne : 1=Conforme, 0=NON CONFORME (trop chaud), 2=Attention température basse, None=non évalué
+    Tolérance : borne_min - 1°C à borne_max + 1°C
+    """
+    if temp_recep is None:
+        return None
+    rng = parse_temperature_range(temp_conservation)
+    if rng is None:
+        return None
+    borne_min, borne_max = rng
+    tol_min = borne_min - 1.0
+    tol_max = borne_max + 1.0
+    if temp_recep > tol_max:
+        return 0   # NON CONFORME — trop chaud
+    if temp_recep < tol_min:
+        return 2   # Attention — température basse
+    return 1       # Conforme
 
 
 async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data: dict) -> int:
@@ -1424,20 +1446,16 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     rec_row = await cur.fetchone()
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
-    # Récupérer temperature_conservation et temperature_tolerance du produit
+    # Récupérer temperature_conservation du produit
     cur2 = await db.execute(
-        "SELECT temperature_conservation, temperature_tolerance FROM produits WHERE id = ?", (data["produit_id"],)
+        "SELECT temperature_conservation FROM produits WHERE id = ?", (data["produit_id"],)
     )
     prod_row = await cur2.fetchone()
     temp_conservation = prod_row["temperature_conservation"] if prod_row else None
-    temp_tolerance = prod_row["temperature_tolerance"] if prod_row else 2.0
-    temp_max = _parse_temp_max(temp_conservation)
 
-    # Calculer temperature_conforme — règle : NC si temp_recep > (temp_max + tolerance)
+    # Calculer temperature_conforme selon la logique de tolérance HACCP
     temp_recep = data.get("temperature_reception")
-    temperature_conforme: Optional[int] = None
-    if temp_recep is not None and temp_max is not None:
-        temperature_conforme = 0 if temp_recep > (temp_max + temp_tolerance) else 1
+    temperature_conforme = _calc_temperature_conforme(temp_recep, temp_conservation)
 
     # Calculer ph_conforme
     ph_valeur = data.get("ph_valeur")
@@ -1582,17 +1600,14 @@ async def update_reception_ligne(
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
     cur3 = await db.execute(
-        "SELECT temperature_conservation, temperature_tolerance FROM produits WHERE id = ?", (produit_id,)
+        "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
     )
     prod_row = await cur3.fetchone()
-    temp_max = _parse_temp_max(prod_row["temperature_conservation"] if prod_row else None)
-    temp_tolerance = prod_row["temperature_tolerance"] if prod_row else 2.0
+    temp_conservation = prod_row["temperature_conservation"] if prod_row else None
 
-    # Recalculer temperature_conforme
+    # Recalculer temperature_conforme selon la logique de tolérance HACCP
     temp_recep = data.get("temperature_reception")
-    temperature_conforme: Optional[int] = None
-    if temp_recep is not None and temp_max is not None:
-        temperature_conforme = 0 if temp_recep > (temp_max + temp_tolerance) else 1
+    temperature_conforme = _calc_temperature_conforme(temp_recep, temp_conservation)
 
     # pH
     ph_valeur = data.get("ph_valeur")

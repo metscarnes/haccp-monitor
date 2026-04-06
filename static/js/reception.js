@@ -108,6 +108,15 @@ const elDialogInactivite  = document.getElementById('rec-dialog-inactivite');
 const elDialogContinuer   = document.getElementById('rec-dialog-continuer');
 const elDialogQuitter     = document.getElementById('rec-dialog-quitter');
 
+// Dialog "Même fournisseur ?"
+const elDialogFourn       = document.getElementById('rec-dialog-fourn');
+const elDialogFournTexte  = document.getElementById('rec-dlg-fourn-texte');
+const elDialogFournOui    = document.getElementById('rec-dialog-fourn-oui');
+const elDialogFournNon    = document.getElementById('rec-dialog-fourn-non');
+
+// Badge verdict température temps réel (étape 3)
+const elTempVerdict       = document.getElementById('rec-temp-verdict');
+
 
 // ── État ───────────────────────────────────────────────────
 let etape              = 0;
@@ -180,6 +189,24 @@ elDialogContinuer.addEventListener('click', () => {
 });
 elDialogQuitter.addEventListener('click', () => {
   window.location.href = '/hub.html';
+});
+
+// Dialog "Même fournisseur ?"
+elDialogFournOui.addEventListener('click', () => {
+  elDialogFourn.hidden = true;
+  if (dernierFournisseurProduit) {
+    fournisseurProduitSelected = dernierFournisseurProduit;
+    // Mettre à jour le sélecteur visible (mode multi)
+    if (modeMultiFourn && elFournProduitSel) {
+      const idx = fournisseursListe.findIndex(f => f.id === dernierFournisseurProduit);
+      if (idx >= 0) elFournProduitSel.value = idx;
+    }
+  }
+});
+elDialogFournNon.addEventListener('click', () => {
+  elDialogFourn.hidden = true;
+  fournisseurProduitSelected = null;
+  if (elFournProduitSel) elFournProduitSel.value = '';
 });
 
 
@@ -603,6 +630,16 @@ async function creerFiche() {
     reinitFormProduit();
     majListeLignes();
     majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
+
+    // Pré-remplir le fournisseur principal pour le premier produit
+    const fourn0Id = fournisseursListe[0]?.id || null;
+    if (fourn0Id) {
+      fournisseurProduitSelected = fourn0Id;
+      if (modeMultiFourn && elFournProduitSel && fournisseursListe.length > 0) {
+        elFournProduitSel.value = '0';
+      }
+    }
+
     allerEtape(3);
 
   } catch (err) {
@@ -699,6 +736,8 @@ function selectionnerProduit(p) {
   const aideEspece = textesAide[p.espece];
   elPhPlage.textContent = aideEspece ? `(norme : ${aideEspece.ph.normal})` : '';
 
+  // Verdict température temps réel
+  majTempVerdict();
   majBtnAjouter();
 }
 
@@ -744,6 +783,43 @@ function parseIntervalleTemp(str) {
   const m = str.match(/([-+]?\d+(?:\.\d+)?)\s*°C\s*à\s*([-+]?\d+(?:\.\d+)?)\s*°C/i);
   if (!m) return null;
   return { min: parseFloat(m[1]), max: parseFloat(m[2]) };
+}
+
+/**
+ * Évalue la conformité d'une température par rapport à la plage de conservation.
+ * Retourne { statut: 'conforme'|'nc'|'attention', texte: string } ou null.
+ * Tolérance : borne_min - 1°C à borne_max + 1°C
+ */
+function evaluerTemperature(tempRecep, tempConservationStr) {
+  if (tempRecep === null || tempRecep === undefined || isNaN(tempRecep)) return null;
+  const rng = parseIntervalleTemp(tempConservationStr);
+  if (!rng) return null;
+  const tolMin = rng.min - 1;
+  const tolMax = rng.max + 1;
+  if (tempRecep > tolMax) {
+    return { statut: 'nc', texte: `NON CONFORME — ${tempRecep}°C > max toléré ${tolMax}°C` };
+  }
+  if (tempRecep < tolMin) {
+    return { statut: 'attention', texte: `Attention — température basse ${tempRecep}°C (min ${tolMin}°C)` };
+  }
+  return { statut: 'conforme', texte: `Conforme — ${tempRecep}°C (tolérance ${tolMin}°C à ${tolMax}°C)` };
+}
+
+function majTempVerdict() {
+  if (!elTempVerdict || !produitSelectionne) {
+    if (elTempVerdict) elTempVerdict.hidden = true;
+    return;
+  }
+  const tempCamion = parseFloat(elTempCamion.value);
+  const verdict = evaluerTemperature(tempCamion, produitSelectionne.temperature_conservation);
+  if (!verdict) {
+    elTempVerdict.hidden = true;
+    return;
+  }
+  elTempVerdict.hidden = false;
+  elTempVerdict.className = `rec-temp-verdict ${verdict.statut}`;
+  const icone = verdict.statut === 'nc' ? '🌡️✗' : verdict.statut === 'attention' ? '🌡️⚠' : '🌡️✓';
+  elTempVerdict.textContent = `${icone} ${verdict.texte}`;
 }
 
 
@@ -921,6 +997,7 @@ function reinitFormProduit() {
 
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
+  if (elTempVerdict) elTempVerdict.hidden = true;
 
   // Réinitialiser le sélecteur fournisseur
   if (elFournProduitSel) {
@@ -1053,16 +1130,6 @@ function chargerLigneEnEdition(l, idx) {
 }
 
 elBtnAjouter.addEventListener('click', () => {
-  // Si mode multi-fournisseur et ce n'est pas le premier produit, demander "Même fournisseur?"
-  if (modeMultiFourn && lignesAjoutees.length > 0 && dernierFournisseurProduit !== null) {
-    const msg = `Ajouter ce produit chez le même fournisseur que le précédent?\n(${fournisseursListe.find(f => f.id === dernierFournisseurProduit)?.nom || 'Fournisseur'})`;
-    if (confirm(msg)) {
-      fournisseurProduitSelected = dernierFournisseurProduit;
-      // Mettre à jour le sélecteur
-      const idx = fournisseursListe.findIndex(f => f.id === dernierFournisseurProduit);
-      if (idx >= 0 && elFournProduitSel) elFournProduitSel.value = idx;
-    }
-  }
   ajouterLigne();
 });
 // Clic sur zone autour du bouton grisé → mise en évidence des champs manquants
@@ -1153,12 +1220,16 @@ async function ajouterLigne() {
       body: JSON.stringify(_buildPayload()),
     });
 
+    // Sauvegarder le fournisseur avant le reinit
+    dernierFournisseurProduit = fournisseurProduitSelected || fournisseurId || null;
+
     lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
-    // Sauvegarder le fournisseur de ce produit pour le dialog suivant
-    dernierFournisseurProduit = fournisseurProduitSelected || fournisseurId;
     majListeLignes();
     reinitFormProduit();
     document.querySelector('.rec-produits-liste-ajoutee').scrollTop = 9999;
+
+    // Proposer le même fournisseur pour le prochain produit
+    afficherModalFournisseur();
 
   } catch (err) {
     alert(`Erreur lors de l'ajout : ${err.message}`);
@@ -1166,6 +1237,21 @@ async function ajouterLigne() {
     elBtnAjouter.disabled = !produitSelectionne;
     elBtnAjouter.textContent = '+ Ajouter';
   }
+}
+
+/** Affiche le modal "Même fournisseur ?" pour le prochain produit. */
+function afficherModalFournisseur() {
+  if (!dernierFournisseurProduit) return;
+
+  // Retrouver le nom : d'abord dans fournisseursListe, sinon dans tousFournisseurs
+  const fournObj = fournisseursListe.find(f => f.id === dernierFournisseurProduit)
+    || tousFournisseurs.find(f => f.id === dernierFournisseurProduit);
+  const nomFourn = fournObj ? fournObj.nom : null;
+  if (!nomFourn) return;
+
+  elDialogFournTexte.textContent =
+    `Même fournisseur que le produit précédent ? (${nomFourn})`;
+  elDialogFourn.hidden = false;
 }
 
 async function enregistrerModification() {
@@ -1243,6 +1329,7 @@ function remplirRecap() {
     const det = document.createElement('div');
     det.className = 'rec-recap-ligne-detail';
     const parts = [];
+    if (l.fournisseur_nom) parts.push(l.fournisseur_nom);
     if (l.temperature_reception !== null && l.temperature_reception !== undefined) {
       parts.push(`${l.temperature_reception}°C`);
     }
