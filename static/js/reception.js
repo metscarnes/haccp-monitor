@@ -522,18 +522,25 @@ elBtnCreerFiche.addEventListener('click', creerFiche);
 async function creerFiche() {
   elErreur2.hidden = true;
 
-  // Valider : au moins le fournisseur principal doit être sélectionné
+  // Valider : au moins le nom du fournisseur principal
   const fourn0 = fournisseursListe[0];
-  if (!fourn0.id) {
-    const searchInp = document.getElementById('rec-fourn-search-0');
+  const searchInp = document.getElementById('rec-fourn-search-0');
+  const nomSaisi = searchInp ? searchInp.value.trim() : '';
+
+  if (!fourn0.id && !nomSaisi) {
     if (searchInp) {
       searchInp.classList.add('rec-champ-invalide');
       searchInp.focus();
-      searchInp.title = 'Sélectionnez un fournisseur dans la liste';
+      searchInp.title = 'Saisissez le nom d\'un fournisseur';
     }
     elErreur2.textContent = 'Le nom du fournisseur est obligatoire.';
     elErreur2.hidden = false;
     return;
+  }
+
+  // Si nom saisi mais pas d'ID (pas sélectionné dans la liste), utiliser le nom
+  if (nomSaisi && !fourn0.id) {
+    fourn0.nom = nomSaisi;
   }
 
   elBtnCreerFiche.disabled = true;
@@ -550,6 +557,7 @@ async function creerFiche() {
     fd.append('proprete_camion', propreteCamion);
     const fourn0 = fournisseursListe[0];
     if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
+    else if (fourn0.nom) fd.append('fournisseur_nom', fourn0.nom); // Fallback si pas d'ID
     if (fourn0.photoFile) fd.append('photo_bl', fourn0.photoFile, fourn0.photoFile.name);
 
     const rec = await apiFetch('/api/receptions', {
