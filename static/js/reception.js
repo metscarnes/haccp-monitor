@@ -841,10 +841,7 @@ function majTempVerdict() {
     elTempVerdict.hidden = true;
     return;
   }
-  elTempVerdict.hidden = false;
-  elTempVerdict.className = `rec-temp-verdict ${verdict.statut}`;
-  const icone = verdict.statut === 'nc' ? '🌡️✗' : verdict.statut === 'attention' ? '🌡️⚠' : '🌡️✓';
-  elTempVerdict.textContent = `${icone} ${verdict.texte}`;
+  elTempVerdict.hidden = true;
 }
 
 
