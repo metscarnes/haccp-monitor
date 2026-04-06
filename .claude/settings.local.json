@@ -18,7 +18,8 @@
       "Bash(python -m pytest tests/test_ouvertures.py::test_get_suggestions_recentes_en_premier -q)",
       "Bash(python -m pytest tests/test_reception_v2.py tests/test_ouvertures.py -q --ignore=tests/test_reception.py)",
       "Bash(python -m pytest tests/test_incidents.py tests/test_etiquette_reprise.py -q)",
-      "Bash(python -m pytest tests/test_reception.py tests/test_reception_v2.py tests/test_ouvertures.py -q)"
+      "Bash(python -m pytest tests/test_reception.py tests/test_reception_v2.py tests/test_ouvertures.py -q)",
+      "Bash(python -c ':*)"
     ]
   }
 }
