@@ -1330,8 +1330,12 @@ function remplirRecap() {
   }
 
   // Conformité globale estimée (avant clôture serveur)
-  // La temp camion ne génère pas de NC — seule propreté + produits
-  const toutesConformes = lignesAjoutees.every(l => l.conforme);
+  // Une ligne NC initiale mais conforme après contrôle à cœur est considérée conforme
+  const toutesConformes = lignesAjoutees.every(l => {
+    if (l.conforme) return true;
+    const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
+    return coeur && coeur.conforme_apres_coeur;
+  });
   const globalOk = toutesConformes && camionProprete;
   elConformiteGlobale.className = 'rec-conformite-globale ' + (globalOk ? 'conforme' : 'nc');
   elConformiteGlobale.textContent = globalOk
@@ -1360,9 +1364,11 @@ function remplirRecap() {
     left.appendChild(nom);
     if (parts.length) left.appendChild(det);
 
+    const coeurResult = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
+    const ligneConforme = l.conforme || (coeurResult && coeurResult.conforme_apres_coeur);
     const badge = document.createElement('span');
-    badge.className = 'rec-ligne-badge ' + (l.conforme ? 'ok' : 'nc');
-    badge.textContent = l.conforme ? '✓ OK' : '✗ NC';
+    badge.className = 'rec-ligne-badge ' + (ligneConforme ? 'ok' : 'nc');
+    badge.textContent = ligneConforme ? '✓ OK' : '✗ NC';
 
     row.appendChild(left);
     row.appendChild(badge);
@@ -1500,6 +1506,9 @@ function majEtatCoeur() {
 
   const tousConformes = ncProduits.length === 0;
   if (elNcTousConformes) elNcTousConformes.hidden = !tousConformes;
+
+  // Mettre à jour le récap pour refléter les résultats du contrôle à cœur
+  remplirRecap();
 
   elNcBtnASuivant.disabled = false;
   // Si tous conformes après coeur → débloquer clôture directement
