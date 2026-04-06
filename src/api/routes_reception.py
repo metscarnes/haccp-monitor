@@ -184,6 +184,7 @@ class CloturerBody(BaseModel):
     livraison_refusee: bool = False
     information_ddpp: bool = False
     commentaire_nc: Optional[str] = None
+    coeur_conformes: list[int] = []  # IDs des lignes conformes après contrôle à cœur
 
 
 class NonConformiteCreate(BaseModel):
@@ -366,6 +367,7 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
             livraison_refusee=body.livraison_refusee,
             information_ddpp=body.information_ddpp,
             commentaire_nc=body.commentaire_nc,
+            coeur_conformes=body.coeur_conformes,
         )
     return reception
 

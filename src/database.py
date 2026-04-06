@@ -1592,8 +1592,17 @@ async def cloturer_reception(
     livraison_refusee: bool = False,
     information_ddpp: bool = False,
     commentaire_nc: Optional[str] = None,
+    coeur_conformes: list = None,
 ) -> Optional[dict]:
     """Clôture une réception : calcule conformite_globale depuis les lignes."""
+    # Mettre à jour les lignes conformes après contrôle à cœur
+    if coeur_conformes:
+        for ligne_id in coeur_conformes:
+            await db.execute(
+                "UPDATE reception_lignes SET conforme = 1 WHERE id = ? AND reception_id = ?",
+                (ligne_id, reception_id),
+            )
+
     # Vérifier s'il y a des lignes non conformes
     cur = await db.execute(
         "SELECT COUNT(*) FROM reception_lignes WHERE reception_id = ? AND conforme = 0",

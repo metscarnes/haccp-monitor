@@ -1583,8 +1583,15 @@ async function cloturerFiche() {
   elBtnCloturer.disabled = true;
   elBtnCloturer.textContent = 'Clôture…';
 
+  // Lignes dont le contrôle à cœur a été conforme → remettre conforme = 1 en DB
+  const coeurConformes = Object.entries(ncCoeurResultats)
+    .filter(([, r]) => r.conforme_apres_coeur)
+    .map(([id]) => parseInt(id, 10))
+    .filter(id => !isNaN(id));
+
   const payload = {
     commentaire_nc: elCommentaireNc.value.trim() || null,
+    coeur_conformes: coeurConformes,
   };
 
   try {
@@ -1660,6 +1667,15 @@ function restaurerDepuisPcr01() {
     // Restaurer les inputs DOM nécessaires à remplirRecap()
     if (state.tempCamion !== null && state.tempCamion !== undefined) {
       elTempCamion.value = state.tempCamion;
+    }
+
+    // Restaurer ncCoeurResultats depuis les données pcr01 (pour la clôture)
+    const pcrDataRaw = sessionStorage.getItem('haccp_pcr01_data');
+    if (pcrDataRaw) {
+      try {
+        const pcrData = JSON.parse(pcrDataRaw);
+        if (pcrData.ncCoeurResultats) ncCoeurResultats = pcrData.ncCoeurResultats;
+      } catch (_) { /* ignore */ }
     }
 
     // Nettoyage sessionStorage
