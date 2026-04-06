@@ -65,6 +65,14 @@
       <div class="rec-section-titre">Contrôle du camion</div>
 
       <div class="rec-form-group">
+        <label class="rec-champ-label" for="rec-date-reception">
+          Date de réception <span style="color:var(--color-alert)">*</span>
+        </label>
+        <input type="date" id="rec-date-reception" class="rec-input"
+               required aria-label="Date de réception">
+      </div>
+
+      <div class="rec-form-group">
         <label class="rec-champ-label" for="rec-heure">Heure de réception</label>
         <input type="time" id="rec-heure" class="rec-input"
                aria-label="Heure de réception">
@@ -203,10 +211,15 @@
                role="listbox" aria-label="Suggestions produits"></div>
         </div>
 
+        <!-- Bandeau camion hors norme (dans form produit) -->
+        <div class="rec-bandeau-coeur" id="rec-bandeau-coeur" hidden>
+          ⚠️ Température du Camion hors norme — contrôle à cœur obligatoire
+        </div>
+
         <!-- Température produit -->
         <div class="rec-form-group">
-          <label class="rec-champ-label" for="rec-temp-produit">
-            Température produit (°C)
+          <label class="rec-champ-label" id="rec-temp-produit-label" for="rec-temp-produit">
+            Température à réception (°C)
             <span class="rec-temp-verdict" id="rec-temp-produit-verdict"></span>
           </label>
           <input type="number" id="rec-temp-produit" class="rec-input"
@@ -218,17 +231,38 @@
 
         <!-- Numéro de lot -->
         <div class="rec-form-group">
-          <label class="rec-champ-label" for="rec-lot">Numéro de lot (optionnel)</label>
-          <input type="text" id="rec-lot" class="rec-input"
-                 placeholder="ex : LOT-2026-001"
-                 autocomplete="off">
+          <label class="rec-champ-label" for="rec-lot">
+            N° de lot fournisseur <span style="color:var(--color-alert)">*</span>
+          </label>
+          <div class="rec-lot-wrap">
+            <input type="text" id="rec-lot" class="rec-input rec-lot-input"
+                   placeholder="ex : LOT-2026-001"
+                   autocomplete="off"
+                   aria-label="Numéro de lot fournisseur">
+            <button type="button" class="rec-btn-pas-lot" id="rec-btn-pas-lot">
+              Pas de N° de lot
+            </button>
+          </div>
+          <button type="button" class="rec-btn-annuler-lot" id="rec-btn-annuler-lot" hidden>
+            ↺ Saisie manuelle
+          </button>
+          <div class="rec-lot-genere" id="rec-lot-genere" hidden></div>
         </div>
 
-        <!-- DLC -->
+        <!-- DLC / DLUO toggle -->
         <div class="rec-form-group">
-          <label class="rec-champ-label" for="rec-dlc">DLC / DLUO (optionnel)</label>
+          <div class="rec-dlc-header">
+            <label class="rec-champ-label" for="rec-dlc">
+              <span id="rec-dlc-label-text">DLC</span>
+              <span style="color:var(--color-alert)">*</span>
+            </label>
+            <div class="rec-toggle-pair rec-dlc-toggle">
+              <button class="rec-toggle-btn ok-sel" id="rec-dlc-btn" aria-pressed="true">DLC</button>
+              <button class="rec-toggle-btn" id="rec-dluo-btn" aria-pressed="false">DLUO</button>
+            </div>
+          </div>
           <input type="date" id="rec-dlc" class="rec-input"
-                 aria-label="Date limite de consommation">
+                 aria-label="Date limite">
         </div>
 
         <!-- Critères visuels -->
@@ -314,6 +348,9 @@
         <button class="rec-btn-ajouter" id="rec-btn-ajouter" disabled>
           + Ajouter
         </button>
+        <button class="rec-btn-enregistrer" id="rec-btn-enregistrer" hidden>
+          ✓ Enregistrer
+        </button>
         <button class="rec-btn-terminer" id="rec-btn-terminer" disabled>
           Récap →
         </button>
@@ -350,16 +387,19 @@
       <!-- ═══ PROCÉDURE NC (visible seulement si produits NC) ═══ -->
       <div id="rec-nc-procedure" hidden>
 
-        <!-- ── Sous-étape A : Actions immédiates ── -->
+        <!-- ── Sous-étape A : Contrôle à cœur ── -->
         <div id="rec-nc-step-a">
           <div class="rec-nc-bloc">
             <div class="rec-nc-bloc-titre">
-              <span>⚠️ Actions immédiates</span>
-              <span class="rec-nc-etape-ind" id="rec-nc-ind-a">Étape 1/3</span>
+              <span>🌡️ Contrôle à cœur</span>
+              <span class="rec-nc-etape-ind">Étape 1/3</span>
             </div>
-            <div id="rec-nc-produits-actions">
-              <!-- Injecté par JS : une row par produit NC -->
+            <div id="rec-nc-produits-coeur">
+              <!-- Injecté par JS : une row par produit NC avec champ temp à cœur -->
             </div>
+          </div>
+          <div class="rec-nc-message-conforme" id="rec-nc-tous-conformes" hidden>
+            ✅ Tous les produits sont conformes après contrôle à cœur.
           </div>
           <div class="rec-nc-nav">
             <button class="rec-nc-nav-btn suivant" id="rec-nc-btn-a-suivant" disabled>
@@ -399,7 +439,7 @@
               <!-- Zone étiquettes (livreur absent) -->
               <div id="rec-etiq-zone" hidden>
                 <div style="font-size:.88rem;color:var(--brun);font-weight:600;margin-bottom:.75rem;">
-                  Les produits ont été isolés et étiquetés À REPRENDRE.
+                  Imprimer une étiquette À RETOURNER pour chaque produit non conforme.
                 </div>
                 <div id="rec-etiq-liste">
                   <!-- Boutons impression injectés par JS -->

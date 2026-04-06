@@ -546,7 +546,21 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
 """)
 
         # Autres migrations incrémentales
-        migrations = []
+        migrations = [
+            # reception_lignes : nouveaux champs v2.2
+            "ALTER TABLE reception_lignes ADD COLUMN temperature_coeur REAL",
+            "ALTER TABLE reception_lignes ADD COLUMN lot_interne INTEGER DEFAULT 0",
+            # fiches_incident : temperature_coeur + commentaire (remplace suivi)
+            "ALTER TABLE fiches_incident ADD COLUMN temperature_coeur REAL",
+            "ALTER TABLE fiches_incident ADD COLUMN commentaire TEXT",
+            # Table compteur lots internes
+            """CREATE TABLE IF NOT EXISTS lot_interne_counters (
+                code_unique TEXT NOT NULL,
+                date_jjmmyy TEXT NOT NULL,
+                counter     INTEGER DEFAULT 0,
+                PRIMARY KEY (code_unique, date_jjmmyy)
+            )""",
+        ]
         for sql in migrations:
             try:
                 await db.execute(sql)
@@ -1328,25 +1342,47 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
     # La température camion >= 2°C est un signal d'alerte, pas une NC en soi.
     # Seule la propreté non satisfaisante rend le camion non-conforme.
     camion_conforme = 0 if proprete == "non_satisfaisant" else 1
+    date_reception = data.get("date_reception")  # format YYYY-MM-DD ou None → DEFAULT CURRENT_DATE
 
-    cursor = await db.execute(
-        """
-        INSERT INTO receptions
-            (personnel_id, heure_reception, temperature_camion, proprete_camion,
-             camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            data["personnel_id"],
-            data["heure_reception"],
-            temp,
-            proprete,
-            camion_conforme,
-            data.get("fournisseur_principal_id"),
-            data.get("photo_bl_filename"),
-            data.get("commentaire"),
-        ),
-    )
+    if date_reception:
+        cursor = await db.execute(
+            """
+            INSERT INTO receptions
+                (personnel_id, date_reception, heure_reception, temperature_camion, proprete_camion,
+                 camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["personnel_id"],
+                date_reception,
+                data["heure_reception"],
+                temp,
+                proprete,
+                camion_conforme,
+                data.get("fournisseur_principal_id"),
+                data.get("photo_bl_filename"),
+                data.get("commentaire"),
+            ),
+        )
+    else:
+        cursor = await db.execute(
+            """
+            INSERT INTO receptions
+                (personnel_id, heure_reception, temperature_camion, proprete_camion,
+                 camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["personnel_id"],
+                data["heure_reception"],
+                temp,
+                proprete,
+                camion_conforme,
+                data.get("fournisseur_principal_id"),
+                data.get("photo_bl_filename"),
+                data.get("commentaire"),
+            ),
+        )
     await db.commit()
     return cursor.lastrowid
 
@@ -1379,17 +1415,11 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     temp_conservation = prod_row["temperature_conservation"] if prod_row else None
     temp_max = _parse_temp_max(temp_conservation)
 
-    # Calculer temperature_conforme — logique à 2 niveaux
+    # Calculer temperature_conforme — règle : NC si temp_recep > cible + 2°C (CAS 1 et 2)
     temp_recep = data.get("temperature_reception")
     temperature_conforme: Optional[int] = None
     if temp_recep is not None and temp_max is not None:
-        camion_chaud = temp_camion is not None and temp_camion >= 2.0
-        if camion_chaud:
-            # CAS 2 : camion >= 2°C → seuil relevé de 1°C (contrôle à cœur)
-            temperature_conforme = 0 if temp_recep >= (temp_max + 1.0) else 1
-        else:
-            # CAS 1 : camion < 2°C → seuil normal
-            temperature_conforme = 0 if temp_recep > temp_max else 1
+        temperature_conforme = 0 if temp_recep > (temp_max + 2.0) else 1
 
     # Calculer ph_conforme
     ph_valeur = data.get("ph_valeur")
@@ -1414,26 +1444,29 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     cursor = await db.execute(
         """
         INSERT INTO reception_lignes
-            (reception_id, produit_id, fournisseur_id, numero_lot, dlc, dluo,
+            (reception_id, produit_id, fournisseur_id, numero_lot, lot_interne, dlc, dluo,
              origine, poids_kg, temperature_reception, temperature_conforme,
+             temperature_coeur,
              couleur_conforme, couleur_observation,
              consistance_conforme, consistance_observation,
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
             data["produit_id"],
             data.get("fournisseur_id"),
             data.get("numero_lot"),
+            int(data.get("lot_interne", 0)),
             data.get("dlc"),
             data.get("dluo"),
             data.get("origine", "France"),
             data.get("poids_kg"),
             temp_recep,
             temperature_conforme,
+            data.get("temperature_coeur"),
             couleur_conforme,
             data.get("couleur_observation"),
             consistance_conforme,
@@ -1480,6 +1513,134 @@ async def cloturer_reception(
     )
     await db.commit()
     return await get_reception(db, reception_id)
+
+
+async def generer_lot_interne(db: aiosqlite.Connection, code_unique: str) -> str:
+    """Génère et retourne un numéro de lot interne unique : {code_unique}-{JJMMYY}-{XXX}."""
+    from datetime import date
+    today = date.today()
+    date_jjmmyy = today.strftime("%d%m%y")
+
+    # Incrémenter le compteur atomiquement
+    await db.execute(
+        """
+        INSERT INTO lot_interne_counters (code_unique, date_jjmmyy, counter)
+        VALUES (?, ?, 1)
+        ON CONFLICT(code_unique, date_jjmmyy) DO UPDATE SET counter = counter + 1
+        """,
+        (code_unique, date_jjmmyy),
+    )
+    await db.commit()
+
+    cur = await db.execute(
+        "SELECT counter FROM lot_interne_counters WHERE code_unique = ? AND date_jjmmyy = ?",
+        (code_unique, date_jjmmyy),
+    )
+    row = await cur.fetchone()
+    counter = row[0] if row else 1
+    return f"{code_unique}-{date_jjmmyy}-{counter:03d}"
+
+
+async def update_reception_ligne(
+    db: aiosqlite.Connection,
+    ligne_id: int,
+    data: dict,
+) -> Optional[dict]:
+    """Met à jour une ligne de réception et recalcule la conformité."""
+    # Récupérer la réception associée pour avoir la temp camion
+    cur = await db.execute(
+        "SELECT reception_id, produit_id FROM reception_lignes WHERE id = ?", (ligne_id,)
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+    reception_id = row["reception_id"]
+    produit_id = data.get("produit_id", row["produit_id"])
+
+    cur2 = await db.execute(
+        "SELECT temperature_camion FROM receptions WHERE id = ?", (reception_id,)
+    )
+    rec_row = await cur2.fetchone()
+    temp_camion = rec_row["temperature_camion"] if rec_row else None
+
+    cur3 = await db.execute(
+        "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
+    )
+    prod_row = await cur3.fetchone()
+    temp_max = _parse_temp_max(prod_row["temperature_conservation"] if prod_row else None)
+
+    # Recalculer temperature_conforme
+    temp_recep = data.get("temperature_reception")
+    temperature_conforme: Optional[int] = None
+    if temp_recep is not None and temp_max is not None:
+        temperature_conforme = 0 if temp_recep > (temp_max + 2.0) else 1
+
+    # pH
+    ph_valeur = data.get("ph_valeur")
+    ph_conforme: Optional[int] = None
+    if ph_valeur is not None:
+        ph_conforme = 1 if 5.5 <= ph_valeur <= 5.7 else 0
+
+    couleur_conforme     = int(data.get("couleur_conforme",     1))
+    consistance_conforme = int(data.get("consistance_conforme", 1))
+    exsudat_conforme     = int(data.get("exsudat_conforme",     1))
+    odeur_conforme       = int(data.get("odeur_conforme",       1))
+
+    conforme = 1
+    for flag in (temperature_conforme, ph_conforme,
+                 couleur_conforme, consistance_conforme,
+                 exsudat_conforme, odeur_conforme):
+        if flag is not None and flag == 0:
+            conforme = 0
+            break
+
+    await db.execute(
+        """
+        UPDATE reception_lignes SET
+            produit_id = ?, fournisseur_id = ?, numero_lot = ?, lot_interne = ?,
+            dlc = ?, dluo = ?, origine = ?, poids_kg = ?,
+            temperature_reception = ?, temperature_conforme = ?,
+            temperature_coeur = ?,
+            couleur_conforme = ?, couleur_observation = ?,
+            consistance_conforme = ?, consistance_observation = ?,
+            exsudat_conforme = ?, exsudat_observation = ?,
+            odeur_conforme = ?, odeur_observation = ?,
+            ph_valeur = ?, ph_conforme = ?, conforme = ?
+        WHERE id = ?
+        """,
+        (
+            produit_id,
+            data.get("fournisseur_id"),
+            data.get("numero_lot"),
+            int(data.get("lot_interne", 0)),
+            data.get("dlc"),
+            data.get("dluo"),
+            data.get("origine", "France"),
+            data.get("poids_kg"),
+            temp_recep,
+            temperature_conforme,
+            data.get("temperature_coeur"),
+            couleur_conforme,
+            data.get("couleur_observation"),
+            consistance_conforme,
+            data.get("consistance_observation"),
+            exsudat_conforme,
+            data.get("exsudat_observation"),
+            odeur_conforme,
+            data.get("odeur_observation"),
+            ph_valeur,
+            ph_conforme,
+            conforme,
+            ligne_id,
+        ),
+    )
+    await db.commit()
+
+    cur4 = await db.execute(
+        "SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,)
+    )
+    updated = await cur4.fetchone()
+    return dict(updated) if updated else None
 
 
 async def get_receptions(
@@ -1928,8 +2089,9 @@ async def create_fiche_incident(db: aiosqlite.Connection, data: dict) -> int:
             (reception_id, reception_ligne_id, date_incident, heure_incident,
              fournisseur_id, produit_id, numero_lot, nature_probleme, description,
              action_immediate, livreur_present, signature_livreur_filename,
-             etiquette_reprise_imprimee, action_corrective, suivi, statut)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             etiquette_reprise_imprimee, action_corrective, commentaire,
+             temperature_coeur, statut)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["reception_id"],
@@ -1946,7 +2108,8 @@ async def create_fiche_incident(db: aiosqlite.Connection, data: dict) -> int:
             data.get("signature_livreur_filename"),
             int(data.get("etiquette_reprise_imprimee", 0)),
             data.get("action_corrective"),
-            data.get("suivi"),
+            data.get("commentaire"),
+            data.get("temperature_coeur"),
             data.get("statut", "ouverte"),
         ),
     )

@@ -976,3 +976,162 @@ body.rec-body {
 }
 .rec-dialog-btn-continuer { background: var(--color-accent); color: white; border: none; }
 .rec-dialog-btn-quitter   { background: var(--color-card); color: var(--color-text); border: 2px solid var(--color-secondary); }
+
+/* ── Nouveaux éléments v2.2 ─────────────────────────────── */
+
+/* Bandeau coeur (dans formulaire produit) */
+.rec-bandeau-coeur {
+  background: #FFF3CD;
+  color: #7a5a00;
+  border: 2px solid #E8913A;
+  border-radius: var(--radius);
+  padding: .65rem 1rem;
+  font-size: .88rem;
+  font-weight: 700;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Label température en orange (camion hors norme) */
+.rec-champ-label.coeur-label {
+  color: #E8913A;
+}
+
+/* Lot fournisseur wrap */
+.rec-lot-wrap {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+.rec-lot-input { flex: 1; }
+.rec-btn-pas-lot {
+  white-space: nowrap;
+  padding: .65rem .9rem;
+  border-radius: var(--radius);
+  border: 2px solid var(--color-secondary);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 52px;
+  font-family: inherit;
+  transition: background .12s;
+}
+.rec-btn-pas-lot:active { background: var(--color-secondary); }
+.rec-btn-annuler-lot {
+  margin-top: .35rem;
+  padding: .45rem .75rem;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-lot-genere {
+  margin-top: .35rem;
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--color-ok);
+  padding: .4rem .6rem;
+  background: #f0faf3;
+  border-radius: 8px;
+}
+
+/* DLC/DLUO toggle header */
+.rec-dlc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .5rem;
+}
+.rec-dlc-toggle {
+  flex-shrink: 0;
+}
+
+/* Bouton Enregistrer (mode édition) */
+.rec-btn-enregistrer {
+  flex: 1;
+  padding: .9rem;
+  background: var(--color-ok);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 56px;
+  transition: opacity .15s;
+  font-family: inherit;
+}
+.rec-btn-enregistrer:disabled { opacity: .42; cursor: not-allowed; }
+
+/* Bouton Modifier sur mini-carte */
+.rec-ligne-carte {
+  position: relative;
+}
+.rec-ligne-modifier {
+  position: absolute;
+  right: 3rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: 1.5px solid var(--color-secondary);
+  border-radius: 8px;
+  color: var(--color-accent);
+  font-size: .82rem;
+  font-weight: 600;
+  padding: .3rem .6rem;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 36px;
+}
+.rec-ligne-carte.edition { border: 2px solid var(--color-accent); background: #fef9f5; }
+
+/* Contrôle à coeur — champ température */
+.rec-nc-coeur-row {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid rgba(107,58,31,.08);
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.rec-nc-coeur-row:last-child { border-bottom: none; }
+.rec-nc-coeur-wrap {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+}
+.rec-nc-coeur-input {
+  width: 110px;
+  padding: .6rem .8rem;
+  border-radius: 10px;
+  border: 2px solid var(--color-secondary);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+  background: white;
+  font-family: inherit;
+}
+.rec-nc-coeur-badge {
+  font-size: .82rem;
+  font-weight: 700;
+  padding: .3rem .7rem;
+  border-radius: 12px;
+}
+.rec-nc-coeur-badge.ok { background: #d4edda; color: var(--color-ok); }
+.rec-nc-coeur-badge.nc { background: #FDEDED; color: var(--color-alert); }
+
+/* Message "tous conformes après coeur" */
+.rec-nc-message-conforme {
+  background: #d4edda;
+  color: var(--color-ok);
+  border-radius: var(--radius);
+  padding: .9rem 1rem;
+  font-size: .95rem;
+  font-weight: 700;
+  text-align: center;
+}

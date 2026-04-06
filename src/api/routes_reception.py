@@ -30,6 +30,7 @@ from src.database import (
     create_reception, add_reception_ligne, cloturer_reception,
     get_receptions, get_reception,
     get_non_conformites, create_non_conformite,
+    generer_lot_interne, update_reception_ligne,
 )
 
 logger = logging.getLogger(__name__)
@@ -139,11 +140,35 @@ class LigneCreate(BaseModel):
     produit_id: int
     fournisseur_id: Optional[int] = None
     numero_lot: Optional[str] = None
+    lot_interne: int = 0
     dlc: Optional[str] = None
     dluo: Optional[str] = None
     origine: str = "France"
     poids_kg: Optional[float] = None
     temperature_reception: Optional[float] = None
+    temperature_coeur: Optional[float] = None
+    couleur_conforme: int = 1
+    couleur_observation: Optional[str] = None
+    consistance_conforme: int = 1
+    consistance_observation: Optional[str] = None
+    exsudat_conforme: int = 1
+    exsudat_observation: Optional[str] = None
+    odeur_conforme: int = 1
+    odeur_observation: Optional[str] = None
+    ph_valeur: Optional[float] = None
+
+
+class LigneUpdate(BaseModel):
+    produit_id: Optional[int] = None
+    fournisseur_id: Optional[int] = None
+    numero_lot: Optional[str] = None
+    lot_interne: int = 0
+    dlc: Optional[str] = None
+    dluo: Optional[str] = None
+    origine: Optional[str] = None
+    poids_kg: Optional[float] = None
+    temperature_reception: Optional[float] = None
+    temperature_coeur: Optional[float] = None
     couleur_conforme: int = 1
     couleur_observation: Optional[str] = None
     consistance_conforme: int = 1
@@ -214,6 +239,7 @@ async def modifier_fournisseur(fournisseur_id: int, body: FournisseurUpdate):
 async def creer_reception(
     personnel_id:            int            = Form(...),
     heure_reception:         str            = Form(...),
+    date_reception:          Optional[str]  = Form(None),
     temperature_camion:      Optional[float]= Form(None),
     proprete_camion:         str            = Form("satisfaisant"),
     fournisseur_principal_id: Optional[int] = Form(None),
@@ -222,6 +248,7 @@ async def creer_reception(
 ):
     data = {
         "personnel_id":            personnel_id,
+        "date_reception":          date_reception,
         "heure_reception":         heure_reception,
         "temperature_camion":      temperature_camion,
         "proprete_camion":         proprete_camion,
@@ -280,6 +307,49 @@ async def ajouter_ligne(reception_id: int, body: LigneCreate):
         )
         row = await cur3.fetchone()
     return dict(row)
+
+
+@router.get("/receptions/{reception_id}/lot-interne")
+async def get_lot_interne_par_code(reception_id: int, code_unique: str = Query(...)):
+    """Génère un numéro de lot interne à partir du code_unique produit."""
+    async with get_db() as db:
+        lot = await generer_lot_interne(db, code_unique)
+    return {"lot_interne": lot}
+
+
+@router.get("/receptions/{reception_id}/lignes/{ligne_id}/lot-interne")
+async def get_lot_interne(reception_id: int, ligne_id: int):
+    """Génère un numéro de lot interne unique pour la ligne donnée."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT p.code_unique FROM reception_lignes rl
+            JOIN produits p ON p.id = rl.produit_id
+            WHERE rl.id = ? AND rl.reception_id = ?
+            """,
+            (ligne_id, reception_id),
+        )
+        row = await cur.fetchone()
+    if not row or not row["code_unique"]:
+        raise HTTPException(400, "Ligne ou code produit introuvable")
+    async with get_db() as db:
+        lot = await generer_lot_interne(db, row["code_unique"])
+    return {"lot_interne": lot}
+
+
+@router.put("/receptions/{reception_id}/lignes/{ligne_id}")
+async def modifier_ligne(reception_id: int, ligne_id: int, body: LigneUpdate):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Réception non trouvée")
+
+        updated = await update_reception_ligne(db, ligne_id, body.model_dump(exclude_none=False))
+    if not updated:
+        raise HTTPException(404, "Ligne non trouvée")
+    return updated
 
 
 @router.put("/receptions/{reception_id}/cloturer")

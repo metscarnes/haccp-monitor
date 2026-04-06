@@ -22,7 +22,7 @@ const elMotifs        = document.getElementById('pcr-motifs');
 const elActionImm     = document.getElementById('pcr-action-imm');
 const elEtapesListe   = document.getElementById('pcr-etapes-liste');
 const elCorrective    = document.getElementById('pcr-corrective');
-const elSuivi         = document.getElementById('pcr-suivi');
+const elCommentaire   = document.getElementById('pcr-commentaire');
 const elSigBloc       = document.getElementById('pcr-sig-bloc');
 const elSigImg        = document.getElementById('pcr-sig-img');
 const elErreur        = document.getElementById('pcr-erreur');
@@ -46,9 +46,10 @@ let {
   fournisseurId,
   livreurPresent,
   ncProduits,
-  ncActions,
+  ncCoeurResultats,
   ncFicheIndex,
 } = pcrData;
+ncCoeurResultats = ncCoeurResultats || {};
 
 
 // ── Date / opérateur ────────────────────────────────────────
@@ -65,17 +66,6 @@ if (livreurPresent && sigDataUrl) {
 }
 
 
-// ── Libellé action immédiate ────────────────────────────────
-function libelleAction(action) {
-  switch (String(action)) {
-    case 'refus':              return '🚫 Refus du lot';
-    case 'isole':              return '⚠️ Isolement du produit';
-    case 'refus_et_isolement': return '🚫 Refus du lot + ⚠️ Isolement';
-    default:                   return '⚠️ Isolement du produit';
-  }
-}
-
-
 // ── Générer le texte action corrective (auto-fill) ──────────
 //
 // Décrit chronologiquement ce que l'opérateur a déjà fait :
@@ -89,14 +79,19 @@ function genererActionCorrective(produit) {
     ? produit.motifs.join(', ')
     : 'non-conformité';
 
+  const coeur = ncCoeurResultats[produit.id] || ncCoeurResultats[String(produit.id)];
+  const coeurTxt = coeur
+    ? ` La température à cœur mesurée est de ${coeur.temp_coeur}°C.`
+    : '';
+
   let txt = `Non-conformité constatée à la réception : ${motifs} sur ${produit.produit_nom}`;
   if (produit.numero_lot) txt += ` (lot ${produit.numero_lot})`;
-  txt += '.\n\nLe lot a été isolé et la température à cœur a été prise.';
+  txt += `.\n\nContrôle à cœur effectué : non-conformité confirmée.${coeurTxt}`;
 
   if (livreurPresent) {
     txt += '\n\nLe livreur étant présent, la feuille de reprise avec retour marchandise a été signée par le livreur.';
   } else {
-    txt += "\n\nEn l'absence du livreur, le lot a été isolé avec apposition de l'étiquette À REPRENDRE en attente de retour fournisseur.";
+    txt += "\n\nEn l'absence du livreur, le lot a été isolé avec apposition de l'étiquette À RETOURNER en attente de retour fournisseur.";
   }
 
   return txt;
@@ -172,9 +167,10 @@ function chargerFiche(idx) {
   // Motifs NC
   elMotifs.textContent = l.motifs.join(', ') || 'non-conformité';
 
-  // Action immédiate
-  const actionKey = ncActions[String(l.id)] ?? ncActions[l.id] ?? 'isole';
-  elActionImm.textContent = libelleAction(actionKey);
+  // Action immédiate : contrôle à cœur confirmé NC
+  const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
+  const tempCoeurTxt = coeur ? ` (T° à cœur : ${coeur.temp_coeur}°C)` : '';
+  elActionImm.textContent = `🌡️ Contrôle à cœur effectué — NC confirmé${tempCoeurTxt}`;
 
   // Timeline des étapes
   construireEtapes(l);
@@ -182,8 +178,8 @@ function chargerFiche(idx) {
   // Auto-fill action corrective
   elCorrective.value = genererActionCorrective(l);
 
-  // Vider le suivi pour chaque nouvelle fiche
-  elSuivi.value = '';
+  // Vider le commentaire pour chaque nouvelle fiche
+  if (elCommentaire) elCommentaire.value = '';
 
   // Masquer l'erreur
   elErreur.hidden = true;
@@ -228,21 +224,22 @@ async function enregistrerFiche() {
   elBtnEnreg.textContent = 'Enregistrement…';
   elErreur.hidden = true;
 
-  const l         = ncProduits[ncFicheIndex];
-  const actionKey = ncActions[String(l.id)] ?? ncActions[l.id] ?? 'isole';
+  const l     = ncProduits[ncFicheIndex];
+  const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
 
   const fd = new FormData();
   fd.append('reception_id',      receptionId);
   fd.append('fournisseur_id',    l.fournisseur_id || fournisseurId || 1);
   fd.append('produit_id',        l.produit_id);
-  fd.append('nature_probleme',   l.motifs[0] || 'autre');
-  fd.append('action_immediate',  actionKey);
+  fd.append('nature_probleme',   l.motifs[0] || 'temperature');
+  fd.append('action_immediate',  'controle_coeur_nc');
   fd.append('livreur_present',   livreurPresent ? 1 : 0);
   if (l.id)          fd.append('reception_ligne_id', l.id);
   if (l.numero_lot)  fd.append('numero_lot',         l.numero_lot);
   if (l.motifs.length > 1) fd.append('description',  l.motifs.join(', '));
   fd.append('action_corrective', corrective);
-  if (elSuivi.value.trim()) fd.append('suivi', elSuivi.value.trim());
+  if (coeur && coeur.temp_coeur != null) fd.append('temperature_coeur', coeur.temp_coeur);
+  if (elCommentaire && elCommentaire.value.trim()) fd.append('commentaire', elCommentaire.value.trim());
 
   // Joindre la signature PNG si livreur présent
   if (livreurPresent && sigDataUrl) {

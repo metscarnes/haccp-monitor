@@ -27,6 +27,7 @@ const elPersonnelGrille   = document.getElementById('rec-personnel-grille');
 const elChargementPerso   = document.getElementById('rec-chargement-personnel');
 
 // Étape 1
+const elDateReception     = document.getElementById('rec-date-reception');
 const elHeure             = document.getElementById('rec-heure');
 const elTempCamion        = document.getElementById('rec-temp-camion');
 const elPropreteOk        = document.getElementById('rec-proprete-ok');
@@ -51,6 +52,7 @@ const elBtnCreerFiche     = document.getElementById('rec-btn-creer-fiche');
 
 // Étape 3
 const elBandeauCamionChaud = document.getElementById('rec-bandeau-camion-chaud');
+const elBandeauCoeur      = document.getElementById('rec-bandeau-coeur');
 const elNbProduits        = document.getElementById('rec-nb-produits');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
@@ -61,12 +63,20 @@ const elProdSearchWrap    = document.getElementById('rec-produit-search-wrap');
 const elProdSearch        = document.getElementById('rec-prod-search');
 const elProdAutoComplete  = document.getElementById('rec-prod-autocomplete');
 const elTempProduit       = document.getElementById('rec-temp-produit');
+const elTempProduitLabel  = document.getElementById('rec-temp-produit-label');
 const elTempVerdict       = document.getElementById('rec-temp-produit-verdict');
 const elLot               = document.getElementById('rec-lot');
+const elBtnPasLot         = document.getElementById('rec-btn-pas-lot');
+const elBtnAnnulerLot     = document.getElementById('rec-btn-annuler-lot');
+const elLotGenere         = document.getElementById('rec-lot-genere');
 const elDlc               = document.getElementById('rec-dlc');
+const elDlcBtn            = document.getElementById('rec-dlc-btn');
+const elDluoBtn           = document.getElementById('rec-dluo-btn');
+const elDlcLabelText      = document.getElementById('rec-dlc-label-text');
 const elPh                = document.getElementById('rec-ph');
 const elPhPlage           = document.getElementById('rec-ph-plage');
 const elBtnAjouter        = document.getElementById('rec-btn-ajouter');
+const elBtnEnregistrer    = document.getElementById('rec-btn-enregistrer');
 const elBtnTerminer       = document.getElementById('rec-btn-terminer');
 
 // Critères visuels
@@ -87,7 +97,8 @@ const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
 const elNcProcedure       = document.getElementById('rec-nc-procedure');
 const elNcStepA           = document.getElementById('rec-nc-step-a');
 const elNcStepB           = document.getElementById('rec-nc-step-b');
-const elNcProduitsActions = document.getElementById('rec-nc-produits-actions');
+const elNcProduitsCoeur   = document.getElementById('rec-nc-produits-coeur');
+const elNcTousConformes   = document.getElementById('rec-nc-tous-conformes');
 const elNcBtnASuivant     = document.getElementById('rec-nc-btn-a-suivant');
 const elLivreurOui        = document.getElementById('rec-livreur-oui');
 const elLivreurNon        = document.getElementById('rec-livreur-non');
@@ -131,12 +142,18 @@ let tousFournisseurs   = [];
 let textesAide         = {};
 
 // NC procedure state
-let ncProduits         = [];      // produits NC (sous-ensemble de lignesAjoutees)
-let ncActions          = {};      // {ligne_id: 'refus'|'isole'|'refus_et_isolement'}
+let ncProduits         = [];      // produits NC confirmés (après contrôle à cœur)
+let ncProduitsInitiaux = [];      // produits NC initiaux (avant contrôle à cœur)
+let ncCoeurResultats   = {};      // {ligne_id: {temp_coeur, conforme_apres_coeur}}
 let livreurPresent     = null;    // true | false
 let sigDessin          = false;
 let sigCtx             = null;
 let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
+
+// État formulaire produit
+let dlcMode            = 'dlc';   // 'dlc' ou 'dluo'
+let lotInterneGenere   = false;   // true quand lot interne auto-généré
+let ligneEnEdition     = null;    // {id, index} — null = mode ajout
 
 
 // ── Horloge ────────────────────────────────────────────────
@@ -221,10 +238,12 @@ function allerEtape(cible) {
     elBandeau.textContent = `👤 ${personnelPrenom}`;
   }
 
-  // Bandeau camion chaud (étape 3 uniquement)
+  // Bandeau camion chaud (étape 3 uniquement — en-tête de section)
   if (elBandeauCamionChaud) {
     elBandeauCamionChaud.hidden = !(cible === 3 && camionEstChaud());
   }
+  // Bandeau coeur dans form produit — masqué quand pas à l'étape 3 ou pas de produit sélectionné
+  if (elBandeauCoeur && cible !== 3) elBandeauCoeur.hidden = true;
 
   // Bouton retour
   elBtnRetour.hidden = estConfirm;
@@ -258,9 +277,12 @@ async function chargerPersonnel() {
       btn.addEventListener('click', () => {
         personnelId     = p.id;
         personnelPrenom = p.prenom;
-        // Initialiser l'heure à maintenant
+        // Initialiser date + heure à maintenant
         const now = new Date();
         elHeure.value = now.toTimeString().slice(0, 5);
+        if (!elDateReception.value) {
+          elDateReception.value = now.toISOString().slice(0, 10);
+        }
         allerEtape(1);
       });
       elPersonnelGrille.appendChild(btn);
@@ -275,9 +297,13 @@ async function chargerPersonnel() {
 
 
 // ── ÉTAPE 1 : Camion ───────────────────────────────────────
-function camionEstChaud() {
+function camionEstChaud(tempMax) {
+  // Si tempMax fourni : hors norme si temp camion > temp cible produit
+  // Sinon (contexte global) : hors norme si >= 2°C (approximation)
   const t = parseFloat(elTempCamion.value);
-  return !isNaN(t) && t >= 2;
+  if (isNaN(t)) return false;
+  if (tempMax !== undefined) return t > tempMax;
+  return t >= 2;
 }
 
 function majBadgeCamion() {
@@ -286,17 +312,17 @@ function majBadgeCamion() {
   if (isNaN(temp)) {
     elCamionBadge.className = 'rec-badge neutre';
     elCamionBadge.textContent = '— Non évalué';
-    return;
-  }
-
-  if (temp >= 2) {
-    // Signal d'alerte uniquement — pas de NC sur le camion pour la température
+  } else if (temp >= 2) {
+    // Signal d'alerte uniquement — la temp camion ne crée PAS de NC
     elCamionBadge.className = 'rec-badge attention';
-    elCamionBadge.textContent = '⚠️ Contrôle à cœur obligatoire';
+    elCamionBadge.textContent = '⚠️ Contrôle à cœur requis sur chaque produit';
   } else {
     elCamionBadge.className = 'rec-badge conforme';
-    elCamionBadge.textContent = '✓ Camion OK';
+    elCamionBadge.textContent = '✓ Température OK';
   }
+
+  // Mettre à jour aussi le label temp produit si on est à l'étape 3
+  if (produitSelectionne) majLabelTempProduit();
 }
 
 elTempCamion.addEventListener('input', majBadgeCamion);
@@ -320,6 +346,11 @@ elPropreteNc.addEventListener('click', () => {
 });
 
 elBtnCamionSuivant.addEventListener('click', () => {
+  if (!elDateReception.value) {
+    elDateReception.focus();
+    elDateReception.reportValidity();
+    return;
+  }
   if (elTempCamion.value.trim() === '') {
     elTempCamion.focus();
     elTempCamion.reportValidity();
@@ -408,6 +439,7 @@ async function creerFiche() {
     const fd = new FormData();
     fd.append('personnel_id',    personnelId);
     fd.append('heure_reception', elHeure.value || new Date().toTimeString().slice(0, 5));
+    if (elDateReception.value) fd.append('date_reception', elDateReception.value);
     if (elTempCamion.value !== '') {
       fd.append('temperature_camion', elTempCamion.value);
     }
@@ -500,6 +532,8 @@ function selectionnerProduit(p) {
   const aideEspece = textesAide[p.espece];
   elPhPlage.textContent = aideEspece ? `(norme : ${aideEspece.ph.normal})` : '';
 
+  // Label temperature selon statut camion
+  majLabelTempProduit();
   majBtnAjouter();
 }
 
@@ -521,6 +555,11 @@ elBtnChangerProduit.addEventListener('click', () => {
   majBtnAjouter();
   elTempVerdict.textContent = '';
   elTempVerdict.className = 'rec-temp-verdict';
+  if (elBandeauCoeur) elBandeauCoeur.hidden = true;
+  if (elTempProduitLabel) {
+    elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
+    elTempProduitLabel.classList.remove('coeur-label');
+  }
 });
 
 elProdSearch.addEventListener('input', () => {
@@ -549,6 +588,27 @@ function parseIntervalleTemp(str) {
   return { min: parseFloat(m[1]), max: parseFloat(m[2]) };
 }
 
+function majLabelTempProduit() {
+  if (!produitSelectionne) return;
+  const intervalle = parseIntervalleTemp(produitSelectionne.temperature_conservation);
+  const tempMax = intervalle ? intervalle.max : undefined;
+  const chaud = camionEstChaud(tempMax);
+
+  if (elBandeauCoeur) elBandeauCoeur.hidden = !chaud;
+
+  if (elTempProduitLabel) {
+    const span = elTempProduitLabel.querySelector('.rec-temp-verdict') ||
+                 document.createElement('span');
+    if (chaud) {
+      elTempProduitLabel.firstChild.textContent = 'Température à cœur (°C) ';
+      elTempProduitLabel.classList.add('coeur-label');
+    } else {
+      elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
+      elTempProduitLabel.classList.remove('coeur-label');
+    }
+  }
+}
+
 function majVerdictTemp() {
   const val = parseFloat(elTempProduit.value);
   if (isNaN(val) || !produitSelectionne) {
@@ -563,16 +623,8 @@ function majVerdictTemp() {
     return;
   }
 
-  // Logique à 2 niveaux
-  const chaud = camionEstChaud();
-  let conforme;
-  if (chaud) {
-    // CAS 2 : seuil relevé de 1°C
-    conforme = val < (intervalle.max + 1.0);
-  } else {
-    // CAS 1 : seuil normal
-    conforme = val <= intervalle.max;
-  }
+  // Règle unifiée : NC si temp > cible_max + 2°C
+  const conforme = val <= (intervalle.max + 2.0);
   elTempVerdict.textContent = conforme ? '✓ OK' : '✗ NC';
   elTempVerdict.className   = 'rec-temp-verdict ' + (conforme ? 'ok' : 'nc');
 }
@@ -617,11 +669,87 @@ document.querySelectorAll('[data-critere]').forEach(btn => {
 });
 
 function majBtnAjouter() {
-  elBtnAjouter.disabled = (produitSelectionne === null);
+  const lotOk  = lotInterneGenere || elLot.value.trim() !== '';
+  const dlcOk  = elDlc.value.trim() !== '';
+  const ok = produitSelectionne !== null && lotOk && dlcOk;
+  elBtnAjouter.disabled   = !ok;
+  if (elBtnEnregistrer) elBtnEnregistrer.disabled = !ok;
 }
+
+// ── Lot interne ────────────────────────────────────────────
+elBtnPasLot.addEventListener('click', async () => {
+  if (!produitSelectionne || !receptionId) return;
+
+  // D'abord créer une ligne temporaire pour avoir un ligne_id ?
+  // On génère depuis le endpoint lot-interne en passant par un appel dédié
+  // mais sans ligne_id on peut appeler directement l'endpoint avec code_unique
+  elBtnPasLot.disabled = true;
+  elBtnPasLot.textContent = '⏳…';
+  try {
+    const code = produitSelectionne.code_unique;
+    const today = new Date().toLocaleDateString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: '2-digit',
+    }).replace(/\//g, '');
+    // Appel API générique (sera créé côté backend avec code_unique)
+    const data = await apiFetch(
+      `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`
+    );
+    const lotNum = data.lot_interne;
+    elLot.value    = lotNum;
+    elLot.readOnly = true;
+    elLot.style.background = '#f0faf3';
+    elLotGenere.textContent = `Lot interne : ${lotNum}`;
+    elLotGenere.hidden = false;
+    elBtnPasLot.hidden = true;
+    elBtnAnnulerLot.hidden = false;
+    lotInterneGenere = true;
+    majBtnAjouter();
+  } catch (e) {
+    alert(`Erreur génération lot : ${e.message}`);
+  } finally {
+    elBtnPasLot.disabled = false;
+    elBtnPasLot.textContent = 'Pas de N° de lot';
+  }
+});
+
+elBtnAnnulerLot.addEventListener('click', () => {
+  elLot.value    = '';
+  elLot.readOnly = false;
+  elLot.style.background = '';
+  elLotGenere.hidden = true;
+  elBtnPasLot.hidden = false;
+  elBtnAnnulerLot.hidden = true;
+  lotInterneGenere = false;
+  majBtnAjouter();
+});
+
+elLot.addEventListener('input', majBtnAjouter);
+
+// ── DLC / DLUO toggle ──────────────────────────────────────
+elDlcBtn.addEventListener('click', () => {
+  dlcMode = 'dlc';
+  elDlcBtn.classList.add('ok-sel');
+  elDluoBtn.classList.remove('ok-sel');
+  elDlcBtn.setAttribute('aria-pressed', 'true');
+  elDluoBtn.setAttribute('aria-pressed', 'false');
+  elDlcLabelText.textContent = 'DLC';
+});
+elDluoBtn.addEventListener('click', () => {
+  dlcMode = 'dluo';
+  elDluoBtn.classList.add('ok-sel');
+  elDlcBtn.classList.remove('ok-sel');
+  elDluoBtn.setAttribute('aria-pressed', 'true');
+  elDlcBtn.setAttribute('aria-pressed', 'false');
+  elDlcLabelText.textContent = 'DLUO';
+});
+elDlc.addEventListener('input', majBtnAjouter);
 
 function reinitFormProduit() {
   produitSelectionne = null;
+  ligneEnEdition     = null;
+  lotInterneGenere   = false;
+  dlcMode            = 'dlc';
+
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
   elProdSearch.value      = '';
@@ -629,23 +757,52 @@ function reinitFormProduit() {
   elTempProduit.value     = '';
   elTempVerdict.textContent = '';
   elTempVerdict.className = 'rec-temp-verdict';
-  elLot.value = '';
+
+  // Lot
+  elLot.value    = '';
+  elLot.readOnly = false;
+  elLot.style.background = '';
+  elLotGenere.hidden = true;
+  elBtnPasLot.hidden = false;
+  elBtnAnnulerLot.hidden = true;
+
+  // DLC reset to DLC mode
   elDlc.value = '';
+  elDlcBtn.classList.add('ok-sel');
+  elDluoBtn.classList.remove('ok-sel');
+  elDlcBtn.setAttribute('aria-pressed', 'true');
+  elDluoBtn.setAttribute('aria-pressed', 'false');
+  elDlcLabelText.textContent = 'DLC';
+
   elPh.value  = '';
   elPhPlage.textContent = '';
+
+  // Reset bandeau coeur
+  if (elBandeauCoeur) elBandeauCoeur.hidden = true;
+  if (elTempProduitLabel) {
+    elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
+    elTempProduitLabel.classList.remove('coeur-label');
+  }
+
   CRITERES.forEach(c => {
     document.getElementById(`rec-aide-${c}`).textContent = '';
   });
   reinitCriteres();
+
+  // Boutons footer
+  elBtnAjouter.hidden    = false;
+  if (elBtnEnregistrer) elBtnEnregistrer.hidden = true;
+
   majBtnAjouter();
 }
 
 function majListeLignes() {
   elNbProduits.textContent = lignesAjoutees.length;
   elLignesListe.innerHTML  = '';
-  lignesAjoutees.forEach(l => {
+  lignesAjoutees.forEach((l, idx) => {
     const carte = document.createElement('div');
     carte.className = 'rec-ligne-carte';
+    if (ligneEnEdition && ligneEnEdition.id === l.id) carte.classList.add('edition');
 
     const info = document.createElement('div');
     info.className = 'rec-ligne-info';
@@ -666,11 +823,18 @@ function majListeLignes() {
     info.appendChild(nom);
     if (parts.length) info.appendChild(detail);
 
+    const btnModif = document.createElement('button');
+    btnModif.className   = 'rec-ligne-modifier';
+    btnModif.textContent = '✏️';
+    btnModif.title       = 'Modifier ce produit';
+    btnModif.addEventListener('click', () => chargerLigneEnEdition(l, idx));
+
     const badge = document.createElement('span');
     badge.className = 'rec-ligne-badge ' + (l.conforme ? 'ok' : 'nc');
     badge.textContent = l.conforme ? '✓ OK' : '✗ NC';
 
     carte.appendChild(info);
+    carte.appendChild(btnModif);
     carte.appendChild(badge);
     elLignesListe.appendChild(carte);
   });
@@ -678,22 +842,67 @@ function majListeLignes() {
   elBtnTerminer.disabled = (lignesAjoutees.length === 0);
 }
 
+function chargerLigneEnEdition(l, idx) {
+  ligneEnEdition = { id: l.id, index: idx };
+
+  // Restaurer le produit
+  const produit = tousProduits.find(p => p.id === l.produit_id);
+  if (produit) selectionnerProduit(produit);
+
+  // Restaurer température
+  elTempProduit.value = l.temperature_reception != null ? l.temperature_reception : '';
+
+  // Restaurer lot
+  elLot.readOnly = false;
+  elLot.style.background = '';
+  elLot.value = l.numero_lot || '';
+  lotInterneGenere = !!l.lot_interne;
+  if (lotInterneGenere) {
+    elLot.readOnly = true;
+    elLot.style.background = '#f0faf3';
+    elLotGenere.textContent = `Lot interne : ${l.numero_lot}`;
+    elLotGenere.hidden = false;
+    elBtnPasLot.hidden = true;
+    elBtnAnnulerLot.hidden = false;
+  }
+
+  // Restaurer DLC/DLUO
+  if (l.dluo) {
+    dlcMode = 'dluo';
+    elDluoBtn.classList.add('ok-sel');
+    elDlcBtn.classList.remove('ok-sel');
+    elDlcLabelText.textContent = 'DLUO';
+    elDlc.value = l.dluo;
+  } else {
+    dlcMode = 'dlc';
+    elDlcBtn.classList.add('ok-sel');
+    elDluoBtn.classList.remove('ok-sel');
+    elDlcLabelText.textContent = 'DLC';
+    elDlc.value = l.dlc || '';
+  }
+
+  // Boutons footer
+  elBtnAjouter.hidden    = true;
+  if (elBtnEnregistrer) elBtnEnregistrer.hidden = false;
+  majBtnAjouter();
+  majListeLignes(); // refresh cartes
+
+  // Scroll vers le formulaire
+  document.querySelector('.rec-form-produit').scrollIntoView({ behavior: 'smooth' });
+}
+
 elBtnAjouter.addEventListener('click', ajouterLigne);
+if (elBtnEnregistrer) elBtnEnregistrer.addEventListener('click', enregistrerModification);
 
-async function ajouterLigne() {
-  if (!produitSelectionne || !receptionId) return;
-
-  elBtnAjouter.disabled = true;
-  elBtnAjouter.textContent = 'Ajout…';
-
+function _buildPayload() {
   const payload = {
     produit_id: produitSelectionne.id,
     couleur_conforme:     criteres.couleur,
     consistance_conforme: criteres.consistance,
     exsudat_conforme:     criteres.exsudat,
     odeur_conforme:       criteres.odeur,
+    lot_interne:          lotInterneGenere ? 1 : 0,
   };
-
   const obsC = document.getElementById('rec-obs-couleur').value.trim();
   const obsT = document.getElementById('rec-obs-consistance').value.trim();
   const obsE = document.getElementById('rec-obs-exsudat').value.trim();
@@ -702,50 +911,59 @@ async function ajouterLigne() {
   if (obsT) payload.consistance_observation = obsT;
   if (obsE) payload.exsudat_observation    = obsE;
   if (obsO) payload.odeur_observation      = obsO;
-
   const tv = parseFloat(elTempProduit.value);
   if (!isNaN(tv)) payload.temperature_reception = tv;
-
   const lot = elLot.value.trim();
   if (lot) payload.numero_lot = lot;
-
-  const dlc = elDlc.value;
-  if (dlc) payload.dlc = dlc;
-
+  const dateVal = elDlc.value;
+  if (dateVal) {
+    if (dlcMode === 'dluo') payload.dluo = dateVal;
+    else                    payload.dlc  = dateVal;
+  }
   const ph = parseFloat(elPh.value);
   if (!isNaN(ph)) payload.ph_valeur = ph;
+  return payload;
+}
+
+function _ligneToLocal(ligne, produit) {
+  const motifsNc = [];
+  if (ligne.temperature_conforme === 0) motifsNc.push('température');
+  if (ligne.couleur_conforme     === 0) motifsNc.push('couleur');
+  if (ligne.consistance_conforme === 0) motifsNc.push('consistance');
+  if (ligne.exsudat_conforme     === 0) motifsNc.push('exsudat');
+  if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
+  if (ligne.ph_conforme          === 0) motifsNc.push('pH');
+  return {
+    id:                  ligne.id,
+    produit_id:          produit.id,
+    produit_nom:         produit.nom,
+    fournisseur_id:      fournisseurId || null,
+    conforme:            ligne.conforme,
+    temperature_reception: ligne.temperature_reception,
+    numero_lot:          ligne.numero_lot,
+    lot_interne:         ligne.lot_interne,
+    dlc:                 ligne.dlc,
+    dluo:                ligne.dluo,
+    motifs:              motifsNc,
+  };
+}
+
+async function ajouterLigne() {
+  if (!produitSelectionne || !receptionId) return;
+
+  elBtnAjouter.disabled = true;
+  elBtnAjouter.textContent = 'Ajout…';
 
   try {
     const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(_buildPayload()),
     });
 
-    // Calcul des motifs NC pour la procédure guidée
-    const motifsNc = [];
-    if (ligne.temperature_conforme === 0) motifsNc.push('température');
-    if (ligne.couleur_conforme     === 0) motifsNc.push('couleur');
-    if (ligne.consistance_conforme === 0) motifsNc.push('consistance');
-    if (ligne.exsudat_conforme     === 0) motifsNc.push('exsudat');
-    if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
-    if (ligne.ph_conforme          === 0) motifsNc.push('pH');
-
-    lignesAjoutees.push({
-      id:                  ligne.id,
-      produit_id:          produitSelectionne.id,
-      produit_nom:         produitSelectionne.nom,
-      fournisseur_id:      fournisseurId || null,
-      conforme:            ligne.conforme,
-      temperature_reception: ligne.temperature_reception,
-      numero_lot:          ligne.numero_lot,
-      motifs:              motifsNc,
-    });
-
+    lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
     majListeLignes();
     reinitFormProduit();
-
-    // Scroll vers le haut de la liste
     document.querySelector('.rec-produits-liste-ajoutee').scrollTop = 9999;
 
   } catch (err) {
@@ -753,6 +971,32 @@ async function ajouterLigne() {
   } finally {
     elBtnAjouter.disabled = !produitSelectionne;
     elBtnAjouter.textContent = '+ Ajouter';
+  }
+}
+
+async function enregistrerModification() {
+  if (!produitSelectionne || !receptionId || !ligneEnEdition) return;
+
+  if (elBtnEnregistrer) { elBtnEnregistrer.disabled = true; elBtnEnregistrer.textContent = 'Enregistrement…'; }
+
+  try {
+    const ligne = await apiFetch(
+      `/api/receptions/${receptionId}/lignes/${ligneEnEdition.id}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_buildPayload()),
+      }
+    );
+
+    lignesAjoutees[ligneEnEdition.index] = _ligneToLocal(ligne, produitSelectionne);
+    majListeLignes();
+    reinitFormProduit();
+
+  } catch (err) {
+    alert(`Erreur lors de la modification : ${err.message}`);
+  } finally {
+    if (elBtnEnregistrer) { elBtnEnregistrer.disabled = false; elBtnEnregistrer.textContent = '✓ Enregistrer'; }
   }
 }
 
@@ -773,14 +1017,26 @@ function remplirRecap() {
   infoTexte.push(`Propreté : ${propreteCamion === 'satisfaisant' ? 'Satisfaisante' : 'Non satisfaisante'}`);
   elRecapCamionInfo.innerHTML = infoTexte.join('<br>');
 
-  const camionOk = (isNaN(tempCamion) || tempCamion < 2) && (propreteCamion === 'satisfaisant');
-  elRecapCamionBadge.className = 'rec-badge ' + (camionOk ? 'conforme' : 'nc');
-  elRecapCamionBadge.textContent = camionOk ? '✓ Conforme' : '✗ NC';
+  // La température camion ne crée PAS de NC — seule la propreté compte
+  const camionProprete = propreteCamion === 'satisfaisant';
+  const camionChaud    = !isNaN(tempCamion) && tempCamion >= 2;
+  if (!camionProprete) {
+    elRecapCamionBadge.className = 'rec-badge nc';
+    elRecapCamionBadge.textContent = '✗ Propreté NC';
+  } else if (camionChaud) {
+    elRecapCamionBadge.className = 'rec-badge attention';
+    elRecapCamionBadge.textContent = '⚠️ Contrôle à cœur requis';
+  } else {
+    elRecapCamionBadge.className = 'rec-badge conforme';
+    elRecapCamionBadge.textContent = '✓ Conforme';
+  }
 
   // Conformité globale estimée (avant clôture serveur)
+  // La temp camion ne génère pas de NC — seule propreté + produits
   const toutesConformes = lignesAjoutees.every(l => l.conforme);
-  elConformiteGlobale.className = 'rec-conformite-globale ' + (toutesConformes && camionOk ? 'conforme' : 'nc');
-  elConformiteGlobale.textContent = toutesConformes && camionOk
+  const globalOk = toutesConformes && camionProprete;
+  elConformiteGlobale.className = 'rec-conformite-globale ' + (globalOk ? 'conforme' : 'nc');
+  elConformiteGlobale.textContent = globalOk
     ? '✓ Tout conforme'
     : '✗ Présence de non-conformité(s)';
 
@@ -818,14 +1074,15 @@ function remplirRecap() {
 // ── PROCÉDURE NC ───────────────────────────────────────────
 
 function initNcProcedure() {
-  ncProduits      = lignesAjoutees.filter(l => !l.conforme);
-  ncActions       = {};
-  livreurPresent  = null;
-  ncFicheIndex    = 0;
+  ncProduitsInitiaux = lignesAjoutees.filter(l => !l.conforme);
+  ncProduits         = [...ncProduitsInitiaux];
+  ncCoeurResultats   = {};
+  livreurPresent     = null;
+  ncFicheIndex       = 0;
 
-  const aNc = ncProduits.length > 0;
+  const aNc = ncProduitsInitiaux.length > 0;
   elNcProcedure.hidden = !aNc;
-  elBtnCloturer.disabled = aNc; // grisé jusqu'à fin de procédure si NC
+  elBtnCloturer.disabled = aNc;
 
   if (!aNc) return;
 
@@ -836,78 +1093,113 @@ function initNcProcedure() {
   elEtiqZone.hidden = true;
   elNcBtnASuivant.disabled = true;
   elNcBtnBSuivant.disabled = true;
+  if (elNcTousConformes) elNcTousConformes.hidden = true;
   elLivreurOui.className = 'rec-livreur-btn';
   elLivreurNon.className = 'rec-livreur-btn';
 
-  // Construire la liste des produits NC avec les boutons d'action
-  elNcProduitsActions.innerHTML = '';
-  ncProduits.forEach(l => {
+  // Construire la liste des contrôles à cœur
+  elNcProduitsCoeur.innerHTML = '';
+  ncProduitsInitiaux.forEach(l => {
+    const produit = tousProduits.find(p => p.id === l.produit_id);
+    const intervalle = produit ? parseIntervalleTemp(produit.temperature_conservation) : null;
+    const tempMax = intervalle ? intervalle.max : null;
+
     const row = document.createElement('div');
-    row.className = 'rec-nc-produit-row';
+    row.className = 'rec-nc-coeur-row';
+    row.dataset.ligneId = l.id;
 
-    const nom = document.createElement('div');
-    nom.className = 'rec-nc-produit-nom';
-    nom.textContent = l.produit_nom;
-    row.appendChild(nom);
+    const nomEl = document.createElement('div');
+    nomEl.className = 'rec-nc-produit-nom';
+    nomEl.textContent = l.produit_nom;
+    row.appendChild(nomEl);
 
-    const motif = document.createElement('div');
-    motif.className = 'rec-nc-motif';
-    motif.textContent = `✗ NC : ${l.motifs.join(', ') || 'non-conformité'}`;
-    row.appendChild(motif);
+    const motifEl = document.createElement('div');
+    motifEl.className = 'rec-nc-motif';
+    const tempText = l.temperature_reception != null ? ` — Temp. initiale : ${l.temperature_reception}°C` : '';
+    motifEl.textContent = `✗ NC : ${l.motifs.join(', ') || 'non-conformité'}${tempText}`;
+    row.appendChild(motifEl);
 
-    const pair = document.createElement('div');
-    pair.className = 'rec-nc-actions-pair';
+    const wrap = document.createElement('div');
+    wrap.className = 'rec-nc-coeur-wrap';
 
-    const btnRefus = document.createElement('button');
-    btnRefus.className = 'rec-nc-action-btn';
-    btnRefus.textContent = '🚫 Refuser le lot';
-    btnRefus.dataset.ligneId = l.id;
-    btnRefus.dataset.action  = 'refus';
+    const label = document.createElement('label');
+    label.style.cssText = 'font-size:.85rem;font-weight:600;color:var(--color-text)';
+    label.textContent = 'Temp. à cœur (°C) :';
 
-    const btnIsole = document.createElement('button');
-    btnIsole.className = 'rec-nc-action-btn';
-    btnIsole.textContent = '⚠️ Isoler le produit';
-    btnIsole.dataset.ligneId = l.id;
-    btnIsole.dataset.action  = 'isole';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.inputMode = 'decimal';
+    input.step = '0.1';
+    input.className = 'rec-nc-coeur-input';
+    input.placeholder = 'ex : 3.5';
 
-    function majActions() {
-      const cur = ncActions[l.id];
-      btnRefus.className = 'rec-nc-action-btn' + (cur === 'refus' || cur === 'refus_et_isolement' ? ' sel-refus' : '');
-      btnIsole.className = 'rec-nc-action-btn' + (cur === 'isole' || cur === 'refus_et_isolement' ? ' sel-isole' : '');
-      // Vérifier si toutes les lignes NC ont une action
-      const toutesOk = ncProduits.every(p => !!ncActions[p.id]);
-      elNcBtnASuivant.disabled = !toutesOk;
-    }
+    const badge = document.createElement('span');
+    badge.className = 'rec-nc-coeur-badge';
 
-    btnRefus.addEventListener('click', () => {
-      const cur = ncActions[l.id];
-      if (cur === 'isole')              ncActions[l.id] = 'refus_et_isolement';
-      else if (cur === 'refus_et_isolement') ncActions[l.id] = 'isole';
-      else if (cur === 'refus')         delete ncActions[l.id];
-      else                              ncActions[l.id] = 'refus';
-      majActions();
-    });
-    btnIsole.addEventListener('click', () => {
-      const cur = ncActions[l.id];
-      if (cur === 'refus')              ncActions[l.id] = 'refus_et_isolement';
-      else if (cur === 'refus_et_isolement') ncActions[l.id] = 'refus';
-      else if (cur === 'isole')         delete ncActions[l.id];
-      else                              ncActions[l.id] = 'isole';
-      majActions();
+    input.addEventListener('input', () => {
+      const val = parseFloat(input.value);
+      if (isNaN(val) || tempMax === null) {
+        badge.textContent = '';
+        badge.className = 'rec-nc-coeur-badge';
+      } else {
+        // Seuil à cœur : conforme si <= cible + 2°C
+        const conforme = val <= (tempMax + 2.0);
+        badge.textContent = conforme ? '✓ Conforme après contrôle' : '✗ Non conforme confirmé';
+        badge.className = 'rec-nc-coeur-badge ' + (conforme ? 'ok' : 'nc');
+        ncCoeurResultats[l.id] = { temp_coeur: val, conforme_apres_coeur: conforme };
+      }
+      majEtatCoeur();
     });
 
-    pair.appendChild(btnRefus);
-    pair.appendChild(btnIsole);
-    row.appendChild(pair);
-    elNcProduitsActions.appendChild(row);
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    wrap.appendChild(badge);
+    row.appendChild(wrap);
+    elNcProduitsCoeur.appendChild(row);
   });
 }
 
-// Sous-étape A → B
+function majEtatCoeur() {
+  // Tous renseignés ?
+  const tousRenseignes = ncProduitsInitiaux.every(l => l.id in ncCoeurResultats);
+  if (!tousRenseignes) {
+    elNcBtnASuivant.disabled = true;
+    if (elNcTousConformes) elNcTousConformes.hidden = true;
+    return;
+  }
+
+  // Recalculer ncProduits = ceux qui restent NC après coeur
+  ncProduits = ncProduitsInitiaux.filter(l => {
+    const r = ncCoeurResultats[l.id];
+    return !r || !r.conforme_apres_coeur;
+  });
+
+  const tousConformes = ncProduits.length === 0;
+  if (elNcTousConformes) elNcTousConformes.hidden = !tousConformes;
+
+  elNcBtnASuivant.disabled = false;
+  // Si tous conformes après coeur → débloquer clôture directement
+  if (tousConformes) {
+    elNcBtnASuivant.textContent = 'Clôturer →';
+  } else {
+    elNcBtnASuivant.textContent = 'Suivant →';
+  }
+}
+
+// Sous-étape A → B (ou clôture directe si tous conformes)
 elNcBtnASuivant.addEventListener('click', () => {
+  if (ncProduits.length === 0) {
+    // Tous conformes après contrôle à cœur → débloquer clôture
+    elNcProcedure.hidden = true;
+    if (elPcrDoneBadge) {
+      elPcrDoneBadge.textContent = '✓ Tous les produits conformes après contrôle à cœur';
+      elPcrDoneBadge.hidden = false;
+    }
+    elBtnCloturer.disabled = false;
+    return;
+  }
   elNcStepA.hidden = true;
   elNcStepB.hidden = false;
-  // Init canvas signature
   initSignatureCanvas();
 });
 
@@ -980,8 +1272,8 @@ elNcBtnBSuivant.addEventListener('click', () => {
     personnelPrenom,
     fournisseurId,
     livreurPresent,
-    ncProduits,
-    ncActions,
+    ncProduits,          // produits NC confirmés (après contrôle à cœur)
+    ncCoeurResultats,    // {ligne_id: {temp_coeur, conforme_apres_coeur}}
     ncFicheIndex: 0,
   };
   sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
@@ -1130,7 +1422,8 @@ function restaurerDepuisPcr01() {
 
     if (pcrDone) {
       // PCR01 validé → masquer la procédure NC, afficher le badge, débloquer clôture
-      ncProduits = lignesAjoutees.filter(l => !l.conforme);
+      ncProduitsInitiaux = lignesAjoutees.filter(l => !l.conforme);
+      ncProduits = [];
       elNcProcedure.hidden = true;
       if (elPcrDoneBadge) elPcrDoneBadge.hidden = false;
       elBtnCloturer.disabled = false;
@@ -1155,6 +1448,11 @@ function restaurerDepuisPcr01() {
 
 // ── Initialisation ─────────────────────────────────────────
 async function init() {
+  // Pré-remplir date réception à aujourd'hui
+  if (elDateReception && !elDateReception.value) {
+    elDateReception.value = new Date().toISOString().slice(0, 10);
+  }
+
   // Vérifier si retour depuis pcr01.html
   if (restaurerDepuisPcr01()) return;
 

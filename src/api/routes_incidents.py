@@ -43,7 +43,7 @@ SIGS_DIR.mkdir(parents=True, exist_ok=True)
 
 class FicheUpdate(BaseModel):
     action_corrective: Optional[str] = None
-    suivi:             Optional[str] = None
+    commentaire:       Optional[str] = None
     statut:            Optional[str] = None
     cloturee_par:      Optional[int] = None
     etiquette_reprise_imprimee: Optional[int] = None
@@ -73,7 +73,8 @@ async def creer_fiche(
     numero_lot:                 Optional[str] = Form(None),
     description:                Optional[str] = Form(None),
     action_corrective:          Optional[str] = Form(None),
-    suivi:                      Optional[str] = Form(None),
+    commentaire:                Optional[str] = Form(None),
+    temperature_coeur:          Optional[float] = Form(None),
     signature_livreur:          Optional[UploadFile] = File(None),
 ):
     now = datetime.now(timezone.utc)
@@ -90,7 +91,8 @@ async def creer_fiche(
         "action_immediate":  action_immediate,
         "livreur_present":   livreur_present,
         "action_corrective": action_corrective,
-        "suivi":             suivi,
+        "commentaire":       commentaire,
+        "temperature_coeur": temperature_coeur,
     }
 
     async with get_db() as db:
