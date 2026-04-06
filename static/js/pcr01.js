@@ -55,6 +55,7 @@ let {
   ncCoeurResultats,
   ncFicheIndex,
   tempCamion,
+  heureReception,
 } = pcrData;
 ncCoeurResultats = ncCoeurResultats || {};
 
@@ -62,11 +63,12 @@ ncCoeurResultats = ncCoeurResultats || {};
 let livreurAccepte = null; // null (pas de choix), true (accepte), false (refuse)
 
 
-// ── Date / opérateur ────────────────────────────────────────
+// ── Date / opérateur / heure ────────────────────────────────
 elDate.textContent = new Date().toLocaleDateString('fr-FR', {
   weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
 });
-elOperateur.textContent = `Opérateur : ${personnelPrenom}`;
+const heureText = heureReception ? ` à ${heureReception}` : '';
+elOperateur.textContent = `Opérateur : ${personnelPrenom}${heureText}`;
 
 
 // ── Signature livreur (canvas, si présent) ──────────────────
@@ -306,6 +308,22 @@ function chargerFiche(idx) {
 
   // Produit
   elProduitNom.textContent = l.produit_nom;
+
+  // Fournisseur et DLC (ajouter en sousligne)
+  let infoComp = '';
+  if (l.fournisseur_id) infoComp += `Fournisseur: ${l.fournisseur_id}`;
+  if (l.dlc) infoComp += (infoComp ? ' — ' : '') + `DLC: ${l.dlc}`;
+  if (l.dluo) infoComp += (infoComp ? ' — ' : '') + `DLUO: ${l.dluo}`;
+  if (infoComp) {
+    let el = document.getElementById('pcr-produit-info');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'pcr-produit-info';
+      el.style.cssText = 'font-size: .8rem; color: var(--hors-ligne); margin-top: .2rem;';
+      elProduitNom.parentElement.insertBefore(el, elProduitNom.nextSibling);
+    }
+    el.textContent = infoComp;
+  }
 
   // Lot
   if (l.numero_lot) {

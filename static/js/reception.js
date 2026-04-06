@@ -48,6 +48,8 @@ const elFournSelWrap      = document.getElementById('rec-fourn-sel-wrap');
 const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
 
 // Étape 3
+const elFournProduitGroupe = document.getElementById('rec-fourn-produit-groupe');
+const elFournProduitSel = document.getElementById('rec-fourn-produit-sel');
 const elNbProduits        = document.getElementById('rec-nb-produits');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
@@ -137,6 +139,8 @@ let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
 let dlcMode            = 'dlc';   // 'dlc' ou 'dluo'
 let lotInterneGenere   = false;   // true quand lot interne auto-généré
 let ligneEnEdition     = null;    // {id, index} — null = mode ajout
+let fournisseurProduitSelected = null; // fournisseur sélectionné pour le produit courant
+let dernierFournisseurProduit = null; // dernier fournisseur utilisé pour dialog
 
 
 // ── Horloge ────────────────────────────────────────────────
@@ -436,6 +440,31 @@ function initBlocFourn(idx) {
 // Initialiser le premier bloc
 initBlocFourn(0);
 
+// ── Sélecteur fournisseur pour produits (écran 4) ────────────
+function majSelectorFournisseur() {
+  if (!elFournProduitSel) return;
+  const visible = modeMultiFourn && fournisseursListe.length > 1;
+  elFournProduitGroupe.hidden = !visible;
+
+  if (visible) {
+    elFournProduitSel.innerHTML = '<option value="">-- Sélectionnez --</option>';
+    fournisseursListe.forEach((f, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = f.nom || `Fournisseur ${idx + 1}`;
+      elFournProduitSel.appendChild(opt);
+    });
+  }
+}
+
+// Quand on sélectionne un fournisseur pour un produit
+if (elFournProduitSel) {
+  elFournProduitSel.addEventListener('change', () => {
+    const idx = parseInt(elFournProduitSel.value, 10);
+    fournisseurProduitSelected = !isNaN(idx) ? fournisseursListe[idx].id : null;
+  });
+}
+
 // Toggle un/plusieurs fournisseurs
 elFournUnBtn.addEventListener('click', () => {
   modeMultiFourn = false;
@@ -461,6 +490,8 @@ elFournMultiBtn.addEventListener('click', () => {
   elFournUnBtn.setAttribute('aria-pressed', 'false');
   elBtnAddFourn.hidden = false;
   document.getElementById('rec-fourn-bloc-titre-0').hidden = false;
+  // Afficher le sélecteur fournisseur pour écran 4
+  majSelectorFournisseur();
 });
 
 elBtnAddFourn.addEventListener('click', () => {
@@ -883,9 +914,15 @@ function reinitFormProduit() {
   ligneEnEdition     = null;
   lotInterneGenere   = false;
   dlcMode            = 'dlc';
+  fournisseurProduitSelected = null;
 
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
+
+  // Réinitialiser le sélecteur fournisseur
+  if (elFournProduitSel) {
+    elFournProduitSel.value = '';
+  }
   elProdSearch.value      = '';
   elProdAutoComplete.hidden = true;
 
@@ -1012,7 +1049,19 @@ function chargerLigneEnEdition(l, idx) {
   document.querySelector('.rec-form-produit').scrollIntoView({ behavior: 'smooth' });
 }
 
-elBtnAjouter.addEventListener('click', ajouterLigne);
+elBtnAjouter.addEventListener('click', () => {
+  // Si mode multi-fournisseur et ce n'est pas le premier produit, demander "Même fournisseur?"
+  if (modeMultiFourn && lignesAjoutees.length > 0 && dernierFournisseurProduit !== null) {
+    const msg = `Ajouter ce produit chez le même fournisseur que le précédent?\n(${fournisseursListe.find(f => f.id === dernierFournisseurProduit)?.nom || 'Fournisseur'})`;
+    if (confirm(msg)) {
+      fournisseurProduitSelected = dernierFournisseurProduit;
+      // Mettre à jour le sélecteur
+      const idx = fournisseursListe.findIndex(f => f.id === dernierFournisseurProduit);
+      if (idx >= 0 && elFournProduitSel) elFournProduitSel.value = idx;
+    }
+  }
+  ajouterLigne();
+});
 // Clic sur zone autour du bouton grisé → mise en évidence des champs manquants
 document.querySelector('.rec-step3-footer').addEventListener('click', e => {
   if (e.target === elBtnAjouter || e.target === elBtnEnregistrer) return;
@@ -1030,6 +1079,12 @@ function _buildPayload() {
     odeur_conforme:       criteres.odeur,
     lot_interne:          lotInterneGenere ? 1 : 0,
   };
+  // Fournisseur du produit (si mode multi-fournisseur)
+  if (fournisseurProduitSelected) {
+    payload.fournisseur_id = fournisseurProduitSelected;
+  } else if (fournisseurId) {
+    payload.fournisseur_id = fournisseurId;
+  }
   // La température du camion sert d'évaluation thermique pour chaque produit
   const tempCamion = parseFloat(elTempCamion.value);
   if (!isNaN(tempCamion)) payload.temperature_reception = tempCamion;
@@ -1090,6 +1145,8 @@ async function ajouterLigne() {
     });
 
     lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
+    // Sauvegarder le fournisseur de ce produit pour le dialog suivant
+    dernierFournisseurProduit = fournisseurProduitSelected || fournisseurId;
     majListeLignes();
     reinitFormProduit();
     document.querySelector('.rec-produits-liste-ajoutee').scrollTop = 9999;
@@ -1371,6 +1428,7 @@ elNcBtnBSuivant.addEventListener('click', () => {
     ncCoeurResultats,    // {ligne_id: {temp_coeur, conforme_apres_coeur}}
     ncFicheIndex: 0,
     tempCamion: parseFloat(elTempCamion.value) || null,
+    heureReception: elHeure.value,
   };
   sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
   sessionStorage.removeItem('haccp_pcr01_signature'); // sera capturée dans pcr01.html

@@ -568,6 +568,20 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 await db.execute(sql)
             except Exception:
                 pass
+
+        # Appliquer les tolérances correctes selon la plage (post-migration)
+        tolerance_updates = [
+            ("UPDATE produits SET temperature_tolerance = 5 WHERE (temperature_conservation LIKE '%0°C à +4°C%' OR temperature_conservation LIKE '%0°C à 4°C%') AND temperature_tolerance = 2.0", "0-4°C"),
+            ("UPDATE produits SET temperature_tolerance = 4 WHERE (temperature_conservation LIKE '%0°C à +3°C%' OR temperature_conservation LIKE '%0°C à 3°C%') AND temperature_tolerance = 2.0", "0-3°C"),
+            ("UPDATE produits SET temperature_tolerance = 8 WHERE (temperature_conservation LIKE '%0°C à +7°C%' OR temperature_conservation LIKE '%0°C à 7°C%') AND temperature_tolerance = 2.0", "0-7°C"),
+        ]
+        for sql, label in tolerance_updates:
+            try:
+                await db.execute(sql)
+                logger.info("Tolérances appliquées : %s", label)
+            except Exception as e:
+                logger.warning("Erreur lors de l'application tolérances %s: %s", label, e)
+
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
 

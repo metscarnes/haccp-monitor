@@ -19,7 +19,10 @@
       "Bash(python -m pytest tests/test_reception_v2.py tests/test_ouvertures.py -q --ignore=tests/test_reception.py)",
       "Bash(python -m pytest tests/test_incidents.py tests/test_etiquette_reprise.py -q)",
       "Bash(python -m pytest tests/test_reception.py tests/test_reception_v2.py tests/test_ouvertures.py -q)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(python3)",
+      "Bash(sqlite3 haccp.db)",
+      "Bash(python3 update_tolerances.py)"
     ]
   }
 }
