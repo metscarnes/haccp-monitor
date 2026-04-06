@@ -100,6 +100,42 @@
         </div>
       </div>
 
+      <!-- ── Détails NC propreté (visible si non satisfaisante) ── -->
+      <div id="rec-proprete-nc-details" hidden>
+        <div class="rec-champ-label">Problèmes relevés :</div>
+        <div class="rec-proprete-checkbox-list">
+          <label class="rec-proprete-chk">
+            <input type="checkbox" value="Propreté / Insalubrité" id="rec-chk-insalubrite">
+            <span>Propreté / Insalubrité</span>
+          </label>
+          <label class="rec-proprete-chk">
+            <input type="checkbox" value="Tenue du livreur" id="rec-chk-tenue">
+            <span>Tenue du livreur</span>
+          </label>
+          <label class="rec-proprete-chk">
+            <input type="checkbox" value="Marchandise sale ou abîmée" id="rec-chk-marchandise">
+            <span>Marchandise sale ou abîmée</span>
+          </label>
+          <label class="rec-proprete-chk">
+            <input type="checkbox" value="Palette cassée / instable" id="rec-chk-palette">
+            <span>Palette cassée / instable</span>
+          </label>
+        </div>
+
+        <!-- Photo NC (obligatoire si rien coché) -->
+        <div class="rec-photo-zone" id="rec-proprete-photo-zone" role="button" tabindex="0"
+             aria-label="Photo du problème de propreté">
+          <span class="rec-photo-icone" id="rec-proprete-photo-icone">📷</span>
+          <div class="rec-photo-texte">
+            <div class="rec-photo-texte-titre">Photo du problème</div>
+            <div class="rec-photo-texte-sous" id="rec-proprete-photo-sous">Obligatoire si rien n'est coché</div>
+          </div>
+          <img id="rec-proprete-photo-vignette" class="rec-photo-vignette" alt="Aperçu" hidden>
+        </div>
+        <input type="file" accept="image/*" capture="environment"
+               id="rec-proprete-photo-input" hidden aria-hidden="true">
+      </div>
+
       <div class="rec-camion-verdict">
         <span class="rec-camion-verdict-label">Conformité camion :</span>
         <span class="rec-badge neutre" id="rec-camion-badge">— Non évalué</span>
@@ -528,6 +564,59 @@
         </button>
         <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-dialog-quitter">
           Quitter
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dialog "Accepter la livraison ?" -->
+  <div class="rec-dialog-overlay" id="rec-dialog-livraison" hidden
+       role="alertdialog" aria-modal="true"
+       aria-labelledby="rec-dlg-livraison-titre">
+    <div class="rec-dialog">
+      <div class="rec-dialog-titre" id="rec-dlg-livraison-titre">Accepter la livraison ?</div>
+      <div class="rec-dialog-texte">
+        La propreté du camion est <strong>non satisfaisante</strong>.<br>
+        Souhaitez-vous quand même accepter la livraison ?
+      </div>
+      <div class="rec-dialog-actions">
+        <button class="rec-dialog-btn rec-dialog-btn-continuer" id="rec-dialog-livraison-oui">
+          ✓ Oui — Accepter
+        </button>
+        <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-dialog-livraison-non">
+          ✗ Non — Refuser
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dialog "Refus livraison — Photo BL obligatoire" -->
+  <div class="rec-dialog-overlay" id="rec-dialog-refus-bl" hidden
+       role="alertdialog" aria-modal="true"
+       aria-labelledby="rec-dlg-refus-titre">
+    <div class="rec-dialog rec-dialog-tall">
+      <div class="rec-dialog-titre" id="rec-dlg-refus-titre">Refus de livraison</div>
+      <div class="rec-dialog-texte">
+        Photographiez le <strong>bon de livraison</strong> avant de continuer vers la fiche incident.
+      </div>
+      <div class="rec-photo-zone" id="rec-refus-bl-photo-zone" role="button" tabindex="0"
+           aria-label="Photo obligatoire du bon de livraison" style="margin:.75rem 0;">
+        <span class="rec-photo-icone" id="rec-refus-bl-photo-icone">📋</span>
+        <div class="rec-photo-texte">
+          <div class="rec-photo-texte-titre" id="rec-refus-bl-photo-titre">Photo du bon de livraison</div>
+          <div class="rec-photo-texte-sous">Obligatoire</div>
+        </div>
+        <img id="rec-refus-bl-photo-vignette" class="rec-photo-vignette" alt="Aperçu BL" hidden>
+      </div>
+      <input type="file" accept="image/*" capture="environment"
+             id="rec-refus-bl-photo-input" hidden aria-hidden="true">
+      <div class="rec-erreur" id="rec-erreur-refus-bl" hidden role="alert"></div>
+      <div class="rec-dialog-actions">
+        <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-dialog-refus-annuler">
+          ← Annuler
+        </button>
+        <button class="rec-dialog-btn rec-dialog-btn-continuer" id="rec-dialog-refus-valider" disabled>
+          Aller à PCR01 →
         </button>
       </div>
     </div>

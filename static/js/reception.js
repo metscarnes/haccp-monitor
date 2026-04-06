@@ -114,6 +114,31 @@ const elDialogFournTexte  = document.getElementById('rec-dlg-fourn-texte');
 const elDialogFournOui    = document.getElementById('rec-dialog-fourn-oui');
 const elDialogFournNon    = document.getElementById('rec-dialog-fourn-non');
 
+// NC propreté camion — détails + photo
+const elPropreteNcDetails    = document.getElementById('rec-proprete-nc-details');
+const elPropreteCheckboxes   = document.querySelectorAll('#rec-proprete-nc-details input[type="checkbox"]');
+const elPropretePhotoZone    = document.getElementById('rec-proprete-photo-zone');
+const elPropretePhotoInput   = document.getElementById('rec-proprete-photo-input');
+const elPropretePhotoIcone   = document.getElementById('rec-proprete-photo-icone');
+const elPropretePhotoSous    = document.getElementById('rec-proprete-photo-sous');
+const elPropretePhotoVignette = document.getElementById('rec-proprete-photo-vignette');
+
+// Dialog "Accepter la livraison ?"
+const elDialogLivraison      = document.getElementById('rec-dialog-livraison');
+const elDialogLivraisonOui   = document.getElementById('rec-dialog-livraison-oui');
+const elDialogLivraisonNon   = document.getElementById('rec-dialog-livraison-non');
+
+// Dialog "Refus BL"
+const elDialogRefusBl        = document.getElementById('rec-dialog-refus-bl');
+const elRefusBlPhotoZone     = document.getElementById('rec-refus-bl-photo-zone');
+const elRefusBlPhotoInput    = document.getElementById('rec-refus-bl-photo-input');
+const elRefusBlPhotoIcone    = document.getElementById('rec-refus-bl-photo-icone');
+const elRefusBlPhotoTitre    = document.getElementById('rec-refus-bl-photo-titre');
+const elRefusBlPhotoVignette = document.getElementById('rec-refus-bl-photo-vignette');
+const elErreurRefusBl        = document.getElementById('rec-erreur-refus-bl');
+const elDialogRefusAnnuler   = document.getElementById('rec-dialog-refus-annuler');
+const elDialogRefusValider   = document.getElementById('rec-dialog-refus-valider');
+
 // Badge verdict température temps réel (étape 3)
 const elTempVerdict       = document.getElementById('rec-temp-verdict');
 
@@ -136,6 +161,11 @@ let debounceTimer      = null;
 let tousProduits       = [];
 let tousFournisseurs   = [];
 let textesAide         = {};
+
+// NC propreté camion state
+let propreteProblemes  = [];      // labels des cases cochées
+let propretePhotoFile  = null;    // photo du problème de propreté
+let refusBlPhotoFile   = null;    // photo BL prise lors d'un refus livraison
 
 // NC procedure state
 let ncProduits         = [];      // produits NC confirmés (après contrôle à cœur)
@@ -338,6 +368,7 @@ elPropreteOk.addEventListener('click', () => {
   elPropreteNc.classList.remove('nc-sel');
   elPropreteOk.setAttribute('aria-pressed', 'true');
   elPropreteNc.setAttribute('aria-pressed', 'false');
+  if (elPropreteNcDetails) elPropreteNcDetails.hidden = true;
   majBadgeCamion();
 });
 
@@ -347,6 +378,7 @@ elPropreteNc.addEventListener('click', () => {
   elPropreteOk.classList.remove('ok-sel');
   elPropreteNc.setAttribute('aria-pressed', 'true');
   elPropreteOk.setAttribute('aria-pressed', 'false');
+  if (elPropreteNcDetails) elPropreteNcDetails.hidden = false;
   majBadgeCamion();
 });
 
@@ -371,8 +403,144 @@ elBtnCamionSuivant.addEventListener('click', () => {
     elTempCamion.reportValidity();
     return;
   }
+
+  // NC propreté → valider le sous-formulaire puis afficher popup livraison
+  if (propreteCamion === 'non_satisfaisant') {
+    propreteProblemes = [...elPropreteCheckboxes]
+      .filter(cb => cb.checked)
+      .map(cb => cb.value);
+
+    // Si rien n'est coché, la photo est obligatoire
+    if (propreteProblemes.length === 0 && !propretePhotoFile) {
+      elPropretePhotoZone.classList.add('photo-requise');
+      elPropretePhotoZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    elDialogLivraison.hidden = false;
+    return;
+  }
+
   allerEtape(2);
 });
+
+// ── Checkboxes NC propreté ──────────────────────────────────
+elPropreteCheckboxes.forEach(cb => {
+  cb.addEventListener('change', () => {
+    propreteProblemes = [...elPropreteCheckboxes].filter(c => c.checked).map(c => c.value);
+    const photoRequise = propreteProblemes.length === 0;
+    if (elPropretePhotoSous) {
+      elPropretePhotoSous.textContent = photoRequise
+        ? 'Obligatoire si rien n\'est coché'
+        : 'Optionnel';
+    }
+    if (!photoRequise) elPropretePhotoZone.classList.remove('photo-requise');
+  });
+});
+
+// Photo propreté NC
+if (elPropretePhotoZone) {
+  elPropretePhotoZone.addEventListener('click', () => elPropretePhotoInput.click());
+  elPropretePhotoZone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elPropretePhotoInput.click(); }
+  });
+}
+if (elPropretePhotoInput) {
+  elPropretePhotoInput.addEventListener('change', () => {
+    const file = elPropretePhotoInput.files[0];
+    if (!file) return;
+    propretePhotoFile = file;
+    const url = URL.createObjectURL(file);
+    elPropretePhotoVignette.src = url;
+    elPropretePhotoVignette.hidden = false;
+    elPropretePhotoIcone.textContent = '✅';
+    elPropretePhotoZone.classList.remove('photo-requise');
+  });
+}
+
+// ── Dialog "Accepter la livraison ?" ───────────────────────
+elDialogLivraisonOui.addEventListener('click', () => {
+  elDialogLivraison.hidden = true;
+  allerEtape(2);
+});
+
+elDialogLivraisonNon.addEventListener('click', () => {
+  elDialogLivraison.hidden = true;
+  // Réinitialiser l'état de la photo BL refus
+  refusBlPhotoFile = null;
+  elRefusBlPhotoVignette.hidden = true;
+  elRefusBlPhotoIcone.textContent = '📋';
+  elRefusBlPhotoTitre.textContent = 'Photo du bon de livraison';
+  elDialogRefusValider.disabled = true;
+  if (elErreurRefusBl) elErreurRefusBl.hidden = true;
+  elDialogRefusBl.hidden = false;
+});
+
+// ── Dialog "Refus BL — photo obligatoire" ─────────────────
+elDialogRefusAnnuler.addEventListener('click', () => {
+  elDialogRefusBl.hidden = true;
+});
+
+elRefusBlPhotoZone.addEventListener('click', () => elRefusBlPhotoInput.click());
+elRefusBlPhotoZone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elRefusBlPhotoInput.click(); }
+});
+elRefusBlPhotoInput.addEventListener('change', () => {
+  const file = elRefusBlPhotoInput.files[0];
+  if (!file) return;
+  refusBlPhotoFile = file;
+  const url = URL.createObjectURL(file);
+  elRefusBlPhotoVignette.src = url;
+  elRefusBlPhotoVignette.hidden = false;
+  elRefusBlPhotoIcone.textContent = '✅';
+  elRefusBlPhotoTitre.textContent = 'Photo prise';
+  elDialogRefusValider.disabled = false;
+});
+
+elDialogRefusValider.addEventListener('click', allerVersPcr01Camion);
+
+async function allerVersPcr01Camion() {
+  if (!refusBlPhotoFile) return;
+  elDialogRefusValider.disabled = true;
+  elDialogRefusValider.textContent = 'Création…';
+  if (elErreurRefusBl) elErreurRefusBl.hidden = true;
+
+  try {
+    // Créer une réception minimale (sans produits — livraison refusée)
+    const fd = new FormData();
+    fd.append('personnel_id',    personnelId);
+    fd.append('heure_reception', elHeure.value || new Date().toTimeString().slice(0, 5));
+    if (elDateReception.value) fd.append('date_reception', elDateReception.value);
+    if (elTempCamion.value !== '') fd.append('temperature_camion', elTempCamion.value);
+    fd.append('proprete_camion', 'non_satisfaisant');
+    fd.append('photo_bl', refusBlPhotoFile, refusBlPhotoFile.name);
+    if (propretePhotoFile) fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
+
+    const rec = await apiFetch('/api/receptions', { method: 'POST', body: fd });
+
+    // Stocker les données pour PCR01 mode camion
+    const pcrData = {
+      modeCamion:           true,
+      receptionId:          rec.id,
+      personnelPrenom,
+      livreurPresent:       null,   // sera demandé dans PCR01
+      problemesPropreteList: propreteProblemes,
+      photoBlPrise:         true,
+      tempCamion:           parseFloat(elTempCamion.value) || null,
+      heureReception:       elHeure.value,
+    };
+    sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
+    sessionStorage.removeItem('haccp_pcr01_signature');
+
+    window.location.href = '/pcr01.html';
+  } catch (err) {
+    if (elErreurRefusBl) {
+      elErreurRefusBl.textContent = `Erreur : ${err.message}`;
+      elErreurRefusBl.hidden = false;
+    }
+    elDialogRefusValider.disabled = false;
+    elDialogRefusValider.textContent = 'Aller à PCR01 →';
+  }
+}
 
 
 // ── ÉTAPE 2 : Photo BL + Fournisseur(s) ───────────────────

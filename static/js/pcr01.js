@@ -40,6 +40,11 @@ const elErreur        = document.getElementById('pcr-erreur');
 const elBtnEnreg      = document.getElementById('pcr-btn-enreg');
 const elBtnRetour     = document.getElementById('pcr-btn-retour');
 
+// Mode camion
+const elLivreurCamionBloc = document.getElementById('pcr-livreur-camion-bloc');
+const elLivreurCamionOui  = document.getElementById('pcr-livreur-camion-oui');
+const elLivreurCamionNon  = document.getElementById('pcr-livreur-camion-non');
+
 
 // ── Charger l'état depuis sessionStorage ────────────────────
 const pcrDataRaw = sessionStorage.getItem('haccp_pcr01_data');
@@ -63,8 +68,14 @@ let {
 } = pcrData;
 ncCoeurResultats = ncCoeurResultats || {};
 
+// Mode camion (refus livraison pour propreté NC)
+const modeCamion          = !!pcrData.modeCamion;
+const problemesPropreteList = pcrData.problemesPropreteList || [];
+const photoBlPrise        = !!pcrData.photoBlPrise;
+
 // État signature livreur (si présent)
-let livreurAccepte = null; // null (pas de choix), true (accepte), false (refuse)
+let livreurAccepte       = null; // null (pas de choix), true (accepte), false (refuse)
+let livreurCamionPresent = null; // null, true, false — posé dans pcr01 (mode camion)
 
 
 // ── Date / opérateur / heure ────────────────────────────────
@@ -79,13 +90,51 @@ elOperateur.textContent = `Opérateur : ${personnelPrenom}${heureText}`;
 let sigCtx  = null;
 let sigDraw = false;
 
-if (livreurPresent) {
+if (modeCamion) {
+  // Masquer le bloc produit NC (inutile en mode camion)
+  const blocProduit = document.querySelector('.pcr-bloc-produit');
+  if (blocProduit) blocProduit.hidden = true;
+  // Afficher la question livreur
+  if (elLivreurCamionBloc) elLivreurCamionBloc.hidden = false;
+  elHeaderBadge.textContent = 'Camion';
+  if (elPagination) elPagination.hidden = true;
+} else if (livreurPresent) {
   elSigBloc.hidden = false;
   initSigCanvas();
 } else {
   // Livreur absent → afficher les boutons impression étiquette
   elEtiqBloc.hidden = false;
   construireEtiquettes();
+}
+
+// ── Boutons livreur présent/absent (mode camion) ─────────────
+if (elLivreurCamionOui) {
+  elLivreurCamionOui.addEventListener('click', () => {
+    livreurCamionPresent = true;
+    livreurPresent = true;
+    elLivreurCamionOui.classList.add('sel');
+    elLivreurCamionNon.classList.remove('sel');
+    // Montrer la signature
+    if (elSigBloc) { elSigBloc.hidden = false; initSigCanvas(); }
+    if (elEtiqBloc) elEtiqBloc.hidden = true;
+    // Rafraîchir corrective + étapes
+    if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
+    construireEtapesCamion();
+  });
+}
+if (elLivreurCamionNon) {
+  elLivreurCamionNon.addEventListener('click', () => {
+    livreurCamionPresent = false;
+    livreurPresent = false;
+    elLivreurCamionNon.classList.add('sel');
+    elLivreurCamionOui.classList.remove('sel');
+    // Cacher signature
+    if (elSigBloc) elSigBloc.hidden = true;
+    if (elEtiqBloc) elEtiqBloc.hidden = true;
+    // Rafraîchir
+    if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
+    construireEtapesCamion();
+  });
 }
 
 function initSigCanvas() {
@@ -138,9 +187,13 @@ function majUILivreur() {
     elEtiqRepriseBloc.hidden = livreurAccepte !== false;
   }
   // Régénérer le texte corrective de la fiche courante
-  const l = ncProduits[ncFicheIndex];
-  if (l && elCorrective) {
-    elCorrective.value = genererActionCorrective(l);
+  if (modeCamion) {
+    if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
+  } else {
+    const l = ncProduits[ncFicheIndex];
+    if (l && elCorrective) {
+      elCorrective.value = genererActionCorrective(l);
+    }
   }
 }
 
@@ -254,6 +307,69 @@ function genererActionCorrective(produit) {
 }
 
 
+// ── Mode camion : action corrective ────────────────────────
+function genererActionCorrectiveCamion() {
+  let txt = 'Non-conformité constatée à la réception : Propreté du camion.';
+
+  if (problemesPropreteList.length > 0) {
+    txt += '\nProblèmes relevés :\n— ' + problemesPropreteList.join('\n— ');
+  }
+
+  txt += `\nPhoto du bon de livraison : ${photoBlPrise ? 'oui' : 'non'}.`;
+  txt += '\nLivraison refusée.';
+
+  if (livreurCamionPresent === true) {
+    if (livreurAccepte === true) {
+      txt += "\n\nLe livreur étant présent, la non-conformité est attestée et le retour accepté. La feuille de reprise avec retour marchandise a été signée par le livreur.";
+    } else if (livreurAccepte === false) {
+      txt += "\n\nLe livreur étant présent, la non-conformité n'est pas attestée par le livreur et le retour n'est pas accepté. La feuille de reprise a été signée par le livreur. Le dossier est transmis pour résolution de litige.";
+    } else {
+      txt += "\n\nLe livreur étant présent, la feuille de reprise a été signée.";
+    }
+  } else if (livreurCamionPresent === false) {
+    txt += "\n\nLe livreur étant absent, l'incident a été enregistré pour suivi et résolution avec le fournisseur.";
+  }
+
+  return txt;
+}
+
+// ── Mode camion : timeline étapes ──────────────────────────
+function construireEtapesCamion() {
+  const problemsTxt = problemesPropreteList.length
+    ? problemesPropreteList.join(', ')
+    : 'propreté non satisfaisante';
+  const tempTxt = tempCamion !== null && tempCamion !== undefined
+    ? ` (température camion : ${tempCamion}°C)`
+    : '';
+
+  const etapes = [
+    `Contrôle du camion à la réception → Non-conformité détectée : ${problemsTxt}${tempTxt}.`,
+    `Photo du bon de livraison prise : ${photoBlPrise ? 'oui' : 'non'}.`,
+    'Livraison refusée.',
+  ];
+
+  if (livreurCamionPresent === true) {
+    etapes.push('Livreur présent : feuille de reprise avec retour marchandise signée par le livreur.');
+  } else if (livreurCamionPresent === false) {
+    etapes.push('Livreur absent : incident enregistré pour suivi fournisseur.');
+  }
+
+  elEtapesListe.innerHTML = '';
+  etapes.forEach(texte => {
+    const item = document.createElement('div');
+    item.className = 'pcr-etape-item';
+    const puce = document.createElement('div');
+    puce.className = 'pcr-etape-puce';
+    puce.setAttribute('aria-hidden', 'true');
+    const txt = document.createElement('div');
+    txt.className = 'pcr-etape-texte';
+    txt.textContent = texte;
+    item.appendChild(puce);
+    item.appendChild(txt);
+    elEtapesListe.appendChild(item);
+  });
+}
+
 // ── Construire la timeline des étapes d'identification ──────
 function construireEtapes(produit) {
   const motifs = produit.motifs.join(', ') || 'non-conformité';
@@ -294,8 +410,18 @@ function construireEtapes(produit) {
 }
 
 
+// ── Initialiser la fiche mode camion ───────────────────────
+function chargerFicheCamion() {
+  elHeaderBadge.textContent = 'Camion';
+  construireEtapesCamion();
+  if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
+  if (elCommentaire) elCommentaire.value = '';
+  elErreur.hidden = true;
+}
+
 // ── Charger la fiche courante ───────────────────────────────
 function chargerFiche(idx) {
+  if (modeCamion) { chargerFicheCamion(); return; }
   const l = ncProduits[idx];
   const total = ncProduits.length;
 
@@ -401,35 +527,58 @@ async function enregistrerFiche() {
   elBtnEnreg.textContent = 'Enregistrement…';
   elErreur.hidden = true;
 
-  const l     = ncProduits[ncFicheIndex];
-  const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
-
   const fd = new FormData();
-  fd.append('reception_id',      receptionId);
-  const _fournId = l.fournisseur_id || fournisseurId || null;
-  if (_fournId) fd.append('fournisseur_id', _fournId);
-  if (l.fournisseur_nom) fd.append('fournisseur_nom', l.fournisseur_nom);
-  fd.append('produit_id',        l.produit_id);
-  fd.append('nature_probleme',   l.motifs[0] || 'temperature');
-  fd.append('action_immediate',  'controle_coeur_nc');
-  fd.append('livreur_present',   livreurPresent ? 1 : 0);
-  if (l.id)          fd.append('reception_ligne_id', l.id);
-  if (l.numero_lot)  fd.append('numero_lot',         l.numero_lot);
-  if (l.motifs.length > 1) fd.append('description',  l.motifs.join(', '));
+  fd.append('reception_id', receptionId);
   fd.append('action_corrective', corrective);
-  if (coeur && coeur.temp_coeur != null) fd.append('temperature_coeur', coeur.temp_coeur);
   if (elCommentaire && elCommentaire.value.trim()) fd.append('commentaire', elCommentaire.value.trim());
 
-  // Joindre la signature PNG si livreur présent (capturée dans ce canvas)
-  if (livreurPresent && sigCtx) {
-    const dataUrl = elSigCanvas.toDataURL('image/png');
-    fd.append('signature_livreur', dataUrlToBlob(dataUrl), 'signature.png');
+  if (modeCamion) {
+    // Mode camion — refus livraison pour propreté NC
+    fd.append('nature_probleme',  'proprete_camion');
+    fd.append('action_immediate', 'refus_livraison');
+    const livreurVal = livreurCamionPresent !== null ? (livreurCamionPresent ? 1 : 0) : 0;
+    fd.append('livreur_present', livreurVal);
+    const description = problemesPropreteList.length
+      ? problemesPropreteList.join(', ')
+      : 'propreté du camion non satisfaisante';
+    fd.append('description', description);
+    if (tempCamion !== null && tempCamion !== undefined) fd.append('temperature_camion', tempCamion);
+    // Signature si livreur présent
+    if (livreurCamionPresent && sigCtx) {
+      const dataUrl = elSigCanvas.toDataURL('image/png');
+      fd.append('signature_livreur', dataUrlToBlob(dataUrl), 'signature.png');
+    }
+  } else {
+    // Mode standard — NC produit
+    const l     = ncProduits[ncFicheIndex];
+    const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
+    const _fournId = l.fournisseur_id || fournisseurId || null;
+    if (_fournId) fd.append('fournisseur_id', _fournId);
+    if (l.fournisseur_nom) fd.append('fournisseur_nom', l.fournisseur_nom);
+    fd.append('produit_id',       l.produit_id);
+    fd.append('nature_probleme',  l.motifs[0] || 'temperature');
+    fd.append('action_immediate', 'controle_coeur_nc');
+    fd.append('livreur_present',  livreurPresent ? 1 : 0);
+    if (l.id)          fd.append('reception_ligne_id', l.id);
+    if (l.numero_lot)  fd.append('numero_lot',         l.numero_lot);
+    if (l.motifs.length > 1) fd.append('description',  l.motifs.join(', '));
+    if (coeur && coeur.temp_coeur != null) fd.append('temperature_coeur', coeur.temp_coeur);
+    // Signature si livreur présent
+    if (livreurPresent && sigCtx) {
+      const dataUrl = elSigCanvas.toDataURL('image/png');
+      fd.append('signature_livreur', dataUrlToBlob(dataUrl), 'signature.png');
+    }
   }
 
   try {
     await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
 
-    if (ncFicheIndex < ncProduits.length - 1) {
+    if (modeCamion) {
+      // Mode camion → retour hub (la réception est terminée / refusée)
+      sessionStorage.removeItem('haccp_pcr01_data');
+      sessionStorage.removeItem('haccp_pcr01_signature');
+      window.location.href = '/hub.html';
+    } else if (ncFicheIndex < ncProduits.length - 1) {
       // → Fiche suivante
       ncFicheIndex++;
       pcrData.ncFicheIndex = ncFicheIndex;
@@ -452,9 +601,15 @@ async function enregistrerFiche() {
 
 // ── Bouton retour (sans valider) ────────────────────────────
 elBtnRetour.addEventListener('click', () => {
-  // On revient à la réception sans marquer pcr01 comme terminé
-  // → le wizard reprendra la procédure NC depuis l'étape A
-  window.location.href = '/reception.html';
+  if (modeCamion) {
+    // Mode camion → retour hub (pas de wizard réception à restaurer)
+    sessionStorage.removeItem('haccp_pcr01_data');
+    window.location.href = '/hub.html';
+  } else {
+    // On revient à la réception sans marquer pcr01 comme terminé
+    // → le wizard reprendra la procédure NC depuis l'étape A
+    window.location.href = '/reception.html';
+  }
 });
 
 

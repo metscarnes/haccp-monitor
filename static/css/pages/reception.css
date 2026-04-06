@@ -1202,3 +1202,57 @@ body.rec-body {
   25%      { transform: translateX(-4px); }
   75%      { transform: translateX(4px); }
 }
+
+/* ── Détails NC propreté camion (étape 1) ────────────────── */
+#rec-proprete-nc-details {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  padding: .9rem 1rem;
+  background: #FDEDED;
+  border-radius: var(--radius);
+  border: 1.5px solid rgba(201,48,48,.25);
+}
+.rec-proprete-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.rec-proprete-chk {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .65rem .9rem;
+  background: white;
+  border-radius: 10px;
+  border: 1.5px solid rgba(107,58,31,.15);
+  cursor: pointer;
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--color-text);
+  -webkit-tap-highlight-color: transparent;
+  transition: background .12s, border-color .12s;
+}
+.rec-proprete-chk input[type="checkbox"] {
+  width: 22px; height: 22px;
+  accent-color: var(--color-alert);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.rec-proprete-chk:has(input:checked) {
+  background: #FDEDED;
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+}
+
+/* Zone photo NC avec bordure rouge obligatoire */
+.rec-photo-zone.photo-requise {
+  border: 2px solid var(--color-alert);
+  animation: shake .3s ease;
+}
+
+/* Dialog tall (refus BL) */
+.rec-dialog-tall {
+  max-width: 380px;
+  padding: 1.5rem;
+}
