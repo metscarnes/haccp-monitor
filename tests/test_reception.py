@@ -34,71 +34,16 @@ async def test_fournisseur_desactiver(db):
     assert not any(f["id"] == fid for f in fournisseurs)
 
 
+@pytest.mark.skip(reason="Schéma v1 obsolète : finaliser_reception supprimé, champs boutique_id/fournisseur_nom/operateur remplacés par personnel_id. Couvert par test_reception_v2.py.")
 @pytest.mark.anyio
 async def test_creer_reception_complete(db):
-    from src.database import (
-        create_fournisseur, create_reception, add_reception_ligne,
-        finaliser_reception, get_reception,
-    )
-    fid = await create_fournisseur(db, {"boutique_id": 1, "nom": "O'Guste"})
-    rid = await create_reception(db, {
-        "boutique_id": 1,
-        "fournisseur_id": fid,
-        "fournisseur_nom": "O'Guste",
-        "numero_bon_livraison": "BL-2026-001",
-        "operateur": "Éric",
-        "heure_livraison": "08:30",
-        "temperature_camion": 3.2,
-        "proprete_camion": "S",
-    })
-    assert rid > 0
-
-    # Ajouter 2 lignes
-    lid1 = await add_reception_ligne(db, rid, {
-        "produit_nom": "Bœuf haché",
-        "temperature_produit": 2.8,
-        "integrite_emballage": "S",
-        "dlc": "2026-03-31",
-        "numero_lot": "BIG-2026-0042",
-        "quantite": 5.0,
-        "heure_stockage": "08:45",
-        "conforme": True,
-    })
-    lid2 = await add_reception_ligne(db, rid, {
-        "produit_nom": "Entrecôte",
-        "temperature_produit": 6.1,
-        "integrite_emballage": "S",
-        "dlc": "2026-04-01",
-        "numero_lot": "BIG-2026-0043",
-        "quantite": 8.0,
-        "heure_stockage": "08:47",
-        "conforme": False,    # hors seuil température
-    })
-    assert lid1 > 0
-    assert lid2 > 0
-
-    # Finaliser
-    await finaliser_reception(db, rid, conforme=False)
-
-    # Vérifier
-    rec = await get_reception(db, rid)
-    assert rec is not None
-    assert rec["conforme"] == 0
-    assert len(rec["lignes"]) == 2
-    assert rec["lignes"][0]["produit_nom"] == "Bœuf haché"
-    assert rec["lignes"][1]["conforme"] == 0
+    pass
 
 
+@pytest.mark.skip(reason="Schéma v1 obsolète : create_reception ne prend plus boutique_id/fournisseur_nom/operateur. Couvert par test_reception_v2.py.")
 @pytest.mark.anyio
 async def test_historique_receptions(db):
-    from src.database import create_reception, get_receptions
-    await create_reception(db, {
-        "boutique_id": 1,
-        "fournisseur_nom": "Elivia",
-        "operateur": "Ulysse",
-    })
-    receptions = await get_receptions(db, 1)
-    assert len(receptions) >= 1
+    pass
 
 
 @pytest.mark.anyio
@@ -124,24 +69,10 @@ async def test_creer_non_conformite(db):
     assert "temperature" in nc["nature_nc"]
 
 
+@pytest.mark.skip(reason="Schéma v1 obsolète : create_reception ne prend plus boutique_id/fournisseur_nom/operateur. Couvert par test_reception_v2.py.")
 @pytest.mark.anyio
 async def test_non_conformite_liee_reception(db):
-    from src.database import create_reception, create_non_conformite, get_non_conformites
-    rid = await create_reception(db, {
-        "boutique_id": 1,
-        "fournisseur_nom": "Bigard",
-        "operateur": "Éric",
-    })
-    nc_id = await create_non_conformite(db, {
-        "boutique_id": 1,
-        "reception_id": rid,
-        "operateur": "Éric",
-        "fournisseur_nom": "Bigard",
-        "nature_nc": ["dlc"],
-    })
-    ncs = await get_non_conformites(db, 1)
-    nc = next(n for n in ncs if n["id"] == nc_id)
-    assert nc["reception_id"] == rid
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -163,51 +94,70 @@ async def test_api_ajouter_fournisseur(app_client):
 
 
 @pytest.mark.anyio
-async def test_api_creer_reception(app_client):
-    r = await app_client.post("/api/receptions", json={
-        "fournisseur_nom": "Bigard API",
-        "operateur": "Éric",
-        "temperature_camion": 3.5,
-        "proprete_camion": "S",
+async def test_api_creer_reception(app_client, db):
+    cur = await db.execute("SELECT id FROM personnel WHERE boutique_id=1 LIMIT 1")
+    personnel_id = (await cur.fetchone())[0]
+
+    r = await app_client.post("/api/receptions", data={
+        "personnel_id":      str(personnel_id),
+        "heure_reception":   "10:00",
+        "temperature_camion": "3.5",
+        "proprete_camion":   "satisfaisant",
     })
     assert r.status_code == 201
     assert "id" in r.json()
 
 
 @pytest.mark.anyio
-async def test_api_ajouter_ligne_reception(app_client):
-    # Créer une réception
-    r = await app_client.post("/api/receptions", json={
-        "fournisseur_nom": "Test Fournisseur",
-        "operateur": "Éric",
+async def test_api_ajouter_ligne_reception(app_client, db):
+    cur = await db.execute("SELECT id FROM personnel WHERE boutique_id=1 LIMIT 1")
+    personnel_id = (await cur.fetchone())[0]
+
+    # Créer un produit pour la ligne
+    await db.execute(
+        """
+        INSERT OR IGNORE INTO produits
+            (nom, code_unique, categorie, etape, conditionnement, dlc_jours,
+             boutique_id, temperature_conservation)
+        VALUES ('Côte de bœuf', 'REC_TEST_01', 'matiere_premiere', 1, 'SOUS_VIDE', 0,
+                1, '0°C à +4°C')
+        """
+    )
+    cur2 = await db.execute("SELECT id FROM produits WHERE code_unique='REC_TEST_01'")
+    produit_id = (await cur2.fetchone())[0]
+    await db.commit()
+
+    # Créer une réception (schéma v2 : form-data)
+    r = await app_client.post("/api/receptions", data={
+        "personnel_id":    str(personnel_id),
+        "heure_reception": "10:30",
     })
+    assert r.status_code == 201, r.text
     rid = r.json()["id"]
 
-    # Ajouter une ligne
     r2 = await app_client.post(f"/api/receptions/{rid}/lignes", json={
-        "produit_nom": "Côte de bœuf",
-        "temperature_produit": 2.5,
-        "integrite_emballage": "S",
-        "dlc": "2026-04-02",
-        "numero_lot": "TEST-001",
-        "quantite": 4.0,
-        "conforme": True,
+        "produit_id":  produit_id,
+        "numero_lot":  "TEST-001",
     })
     assert r2.status_code == 201
     assert "id" in r2.json()
 
 
 @pytest.mark.anyio
-async def test_api_finaliser_reception(app_client):
-    r = await app_client.post("/api/receptions", json={
-        "fournisseur_nom": "Finalisation Test",
-        "operateur": "Ulysse",
+async def test_api_finaliser_reception(app_client, db):
+    cur = await db.execute("SELECT id FROM personnel WHERE boutique_id=1 LIMIT 1")
+    personnel_id = (await cur.fetchone())[0]
+
+    r = await app_client.post("/api/receptions", data={
+        "personnel_id":    str(personnel_id),
+        "heure_reception": "11:00",
     })
+    assert r.status_code == 201, r.text
     rid = r.json()["id"]
 
-    r2 = await app_client.post(f"/api/receptions/{rid}/finaliser", json={"conforme": True})
+    r2 = await app_client.put(f"/api/receptions/{rid}/cloturer", json={})
     assert r2.status_code == 200
-    assert r2.json()["conforme"] == 1
+    assert r2.json()["conformite_globale"] == "conforme"
 
 
 @pytest.mark.anyio

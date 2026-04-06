@@ -182,19 +182,24 @@ async def test_get_suggestions_recentes_en_premier(app_client, db):
         """
     )
 
-    # Créer une réception d'aujourd'hui avec ce produit
+    # Récupérer un personnel valide (seedé en conftest)
+    cur_p = await db.execute("SELECT id FROM personnel WHERE boutique_id=1 LIMIT 1")
+    personnel_id = (await cur_p.fetchone())[0]
+
+    # Créer une réception d'aujourd'hui avec ce produit (schéma v2)
     cursor = await db.execute(
         """
-        INSERT INTO receptions (boutique_id, fournisseur_nom, operateur)
-        VALUES (1, 'Bigard', 'Éric')
-        """
+        INSERT INTO receptions (personnel_id, heure_reception)
+        VALUES (?, '08:00')
+        """,
+        (personnel_id,),
     )
     reception_id = cursor.lastrowid
 
     await db.execute(
         """
-        INSERT INTO reception_lignes (reception_id, produit_id, produit_nom, conforme)
-        VALUES (?, ?, 'VB-PALERON', 1)
+        INSERT INTO reception_lignes (reception_id, produit_id, conforme)
+        VALUES (?, ?, 1)
         """,
         (reception_id, produit_recept_id),
     )

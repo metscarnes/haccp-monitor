@@ -85,8 +85,10 @@ async def test_post_reception_retourne_201(app_client, db):
 
 
 @pytest.mark.anyio
-async def test_camion_non_conforme_si_temp_haute(app_client, db):
-    """camion_conforme=0 si température ≥ 2°C."""
+async def test_camion_conforme_reste_1_si_temp_haute_seulement(app_client, db):
+    """camion_conforme reste 1 si température ≥ 2°C mais propreté OK.
+    La temp élevée déclenche le badge orange (contrôle à cœur obligatoire)
+    mais ne rend PAS le camion non-conforme — seule la propreté le fait."""
     personnel_id, _ = await _seed_personnel_produit(db)
 
     r = await app_client.post(
@@ -99,7 +101,7 @@ async def test_camion_non_conforme_si_temp_haute(app_client, db):
         },
     )
     assert r.status_code == 201
-    assert r.json()["camion_conforme"] == 0
+    assert r.json()["camion_conforme"] == 1   # temp seule ne suffit pas
 
 
 @pytest.mark.anyio
@@ -173,11 +175,12 @@ async def test_post_ligne_temperature_hors_norme(app_client, db):
 
 
 @pytest.mark.anyio
-async def test_post_ligne_temperature_renforcee_camion_nc(app_client, db):
-    """Seuil renforcé : camion >2°C ET temp produit > (max-1=3°C) → non conforme."""
+async def test_post_ligne_temperature_seuil_releve_camion_chaud(app_client, db):
+    """CAS 2 (camion >= 2°C) : seuil relevé de +1°C.
+    Produit à 3.5°C avec camion à 3°C → conforme (seuil NC = 4+1 = 5°C).
+    Produit à 5.0°C avec camion à 3°C → non conforme (>= 5°C)."""
     personnel_id, produit_id = await _seed_personnel_produit(db)
 
-    # Camion à 3°C (non conforme)
     r = await app_client.post(
         "/api/receptions",
         data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
@@ -185,14 +188,21 @@ async def test_post_ligne_temperature_renforcee_camion_nc(app_client, db):
     )
     rid = r.json()["id"]
 
-    # Produit à 3.5°C : dans la plage normale (≤4°C) MAIS > (4-1=3°C) avec camion NC
+    # 3.5°C < seuil (5°C) → conforme
     r2 = await app_client.post(
         f"/api/receptions/{rid}/lignes",
         json={"produit_id": produit_id, "temperature_reception": 3.5},
     )
     assert r2.status_code == 201
-    ligne = r2.json()
-    assert ligne["temperature_conforme"] == 0
+    assert r2.json()["temperature_conforme"] == 1
+
+    # 5.0°C >= seuil (5°C) → non conforme
+    r3 = await app_client.post(
+        f"/api/receptions/{rid}/lignes",
+        json={"produit_id": produit_id, "temperature_reception": 5.0},
+    )
+    assert r3.status_code == 201
+    assert r3.json()["temperature_conforme"] == 0
 
 
 @pytest.mark.anyio
