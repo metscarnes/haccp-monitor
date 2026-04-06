@@ -50,6 +50,7 @@ const elErreur2           = document.getElementById('rec-erreur-2');
 const elBtnCreerFiche     = document.getElementById('rec-btn-creer-fiche');
 
 // Étape 3
+const elBandeauCamionChaud = document.getElementById('rec-bandeau-camion-chaud');
 const elNbProduits        = document.getElementById('rec-nb-produits');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
@@ -71,7 +72,7 @@ const elBtnTerminer       = document.getElementById('rec-btn-terminer');
 // Critères visuels
 const CRITERES = ['couleur', 'consistance', 'exsudat', 'odeur'];
 
-// Étape 4
+// Étape 4 — Récap
 const elRecapCamionInfo   = document.getElementById('rec-recap-camion-info');
 const elRecapCamionBadge  = document.getElementById('rec-recap-camion-badge');
 const elConformiteGlobale = document.getElementById('rec-conformite-globale');
@@ -81,6 +82,30 @@ const elChkDdpp           = document.getElementById('rec-chk-ddpp');
 const elCommentaireNc     = document.getElementById('rec-commentaire-nc');
 const elErreur4           = document.getElementById('rec-erreur-4');
 const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
+
+// Étape 4 — Procédure NC
+const elNcProcedure       = document.getElementById('rec-nc-procedure');
+const elNcStepA           = document.getElementById('rec-nc-step-a');
+const elNcStepB           = document.getElementById('rec-nc-step-b');
+const elNcStepC           = document.getElementById('rec-nc-step-c');
+const elNcProduitsActions = document.getElementById('rec-nc-produits-actions');
+const elNcBtnASuivant     = document.getElementById('rec-nc-btn-a-suivant');
+const elLivreurOui        = document.getElementById('rec-livreur-oui');
+const elLivreurNon        = document.getElementById('rec-livreur-non');
+const elSigZone           = document.getElementById('rec-sig-zone');
+const elSigCanvas         = document.getElementById('rec-sig-canvas');
+const elSigEffacer        = document.getElementById('rec-sig-effacer');
+const elEtiqZone          = document.getElementById('rec-etiq-zone');
+const elEtiqListe         = document.getElementById('rec-etiq-liste');
+const elNcBtnBSuivant     = document.getElementById('rec-nc-btn-b-suivant');
+const elNcIndC            = document.getElementById('rec-nc-ind-c');
+const elPcrProduitInfo    = document.getElementById('rec-pcr-produit-info');
+const elPcrNatureInfo     = document.getElementById('rec-pcr-nature-info');
+const elPcrActionInfo     = document.getElementById('rec-pcr-action-info');
+const elPcrCorrective     = document.getElementById('rec-pcr-corrective');
+const elPcrSuivi          = document.getElementById('rec-pcr-suivi');
+const elErreurPcr         = document.getElementById('rec-erreur-pcr');
+const elNcBtnEnregFiche   = document.getElementById('rec-nc-btn-enreg-fiche');
 
 // Confirmation
 const elConfirmDetail     = document.getElementById('rec-confirm-detail');
@@ -103,7 +128,7 @@ let photoBlFile        = null;
 let photoBlObjectUrl   = null;
 let fournisseurId      = null;
 let receptionId        = null;
-let lignesAjoutees     = [];      // [{id, produit_nom, conforme, temp, lot}]
+let lignesAjoutees     = [];      // [{id, produit_nom, conforme, motifs, temp, lot, produit_id, fournisseur_id}]
 let produitSelectionne = null;    // objet produit complet
 let criteres           = {};      // {couleur:1, consistance:1, exsudat:1, odeur:1}
 let timerInactivite    = null;
@@ -112,6 +137,15 @@ let debounceTimer      = null;
 let tousProduits       = [];
 let tousFournisseurs   = [];
 let textesAide         = {};
+
+// NC procedure state
+let ncProduits         = [];      // produits NC (sous-ensemble de lignesAjoutees)
+let ncActions          = {};      // {ligne_id: 'refus'|'isole'|'refus_et_isolement'}
+let livreurPresent     = null;    // true | false
+let sigDessin          = false;
+let sigCtx             = null;
+let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
+let ncFichesSauvees    = 0;
 
 
 // ── Horloge ────────────────────────────────────────────────
@@ -196,6 +230,11 @@ function allerEtape(cible) {
     elBandeau.textContent = `👤 ${personnelPrenom}`;
   }
 
+  // Bandeau camion chaud (étape 3 uniquement)
+  if (elBandeauCamionChaud) {
+    elBandeauCamionChaud.hidden = !(cible === 3 && camionEstChaud());
+  }
+
   // Bouton retour
   elBtnRetour.hidden = estConfirm;
 }
@@ -245,9 +284,13 @@ async function chargerPersonnel() {
 
 
 // ── ÉTAPE 1 : Camion ───────────────────────────────────────
+function camionEstChaud() {
+  const t = parseFloat(elTempCamion.value);
+  return !isNaN(t) && t >= 2;
+}
+
 function majBadgeCamion() {
   const temp = parseFloat(elTempCamion.value);
-  const proprete = propreteCamion;
 
   if (isNaN(temp)) {
     elCamionBadge.className = 'rec-badge neutre';
@@ -255,16 +298,13 @@ function majBadgeCamion() {
     return;
   }
 
-  const tempOk    = temp < 2;
-  const propreteOk = (proprete === 'satisfaisant');
-  const conforme  = tempOk && propreteOk;
-
-  if (conforme) {
-    elCamionBadge.className = 'rec-badge conforme';
-    elCamionBadge.textContent = '✓ Conforme';
+  if (temp >= 2) {
+    // Signal d'alerte uniquement — pas de NC sur le camion pour la température
+    elCamionBadge.className = 'rec-badge attention';
+    elCamionBadge.textContent = '⚠️ Contrôle à cœur obligatoire';
   } else {
-    elCamionBadge.className = 'rec-badge nc';
-    elCamionBadge.textContent = '✗ Non conforme';
+    elCamionBadge.className = 'rec-badge conforme';
+    elCamionBadge.textContent = '✓ Camion OK';
   }
 }
 
@@ -527,12 +567,16 @@ function majVerdictTemp() {
     return;
   }
 
-  // Seuil renforcé si camion NC (temp > max-1)
-  const tempCamion = parseFloat(elTempCamion.value);
-  const camionNc = !isNaN(tempCamion) && tempCamion >= 2;
-  const seuilMax = camionNc ? (intervalle.max - 1) : intervalle.max;
-
-  const conforme = val >= intervalle.min && val <= seuilMax;
+  // Logique à 2 niveaux
+  const chaud = camionEstChaud();
+  let conforme;
+  if (chaud) {
+    // CAS 2 : seuil relevé de 1°C
+    conforme = val < (intervalle.max + 1.0);
+  } else {
+    // CAS 1 : seuil normal
+    conforme = val <= intervalle.max;
+  }
   elTempVerdict.textContent = conforme ? '✓ OK' : '✗ NC';
   elTempVerdict.className   = 'rec-temp-verdict ' + (conforme ? 'ok' : 'nc');
 }
@@ -682,12 +726,24 @@ async function ajouterLigne() {
       body: JSON.stringify(payload),
     });
 
+    // Calcul des motifs NC pour la procédure guidée
+    const motifsNc = [];
+    if (ligne.temperature_conforme === 0) motifsNc.push('température');
+    if (ligne.couleur_conforme     === 0) motifsNc.push('couleur');
+    if (ligne.consistance_conforme === 0) motifsNc.push('consistance');
+    if (ligne.exsudat_conforme     === 0) motifsNc.push('exsudat');
+    if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
+    if (ligne.ph_conforme          === 0) motifsNc.push('pH');
+
     lignesAjoutees.push({
       id:                  ligne.id,
+      produit_id:          produitSelectionne.id,
       produit_nom:         produitSelectionne.nom,
+      fournisseur_id:      fournisseurId || null,
       conforme:            ligne.conforme,
       temperature_reception: ligne.temperature_reception,
       numero_lot:          ligne.numero_lot,
+      motifs:              motifsNc,
     });
 
     majListeLignes();
@@ -707,6 +763,7 @@ async function ajouterLigne() {
 elBtnTerminer.addEventListener('click', () => {
   if (lignesAjoutees.length === 0) return;
   remplirRecap();
+  initNcProcedure();
   allerEtape(4);
 });
 
@@ -762,6 +819,267 @@ function remplirRecap() {
   });
 }
 
+// ── PROCÉDURE NC ───────────────────────────────────────────
+
+function initNcProcedure() {
+  ncProduits      = lignesAjoutees.filter(l => !l.conforme);
+  ncActions       = {};
+  livreurPresent  = null;
+  ncFicheIndex    = 0;
+  ncFichesSauvees = 0;
+
+  const aNc = ncProduits.length > 0;
+  elNcProcedure.hidden = !aNc;
+  elBtnCloturer.disabled = aNc; // grisé jusqu'à fin de procédure si NC
+
+  if (!aNc) return;
+
+  // Réinitialiser les sous-étapes
+  elNcStepA.hidden = false;
+  elNcStepB.hidden = true;
+  elNcStepC.hidden = true;
+  elSigZone.hidden = true;
+  elEtiqZone.hidden = true;
+  elNcBtnASuivant.disabled = true;
+  elNcBtnBSuivant.disabled = true;
+  elLivreurOui.className = 'rec-livreur-btn';
+  elLivreurNon.className = 'rec-livreur-btn';
+
+  // Construire la liste des produits NC avec les boutons d'action
+  elNcProduitsActions.innerHTML = '';
+  ncProduits.forEach(l => {
+    const row = document.createElement('div');
+    row.className = 'rec-nc-produit-row';
+
+    const nom = document.createElement('div');
+    nom.className = 'rec-nc-produit-nom';
+    nom.textContent = l.produit_nom;
+    row.appendChild(nom);
+
+    const motif = document.createElement('div');
+    motif.className = 'rec-nc-motif';
+    motif.textContent = `✗ NC : ${l.motifs.join(', ') || 'non-conformité'}`;
+    row.appendChild(motif);
+
+    const pair = document.createElement('div');
+    pair.className = 'rec-nc-actions-pair';
+
+    const btnRefus = document.createElement('button');
+    btnRefus.className = 'rec-nc-action-btn';
+    btnRefus.textContent = '🚫 Refuser le lot';
+    btnRefus.dataset.ligneId = l.id;
+    btnRefus.dataset.action  = 'refus';
+
+    const btnIsole = document.createElement('button');
+    btnIsole.className = 'rec-nc-action-btn';
+    btnIsole.textContent = '⚠️ Isoler le produit';
+    btnIsole.dataset.ligneId = l.id;
+    btnIsole.dataset.action  = 'isole';
+
+    function majActions() {
+      const cur = ncActions[l.id];
+      btnRefus.className = 'rec-nc-action-btn' + (cur === 'refus' || cur === 'refus_et_isolement' ? ' sel-refus' : '');
+      btnIsole.className = 'rec-nc-action-btn' + (cur === 'isole' || cur === 'refus_et_isolement' ? ' sel-isole' : '');
+      // Vérifier si toutes les lignes NC ont une action
+      const toutesOk = ncProduits.every(p => !!ncActions[p.id]);
+      elNcBtnASuivant.disabled = !toutesOk;
+    }
+
+    btnRefus.addEventListener('click', () => {
+      const cur = ncActions[l.id];
+      if (cur === 'isole')              ncActions[l.id] = 'refus_et_isolement';
+      else if (cur === 'refus_et_isolement') ncActions[l.id] = 'isole';
+      else if (cur === 'refus')         delete ncActions[l.id];
+      else                              ncActions[l.id] = 'refus';
+      majActions();
+    });
+    btnIsole.addEventListener('click', () => {
+      const cur = ncActions[l.id];
+      if (cur === 'refus')              ncActions[l.id] = 'refus_et_isolement';
+      else if (cur === 'refus_et_isolement') ncActions[l.id] = 'refus';
+      else if (cur === 'isole')         delete ncActions[l.id];
+      else                              ncActions[l.id] = 'isole';
+      majActions();
+    });
+
+    pair.appendChild(btnRefus);
+    pair.appendChild(btnIsole);
+    row.appendChild(pair);
+    elNcProduitsActions.appendChild(row);
+  });
+}
+
+// Sous-étape A → B
+elNcBtnASuivant.addEventListener('click', () => {
+  elNcStepA.hidden = true;
+  elNcStepB.hidden = false;
+  // Init canvas signature
+  initSignatureCanvas();
+});
+
+// Livreur présent / absent
+elLivreurOui.addEventListener('click', () => {
+  livreurPresent = true;
+  elLivreurOui.className = 'rec-livreur-btn sel-oui';
+  elLivreurNon.className = 'rec-livreur-btn';
+  elSigZone.hidden  = false;
+  elEtiqZone.hidden = true;
+  elNcBtnBSuivant.disabled = false;
+});
+
+elLivreurNon.addEventListener('click', () => {
+  livreurPresent = false;
+  elLivreurNon.className = 'rec-livreur-btn sel-non';
+  elLivreurOui.className = 'rec-livreur-btn';
+  elSigZone.hidden  = true;
+  elEtiqZone.hidden = false;
+  // Construire les boutons étiquettes
+  elEtiqListe.innerHTML = '';
+  ncProduits.forEach(l => {
+    const btn = document.createElement('button');
+    btn.className = 'rec-etiq-reprise-btn';
+    btn.innerHTML = `🖨️ &nbsp;<span>Étiquette À REPRENDRE — ${l.produit_nom}</span>`;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const fourn = tousFournisseurs.find(f => f.id === l.fournisseur_id);
+        await apiFetch('/api/impression/etiquette-reprise', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            produit_nom:      l.produit_nom,
+            fournisseur_nom:  fourn ? fourn.nom : (fournisseurId ? '' : 'Inconnu'),
+            motif:            l.motifs.join(', ') || 'non-conformité',
+            operateur_prenom: personnelPrenom,
+            date_refus:       new Date().toISOString().slice(0, 10),
+          }),
+        });
+        btn.classList.add('imprime');
+        btn.innerHTML = `✓ &nbsp;<span>Imprimé — ${l.produit_nom}</span>`;
+      } catch (e) {
+        btn.disabled = false;
+        alert(`Impression échouée : ${e.message}`);
+      }
+    });
+    elEtiqListe.appendChild(btn);
+  });
+  elNcBtnBSuivant.disabled = false;
+});
+
+// Sous-étape B → C
+elNcBtnBSuivant.addEventListener('click', () => {
+  elNcStepB.hidden = true;
+  elNcStepC.hidden = false;
+  ncFicheIndex = 0;
+  chargerFichePcr(ncFicheIndex);
+});
+
+function chargerFichePcr(idx) {
+  const l = ncProduits[idx];
+  elNcIndC.textContent = `Fiche ${idx + 1}/${ncProduits.length}`;
+  elPcrProduitInfo.textContent = l.produit_nom + (l.numero_lot ? ` — Lot ${l.numero_lot}` : '');
+  elPcrNatureInfo.textContent  = `Nature : ${l.motifs.join(', ') || 'non-conformité'}`;
+  elPcrActionInfo.textContent  = `Action : ${(ncActions[l.id] || '').replace('_', ' + ')}`;
+  elPcrCorrective.value = '';
+  elPcrSuivi.value      = '';
+  elErreurPcr.hidden    = true;
+}
+
+elNcBtnEnregFiche.addEventListener('click', enregistrerFichePcr);
+
+async function enregistrerFichePcr() {
+  const corrective = elPcrCorrective.value.trim();
+  if (!corrective) {
+    elErreurPcr.textContent = 'L\'action corrective est obligatoire.';
+    elErreurPcr.hidden = false;
+    return;
+  }
+
+  elNcBtnEnregFiche.disabled = true;
+  elNcBtnEnregFiche.textContent = 'Enregistrement…';
+  elErreurPcr.hidden = true;
+
+  const l = ncProduits[ncFicheIndex];
+  const action = ncActions[l.id] || 'isole';
+
+  // Préparer la signature si livreur présent
+  const fd = new FormData();
+  fd.append('reception_id',    receptionId);
+  fd.append('fournisseur_id',  l.fournisseur_id || fournisseurId || 1);
+  fd.append('produit_id',      l.produit_id);
+  fd.append('nature_probleme', l.motifs[0] || 'autre');
+  fd.append('action_immediate', action);
+  fd.append('livreur_present', livreurPresent ? 1 : 0);
+  if (l.id)         fd.append('reception_ligne_id', l.id);
+  if (l.numero_lot) fd.append('numero_lot', l.numero_lot);
+  if (l.motifs.length > 1) fd.append('description', l.motifs.join(', '));
+  fd.append('action_corrective', corrective);
+  if (elPcrSuivi.value.trim()) fd.append('suivi', elPcrSuivi.value.trim());
+
+  // Signature PNG depuis le canvas
+  if (livreurPresent && sigCtx) {
+    await new Promise(resolve => {
+      elSigCanvas.toBlob(blob => {
+        if (blob) fd.append('signature_livreur', blob, 'signature.png');
+        resolve();
+      }, 'image/png');
+    });
+  }
+
+  try {
+    await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
+    ncFichesSauvees++;
+
+    if (ncFicheIndex < ncProduits.length - 1) {
+      ncFicheIndex++;
+      chargerFichePcr(ncFicheIndex);
+    } else {
+      // Toutes les fiches enregistrées → débloquer clôture
+      elNcStepC.hidden = true;
+      elBtnCloturer.disabled = false;
+    }
+  } catch (err) {
+    elErreurPcr.textContent = `Erreur : ${err.message}`;
+    elErreurPcr.hidden = false;
+  } finally {
+    elNcBtnEnregFiche.disabled = false;
+    elNcBtnEnregFiche.textContent = '💾 Enregistrer cette fiche';
+  }
+}
+
+// ── Canvas signature ────────────────────────────────────────
+function initSignatureCanvas() {
+  if (!elSigCanvas) return;
+  const W = elSigCanvas.offsetWidth || 600;
+  elSigCanvas.width  = W * (window.devicePixelRatio || 1);
+  elSigCanvas.height = 180 * (window.devicePixelRatio || 1);
+  elSigCanvas.style.height = '180px';
+  sigCtx = elSigCanvas.getContext('2d');
+  sigCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  sigCtx.strokeStyle = '#000';
+  sigCtx.lineWidth   = 2;
+  sigCtx.lineCap     = 'round';
+  sigCtx.lineJoin    = 'round';
+
+  function pos(e) {
+    const r = elSigCanvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  }
+
+  elSigCanvas.addEventListener('mousedown',  e => { sigDessin = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
+  elSigCanvas.addEventListener('mousemove',  e => { if (!sigDessin) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
+  elSigCanvas.addEventListener('mouseup',    () => sigDessin = false);
+  elSigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDessin = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
+  elSigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDessin) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); }, { passive: false });
+  elSigCanvas.addEventListener('touchend',   () => sigDessin = false);
+}
+
+elSigEffacer.addEventListener('click', () => {
+  if (sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
+});
+
+// ── Clôture ─────────────────────────────────────────────────
 elBtnCloturer.addEventListener('click', cloturerFiche);
 
 async function cloturerFiche() {
@@ -782,7 +1100,6 @@ async function cloturerFiche() {
       body: JSON.stringify(payload),
     });
 
-    // Écran de confirmation
     const conf = rec.conformite_globale === 'conforme';
     elConfirmDetail.textContent = `${lignesAjoutees.length} produit(s) — par ${personnelPrenom}`;
     elConfirmBadge.className   = 'rec-confirm-badge ' + (conf ? 'conforme' : 'nc');

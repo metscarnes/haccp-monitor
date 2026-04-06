@@ -227,6 +227,34 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
 );
 
+CREATE TABLE IF NOT EXISTS fiches_incident (
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_id               INTEGER NOT NULL,
+    reception_ligne_id         INTEGER,
+    date_incident              DATE    DEFAULT CURRENT_DATE,
+    heure_incident             TEXT    NOT NULL,
+    fournisseur_id             INTEGER NOT NULL,
+    produit_id                 INTEGER NOT NULL,
+    numero_lot                 TEXT,
+    nature_probleme            TEXT    NOT NULL,
+    description                TEXT,
+    action_immediate           TEXT    NOT NULL,
+    livreur_present            INTEGER NOT NULL DEFAULT 0,
+    signature_livreur_filename TEXT,
+    etiquette_reprise_imprimee INTEGER DEFAULT 0,
+    action_corrective          TEXT,
+    suivi                      TEXT,
+    statut                     TEXT    DEFAULT 'ouverte',
+    cloturee_par               INTEGER,
+    cloturee_le                DATETIME,
+    created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_id)       REFERENCES receptions(id),
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
+    FOREIGN KEY (fournisseur_id)     REFERENCES fournisseurs(id),
+    FOREIGN KEY (produit_id)         REFERENCES produits(id),
+    FOREIGN KEY (cloturee_par)       REFERENCES personnel(id)
+);
+
 CREATE TABLE IF NOT EXISTS non_conformites_fournisseur (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     boutique_id         INTEGER NOT NULL,
@@ -482,6 +510,39 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     FOREIGN KEY (produit_id)     REFERENCES produits(id),
     FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
 );
+""")
+
+        # Migration : table fiches_incident (ajout v2.1)
+        cur_fi = await db.execute("PRAGMA table_info(fiches_incident)")
+        if not await cur_fi.fetchone():
+            await db.execute("""
+CREATE TABLE IF NOT EXISTS fiches_incident (
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_id               INTEGER NOT NULL,
+    reception_ligne_id         INTEGER,
+    date_incident              DATE    DEFAULT CURRENT_DATE,
+    heure_incident             TEXT    NOT NULL,
+    fournisseur_id             INTEGER NOT NULL,
+    produit_id                 INTEGER NOT NULL,
+    numero_lot                 TEXT,
+    nature_probleme            TEXT    NOT NULL,
+    description                TEXT,
+    action_immediate           TEXT    NOT NULL,
+    livreur_present            INTEGER NOT NULL DEFAULT 0,
+    signature_livreur_filename TEXT,
+    etiquette_reprise_imprimee INTEGER DEFAULT 0,
+    action_corrective          TEXT,
+    suivi                      TEXT,
+    statut                     TEXT    DEFAULT 'ouverte',
+    cloturee_par               INTEGER,
+    cloturee_le                DATETIME,
+    created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_id)       REFERENCES receptions(id),
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
+    FOREIGN KEY (fournisseur_id)     REFERENCES fournisseurs(id),
+    FOREIGN KEY (produit_id)         REFERENCES produits(id),
+    FOREIGN KEY (cloturee_par)       REFERENCES personnel(id)
+)
 """)
 
         # Autres migrations incrémentales
@@ -1264,11 +1325,9 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
     """Crée une réception. data doit contenir personnel_id et heure_reception."""
     temp = data.get("temperature_camion")
     proprete = data.get("proprete_camion", "satisfaisant")
-    camion_conforme = 1
-    if temp is not None and temp >= 2.0:
-        camion_conforme = 0
-    if proprete == "non_satisfaisant":
-        camion_conforme = 0
+    # La température camion >= 2°C est un signal d'alerte, pas une NC en soi.
+    # Seule la propreté non satisfaisante rend le camion non-conforme.
+    camion_conforme = 0 if proprete == "non_satisfaisant" else 1
 
     cursor = await db.execute(
         """
@@ -1320,16 +1379,17 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     temp_conservation = prod_row["temperature_conservation"] if prod_row else None
     temp_max = _parse_temp_max(temp_conservation)
 
-    # Calculer temperature_conforme
+    # Calculer temperature_conforme — logique à 2 niveaux
     temp_recep = data.get("temperature_reception")
     temperature_conforme: Optional[int] = None
     if temp_recep is not None and temp_max is not None:
-        temperature_conforme = 1
-        if temp_recep > temp_max:
-            temperature_conforme = 0
-        # Seuil renforcé si camion non conforme (temp camion > 2°C)
-        elif temp_camion is not None and temp_camion > 2.0 and temp_recep > (temp_max - 1.0):
-            temperature_conforme = 0
+        camion_chaud = temp_camion is not None and temp_camion >= 2.0
+        if camion_chaud:
+            # CAS 2 : camion >= 2°C → seuil relevé de 1°C (contrôle à cœur)
+            temperature_conforme = 0 if temp_recep >= (temp_max + 1.0) else 1
+        else:
+            # CAS 1 : camion < 2°C → seuil normal
+            temperature_conforme = 0 if temp_recep > temp_max else 1
 
     # Calculer ph_conforme
     ph_valeur = data.get("ph_valeur")
@@ -1853,3 +1913,130 @@ async def create_plan_nettoyage_item(db: aiosqlite.Connection, data: dict) -> in
     )
     await db.commit()
     return cursor.lastrowid
+
+
+# ---------------------------------------------------------------------------
+# Fiches incident (PCR01)
+# ---------------------------------------------------------------------------
+
+async def create_fiche_incident(db: aiosqlite.Connection, data: dict) -> int:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    cursor = await db.execute(
+        """
+        INSERT INTO fiches_incident
+            (reception_id, reception_ligne_id, date_incident, heure_incident,
+             fournisseur_id, produit_id, numero_lot, nature_probleme, description,
+             action_immediate, livreur_present, signature_livreur_filename,
+             etiquette_reprise_imprimee, action_corrective, suivi, statut)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            data["reception_id"],
+            data.get("reception_ligne_id"),
+            data.get("date_incident", now.strftime("%Y-%m-%d")),
+            data.get("heure_incident", now.strftime("%H:%M")),
+            data["fournisseur_id"],
+            data["produit_id"],
+            data.get("numero_lot"),
+            data["nature_probleme"],
+            data.get("description"),
+            data["action_immediate"],
+            int(data.get("livreur_present", 0)),
+            data.get("signature_livreur_filename"),
+            int(data.get("etiquette_reprise_imprimee", 0)),
+            data.get("action_corrective"),
+            data.get("suivi"),
+            data.get("statut", "ouverte"),
+        ),
+    )
+    await db.commit()
+    return cursor.lastrowid
+
+
+async def get_fiches_incident(
+    db: aiosqlite.Connection,
+    statut: Optional[str] = None,
+    fournisseur_id: Optional[int] = None,
+    date_debut: Optional[str] = None,
+    date_fin: Optional[str] = None,
+    limit: int = 50,
+) -> list:
+    conditions = []
+    params: list = []
+    if statut:
+        conditions.append("fi.statut = ?")
+        params.append(statut)
+    if fournisseur_id is not None:
+        conditions.append("fi.fournisseur_id = ?")
+        params.append(fournisseur_id)
+    if date_debut:
+        conditions.append("fi.date_incident >= ?")
+        params.append(date_debut)
+    if date_fin:
+        conditions.append("fi.date_incident <= ?")
+        params.append(date_fin)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.append(limit)
+
+    cursor = await db.execute(
+        f"""
+        SELECT
+            fi.*,
+            f.nom  AS fournisseur_nom,
+            p.nom  AS produit_nom,
+            per.prenom AS cloturee_par_prenom
+        FROM fiches_incident fi
+        LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
+        LEFT JOIN produits     p   ON p.id  = fi.produit_id
+        LEFT JOIN personnel    per ON per.id = fi.cloturee_par
+        {where}
+        ORDER BY fi.created_at DESC
+        LIMIT ?
+        """,
+        params,
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_fiche_incident(db: aiosqlite.Connection, fiche_id: int) -> Optional[dict]:
+    cursor = await db.execute(
+        """
+        SELECT
+            fi.*,
+            f.nom  AS fournisseur_nom,
+            p.nom  AS produit_nom,
+            per.prenom AS cloturee_par_prenom
+        FROM fiches_incident fi
+        LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
+        LEFT JOIN produits     p   ON p.id  = fi.produit_id
+        LEFT JOIN personnel    per ON per.id = fi.cloturee_par
+        WHERE fi.id = ?
+        """,
+        (fiche_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def update_fiche_incident(db: aiosqlite.Connection, fiche_id: int, data: dict) -> bool:
+    from datetime import datetime, timezone
+    allowed = {"action_corrective", "suivi", "statut", "cloturee_par",
+               "etiquette_reprise_imprimee"}
+    updates = {k: v for k, v in data.items() if k in allowed and v is not None}
+    if not updates:
+        return False
+
+    # Auto-remplir cloturee_le si passage à 'cloturee'
+    if updates.get("statut") == "cloturee" and "cloturee_le" not in updates:
+        updates["cloturee_le"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    params = list(updates.values()) + [fiche_id]
+    cursor = await db.execute(
+        f"UPDATE fiches_incident SET {set_clause} WHERE id = ?", params
+    )
+    await db.commit()
+    return cursor.rowcount > 0
