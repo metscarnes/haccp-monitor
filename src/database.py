@@ -580,8 +580,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # col[3] = notnull flag (1 = NOT NULL)
             if fourn_col and fourn_col[3] == 1:
                 await db.execute("PRAGMA foreign_keys = OFF")
+                await db.execute("DROP TABLE IF EXISTS fiches_incident_new")
                 await db.execute("""
-                    CREATE TABLE IF NOT EXISTS fiches_incident_new (
+                    CREATE TABLE fiches_incident_new (
                         id                         INTEGER PRIMARY KEY AUTOINCREMENT,
                         reception_id               INTEGER NOT NULL,
                         reception_ligne_id         INTEGER,
@@ -607,15 +608,22 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                         created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-                await db.execute("""
+                # Déterminer les colonnes existantes pour le SELECT
+                has_fourn_nom = any(c[1] == 'fournisseur_nom' for c in cols)
+                has_commentaire = any(c[1] == 'commentaire' for c in cols)
+                has_temp_coeur = any(c[1] == 'temperature_coeur' for c in cols)
+                fourn_nom_sel = "fournisseur_nom" if has_fourn_nom else "NULL"
+                commentaire_sel = "commentaire" if has_commentaire else "NULL"
+                temp_coeur_sel = "temperature_coeur" if has_temp_coeur else "NULL"
+                await db.execute(f"""
                     INSERT INTO fiches_incident_new
                         SELECT id, reception_id, reception_ligne_id, date_incident,
                                heure_incident, fournisseur_id,
-                               COALESCE(fournisseur_nom, NULL),
+                               {fourn_nom_sel},
                                produit_id, numero_lot, nature_probleme, description,
                                action_immediate, livreur_present,
                                signature_livreur_filename, etiquette_reprise_imprimee,
-                               action_corrective, suivi, commentaire, temperature_coeur,
+                               action_corrective, suivi, {commentaire_sel}, {temp_coeur_sel},
                                statut, cloturee_par, cloturee_le, created_at
                         FROM fiches_incident
                 """)
