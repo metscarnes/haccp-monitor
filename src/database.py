@@ -1430,7 +1430,7 @@ def _calc_temperature_conforme(temp_recep: Optional[float], temp_conservation: O
     borne_min, borne_max = rng
     tol_min = borne_min - 1.0
     tol_max = borne_max + 1.0
-    if temp_recep > tol_max:
+    if temp_recep >= tol_max:
         return 0   # NON CONFORME — trop chaud
     if temp_recep < tol_min:
         return 2   # Attention — température basse

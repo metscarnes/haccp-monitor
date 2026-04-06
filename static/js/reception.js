@@ -796,8 +796,8 @@ function evaluerTemperature(tempRecep, tempConservationStr) {
   if (!rng) return null;
   const tolMin = rng.min - 1;
   const tolMax = rng.max + 1;
-  if (tempRecep > tolMax) {
-    return { statut: 'nc', texte: `NON CONFORME — ${tempRecep}°C > max toléré ${tolMax}°C` };
+  if (tempRecep >= tolMax) {
+    return { statut: 'nc', texte: `NON CONFORME — ${tempRecep}°C ≥ max toléré ${tolMax}°C` };
   }
   if (tempRecep < tolMin) {
     return { statut: 'attention', texte: `Attention — température basse ${tempRecep}°C (min ${tolMin}°C)` };
