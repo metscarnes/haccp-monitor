@@ -233,8 +233,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
     reception_ligne_id         INTEGER,
     date_incident              DATE    DEFAULT CURRENT_DATE,
     heure_incident             TEXT    NOT NULL,
-    fournisseur_id             INTEGER NOT NULL,
-    produit_id                 INTEGER NOT NULL,
+    fournisseur_id             INTEGER,
+    produit_id                 INTEGER,
     numero_lot                 TEXT,
     nature_probleme            TEXT    NOT NULL,
     description                TEXT,
@@ -522,8 +522,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
     reception_ligne_id         INTEGER,
     date_incident              DATE    DEFAULT CURRENT_DATE,
     heure_incident             TEXT    NOT NULL,
-    fournisseur_id             INTEGER NOT NULL,
-    produit_id                 INTEGER NOT NULL,
+    fournisseur_id             INTEGER,
+    produit_id                 INTEGER,
     numero_lot                 TEXT,
     nature_probleme            TEXT    NOT NULL,
     description                TEXT,
@@ -590,7 +590,7 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                         heure_incident             TEXT    NOT NULL,
                         fournisseur_id             INTEGER,
                         fournisseur_nom            TEXT,
-                        produit_id                 INTEGER NOT NULL,
+                        produit_id                 INTEGER,
                         numero_lot                 TEXT,
                         nature_probleme            TEXT    NOT NULL,
                         description                TEXT,
@@ -633,6 +633,68 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 logger.info("Migration v2.4 : fournisseur_id rendu nullable dans fiches_incident")
         except Exception as e:
             logger.warning("Migration v2.4 fiches_incident : %s", e)
+            await db.execute("PRAGMA foreign_keys = ON")
+
+        # Migration v2.5 : rendre produit_id nullable dans fiches_incident
+        # (nécessaire pour les fiches de refus livraison camion, sans produit spécifique)
+        try:
+            cur_col2 = await db.execute("PRAGMA table_info(fiches_incident)")
+            cols2 = await cur_col2.fetchall()
+            prod_col = next((c for c in cols2 if c[1] == 'produit_id'), None)
+            if prod_col and prod_col[3] == 1:  # notnull == 1
+                await db.execute("PRAGMA foreign_keys = OFF")
+                await db.execute("DROP TABLE IF EXISTS fiches_incident_new")
+                await db.execute("""
+                    CREATE TABLE fiches_incident_new (
+                        id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reception_id               INTEGER NOT NULL,
+                        reception_ligne_id         INTEGER,
+                        date_incident              DATE    DEFAULT CURRENT_DATE,
+                        heure_incident             TEXT    NOT NULL,
+                        fournisseur_id             INTEGER,
+                        fournisseur_nom            TEXT,
+                        produit_id                 INTEGER,
+                        numero_lot                 TEXT,
+                        nature_probleme            TEXT    NOT NULL,
+                        description                TEXT,
+                        action_immediate           TEXT    NOT NULL,
+                        livreur_present            INTEGER NOT NULL DEFAULT 0,
+                        signature_livreur_filename TEXT,
+                        etiquette_reprise_imprimee INTEGER DEFAULT 0,
+                        action_corrective          TEXT,
+                        suivi                      TEXT,
+                        commentaire                TEXT,
+                        temperature_coeur          REAL,
+                        statut                     TEXT    DEFAULT 'ouverte',
+                        cloturee_par               INTEGER,
+                        cloturee_le                DATETIME,
+                        created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                has_fourn_nom2  = any(c[1] == 'fournisseur_nom'   for c in cols2)
+                has_commentaire2 = any(c[1] == 'commentaire'      for c in cols2)
+                has_temp_coeur2  = any(c[1] == 'temperature_coeur' for c in cols2)
+                fourn_nom_sel2  = "fournisseur_nom"   if has_fourn_nom2  else "NULL"
+                commentaire_sel2 = "commentaire"      if has_commentaire2 else "NULL"
+                temp_coeur_sel2  = "temperature_coeur" if has_temp_coeur2  else "NULL"
+                await db.execute(f"""
+                    INSERT INTO fiches_incident_new
+                        SELECT id, reception_id, reception_ligne_id, date_incident,
+                               heure_incident, fournisseur_id,
+                               {fourn_nom_sel2},
+                               produit_id, numero_lot, nature_probleme, description,
+                               action_immediate, livreur_present,
+                               signature_livreur_filename, etiquette_reprise_imprimee,
+                               action_corrective, suivi, {commentaire_sel2}, {temp_coeur_sel2},
+                               statut, cloturee_par, cloturee_le, created_at
+                        FROM fiches_incident
+                """)
+                await db.execute("DROP TABLE fiches_incident")
+                await db.execute("ALTER TABLE fiches_incident_new RENAME TO fiches_incident")
+                await db.execute("PRAGMA foreign_keys = ON")
+                logger.info("Migration v2.5 : produit_id rendu nullable dans fiches_incident")
+        except Exception as e:
+            logger.warning("Migration v2.5 fiches_incident : %s", e)
             await db.execute("PRAGMA foreign_keys = ON")
 
         # Appliquer les tolérances correctes via CASE WHEN (robuste, toujours exécuté)
