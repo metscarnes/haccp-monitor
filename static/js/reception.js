@@ -606,6 +606,28 @@ async function creerFiche() {
     fourn0.nom = nomSaisi;
   }
 
+  // Valider et sauvegarder les noms des fournisseurs supplémentaires
+  for (let i = 1; i < fournisseursListe.length; i++) {
+    const fournI = fournisseursListe[i];
+    const searchInpI = document.getElementById(`rec-fourn-search-${i}`);
+    const nomSaisiI = searchInpI ? searchInpI.value.trim() : '';
+
+    if (!fournI.id && !nomSaisiI) {
+      if (searchInpI) {
+        searchInpI.classList.add('rec-champ-invalide');
+        searchInpI.focus();
+        searchInpI.title = 'Saisissez le nom du fournisseur';
+      }
+      elErreur2.textContent = `Le nom du fournisseur ${i + 1} est obligatoire.`;
+      elErreur2.hidden = false;
+      return;
+    }
+
+    if (nomSaisiI && !fournI.id) {
+      fournI.nom = nomSaisiI;
+    }
+  }
+
   elBtnCreerFiche.disabled = true;
   elBtnCreerFiche.textContent = 'Création…';
 
