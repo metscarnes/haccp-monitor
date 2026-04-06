@@ -87,7 +87,6 @@ const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
 const elNcProcedure       = document.getElementById('rec-nc-procedure');
 const elNcStepA           = document.getElementById('rec-nc-step-a');
 const elNcStepB           = document.getElementById('rec-nc-step-b');
-const elNcStepC           = document.getElementById('rec-nc-step-c');
 const elNcProduitsActions = document.getElementById('rec-nc-produits-actions');
 const elNcBtnASuivant     = document.getElementById('rec-nc-btn-a-suivant');
 const elLivreurOui        = document.getElementById('rec-livreur-oui');
@@ -98,14 +97,7 @@ const elSigEffacer        = document.getElementById('rec-sig-effacer');
 const elEtiqZone          = document.getElementById('rec-etiq-zone');
 const elEtiqListe         = document.getElementById('rec-etiq-liste');
 const elNcBtnBSuivant     = document.getElementById('rec-nc-btn-b-suivant');
-const elNcIndC            = document.getElementById('rec-nc-ind-c');
-const elPcrProduitInfo    = document.getElementById('rec-pcr-produit-info');
-const elPcrNatureInfo     = document.getElementById('rec-pcr-nature-info');
-const elPcrActionInfo     = document.getElementById('rec-pcr-action-info');
-const elPcrCorrective     = document.getElementById('rec-pcr-corrective');
-const elPcrSuivi          = document.getElementById('rec-pcr-suivi');
-const elErreurPcr         = document.getElementById('rec-erreur-pcr');
-const elNcBtnEnregFiche   = document.getElementById('rec-nc-btn-enreg-fiche');
+const elPcrDoneBadge      = document.getElementById('rec-pcr-done-badge');
 
 // Confirmation
 const elConfirmDetail     = document.getElementById('rec-confirm-detail');
@@ -145,7 +137,6 @@ let livreurPresent     = null;    // true | false
 let sigDessin          = false;
 let sigCtx             = null;
 let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
-let ncFichesSauvees    = 0;
 
 
 // ── Horloge ────────────────────────────────────────────────
@@ -831,7 +822,6 @@ function initNcProcedure() {
   ncActions       = {};
   livreurPresent  = null;
   ncFicheIndex    = 0;
-  ncFichesSauvees = 0;
 
   const aNc = ncProduits.length > 0;
   elNcProcedure.hidden = !aNc;
@@ -842,7 +832,6 @@ function initNcProcedure() {
   // Réinitialiser les sous-étapes
   elNcStepA.hidden = false;
   elNcStepB.hidden = true;
-  elNcStepC.hidden = true;
   elSigZone.hidden = true;
   elEtiqZone.hidden = true;
   elNcBtnASuivant.disabled = true;
@@ -971,86 +960,43 @@ elLivreurNon.addEventListener('click', () => {
   elNcBtnBSuivant.disabled = false;
 });
 
-// Sous-étape B → C
+// Sous-étape B → PCR01 (écran dédié)
 elNcBtnBSuivant.addEventListener('click', () => {
-  elNcStepB.hidden = true;
-  elNcStepC.hidden = false;
-  ncFicheIndex = 0;
-  chargerFichePcr(ncFicheIndex);
+  // Sauvegarder l'état complet du wizard pour le restaurer au retour
+  const recState = {
+    receptionId,
+    personnelId,
+    personnelPrenom,
+    fournisseurId,
+    lignesAjoutees,
+    tempCamion:    parseFloat(elTempCamion.value) || null,
+    propreteCamion,
+  };
+  sessionStorage.setItem('haccp_rec_state', JSON.stringify(recState));
+
+  // Données spécifiques à la procédure PCR01
+  const pcrData = {
+    receptionId,
+    personnelPrenom,
+    fournisseurId,
+    livreurPresent,
+    ncProduits,
+    ncActions,
+    ncFicheIndex: 0,
+  };
+  sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
+
+  // Sauvegarder la signature si livreur présent
+  if (livreurPresent && elSigCanvas && sigCtx) {
+    sessionStorage.setItem('haccp_pcr01_signature', elSigCanvas.toDataURL('image/png'));
+  } else {
+    sessionStorage.removeItem('haccp_pcr01_signature');
+  }
+
+  window.location.href = '/pcr01.html';
 });
 
-function chargerFichePcr(idx) {
-  const l = ncProduits[idx];
-  elNcIndC.textContent = `Fiche ${idx + 1}/${ncProduits.length}`;
-  elPcrProduitInfo.textContent = l.produit_nom + (l.numero_lot ? ` — Lot ${l.numero_lot}` : '');
-  elPcrNatureInfo.textContent  = `Nature : ${l.motifs.join(', ') || 'non-conformité'}`;
-  elPcrActionInfo.textContent  = `Action : ${(ncActions[l.id] || '').replace('_', ' + ')}`;
-  elPcrCorrective.value = '';
-  elPcrSuivi.value      = '';
-  elErreurPcr.hidden    = true;
-}
-
-elNcBtnEnregFiche.addEventListener('click', enregistrerFichePcr);
-
-async function enregistrerFichePcr() {
-  const corrective = elPcrCorrective.value.trim();
-  if (!corrective) {
-    elErreurPcr.textContent = 'L\'action corrective est obligatoire.';
-    elErreurPcr.hidden = false;
-    return;
-  }
-
-  elNcBtnEnregFiche.disabled = true;
-  elNcBtnEnregFiche.textContent = 'Enregistrement…';
-  elErreurPcr.hidden = true;
-
-  const l = ncProduits[ncFicheIndex];
-  const action = ncActions[l.id] || 'isole';
-
-  // Préparer la signature si livreur présent
-  const fd = new FormData();
-  fd.append('reception_id',    receptionId);
-  fd.append('fournisseur_id',  l.fournisseur_id || fournisseurId || 1);
-  fd.append('produit_id',      l.produit_id);
-  fd.append('nature_probleme', l.motifs[0] || 'autre');
-  fd.append('action_immediate', action);
-  fd.append('livreur_present', livreurPresent ? 1 : 0);
-  if (l.id)         fd.append('reception_ligne_id', l.id);
-  if (l.numero_lot) fd.append('numero_lot', l.numero_lot);
-  if (l.motifs.length > 1) fd.append('description', l.motifs.join(', '));
-  fd.append('action_corrective', corrective);
-  if (elPcrSuivi.value.trim()) fd.append('suivi', elPcrSuivi.value.trim());
-
-  // Signature PNG depuis le canvas
-  if (livreurPresent && sigCtx) {
-    await new Promise(resolve => {
-      elSigCanvas.toBlob(blob => {
-        if (blob) fd.append('signature_livreur', blob, 'signature.png');
-        resolve();
-      }, 'image/png');
-    });
-  }
-
-  try {
-    await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
-    ncFichesSauvees++;
-
-    if (ncFicheIndex < ncProduits.length - 1) {
-      ncFicheIndex++;
-      chargerFichePcr(ncFicheIndex);
-    } else {
-      // Toutes les fiches enregistrées → débloquer clôture
-      elNcStepC.hidden = true;
-      elBtnCloturer.disabled = false;
-    }
-  } catch (err) {
-    elErreurPcr.textContent = `Erreur : ${err.message}`;
-    elErreurPcr.hidden = false;
-  } finally {
-    elNcBtnEnregFiche.disabled = false;
-    elNcBtnEnregFiche.textContent = '💾 Enregistrer cette fiche';
-  }
-}
+// chargerFichePcr / enregistrerFichePcr → déplacés dans pcr01.js (écran dédié)
 
 // ── Canvas signature ────────────────────────────────────────
 function initSignatureCanvas() {
@@ -1146,8 +1092,72 @@ elBtnHub.addEventListener('click', () => {
 });
 
 
+// ── Restauration état après retour depuis pcr01.html ────────
+//
+// Si l'opérateur revient de pcr01.html (avec ou sans validation),
+// on restaure le wizard à l'étape 4 depuis sessionStorage.
+//
+function restaurerDepuisPcr01() {
+  const recStateRaw = sessionStorage.getItem('haccp_rec_state');
+  if (!recStateRaw) return false;
+
+  const pcrDone = sessionStorage.getItem('haccp_pcr01_done') === '1';
+
+  try {
+    const state = JSON.parse(recStateRaw);
+
+    // Restaurer l'état mémoire
+    receptionId     = state.receptionId;
+    personnelId     = state.personnelId;
+    personnelPrenom = state.personnelPrenom;
+    fournisseurId   = state.fournisseurId;
+    lignesAjoutees  = state.lignesAjoutees || [];
+    propreteCamion  = state.propreteCamion || 'satisfaisant';
+
+    // Restaurer les inputs DOM nécessaires à remplirRecap()
+    if (state.tempCamion !== null && state.tempCamion !== undefined) {
+      elTempCamion.value = state.tempCamion;
+    }
+
+    // Nettoyage sessionStorage
+    sessionStorage.removeItem('haccp_rec_state');
+    sessionStorage.removeItem('haccp_pcr01_data');
+    sessionStorage.removeItem('haccp_pcr01_done');
+    sessionStorage.removeItem('haccp_pcr01_signature');
+
+    // Reconstruire le récap
+    remplirRecap();
+
+    if (pcrDone) {
+      // PCR01 validé → masquer la procédure NC, afficher le badge, débloquer clôture
+      ncProduits = lignesAjoutees.filter(l => !l.conforme);
+      elNcProcedure.hidden = true;
+      if (elPcrDoneBadge) elPcrDoneBadge.hidden = false;
+      elBtnCloturer.disabled = false;
+    } else {
+      // Retour sans validation (← Retour sur pcr01) → reprendre depuis étape A
+      initNcProcedure();
+    }
+
+    allerEtape(4);
+    return true;
+  } catch (e) {
+    console.error('[haccp] Restauration échouée :', e);
+    // Nettoyer pour éviter une boucle
+    sessionStorage.removeItem('haccp_rec_state');
+    sessionStorage.removeItem('haccp_pcr01_data');
+    sessionStorage.removeItem('haccp_pcr01_done');
+    sessionStorage.removeItem('haccp_pcr01_signature');
+    return false;
+  }
+}
+
+
 // ── Initialisation ─────────────────────────────────────────
 async function init() {
+  // Vérifier si retour depuis pcr01.html
+  if (restaurerDepuisPcr01()) return;
+
   // Charger les données en parallèle
   await Promise.all([
     chargerPersonnel(),

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#C93030">
+  <title>Fiche Incident PCR01 — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/pages/pcr01.css">
+</head>
+<body class="pcr-body">
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="pcr-header">
+    <button class="pcr-btn-retour" id="pcr-btn-retour" aria-label="Retour">← Retour</button>
+    <div class="pcr-header-titre">FICHE INCIDENT PCR01</div>
+    <div class="pcr-header-badge" id="pcr-header-badge" aria-live="polite">1/1</div>
+  </header>
+
+  <!-- ============================================================
+       CONTENU PRINCIPAL
+  ============================================================= -->
+  <main class="pcr-main" role="main">
+
+    <!-- ── En-tête document ── -->
+    <div class="pcr-doc-header">
+      <div class="pcr-ref">Réf. PCR01 — Non-conformité réception</div>
+      <div class="pcr-date" id="pcr-date"></div>
+      <div class="pcr-operateur" id="pcr-operateur"></div>
+    </div>
+
+    <!-- ── Pagination (visible seulement si plusieurs fiches) ── -->
+    <div class="pcr-pagination" id="pcr-pagination" hidden>
+      <span class="pcr-pagination-label" id="pcr-pagination-label"></span>
+    </div>
+
+    <!-- ── Produit non conforme ── -->
+    <div class="pcr-bloc pcr-bloc-produit">
+      <div class="pcr-bloc-titre">Produit non conforme</div>
+      <div class="pcr-bloc-corps">
+        <div class="pcr-champ-ligne">
+          <span class="pcr-champ-label">Produit</span>
+          <span class="pcr-champ-val" id="pcr-produit-nom">—</span>
+        </div>
+        <div class="pcr-champ-ligne" id="pcr-lot-row" hidden>
+          <span class="pcr-champ-label">N° lot</span>
+          <span class="pcr-champ-val" id="pcr-lot">—</span>
+        </div>
+        <div class="pcr-champ-ligne">
+          <span class="pcr-champ-label">Non-conformité</span>
+          <span class="pcr-champ-val pcr-nc-badge" id="pcr-motifs">—</span>
+        </div>
+        <div class="pcr-champ-ligne">
+          <span class="pcr-champ-label">Action immédiate</span>
+          <span class="pcr-champ-val pcr-action-badge" id="pcr-action-imm">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Étapes d'identification et de traitement ── -->
+    <div class="pcr-bloc pcr-bloc-etapes">
+      <div class="pcr-bloc-titre">Étapes d'identification et de traitement</div>
+      <div class="pcr-etapes-liste" id="pcr-etapes-liste" aria-label="Étapes chronologiques"></div>
+    </div>
+
+    <!-- ── Action corrective (auto-remplie, modifiable) ── -->
+    <div class="pcr-bloc pcr-bloc-corrective">
+      <div class="pcr-bloc-titre">Action corrective *</div>
+      <div class="pcr-bloc-corps">
+        <textarea class="pcr-textarea" id="pcr-corrective" rows="5"
+                  placeholder="Décrivez l'action corrective…"
+                  aria-label="Action corrective obligatoire"></textarea>
+      </div>
+    </div>
+
+    <!-- ── Suivi ── -->
+    <div class="pcr-bloc pcr-bloc-suivi">
+      <div class="pcr-bloc-titre">Suivi (optionnel)</div>
+      <div class="pcr-bloc-corps">
+        <textarea class="pcr-textarea pcr-textarea-suivi" id="pcr-suivi" rows="2"
+                  placeholder="Ex : Relancer fournisseur le …, vérifier prochain lot"
+                  aria-label="Suivi optionnel"></textarea>
+      </div>
+    </div>
+
+    <!-- ── Signature du livreur (visible si livreur présent) ── -->
+    <div class="pcr-bloc pcr-bloc-signature" id="pcr-sig-bloc" hidden>
+      <div class="pcr-bloc-titre">Signature du livreur</div>
+      <div class="pcr-bloc-corps">
+        <div class="pcr-sig-info">
+          Feuille de reprise avec retour marchandise signée par le livreur lors de la réception.
+        </div>
+        <img id="pcr-sig-img" class="pcr-sig-img" alt="Signature du livreur">
+      </div>
+    </div>
+
+    <!-- ── Zone erreur ── -->
+    <div class="pcr-erreur" id="pcr-erreur" hidden role="alert"></div>
+
+  </main>
+
+  <!-- ============================================================
+       BOUTON FIXE EN BAS
+  ============================================================= -->
+  <button class="pcr-btn-enreg" id="pcr-btn-enreg" aria-live="polite">
+    💾 Enregistrer cette fiche
+  </button>
+
+  <script src="/static/js/pcr01.js"></script>
+</body>
+</html>

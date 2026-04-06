@@ -714,6 +714,235 @@ body.rec-body {
   min-height: 56px;
 }
 
+/* ── Bandeau camion chaud ─────────────────────────────────── */
+.rec-bandeau-camion-chaud {
+  background: #FFF3CD;
+  color: #7a5a00;
+  border-bottom: 2px solid #FFE58A;
+  padding: .6rem 1rem;
+  font-size: .88rem;
+  font-weight: 700;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Badge attention (camion chaud) ───────────────────────── */
+.rec-badge.attention {
+  background: #FFF3CD;
+  color: #7a5a00;
+}
+
+/* ── Procédure NC — conteneur ─────────────────────────────── */
+#rec-nc-procedure {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+.rec-nc-bloc {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.rec-nc-bloc-titre {
+  background: var(--color-alert);
+  color: white;
+  padding: .6rem 1rem;
+  font-size: .85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.rec-nc-etape-ind {
+  font-size: .75rem;
+  font-weight: 600;
+  background: rgba(255,255,255,.2);
+  padding: .15rem .6rem;
+  border-radius: 12px;
+}
+
+/* ── Sous-étape A — produits NC ───────────────────────────── */
+.rec-nc-produit-row {
+  padding: .85rem 1rem;
+  border-bottom: 1px solid rgba(107,58,31,.08);
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.rec-nc-produit-row:last-child { border-bottom: none; }
+.rec-nc-produit-nom {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.rec-nc-motif {
+  font-size: .82rem;
+  color: var(--color-alert);
+  font-weight: 600;
+}
+.rec-nc-actions-pair {
+  display: flex;
+  gap: .5rem;
+  margin-top: .2rem;
+}
+.rec-nc-action-btn {
+  flex: 1;
+  padding: .7rem;
+  border-radius: 10px;
+  border: 2px solid var(--color-secondary);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 52px;
+  text-align: center;
+  transition: background .12s, border-color .12s, color .12s;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+.rec-nc-action-btn.sel-refus {
+  background: #FDEDED;
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+}
+.rec-nc-action-btn.sel-isole {
+  background: #FFF3CD;
+  border-color: #E8913A;
+  color: #7a5a00;
+}
+
+/* Navigation sous-étapes NC */
+.rec-nc-nav {
+  display: flex;
+  justify-content: flex-end;
+  padding: .75rem 1rem;
+}
+.rec-nc-nav-btn {
+  padding: .85rem 1.5rem;
+  border-radius: var(--radius);
+  border: none;
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 52px;
+  transition: opacity .15s;
+  font-family: inherit;
+}
+.rec-nc-nav-btn.suivant {
+  background: var(--color-accent);
+  color: white;
+}
+.rec-nc-nav-btn:disabled { opacity: .42; cursor: not-allowed; }
+.rec-nc-nav-btn:not(:disabled):active { opacity: .82; }
+
+/* ── Sous-étape B — livreur ───────────────────────────────── */
+.rec-livreur-choix {
+  display: flex;
+  gap: .75rem;
+}
+.rec-livreur-btn {
+  flex: 1;
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 2.5px solid var(--color-secondary);
+  background: var(--color-card);
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 64px;
+  text-align: center;
+  transition: background .12s, border-color .12s, color .12s;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+.rec-livreur-btn.sel-oui {
+  background: #E8F5EC;
+  border-color: var(--color-ok);
+  color: var(--color-ok);
+}
+.rec-livreur-btn.sel-non {
+  background: #FDEDED;
+  border-color: var(--color-alert);
+  color: var(--color-alert);
+}
+
+/* Zone signature canvas */
+.rec-sig-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+.rec-sig-label {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+#rec-sig-canvas {
+  width: 100%;
+  border: 2px solid var(--color-secondary);
+  border-radius: 8px;
+  background: white;
+  touch-action: none;
+  display: block;
+}
+.rec-btn-effacer-sig {
+  background: none;
+  border: 1.5px solid var(--color-secondary);
+  color: var(--color-offline);
+  border-radius: 8px;
+  padding: .4rem .9rem;
+  font-size: .88rem;
+  cursor: pointer;
+  align-self: flex-end;
+  font-family: inherit;
+}
+
+/* Boutons impression étiquettes reprise */
+.rec-etiq-reprise-btn {
+  width: 100%;
+  padding: .85rem 1rem;
+  background: var(--color-card);
+  border: 2px solid var(--color-secondary);
+  border-radius: var(--radius);
+  color: var(--color-text);
+  font-size: .92rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .5rem;
+  transition: background .12s, border-color .12s;
+  -webkit-tap-highlight-color: transparent;
+  font-family: inherit;
+}
+.rec-etiq-reprise-btn:last-child { margin-bottom: 0; }
+.rec-etiq-reprise-btn:disabled { opacity: .7; cursor: not-allowed; }
+.rec-etiq-reprise-btn.imprime {
+  background: #E8F5EC;
+  border-color: var(--color-ok);
+  color: var(--color-ok);
+}
+
+/* ── Badge "PCR01 enregistré" (retour depuis pcr01) ────────── */
+.rec-pcr-done-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .85rem 1rem;
+  background: #E8F5EC;
+  border-radius: var(--radius);
+  color: var(--color-ok);
+  font-size: .95rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 /* ── Dialog inactivité ────────────────────────────────────── */
 .rec-dialog-overlay {
   position: fixed;

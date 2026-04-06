@@ -409,53 +409,14 @@
           </div>
           <div class="rec-nc-nav">
             <button class="rec-nc-nav-btn suivant" id="rec-nc-btn-b-suivant" disabled>
-              Suivant →
+              Remplir fiche PCR01 →
             </button>
           </div>
         </div>
 
-        <!-- ── Sous-étape C : PCR01 ── -->
-        <div id="rec-nc-step-c" hidden>
-          <div class="rec-nc-bloc">
-            <div class="rec-nc-bloc-titre">
-              <span>📋 Fiche incident PCR01</span>
-              <span class="rec-nc-etape-ind" id="rec-nc-ind-c">Fiche 1/1</span>
-            </div>
-            <div style="padding:1rem;display:flex;flex-direction:column;gap:.85rem;">
-
-              <!-- Infos pré-remplies -->
-              <div style="background:white;border-radius:8px;padding:.75rem 1rem;font-size:.85rem;color:var(--noyer);">
-                <div id="rec-pcr-produit-info" style="font-weight:700;margin-bottom:.25rem;"></div>
-                <div id="rec-pcr-nature-info" style="color:var(--alerte);"></div>
-                <div id="rec-pcr-action-info" style="color:var(--brun);"></div>
-              </div>
-
-              <div class="rec-form-group">
-                <label class="rec-champ-label" for="rec-pcr-corrective">
-                  Action corrective *
-                </label>
-                <textarea id="rec-pcr-corrective" class="rec-textarea"
-                          rows="2"
-                          placeholder="Ex: Lot renvoyé au fournisseur, avoir demandé"
-                          aria-label="Action corrective"></textarea>
-              </div>
-              <div class="rec-form-group">
-                <label class="rec-champ-label" for="rec-pcr-suivi">
-                  Suivi (optionnel)
-                </label>
-                <textarea id="rec-pcr-suivi" class="rec-textarea"
-                          rows="2"
-                          placeholder="Ex: Relancer fournisseur le 07/04, vérifier prochain lot"
-                          aria-label="Suivi"></textarea>
-              </div>
-
-              <div class="rec-erreur" id="rec-erreur-pcr" hidden role="alert"></div>
-
-              <button class="rec-btn-ok" id="rec-nc-btn-enreg-fiche">
-                💾 Enregistrer cette fiche
-              </button>
-            </div>
-          </div>
+        <!-- Badge "PCR01 enregistré" — visible au retour depuis pcr01.html -->
+        <div class="rec-pcr-done-badge" id="rec-pcr-done-badge" hidden>
+          ✓ Fiches PCR01 enregistrées
         </div>
 
       </div>
