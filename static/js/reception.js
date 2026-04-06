@@ -1355,7 +1355,7 @@ function remplirRecap() {
     if (l.temperature_reception !== null && l.temperature_reception !== undefined) {
       parts.push(`${l.temperature_reception}°C`);
     }
-    if (l.numero_lot) parts.push(`Lot : ${l.numero_lot}`);
+    if (l.numero_lot) parts.push(`Lot${l.lot_interne ? ' interne' : ''} : ${l.numero_lot}`);
     det.textContent = parts.join(' · ');
     left.appendChild(nom);
     if (parts.length) left.appendChild(det);
