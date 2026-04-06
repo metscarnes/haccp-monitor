@@ -167,6 +167,12 @@ body.pcr-body {
   padding-top: .05rem;
   line-height: 1.4;
 }
+.pcr-produit-info-ligne {
+  font-size: .8rem;
+  color: var(--hors-ligne, #888);
+  margin-top: .2rem;
+  font-weight: 400;
+}
 .pcr-champ-val {
   font-size: .92rem;
   font-weight: 600;

@@ -532,10 +532,12 @@ elBtnAddFourn.addEventListener('click', () => {
     </div>`;
   elFournListe.appendChild(bloc);
   initBlocFourn(idx);
+  majSelectorFournisseur(); // Mettre à jour le sélecteur écran 4
 
   bloc.querySelector('.rec-fourn-sup-btn').addEventListener('click', () => {
     fournisseursListe.splice(idx, 1);
     bloc.remove();
+    majSelectorFournisseur(); // Mettre à jour après suppression
     // Renuméroter les titres
     elFournListe.querySelectorAll('.rec-fourn-bloc-titre').forEach((el, i) => {
       if (el.id !== 'rec-fourn-bloc-titre-0') {
@@ -600,6 +602,7 @@ async function creerFiche() {
     // Réinitialiser le formulaire produit et passer à l'étape 3
     reinitFormProduit();
     majListeLignes();
+    majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
     allerEtape(3);
 
   } catch (err) {
@@ -1116,11 +1119,17 @@ function _ligneToLocal(ligne, produit) {
   if (ligne.exsudat_conforme     === 0) motifsNc.push('exsudat');
   if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
   if (ligne.ph_conforme          === 0) motifsNc.push('pH');
+
+  // Résoudre le nom du fournisseur actif pour ce produit
+  const fournId = fournisseurProduitSelected || fournisseurId || null;
+  const fournObj = tousFournisseurs.find(f => f.id === fournId);
+
   return {
     id:                  ligne.id,
     produit_id:          produit.id,
     produit_nom:         produit.nom,
-    fournisseur_id:      fournisseurId || null,
+    fournisseur_id:      fournId,
+    fournisseur_nom:     fournObj ? fournObj.nom : (fournisseursListe[0]?.nom || null),
     conforme:            ligne.conforme,
     temperature_reception: ligne.temperature_reception,
     numero_lot:          ligne.numero_lot,

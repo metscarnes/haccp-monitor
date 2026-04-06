@@ -569,18 +569,19 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             except Exception:
                 pass
 
-        # Appliquer les tolérances correctes selon la plage (post-migration)
-        tolerance_updates = [
-            ("UPDATE produits SET temperature_tolerance = 5 WHERE (temperature_conservation LIKE '%0°C à +4°C%' OR temperature_conservation LIKE '%0°C à 4°C%') AND temperature_tolerance = 2.0", "0-4°C"),
-            ("UPDATE produits SET temperature_tolerance = 4 WHERE (temperature_conservation LIKE '%0°C à +3°C%' OR temperature_conservation LIKE '%0°C à 3°C%') AND temperature_tolerance = 2.0", "0-3°C"),
-            ("UPDATE produits SET temperature_tolerance = 8 WHERE (temperature_conservation LIKE '%0°C à +7°C%' OR temperature_conservation LIKE '%0°C à 7°C%') AND temperature_tolerance = 2.0", "0-7°C"),
-        ]
-        for sql, label in tolerance_updates:
-            try:
-                await db.execute(sql)
-                logger.info("Tolérances appliquées : %s", label)
-            except Exception as e:
-                logger.warning("Erreur lors de l'application tolérances %s: %s", label, e)
+        # Appliquer les tolérances correctes via CASE WHEN (robuste, toujours exécuté)
+        try:
+            await db.execute("""
+                UPDATE produits SET temperature_tolerance = CASE
+                    WHEN temperature_conservation LIKE '%+4°C%' OR temperature_conservation LIKE '% 4°C%' THEN 5.0
+                    WHEN temperature_conservation LIKE '%+3°C%' OR temperature_conservation LIKE '% 3°C%' THEN 4.0
+                    WHEN temperature_conservation LIKE '%+7°C%' OR temperature_conservation LIKE '% 7°C%' THEN 8.0
+                    ELSE COALESCE(temperature_tolerance, 2.0)
+                END
+            """)
+            logger.info("Tolérances temperature mises à jour")
+        except Exception as e:
+            logger.warning("Erreur lors de l'application des tolérances: %s", e)
 
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)

@@ -309,21 +309,20 @@ function chargerFiche(idx) {
   // Produit
   elProduitNom.textContent = l.produit_nom;
 
-  // Fournisseur et DLC (ajouter en sousligne)
-  let infoComp = '';
-  if (l.fournisseur_id) infoComp += `Fournisseur: ${l.fournisseur_id}`;
-  if (l.dlc) infoComp += (infoComp ? ' — ' : '') + `DLC: ${l.dlc}`;
-  if (l.dluo) infoComp += (infoComp ? ' — ' : '') + `DLUO: ${l.dluo}`;
-  if (infoComp) {
-    let el = document.getElementById('pcr-produit-info');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'pcr-produit-info';
-      el.style.cssText = 'font-size: .8rem; color: var(--hors-ligne); margin-top: .2rem;';
-      elProduitNom.parentElement.insertBefore(el, elProduitNom.nextSibling);
-    }
-    el.textContent = infoComp;
+  // Fournisseur (nom) et DLC sous le nom produit
+  let el = document.getElementById('pcr-produit-info');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pcr-produit-info';
+    el.className = 'pcr-produit-info-ligne';
+    elProduitNom.parentElement.insertBefore(el, elProduitNom.nextSibling);
   }
+  const parts = [];
+  if (l.fournisseur_nom) parts.push(`Fournisseur : ${l.fournisseur_nom}`);
+  if (l.dlc)  parts.push(`DLC : ${l.dlc}`);
+  if (l.dluo) parts.push(`DLUO : ${l.dluo}`);
+  el.textContent = parts.join(' — ');
+  el.hidden = parts.length === 0;
 
   // Lot
   if (l.numero_lot) {
