@@ -1,0 +1,451 @@
+/* ============================================================
+   PAGE LAYOUT
+   ============================================================ */
+
+.page-layout {
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.page-scroll {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+}
+
+.page-scroll--lg {
+  padding: 1.5rem;
+}
+
+/* ============================================================
+   GRID SYSTEMS
+   ============================================================ */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* ============================================================
+   RESPONSIVE BREAKPOINTS (mobile-first)
+   ============================================================ */
+
+/* Tablet portrait */
+@media (min-width: 480px) {
+  .grid-2 { gap: 1.25rem; }
+  .grid-3 { gap: 1.25rem; }
+  .page-scroll { padding: 1.25rem; }
+}
+
+/* Tablet landscape / small desktop */
+@media (min-width: 768px) {
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .page-scroll { padding: 1.5rem; }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(4, 1fr); }
+}
+
+/* ============================================================
+   WIZARD STEP SYSTEM
+   ============================================================ */
+
+.wizard-body {
+  height: 100dvh;
+  height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wizard-header {
+  height: 56px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1rem;
+  flex-shrink: 0;
+}
+
+.wizard-progress {
+  height: 44px;
+  background: var(--color-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+  border-bottom: 1px solid rgba(107,58,31,.15);
+  flex-shrink: 0;
+}
+
+.wizard-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(107,58,31,.22);
+  transition: all 0.25s;
+}
+
+.wizard-dot.active {
+  background: var(--color-accent);
+  transform: scale(1.35);
+}
+
+.wizard-dot.done {
+  background: var(--color-ok);
+}
+
+.wizard-main {
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.wizard-step {
+  position: absolute;
+  inset: 0;
+  transform: translateX(100%);
+  transition: transform 250ms ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wizard-step.active {
+  transform: translateX(0);
+}
+
+.wizard-step.prev {
+  transform: translateX(-100%);
+}
+
+.wizard-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.wizard-footer {
+  padding: 0.75rem 1rem;
+  background: var(--color-bg);
+  border-top: 1.5px solid rgba(107,58,31,.15);
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   BANNER / BANDEAU
+   ============================================================ */
+
+.bandeau {
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+  text-align: center;
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.bandeau--alert {
+  background: var(--color-alert);
+  color: white;
+}
+
+.bandeau--warning {
+  background: var(--color-warning);
+  color: white;
+}
+
+.bandeau--info {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.bandeau--success {
+  background: var(--color-ok);
+  color: white;
+}
+
+.bandeau[hidden] {
+  display: none;
+}
+
+/* ============================================================
+   PAGE WITH OPERATOR BAR
+   ============================================================ */
+
+.with-operator-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.operator-bar {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  padding: 0.55rem 1rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.operator-bar-label {
+  white-space: nowrap;
+  color: rgba(255,255,255,.85);
+}
+
+.operator-bar-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ============================================================
+   STEP INDICATOR (linear)
+   ============================================================ */
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0.65rem 1rem;
+  background: rgba(107,58,31,.05);
+  border-bottom: 1.5px solid rgba(107,58,31,.15);
+  flex-shrink: 0;
+}
+
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+.step-item.active {
+  opacity: 1;
+}
+
+.step-item.done {
+  opacity: 0.75;
+}
+
+.step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(107,58,31,.2);
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.step-item.active .step-number {
+  background: var(--color-text);
+  color: var(--color-bg);
+}
+
+.step-item.done .step-number {
+  background: var(--color-ok);
+  color: white;
+}
+
+.step-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.step-separator {
+  width: 40px;
+  height: 2px;
+  background: rgba(107,58,31,.2);
+  margin: 0 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   TWO COLUMN LAYOUT
+   ============================================================ */
+
+.two-col-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.two-col-layout--form {
+  grid-template-columns: 1fr 340px;
+}
+
+.col-main {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1.25rem;
+  border-right: 1px solid rgba(107,58,31,.15);
+}
+
+.col-side {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+  background: rgba(107,58,31,.05);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .two-col-layout,
+  .two-col-layout--form {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .col-main {
+    border-right: none;
+    border-bottom: 1px solid rgba(107,58,31,.15);
+  }
+  .col-side {
+    background: var(--color-bg);
+  }
+}
+
+/* ============================================================
+   THREE COLUMN LAYOUT (tasks)
+   ============================================================ */
+
+.three-col-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+}
+
+.col-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(107,58,31,.15);
+  overflow: hidden;
+}
+
+.col-panel:last-child {
+  border-right: none;
+}
+
+.col-panel-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: rgba(107,58,31,.05);
+  border-bottom: 2px solid rgba(107,58,31,.15);
+}
+
+.col-panel-header--alert {
+  background: rgba(201,48,48,.05);
+  border-bottom-color: rgba(201,48,48,.15);
+}
+
+.col-panel-header--warning {
+  background: rgba(232,145,58,.05);
+  border-bottom-color: rgba(232,145,58,.15);
+}
+
+.col-panel-header--success {
+  background: rgba(45,125,70,.05);
+  border-bottom-color: rgba(45,125,70,.15);
+}
+
+.col-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.col-dot--alert { background: var(--color-alert); }
+.col-dot--warning { background: var(--color-warning); }
+.col-dot--success { background: var(--color-ok); }
+
+.col-count {
+  margin-left: auto;
+  background: rgba(0,0,0,.08);
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  font-size: var(--text-xs);
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.col-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+  .three-col-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+  .col-panel {
+    border-right: none;
+    border-bottom: 1px solid rgba(107,58,31,.15);
+    max-height: 33dvh;
+  }
+}

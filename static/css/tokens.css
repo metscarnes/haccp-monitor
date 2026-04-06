@@ -1,0 +1,55 @@
+:root {
+  /* Colors */
+  --color-bg: #F5ECD7;
+  --color-text: #3D2008;
+  --color-accent: #6B3A1F;
+  --color-secondary: #D4A574;
+  --color-ok: #2D7D46;
+  --color-warning: #E8913A;
+  --color-alert: #C93030;
+  --color-offline: #888;
+  --color-card: #FFFDF7;
+
+  /* Shadows */
+  --shadow-card: 0 2px 12px rgba(61,32,8,.10);
+  --shadow-tile: 0 3px 16px rgba(61,32,8,.10);
+  --shadow-tile-alert: 0 3px 16px rgba(201,48,48,.12);
+  --shadow-tile-alert-pulse: 0 3px 28px rgba(201,48,48,.42);
+
+  /* Border radius */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 20px;
+
+  /* Typography */
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Font sizes - mobile-first with clamp */
+  --text-xs: clamp(0.7rem, 2vw, 0.78rem);
+  --text-sm: clamp(0.82rem, 2.5vw, 0.9rem);
+  --text-base: clamp(1rem, 3vw, 1.05rem);
+  --text-lg: clamp(1.1rem, 3.5vw, 1.2rem);
+  --text-xl: clamp(1.25rem, 4vw, 1.4rem);
+  --text-2xl: clamp(1.5rem, 5vw, 2rem);
+  --text-3xl: clamp(2rem, 6vw, 2.8rem);
+
+  /* Spacing scale */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* Touch targets */
+  --tap-min: 48px;
+  --btn-min: 64px;
+  --btn-min-sm: 44px;
+
+  /* Z-index scale */
+  --z-base: 1;
+  --z-header: 100;
+  --z-modal: 9999;
+}

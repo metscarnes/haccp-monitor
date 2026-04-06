@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Administration — HACCP Monitor</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/pages/admin.css">
+</head>
+<body class="admin-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="admin-header">
+    <a href="/hub.html" class="btn-retour-hub">← Hub</a>
+    <div class="admin-titre">ADMINISTRATION</div>
+    <div id="admin-horloge" class="admin-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       INDICATEUR CONNEXION SERVEUR
+  ========================================================= -->
+  <div id="admin-connexion" class="admin-connexion" hidden>
+    <span class="admin-connexion-dot"></span>
+    <span id="admin-connexion-msg">Connexion…</span>
+  </div>
+
+  <!-- ========================================================
+       CONTENU PRINCIPAL
+  ========================================================= -->
+  <main class="admin-main">
+
+    <!-- ── Personnel ── -->
+    <section class="admin-section" id="section-personnel">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">👥 Personnel</h2>
+      </div>
+      <div class="admin-section-body">
+        <div id="personnel-loader" class="admin-loader">
+          <div class="spinner"></div>
+        </div>
+        <div id="personnel-error" class="admin-error" hidden></div>
+        <div id="personnel-content" hidden>
+          <ul class="admin-list" id="personnel-list"></ul>
+          <form class="admin-form" id="personnel-form">
+            <div class="admin-form-row">
+              <div class="admin-field">
+                <label for="pers-nom">Nom</label>
+                <input type="text" id="pers-nom" name="nom" placeholder="Nom de famille" required>
+              </div>
+              <div class="admin-field">
+                <label for="pers-prenom">Prénom</label>
+                <input type="text" id="pers-prenom" name="prenom" placeholder="Prénom" required>
+              </div>
+              <button type="submit" class="btn btn-primaire">Ajouter</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Enceintes / Sondes ── -->
+    <section class="admin-section" id="section-enceintes">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🌡️ Enceintes — Sondes</h2>
+      </div>
+      <div class="admin-section-body">
+        <div id="enceintes-loader" class="admin-loader">
+          <div class="spinner"></div>
+        </div>
+        <div id="enceintes-error" class="admin-error" hidden></div>
+        <div id="enceintes-content" hidden>
+          <div class="admin-enceintes-grid" id="enceintes-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Seuils ── -->
+    <section class="admin-section" id="section-seuils">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">📊 Seuils de température</h2>
+        <span class="admin-badge admin-badge--info">Lecture seule</span>
+      </div>
+      <div class="admin-section-body">
+        <div id="seuils-content">
+          <p class="admin-info-text">Les seuils sont configurés par sonde. Consultez la section Enceintes pour les valeurs actuelles.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Alertes ── -->
+    <section class="admin-section" id="section-alertes">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🔔 Alertes récentes</h2>
+      </div>
+      <div class="admin-section-body">
+        <div id="alertes-loader" class="admin-loader">
+          <div class="spinner"></div>
+        </div>
+        <div id="alertes-error" class="admin-error" hidden></div>
+        <div id="alertes-content" hidden>
+          <div class="admin-alertes-list" id="alertes-list"></div>
+        </div>
+        <div id="alertes-vide" class="admin-vide" hidden>
+          Aucune alerte récentes
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Serveur ── -->
+    <section class="admin-section" id="section-serveur">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🖥️ Serveur</h2>
+      </div>
+      <div class="admin-section-body">
+        <div class="admin-serveur-grid">
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">Statut</span>
+            <span class="admin-serveur-valeur" id="srv-statut">—</span>
+          </div>
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">API</span>
+            <span class="admin-serveur-valeur" id="srv-api">—</span>
+          </div>
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">Broker MQTT</span>
+            <span class="admin-serveur-valeur" id="srv-mqtt">—</span>
+          </div>
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">Dernier relevé</span>
+            <span class="admin-serveur-valeur" id="srv-derniere-temp">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Dépannage ── -->
+    <section class="admin-section" id="section-depannage">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🔧 Dépannage</h2>
+      </div>
+      <div class="admin-section-body">
+        <div class="admin-depannage-grid">
+          <button class="btn btn-secondaire" id="btn-test-email">📧 Tester alerte email</button>
+          <button class="btn btn-secondaire" id="btn-test-print">🖨️ Tester imprimante</button>
+        </div>
+        <div id="depan-msg" class="admin-depan-msg" hidden></div>
+        <div class="admin-depannage-status">
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">Ping serveur</span>
+            <span class="admin-serveur-valeur" id="srv-ping">—</span>
+          </div>
+          <div class="admin-serveur-item">
+            <span class="admin-serveur-label">Version backend</span>
+            <span class="admin-serveur-valeur" id="srv-version">—</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    "use strict";
+
+    const API_BASE = '';
+
+    // ── Horloge ──────────────────────────────────────────────
+    function updateClock() {
+      const el = document.getElementById('admin-horloge');
+      if (!el) return;
+      const now = new Date();
+      el.textContent = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // ── Connexion ping ──────────────────────────────────────
+    let connexionOk = false;
+
+    async function checkConnexion() {
+      const dot   = document.querySelector('.admin-connexion-dot');
+      const msg   = document.getElementById('admin-connexion-msg');
+      const panel = document.getElementById('admin-connexion');
+      try {
+        const t0 = Date.now();
+        const res = await fetch(`${API_BASE}/api/boutiques/1/dashboard`, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+        const ms = Date.now() - t0;
+        connexionOk = true;
+        if (dot) dot.className = 'admin-connexion-dot admin-connexion-dot--ok';
+        if (msg) msg.textContent = `Connecté (${ms}ms)`;
+        if (panel) panel.hidden = true;
+        document.getElementById('srv-ping').textContent = `${ms}ms`;
+        return true;
+      } catch {
+        connexionOk = false;
+        if (dot) dot.className = 'admin-connexion-dot admin-connexion-dot--off';
+        if (msg) msg.textContent = 'Serveur injoignable';
+        if (panel) panel.hidden = false;
+        document.getElementById('srv-ping').textContent = '—';
+        return false;
+      }
+    }
+
+    setInterval(checkConnexion, 30000);
+    checkConnexion();
+
+    // ── Utility ─────────────────────────────────────────────
+    function $(id) { return document.getElementById(id); }
+
+    function showLoader(id) {
+      const l = $(`${id}-loader`);
+      const e = $(`${id}-error`);
+      const c = $(`${id}-content`);
+      if (l) l.hidden = false;
+      if (e) { e.hidden = true; e.textContent = ''; }
+      if (c) c.hidden = true;
+    }
+
+    function showError(id, msg) {
+      const l = $(`${id}-loader`);
+      const e = $(`${id}-error`);
+      const c = $(`${id}-content`);
+      if (l) l.hidden = true;
+      if (e) { e.hidden = false; e.textContent = msg; }
+      if (c) c.hidden = true;
+    }
+
+    function showContent(id) {
+      const l = $(`${id}-loader`);
+      const e = $(`${id}-error`);
+      const c = $(`${id}-content`);
+      if (l) l.hidden = true;
+      if (e) { e.hidden = true; e.textContent = ''; }
+      if (c) c.hidden = false;
+    }
+
+    // ── Personnel ───────────────────────────────────────────
+    async function loadPersonnel() {
+      showLoader('personnel');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderPersonnel(data);
+        showContent('personnel');
+      } catch (err) {
+        showError('personnel', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    function renderPersonnel(list) {
+      const ul = $('personnel-list');
+      ul.innerHTML = '';
+      if (!list || list.length === 0) {
+        ul.innerHTML = '<li class="admin-list-vide">Aucun personnel configuré</li>';
+        return;
+      }
+      list.forEach(p => {
+        const li = document.createElement('li');
+        li.className = 'admin-list-item';
+        li.innerHTML = `
+          <span class="admin-list-nom">${escHtml(p.prenom)} ${escHtml(p.nom)}</span>
+          <button class="btn btn-sm btn-danger" data-id="${p.id}" aria-label="Supprimer ${escHtml(p.prenom)} ${escHtml(p.nom)}">✕</button>
+        `;
+        ul.appendChild(li);
+      });
+      ul.querySelectorAll('.btn-danger').forEach(btn => {
+        btn.addEventListener('click', () => deletePersonnel(parseInt(btn.dataset.id)));
+      });
+    }
+
+    async function deletePersonnel(id) {
+      if (!confirm('Supprimer ce membre du personnel ?')) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        loadPersonnel();
+      } catch (err) {
+        alert(`Erreur suppression : ${err.message}`);
+      }
+    }
+
+    $('personnel-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nom    = $('pers-nom').value.trim();
+      const prenom = $('pers-prenom').value.trim();
+      if (!nom || !prenom) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nom, prenom })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        $('pers-nom').value = '';
+        $('pers-prenom').value = '';
+        loadPersonnel();
+      } catch (err) {
+        alert(`Erreur ajout : ${err.message}`);
+      }
+    });
+
+    // ── Enceintes ───────────────────────────────────────────
+    async function loadEnceintes() {
+      showLoader('enceintes');
+      try {
+        const res = await fetch(`${API_BASE}/api/boutiques/1/enceintes`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderEnceintes(data);
+        showContent('enceintes');
+      } catch (err) {
+        showError('enceintes', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    function getEnceinteStatus(enceinte) {
+      if (!enceinte.derniere_temperature && !enceinte.derniere_temperature !== 0) return 'hors-ligne';
+      const t = enceinte.derniere_temperature;
+      const min = parseFloat(enceinte.seuil_min || -99);
+      const max = parseFloat(enceinte.seuil_max || 99);
+      if (t < min || t > max) return 'alerte';
+      if (t < min + 0.5 || t > max - 0.5) return 'attention';
+      return 'ok';
+    }
+
+    function getStatusLabel(status) {
+      return { ok: 'OK', attention: 'Attention', alerte: 'Alerte', 'hors-ligne': 'Hors ligne' }[status] || '?';
+    }
+
+    function renderEnceintes(list) {
+      const grid = $('enceintes-grid');
+      grid.innerHTML = '';
+      if (!list || list.length === 0) {
+        grid.innerHTML = '<p class="admin-vide">Aucune enceinte configurée</p>';
+        return;
+      }
+      list.forEach(e => {
+        const status = getEnceinteStatus(e);
+        const temp = e.derniere_temperature;
+        const tempStr = (temp !== null && temp !== undefined) ? `${temp.toFixed(1)}<span class="unite">°C</span>` : '—';
+        const min = e.seuil_min ?? '?';
+        const max = e.seuil_max ?? '?';
+        const friendly = e.zigbee_nom || e.nom || 'Sonde';
+        const carte = document.createElement('div');
+        carte.className = `admin-enceinte-carte admin-enceinte-carte--${status}`;
+        carte.innerHTML = `
+          <div class="admin-enceinte-entete">
+            <div>
+              <div class="admin-enceinte-nom">${escHtml(e.nom)}</div>
+              <div class="admin-enceinte-zigbee">${escHtml(friendly)}</div>
+            </div>
+            <span class="badge badge-${status === 'hors-ligne' ? 'hors-ligne' : status}">${getStatusLabel(status)}</span>
+          </div>
+          <div class="admin-enceinte-temp">${tempStr}</div>
+          <div class="admin-enceinte-seuils">Seuil : ${min}°C → ${max}°C</div>
+          <div class="admin-enceinte-meta">
+            <span>${e.type || 'sonde'}</span>
+            ${e.battery !== undefined ? `<span>🔋 ${e.battery}%</span>` : ''}
+          </div>
+        `;
+        grid.appendChild(carte);
+      });
+    }
+
+    // ── Alertes ─────────────────────────────────────────────
+    async function loadAlertes() {
+      showLoader('alertes');
+      try {
+        const res = await fetch(`${API_BASE}/api/alertes?limit=20`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderAlertes(data);
+        showContent('alertes');
+      } catch (err) {
+        showError('alertes', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    function renderAlertes(list) {
+      const container = $('alertes-list');
+      const vide = $('alertes-vide');
+      if (!list || list.length === 0) {
+        container.innerHTML = '';
+        if (vide) vide.hidden = false;
+        return;
+      }
+      if (vide) vide.hidden = true;
+      container.innerHTML = '';
+      list.forEach(a => {
+        const statusClass = a.statut === 'active' || a.statut === 'en_cours' ? 'en-cours' : 'fermee';
+        const dateStr = a.created_at ? new Date(a.created_at).toLocaleString('fr-FR') : '';
+        const alerteNom = a.enceinte_nom || a.type || 'Alerte';
+        const message = a.message || '';
+        const div = document.createElement('div');
+        div.className = `alerte-ligne ${statusClass}`;
+        div.innerHTML = `
+          <div class="alerte-icone">${statusClass === 'en-cours' ? '🚨' : '✅'}</div>
+          <div class="alerte-info">
+            <strong>${escHtml(alerteNom)}</strong>
+            <p>${escHtml(message)}</p>
+          </div>
+          <div class="alerte-duree">${escHtml(dateStr)}</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // ── Serveur ─────────────────────────────────────────────
+    async function loadServeurInfo() {
+      try {
+        const res = await fetch(`${API_BASE}/api/boutiques/1/dashboard`);
+        if (res.ok) {
+          const data = await res.json();
+          const el = $('srv-statut');
+          if (el) el.textContent = 'Opérationnel';
+          const last = data.derniere_mise_a_jour || data.last_update;
+          if (last) {
+            const d = new Date(last);
+            const now = new Date();
+            const diff = Math.floor((now - d) / 1000);
+            let tempsStr = diff < 60 ? `il y a ${diff}s` : `il y a ${Math.floor(diff/60)}min`;
+            $('srv-derniere-temp').textContent = tempsStr;
+          }
+        }
+      } catch { /* silent */ }
+      try {
+        const res = await fetch(`${API_BASE}/api/impression/status`);
+        if (res.ok) {
+          const data = await res.json();
+          $('srv-api').textContent = data.status === 'ready' || data.etat === 'pret' ? 'Imprimante prête' : 'Imprimante indisponible';
+        } else {
+          $('srv-api').textContent = '—';
+        }
+      } catch {
+        $('srv-api').textContent = '—';
+      }
+      $('srv-mqtt').textContent = connexionOk ? 'Connecté' : 'Déconnecté';
+      $('srv-version').textContent = '—';
+    }
+
+    // ── Dépannage ───────────────────────────────────────────
+    $('btn-test-email').addEventListener('click', async () => {
+      const msg = $('depan-msg');
+      msg.hidden = false;
+      msg.className = 'admin-depan-msg admin-depan-msg--info';
+      msg.textContent = 'Envoi test en cours…';
+      try {
+        const res = await fetch(`${API_BASE}/api/alertes/test`, { method: 'POST' });
+        if (res.ok) {
+          msg.className = 'admin-depan-msg admin-depan-msg--ok';
+          msg.textContent = '✓ Email/SMS de test envoyé avec succès';
+        } else {
+          msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+          msg.textContent = `Erreur serveur (HTTP ${res.status})`;
+        }
+      } catch (err) {
+        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+        msg.textContent = `Erreur connexion : ${err.message}`;
+      }
+    });
+
+    $('btn-test-print').addEventListener('click', async () => {
+      const msg = $('depan-msg');
+      msg.hidden = false;
+      msg.className = 'admin-depan-msg admin-depan-msg--info';
+      msg.textContent = 'Test impression en cours…';
+      try {
+        const res = await fetch(`${API_BASE}/api/impression/test`, { method: 'POST' });
+        if (res.ok) {
+          msg.className = 'admin-depan-msg admin-depan-msg--ok';
+          msg.textContent = '✓ Test d\'impression envoyé';
+        } else {
+          msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+          msg.textContent = `Erreur serveur (HTTP ${res.status})`;
+        }
+      } catch (err) {
+        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+        msg.textContent = `Erreur connexion : ${err.message}`;
+      }
+    });
+
+    // ── Helpers ─────────────────────────────────────────────
+    function escHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // ── Init ────────────────────────────────────────────────
+    loadPersonnel();
+    loadEnceintes();
+    loadAlertes();
+    loadServeurInfo();
+  </script>
+</body>
+</html>

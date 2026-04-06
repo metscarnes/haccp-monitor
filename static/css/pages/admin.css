@@ -1,0 +1,403 @@
+/* ============================================================
+   ADMINISTRATION — Page de configuration HACCP Monitor
+   ============================================================ */
+
+.admin-body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ivoire);
+}
+
+/* ── En-tête ── */
+.admin-header {
+  flex-shrink: 0;
+  background: var(--noyer);
+  color: var(--ivoire);
+  height: 56px;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  z-index: 10;
+}
+
+.admin-titre {
+  font-size: .95rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--ivoire);
+  flex: 1;
+  text-align: center;
+}
+
+.admin-horloge {
+  font-size: 1rem;
+  color: var(--creme);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Indicateur connexion ── */
+.admin-connexion {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem 1.25rem;
+  background: var(--attention);
+  color: #fff;
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+.admin-connexion-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.admin-connexion-dot--ok  { background: var(--ok); }
+.admin-connexion-dot--off { background: #fff; }
+
+/* ── Contenu principal ── */
+.admin-main {
+  flex: 1;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Section ── */
+.admin-section {
+  background: var(--fond-carte);
+  border-radius: var(--radius);
+  box-shadow: var(--ombre);
+  overflow: hidden;
+}
+
+.admin-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .9rem 1.25rem;
+  background: #faf5ed;
+  border-bottom: 2px solid var(--creme);
+}
+
+.admin-section-titre {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--noyer);
+}
+
+.admin-section-body {
+  padding: 1.25rem;
+}
+
+/* ── Loader ── */
+.admin-loader {
+  display: flex;
+  justify-content: center;
+  padding: 2rem;
+}
+
+/* ── Erreur ── */
+.admin-error {
+  background: #fdecea;
+  color: var(--alerte);
+  padding: .75rem 1rem;
+  border-radius: 8px;
+  font-size: .88rem;
+  font-weight: 600;
+  margin-bottom: .75rem;
+}
+
+/* ── Badge ── */
+.admin-badge {
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .2rem .6rem;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.admin-badge--info { background: #eee; color: var(--hors-ligne); }
+
+/* ── Liste ── */
+.admin-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .6rem .9rem;
+  background: var(--ivoire);
+  border-radius: 8px;
+  border: 1px solid #e8d9c4;
+}
+
+.admin-list-nom {
+  font-size: .92rem;
+  font-weight: 600;
+  color: var(--noyer);
+  flex: 1;
+}
+
+.admin-list-vide {
+  font-size: .88rem;
+  color: var(--hors-ligne);
+  font-style: italic;
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ── Form ── */
+.admin-form {
+  margin-top: .5rem;
+}
+
+.admin-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: flex-end;
+}
+
+.admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  flex: 1;
+  min-width: 140px;
+}
+
+.admin-field label {
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--brun);
+}
+
+.admin-field input {
+  padding: .55rem .75rem;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 8px;
+  background: #fff;
+  font-size: .9rem;
+  color: var(--noyer);
+  font-family: inherit;
+  transition: border-color .15s;
+}
+.admin-field input:focus {
+  outline: none;
+  border-color: var(--brun);
+}
+
+/* ── Boutons ── */
+.btn {
+  padding: .55rem 1.1rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: .88rem;
+  font-weight: 600;
+  font-family: inherit;
+  transition: opacity .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  min-height: 40px;
+  white-space: nowrap;
+}
+.btn:hover { opacity: .85; }
+.btn-primaire   { background: var(--noyer); color: var(--ivoire); }
+.btn-secondaire { background: var(--creme); color: var(--noyer); }
+.btn-sm { padding: .35rem .75rem; font-size: .82rem; min-height: auto; }
+.btn-danger { background: var(--alerte); color: #fff; }
+
+/* ── GrilleEnceintes ── */
+.admin-enceintes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.admin-enceinte-carte {
+  background: var(--ivoire);
+  border-radius: 10px;
+  border: 2px solid #e0d0be;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.admin-enceinte-carte--ok        { border-color: var(--ok); }
+.admin-enceinte-carte--attention { border-color: var(--attention); }
+.admin-enceinte-carte--alerte     { border-color: var(--alerte); }
+.admin-enceinte-carte--hors-ligne { border-color: var(--hors-ligne); opacity: .7; }
+
+.admin-enceinte-entete {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.admin-enceinte-nom {
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--noyer);
+}
+
+.admin-enceinte-zigbee {
+  font-size: .75rem;
+  color: var(--brun);
+  margin-top: .15rem;
+}
+
+.admin-enceinte-temp {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--noyer);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-enceinte-temp .unite {
+  font-size: 1.2rem;
+  font-weight: 400;
+  color: var(--brun);
+}
+
+.admin-enceinte-seuils {
+  font-size: .78rem;
+  color: var(--brun);
+}
+
+.admin-enceinte-meta {
+  font-size: .72rem;
+  color: var(--hors-ligne);
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+  border-top: 1px solid #e8d9c4;
+  padding-top: .4rem;
+  margin-top: .15rem;
+}
+
+/* ── Alertes ── */
+.admin-alertes-list {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+/* ── Serveur ── */
+.admin-serveur-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: .75rem;
+}
+
+.admin-serveur-item {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  background: var(--ivoire);
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  border: 1px solid #e8d9c4;
+}
+
+.admin-serveur-label {
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--brun);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.admin-serveur-valeur {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--noyer);
+}
+
+/* ── Dépannage ── */
+.admin-depannage-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.admin-depan-msg {
+  padding: .65rem .9rem;
+  border-radius: 8px;
+  font-size: .88rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.admin-depan-msg--info   { background: #e8f0fe; color: #1a73e8; }
+.admin-depan-msg--ok     { background: #e6f4eb; color: var(--ok); }
+.admin-depan-msg--erreur { background: #fdecea; color: var(--alerte); }
+
+.admin-depannage-status {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: .75rem;
+  margin-top: .5rem;
+}
+
+/* ── Info text ── */
+.admin-info-text {
+  font-size: .88rem;
+  color: var(--brun);
+  font-style: italic;
+}
+
+/* ── Vide state ── */
+.admin-vide {
+  font-size: .88rem;
+  color: var(--hors-ligne);
+  font-style: italic;
+  text-align: center;
+  padding: 1rem;
+}
+
+/* ── Badge ── */
+.badge {
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .15rem .55rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-ok         { background: #e6f4eb; color: var(--ok); }
+.badge-attention  { background: #fdf0e0; color: var(--attention); }
+.badge-alerte     { background: #fce8e8; color: var(--alerte); }
+.badge-hors-ligne { background: #eee; color: var(--hors-ligne); }
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .admin-main { padding: .75rem; gap: .75rem; }
+  .admin-serveur-grid { grid-template-columns: 1fr; }
+  .admin-depannage-status { grid-template-columns: 1fr; }
+  .admin-enceintes-grid { grid-template-columns: 1fr; }
+  .admin-form-row { flex-direction: column; }
+  .admin-field { min-width: 100%; }
+  .btn { width: 100%; justify-content: center; }
+}

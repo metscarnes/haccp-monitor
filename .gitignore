@@ -1,1 +1,9 @@
 haccp.db
+__pycache__/
+*.pyc
+.DS_Store
+*.egg-info/
+.eggs/
+node_modules/
+.env
+*.log

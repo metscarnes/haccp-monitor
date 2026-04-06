@@ -329,6 +329,11 @@ elPropreteNc.addEventListener('click', () => {
 });
 
 elBtnCamionSuivant.addEventListener('click', () => {
+  if (elTempCamion.value.trim() === '') {
+    elTempCamion.focus();
+    elTempCamion.reportValidity();
+    return;
+  }
   allerEtape(2);
 });
 
