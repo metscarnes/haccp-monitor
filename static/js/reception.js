@@ -437,6 +437,8 @@ function initBlocFourn(idx) {
         // Mettre à jour fournisseurId principal (index 0)
         if (idx === 0) fournisseurId = f.id;
         if (elErreur2 && !elErreur2.hidden && fournisseursListe[0].id) elErreur2.hidden = true;
+        // Mettre à jour le sélecteur de l'écran produit
+        majSelectorFournisseur();
       });
       results.appendChild(div);
     });
@@ -451,6 +453,7 @@ function initBlocFourn(idx) {
     searchInp.value    = '';
     results.hidden     = true;
     if (idx === 0) fournisseurId = null;
+    majSelectorFournisseur();
   });
 
   searchInp.addEventListener('input', () => {
@@ -1398,8 +1401,27 @@ function initNcProcedure() {
 
     const motifEl = document.createElement('div');
     motifEl.className = 'rec-nc-motif';
-    const tempText = l.temperature_reception != null ? ` — Temp. initiale : ${l.temperature_reception}°C` : '';
-    motifEl.textContent = `✗ NC : ${l.motifs.join(', ') || 'non-conformité'}${tempText}`;
+
+    const motifTitre = document.createElement('div');
+    motifTitre.textContent = `✗ NC : ${l.motifs.join(', ') || 'non-conformité'}`;
+    motifEl.appendChild(motifTitre);
+
+    const infoLignes = [];
+    if (l.temperature_reception != null) {
+      infoLignes.push(`Temp. camion : ${l.temperature_reception}°C`);
+    }
+    if (produit && produit.temperature_conservation) {
+      infoLignes.push(`Cible : ${produit.temperature_conservation}`);
+    }
+    if (tempMax !== null) {
+      infoLignes.push(`Tolérance max : +${tempMax + 1}°C`);
+    }
+    if (infoLignes.length) {
+      const infoEl = document.createElement('div');
+      infoEl.className = 'rec-nc-motif-info';
+      infoEl.textContent = infoLignes.join(' — ');
+      motifEl.appendChild(infoEl);
+    }
     row.appendChild(motifEl);
 
     const wrap = document.createElement('div');
@@ -1425,8 +1447,8 @@ function initNcProcedure() {
         badge.textContent = '';
         badge.className = 'rec-nc-coeur-badge';
       } else {
-        // Seuil à cœur : conforme si <= cible + 2°C
-        const conforme = val <= (tempMax + 2.0);
+        // Seuil à cœur : conforme si T°cœur <= borne_max + 1°C (même tolérance que camion)
+        const conforme = val <= (tempMax + 1);
         badge.textContent = conforme ? '✓ Conforme après contrôle' : '✗ Non conforme confirmé';
         badge.className = 'rec-nc-coeur-badge ' + (conforme ? 'ok' : 'nc');
         ncCoeurResultats[l.id] = { temp_coeur: val, conforme_apres_coeur: conforme };

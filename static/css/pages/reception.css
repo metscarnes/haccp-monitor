@@ -789,6 +789,12 @@ body.rec-body {
   color: var(--color-alert);
   font-weight: 600;
 }
+.rec-nc-motif-info {
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--color-offline);
+  margin-top: .2rem;
+}
 .rec-nc-actions-pair {
   display: flex;
   gap: .5rem;

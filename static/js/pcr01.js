@@ -15,9 +15,13 @@ const elDate          = document.getElementById('pcr-date');
 const elOperateur     = document.getElementById('pcr-operateur');
 const elPagination    = document.getElementById('pcr-pagination');
 const elPaginLbl      = document.getElementById('pcr-pagination-label');
-const elProduitNom    = document.getElementById('pcr-produit-nom');
-const elLotRow        = document.getElementById('pcr-lot-row');
-const elLot           = document.getElementById('pcr-lot');
+const elProduitNom       = document.getElementById('pcr-produit-nom');
+const elFournisseurRow   = document.getElementById('pcr-fournisseur-row');
+const elFournisseur      = document.getElementById('pcr-fournisseur');
+const elLotRow           = document.getElementById('pcr-lot-row');
+const elLot              = document.getElementById('pcr-lot');
+const elDlcRow           = document.getElementById('pcr-dlc-row');
+const elDlc              = document.getElementById('pcr-dlc');
 const elMotifs        = document.getElementById('pcr-motifs');
 const elActionImm     = document.getElementById('pcr-action-imm');
 const elEtapesListe   = document.getElementById('pcr-etapes-liste');
@@ -309,20 +313,24 @@ function chargerFiche(idx) {
   // Produit
   elProduitNom.textContent = l.produit_nom;
 
-  // Fournisseur (nom) et DLC sous le nom produit
-  let el = document.getElementById('pcr-produit-info');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'pcr-produit-info';
-    el.className = 'pcr-produit-info-ligne';
-    elProduitNom.parentElement.insertBefore(el, elProduitNom.nextSibling);
+  // Fournisseur
+  if (l.fournisseur_nom) {
+    elFournisseur.textContent = l.fournisseur_nom;
+    elFournisseurRow.hidden = false;
+  } else {
+    elFournisseurRow.hidden = true;
   }
-  const parts = [];
-  if (l.fournisseur_nom) parts.push(`Fournisseur : ${l.fournisseur_nom}`);
-  if (l.dlc)  parts.push(`DLC : ${l.dlc}`);
-  if (l.dluo) parts.push(`DLUO : ${l.dluo}`);
-  el.textContent = parts.join(' — ');
-  el.hidden = parts.length === 0;
+
+  // DLC / DLUO
+  const dlcVal = l.dlc || l.dluo;
+  const dlcLabel = l.dluo ? 'DLUO' : 'DLC';
+  if (dlcVal) {
+    elDlc.textContent = dlcVal;
+    elDlcRow.querySelector('.pcr-champ-label').textContent = dlcLabel;
+    elDlcRow.hidden = false;
+  } else {
+    elDlcRow.hidden = true;
+  }
 
   // Lot
   if (l.numero_lot) {
