@@ -560,6 +560,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 counter     INTEGER DEFAULT 0,
                 PRIMARY KEY (code_unique, date_jjmmyy)
             )""",
+            # produits : tolerance temperature (v2.3)
+            "ALTER TABLE produits ADD COLUMN temperature_tolerance REAL DEFAULT 2.0",
         ]
         for sql in migrations:
             try:
@@ -1407,19 +1409,20 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     rec_row = await cur.fetchone()
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
-    # Récupérer temperature_conservation du produit
+    # Récupérer temperature_conservation et temperature_tolerance du produit
     cur2 = await db.execute(
-        "SELECT temperature_conservation FROM produits WHERE id = ?", (data["produit_id"],)
+        "SELECT temperature_conservation, temperature_tolerance FROM produits WHERE id = ?", (data["produit_id"],)
     )
     prod_row = await cur2.fetchone()
     temp_conservation = prod_row["temperature_conservation"] if prod_row else None
+    temp_tolerance = prod_row["temperature_tolerance"] if prod_row else 2.0
     temp_max = _parse_temp_max(temp_conservation)
 
-    # Calculer temperature_conforme — règle : NC si temp_recep > cible + 2°C (CAS 1 et 2)
+    # Calculer temperature_conforme — règle : NC si temp_recep > (temp_max + tolerance)
     temp_recep = data.get("temperature_reception")
     temperature_conforme: Optional[int] = None
     if temp_recep is not None and temp_max is not None:
-        temperature_conforme = 0 if temp_recep > (temp_max + 2.0) else 1
+        temperature_conforme = 0 if temp_recep > (temp_max + temp_tolerance) else 1
 
     # Calculer ph_conforme
     ph_valeur = data.get("ph_valeur")
@@ -1564,16 +1567,17 @@ async def update_reception_ligne(
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
     cur3 = await db.execute(
-        "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
+        "SELECT temperature_conservation, temperature_tolerance FROM produits WHERE id = ?", (produit_id,)
     )
     prod_row = await cur3.fetchone()
     temp_max = _parse_temp_max(prod_row["temperature_conservation"] if prod_row else None)
+    temp_tolerance = prod_row["temperature_tolerance"] if prod_row else 2.0
 
     # Recalculer temperature_conforme
     temp_recep = data.get("temperature_reception")
     temperature_conforme: Optional[int] = None
     if temp_recep is not None and temp_max is not None:
-        temperature_conforme = 0 if temp_recep > (temp_max + 2.0) else 1
+        temperature_conforme = 0 if temp_recep > (temp_max + temp_tolerance) else 1
 
     # pH
     ph_valeur = data.get("ph_valeur")

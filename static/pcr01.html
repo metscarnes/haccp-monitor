@@ -98,8 +98,30 @@
         <div class="pcr-sig-info">
           Feuille de reprise avec retour marchandise. Le livreur signe ci-dessous.
         </div>
+
+        <!-- Choix livreur : attestation et retour -->
+        <div class="pcr-livreur-choix" id="pcr-livreur-choix">
+          <button class="pcr-livreur-btn" id="pcr-livreur-accepte" type="button">
+            ✓ Atteste de la NC et accepte le retour
+          </button>
+          <button class="pcr-livreur-btn" id="pcr-livreur-refuse" type="button">
+            ✕ N'atteste pas la NC et refuse le retour
+          </button>
+        </div>
+
+        <!-- Canvas signature -->
         <canvas id="pcr-sig-canvas" class="pcr-sig-canvas" aria-label="Zone de signature du livreur"></canvas>
         <button class="pcr-btn-effacer-sig" id="pcr-sig-effacer" type="button">↺ Effacer</button>
+
+        <!-- Bouton étiquette À RETOURNER (visible si refus) -->
+        <div id="pcr-etiq-reprise-bloc" hidden style="margin-top: 1rem; padding: 1rem; background: #fff8ed; border: 1.5px solid #E8913A; border-radius: 8px;">
+          <div style="font-size: .85rem; color: #7a5a00; font-weight: 600; margin-bottom: .5rem;">
+            Imprimer étiquette À RETOURNER en attente de résolution
+          </div>
+          <button class="pcr-etiq-reprise-btn" id="pcr-etiq-reprise-btn" type="button">
+            🖨️ Imprimer étiquette À RETOURNER
+          </button>
+        </div>
       </div>
     </div>
 

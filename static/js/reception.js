@@ -1370,6 +1370,7 @@ elNcBtnBSuivant.addEventListener('click', () => {
     ncProduits,          // produits NC confirmés (après contrôle à cœur)
     ncCoeurResultats,    // {ligne_id: {temp_coeur, conforme_apres_coeur}}
     ncFicheIndex: 0,
+    tempCamion: parseFloat(elTempCamion.value) || null,
   };
   sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
   sessionStorage.removeItem('haccp_pcr01_signature'); // sera capturée dans pcr01.html

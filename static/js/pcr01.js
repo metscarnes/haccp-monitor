@@ -23,11 +23,15 @@ const elActionImm     = document.getElementById('pcr-action-imm');
 const elEtapesListe   = document.getElementById('pcr-etapes-liste');
 const elCorrective    = document.getElementById('pcr-corrective');
 const elCommentaire   = document.getElementById('pcr-commentaire');
-const elSigBloc       = document.getElementById('pcr-sig-bloc');
-const elSigCanvas     = document.getElementById('pcr-sig-canvas');
-const elSigEffacer    = document.getElementById('pcr-sig-effacer');
-const elEtiqBloc      = document.getElementById('pcr-etiq-bloc');
-const elEtiqListe     = document.getElementById('pcr-etiq-liste');
+const elSigBloc        = document.getElementById('pcr-sig-bloc');
+const elLivreurAccepte = document.getElementById('pcr-livreur-accepte');
+const elLivreurRefuse  = document.getElementById('pcr-livreur-refuse');
+const elSigCanvas      = document.getElementById('pcr-sig-canvas');
+const elSigEffacer     = document.getElementById('pcr-sig-effacer');
+const elEtiqRepriseBloc = document.getElementById('pcr-etiq-reprise-bloc');
+const elEtiqRepriseBtn = document.getElementById('pcr-etiq-reprise-btn');
+const elEtiqBloc       = document.getElementById('pcr-etiq-bloc');
+const elEtiqListe      = document.getElementById('pcr-etiq-liste');
 const elErreur        = document.getElementById('pcr-erreur');
 const elBtnEnreg      = document.getElementById('pcr-btn-enreg');
 const elBtnRetour     = document.getElementById('pcr-btn-retour');
@@ -50,8 +54,12 @@ let {
   ncProduits,
   ncCoeurResultats,
   ncFicheIndex,
+  tempCamion,
 } = pcrData;
 ncCoeurResultats = ncCoeurResultats || {};
+
+// État signature livreur (si présent)
+let livreurAccepte = null; // null (pas de choix), true (accepte), false (refuse)
 
 
 // ── Date / opérateur ────────────────────────────────────────
@@ -103,6 +111,69 @@ function initSigCanvas() {
 if (elSigEffacer) {
   elSigEffacer.addEventListener('click', () => {
     if (sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
+  });
+}
+
+// ── Boutons choix livreur (attestation + retour) ─────────────
+function majUILivreur() {
+  if (elLivreurAccepte) {
+    if (livreurAccepte === true) {
+      elLivreurAccepte.classList.add('sel');
+      elLivreurRefuse.classList.remove('sel');
+    } else if (livreurAccepte === false) {
+      elLivreurRefuse.classList.add('sel');
+      elLivreurAccepte.classList.remove('sel');
+    } else {
+      elLivreurAccepte.classList.remove('sel');
+      elLivreurRefuse.classList.remove('sel');
+    }
+  }
+  if (elEtiqRepriseBloc) {
+    elEtiqRepriseBloc.hidden = livreurAccepte !== false;
+  }
+  // Régénérer le texte corrective de la fiche courante
+  const l = ncProduits[ncFicheIndex];
+  if (l && elCorrective) {
+    elCorrective.value = genererActionCorrective(l);
+  }
+}
+
+if (elLivreurAccepte) {
+  elLivreurAccepte.addEventListener('click', () => {
+    livreurAccepte = true;
+    majUILivreur();
+  });
+}
+
+if (elLivreurRefuse) {
+  elLivreurRefuse.addEventListener('click', () => {
+    livreurAccepte = false;
+    majUILivreur();
+  });
+}
+
+// Bouton impression étiquette (si refus)
+if (elEtiqRepriseBtn) {
+  elEtiqRepriseBtn.addEventListener('click', async () => {
+    const l = ncProduits[ncFicheIndex];
+    elEtiqRepriseBtn.disabled = true;
+    try {
+      await fetch('/api/impression/etiquette-reprise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          produit_nom:      l.produit_nom,
+          motif:            l.motifs.join(', ') || 'non-conformité',
+          operateur_prenom: personnelPrenom,
+          date_refus:       new Date().toISOString().slice(0, 10),
+        }),
+      });
+      elEtiqRepriseBtn.classList.add('imprime');
+      elEtiqRepriseBtn.innerHTML = `✓ Imprimé — ${l.produit_nom}`;
+    } catch (e) {
+      elEtiqRepriseBtn.disabled = false;
+      alert(`Impression échouée : ${e.message}`);
+    }
   });
 }
 
@@ -162,7 +233,13 @@ function genererActionCorrective(produit) {
   txt += `.\n\nContrôle à cœur effectué : non-conformité confirmée.${coeurTxt}`;
 
   if (livreurPresent) {
-    txt += '\n\nLe livreur étant présent, la feuille de reprise avec retour marchandise a été signée par le livreur.';
+    if (livreurAccepte === true) {
+      txt += '\n\nLe livreur étant présent, la non-conformité est attestée et le retour accepté, la feuille de reprise avec retour marchandise a été signée par le livreur.';
+    } else if (livreurAccepte === false) {
+      txt += '\n\nLe livreur étant présent, la non-conformité n\'est pas attestée par le livreur et le retour n\'est pas accepté, la feuille de reprise a été signée par le livreur. Le produit est isolé et balisé en attente de la résolution du litige.';
+    } else {
+      txt += '\n\nLe livreur étant présent, la feuille de reprise a été signée.';
+    }
   } else {
     txt += "\n\nEn l'absence du livreur, le lot a été isolé avec apposition de l'étiquette À RETOURNER en attente de retour fournisseur.";
   }
@@ -174,9 +251,10 @@ function genererActionCorrective(produit) {
 // ── Construire la timeline des étapes d'identification ──────
 function construireEtapes(produit) {
   const motifs = produit.motifs.join(', ') || 'non-conformité';
+  const tempCamionTxt = tempCamion !== null && tempCamion !== undefined ? ` (température camion : ${tempCamion}°C)` : '';
 
   const etapes = [
-    `Contrôle à la réception (visuel / température) → Non-conformité détectée : ${motifs}.`,
+    `Contrôle à la réception (visuel / température) → Non-conformité détectée : ${motifs}${tempCamionTxt}.`,
     'Lot isolé immédiatement pour prise de température à cœur.',
   ];
 
