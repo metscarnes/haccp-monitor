@@ -48,8 +48,6 @@ const elFournSelWrap      = document.getElementById('rec-fourn-sel-wrap');
 const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
 
 // Étape 3
-const elBandeauCamionChaud = document.getElementById('rec-bandeau-camion-chaud');
-const elBandeauCoeur      = document.getElementById('rec-bandeau-coeur');
 const elNbProduits        = document.getElementById('rec-nb-produits');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
@@ -221,11 +219,6 @@ function allerEtape(cible) {
   elBandeau.hidden = (cible === 0 || estConfirm);
   if (cible > 0 && !estConfirm && personnelPrenom) {
     elBandeau.textContent = `👤 ${personnelPrenom}`;
-  }
-
-  // Bandeau camion chaud (étape 3 uniquement — en-tête de section)
-  if (elBandeauCamionChaud) {
-    elBandeauCamionChaud.hidden = !(cible === 3 && camionEstChaud());
   }
 
   // Bouton retour
@@ -408,8 +401,11 @@ function initBlocFourn(idx) {
         selWrap.hidden     = false;
         searchWrap.hidden  = true;
         results.hidden     = true;
+        searchInp.classList.remove('rec-champ-invalide');
+        searchInp.title = '';
         // Mettre à jour fournisseurId principal (index 0)
         if (idx === 0) fournisseurId = f.id;
+        if (elErreur2 && !elErreur2.hidden && fournisseursListe[0].id) elErreur2.hidden = true;
       });
       results.appendChild(div);
     });
@@ -503,7 +499,7 @@ elBtnAddFourn.addEventListener('click', () => {
         <div class="rec-fourn-results" id="rec-fourn-results-${idx}" hidden></div>
       </div>
     </div>`;
-  elFournListe.insertBefore(bloc, elBtnAddFourn);
+  elFournListe.appendChild(bloc);
   initBlocFourn(idx);
 
   bloc.querySelector('.rec-fourn-sup-btn').addEventListener('click', () => {
@@ -525,6 +521,21 @@ elBtnCreerFiche.addEventListener('click', creerFiche);
 
 async function creerFiche() {
   elErreur2.hidden = true;
+
+  // Valider : au moins le fournisseur principal doit être sélectionné
+  const fourn0 = fournisseursListe[0];
+  if (!fourn0.id) {
+    const searchInp = document.getElementById('rec-fourn-search-0');
+    if (searchInp) {
+      searchInp.classList.add('rec-champ-invalide');
+      searchInp.focus();
+      searchInp.title = 'Sélectionnez un fournisseur dans la liste';
+    }
+    elErreur2.textContent = 'Le nom du fournisseur est obligatoire.';
+    elErreur2.hidden = false;
+    return;
+  }
+
   elBtnCreerFiche.disabled = true;
   elBtnCreerFiche.textContent = 'Création…';
 
@@ -579,13 +590,33 @@ async function chargerTextesAide() {
   }
 }
 
+// Synonymes espèces ↔ codes produits
+const SEARCH_SYNONYMS = {
+  'boeuf': 'vb', 'bœuf': 'vb', 'bovin': 'vb', 'bovine': 'vb', 'beef': 'vb',
+  'agneau': 'agn', 'mouton': 'agn', 'ovin': 'agn',
+  'veau': 'vx',
+  'porc': 'pc', 'cochon': 'pc', 'porcin': 'pc',
+};
+const CODE_LABELS = { 'vb': 'boeuf', 'agn': 'agneau', 'vx': 'veau', 'pc': 'porc' };
+const STOP_WORDS  = new Set(['de', 'du', 'la', 'le', 'les', 'un', 'une', 'des', 'au', 'et', 'avec', 'sans']);
+
 function filtrerProduits(q) {
   if (!q) return tousProduits.slice(0, 50);
-  const ql = q.toLowerCase();
-  return tousProduits.filter(p =>
-    p.nom.toLowerCase().includes(ql) ||
-    (p.code_unique && p.code_unique.toLowerCase().includes(ql))
-  ).slice(0, 50);
+  // Découper en mots, ignorer stop words
+  const mots = q.toLowerCase().split(/[\s\-\/,;]+/).filter(m => m.length > 0 && !STOP_WORDS.has(m));
+  if (!mots.length) return tousProduits.slice(0, 50);
+  // Pour chaque mot, construire ses variantes (mot + synonyme/code)
+  const variantes = mots.map(m => {
+    const s = new Set([m]);
+    if (SEARCH_SYNONYMS[m]) s.add(SEARCH_SYNONYMS[m]);
+    if (CODE_LABELS[m])     s.add(CODE_LABELS[m]);
+    return [...s];
+  });
+  return tousProduits.filter(p => {
+    const hay = (p.nom + ' ' + (p.code_unique || '')).toLowerCase();
+    // Chaque mot doit matcher (directement ou via une de ses variantes)
+    return variantes.every(vars => vars.some(v => hay.includes(v)));
+  }).slice(0, 50);
 }
 
 function afficherAutoComplete(liste) {
@@ -721,31 +752,41 @@ function majBtnAjouter() {
 }
 
 function mettreEnEvidenceChampsManquants() {
-  let manque = false;
+  let premier = null;
   if (!produitSelectionne) {
     elProdSearch.classList.add('rec-champ-invalide');
-    elProdSearch.focus();
-    manque = true;
+    elProdSearch.title = 'Sélectionnez un produit dans la liste';
+    premier = premier || elProdSearch;
   }
   const lotOk = lotInterneGenere || elLot.value.trim() !== '';
   if (!lotOk) {
     elLot.classList.add('rec-champ-invalide');
-    if (!manque) elLot.focus();
-    manque = true;
+    elLot.title = 'Saisissez un N° de lot ou cliquez "Pas de N° de lot"';
+    premier = premier || elLot;
   }
   const dlcOk = elDlc.value.trim() !== '' && !elDlc.classList.contains('rec-champ-invalide');
   if (!dlcOk) {
     elDlc.classList.add('rec-champ-invalide');
-    if (!manque) elDlc.focus();
-    manque = true;
+    elDlc.title = elDlc.value ? 'La DLC ne peut pas être dans le passé' : 'La DLC/DLUO est obligatoire';
+    premier = premier || elDlc;
   }
-  return manque;
+  if (premier) {
+    premier.focus();
+    // Afficher le tooltip natif temporairement
+    const tip = premier.title;
+    if (tip) {
+      // Force un re-focus pour déclencher l'affichage natif
+      premier.blur();
+      premier.focus();
+    }
+  }
+  return premier !== null;
 }
 
 // Retirer la mise en évidence au focus/input
-[elLot, elDlc].forEach(el => {
-  el.addEventListener('input', () => el.classList.remove('rec-champ-invalide'));
-  el.addEventListener('focus', () => el.classList.remove('rec-champ-invalide'));
+[elLot, elDlc, elProdSearch].forEach(el => {
+  el.addEventListener('input', () => { el.classList.remove('rec-champ-invalide'); el.title = ''; });
+  el.addEventListener('focus', () => { el.classList.remove('rec-champ-invalide'); el.title = ''; });
 });
 
 // ── Lot interne ────────────────────────────────────────────
@@ -981,6 +1022,9 @@ function _buildPayload() {
     odeur_conforme:       criteres.odeur,
     lot_interne:          lotInterneGenere ? 1 : 0,
   };
+  // La température du camion sert d'évaluation thermique pour chaque produit
+  const tempCamion = parseFloat(elTempCamion.value);
+  if (!isNaN(tempCamion)) payload.temperature_reception = tempCamion;
   const obsC = document.getElementById('rec-obs-couleur').value.trim();
   const obsT = document.getElementById('rec-obs-consistance').value.trim();
   const obsE = document.getElementById('rec-obs-exsudat').value.trim();
