@@ -406,7 +406,9 @@ async function enregistrerFiche() {
 
   const fd = new FormData();
   fd.append('reception_id',      receptionId);
-  fd.append('fournisseur_id',    l.fournisseur_id || fournisseurId || 1);
+  const _fournId = l.fournisseur_id || fournisseurId || null;
+  if (_fournId) fd.append('fournisseur_id', _fournId);
+  if (l.fournisseur_nom) fd.append('fournisseur_nom', l.fournisseur_nom);
   fd.append('produit_id',        l.produit_id);
   fd.append('nature_probleme',   l.motifs[0] || 'temperature');
   fd.append('action_immediate',  'controle_coeur_nc');

@@ -562,12 +562,70 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             )""",
             # produits : tolerance temperature (v2.3)
             "ALTER TABLE produits ADD COLUMN temperature_tolerance REAL DEFAULT 2.0",
+            # fiches_incident : fournisseur_nom pour fournisseurs sans ID (v2.4)
+            "ALTER TABLE fiches_incident ADD COLUMN fournisseur_nom TEXT",
         ]
         for sql in migrations:
             try:
                 await db.execute(sql)
             except Exception:
                 pass
+
+        # Migration v2.4 : rendre fournisseur_id nullable dans fiches_incident
+        # (nécessaire quand le fournisseur est saisi manuellement sans ID BDD)
+        try:
+            cur_col = await db.execute("PRAGMA table_info(fiches_incident)")
+            cols = await cur_col.fetchall()
+            fourn_col = next((c for c in cols if c[1] == 'fournisseur_id'), None)
+            # col[3] = notnull flag (1 = NOT NULL)
+            if fourn_col and fourn_col[3] == 1:
+                await db.execute("PRAGMA foreign_keys = OFF")
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS fiches_incident_new (
+                        id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reception_id               INTEGER NOT NULL,
+                        reception_ligne_id         INTEGER,
+                        date_incident              DATE    DEFAULT CURRENT_DATE,
+                        heure_incident             TEXT    NOT NULL,
+                        fournisseur_id             INTEGER,
+                        fournisseur_nom            TEXT,
+                        produit_id                 INTEGER NOT NULL,
+                        numero_lot                 TEXT,
+                        nature_probleme            TEXT    NOT NULL,
+                        description                TEXT,
+                        action_immediate           TEXT    NOT NULL,
+                        livreur_present            INTEGER NOT NULL DEFAULT 0,
+                        signature_livreur_filename TEXT,
+                        etiquette_reprise_imprimee INTEGER DEFAULT 0,
+                        action_corrective          TEXT,
+                        suivi                      TEXT,
+                        commentaire                TEXT,
+                        temperature_coeur          REAL,
+                        statut                     TEXT    DEFAULT 'ouverte',
+                        cloturee_par               INTEGER,
+                        cloturee_le                DATETIME,
+                        created_at                 DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await db.execute("""
+                    INSERT INTO fiches_incident_new
+                        SELECT id, reception_id, reception_ligne_id, date_incident,
+                               heure_incident, fournisseur_id,
+                               COALESCE(fournisseur_nom, NULL),
+                               produit_id, numero_lot, nature_probleme, description,
+                               action_immediate, livreur_present,
+                               signature_livreur_filename, etiquette_reprise_imprimee,
+                               action_corrective, suivi, commentaire, temperature_coeur,
+                               statut, cloturee_par, cloturee_le, created_at
+                        FROM fiches_incident
+                """)
+                await db.execute("DROP TABLE fiches_incident")
+                await db.execute("ALTER TABLE fiches_incident_new RENAME TO fiches_incident")
+                await db.execute("PRAGMA foreign_keys = ON")
+                logger.info("Migration v2.4 : fournisseur_id rendu nullable dans fiches_incident")
+        except Exception as e:
+            logger.warning("Migration v2.4 fiches_incident : %s", e)
+            await db.execute("PRAGMA foreign_keys = ON")
 
         # Appliquer les tolérances correctes via CASE WHEN (robuste, toujours exécuté)
         try:
@@ -2121,18 +2179,19 @@ async def create_fiche_incident(db: aiosqlite.Connection, data: dict) -> int:
         """
         INSERT INTO fiches_incident
             (reception_id, reception_ligne_id, date_incident, heure_incident,
-             fournisseur_id, produit_id, numero_lot, nature_probleme, description,
-             action_immediate, livreur_present, signature_livreur_filename,
+             fournisseur_id, fournisseur_nom, produit_id, numero_lot, nature_probleme,
+             description, action_immediate, livreur_present, signature_livreur_filename,
              etiquette_reprise_imprimee, action_corrective, commentaire,
              temperature_coeur, statut)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["reception_id"],
             data.get("reception_ligne_id"),
             data.get("date_incident", now.strftime("%Y-%m-%d")),
             data.get("heure_incident", now.strftime("%H:%M")),
-            data["fournisseur_id"],
+            data.get("fournisseur_id"),
+            data.get("fournisseur_nom"),
             data["produit_id"],
             data.get("numero_lot"),
             data["nature_probleme"],

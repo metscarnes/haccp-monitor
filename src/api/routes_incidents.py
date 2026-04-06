@@ -64,7 +64,8 @@ class EtiquetteRepriseBody(BaseModel):
 @router.post("/fiches-incident", status_code=201)
 async def creer_fiche(
     reception_id:               int           = Form(...),
-    fournisseur_id:             int           = Form(...),
+    fournisseur_id:             Optional[int] = Form(None),
+    fournisseur_nom:            Optional[str] = Form(None),
     produit_id:                 int           = Form(...),
     nature_probleme:            str           = Form(...),
     action_immediate:           str           = Form(...),
@@ -79,11 +80,25 @@ async def creer_fiche(
 ):
     now = datetime.now(timezone.utc)
 
+    # Si pas d'ID fournisseur, tenter de le récupérer depuis la réception
+    fourn_id = fournisseur_id
+    fourn_nom = fournisseur_nom
+    if not fourn_id:
+        async with get_db() as _db:
+            cur = await _db.execute(
+                "SELECT fournisseur_principal_id FROM receptions WHERE id = ?",
+                (reception_id,),
+            )
+            row = await cur.fetchone()
+            if row and row[0]:
+                fourn_id = row[0]
+
     data = {
         "reception_id":      reception_id,
         "reception_ligne_id": reception_ligne_id,
         "heure_incident":    now.strftime("%H:%M"),
-        "fournisseur_id":    fournisseur_id,
+        "fournisseur_id":    fourn_id,
+        "fournisseur_nom":   fourn_nom,
         "produit_id":        produit_id,
         "numero_lot":        numero_lot,
         "nature_probleme":   nature_probleme,
