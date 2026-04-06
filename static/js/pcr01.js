@@ -24,7 +24,10 @@ const elEtapesListe   = document.getElementById('pcr-etapes-liste');
 const elCorrective    = document.getElementById('pcr-corrective');
 const elCommentaire   = document.getElementById('pcr-commentaire');
 const elSigBloc       = document.getElementById('pcr-sig-bloc');
-const elSigImg        = document.getElementById('pcr-sig-img');
+const elSigCanvas     = document.getElementById('pcr-sig-canvas');
+const elSigEffacer    = document.getElementById('pcr-sig-effacer');
+const elEtiqBloc      = document.getElementById('pcr-etiq-bloc');
+const elEtiqListe     = document.getElementById('pcr-etiq-liste');
 const elErreur        = document.getElementById('pcr-erreur');
 const elBtnEnreg      = document.getElementById('pcr-btn-enreg');
 const elBtnRetour     = document.getElementById('pcr-btn-retour');
@@ -32,7 +35,6 @@ const elBtnRetour     = document.getElementById('pcr-btn-retour');
 
 // ── Charger l'état depuis sessionStorage ────────────────────
 const pcrDataRaw = sessionStorage.getItem('haccp_pcr01_data');
-const sigDataUrl  = sessionStorage.getItem('haccp_pcr01_signature');
 
 // Si aucune session active → retour réception
 if (!pcrDataRaw) {
@@ -59,10 +61,81 @@ elDate.textContent = new Date().toLocaleDateString('fr-FR', {
 elOperateur.textContent = `Opérateur : ${personnelPrenom}`;
 
 
-// ── Signature livreur ───────────────────────────────────────
-if (livreurPresent && sigDataUrl) {
+// ── Signature livreur (canvas, si présent) ──────────────────
+let sigCtx  = null;
+let sigDraw = false;
+
+if (livreurPresent) {
   elSigBloc.hidden = false;
-  elSigImg.src = sigDataUrl;
+  initSigCanvas();
+} else {
+  // Livreur absent → afficher les boutons impression étiquette
+  elEtiqBloc.hidden = false;
+  construireEtiquettes();
+}
+
+function initSigCanvas() {
+  if (!elSigCanvas) return;
+  const W = elSigCanvas.offsetWidth || 600;
+  elSigCanvas.width  = W * (window.devicePixelRatio || 1);
+  elSigCanvas.height = 180 * (window.devicePixelRatio || 1);
+  elSigCanvas.style.height = '180px';
+  sigCtx = elSigCanvas.getContext('2d');
+  sigCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  sigCtx.strokeStyle = '#000';
+  sigCtx.lineWidth   = 2;
+  sigCtx.lineCap     = 'round';
+  sigCtx.lineJoin    = 'round';
+
+  function pos(e) {
+    const r = elSigCanvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - r.left, y: src.clientY - r.top };
+  }
+  elSigCanvas.addEventListener('mousedown',  e => { sigDraw = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
+  elSigCanvas.addEventListener('mousemove',  e => { if (!sigDraw) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
+  elSigCanvas.addEventListener('mouseup',    () => sigDraw = false);
+  elSigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDraw = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
+  elSigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDraw) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); }, { passive: false });
+  elSigCanvas.addEventListener('touchend',   () => sigDraw = false);
+}
+
+if (elSigEffacer) {
+  elSigEffacer.addEventListener('click', () => {
+    if (sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
+  });
+}
+
+// ── Étiquettes À RETOURNER (livreur absent) ─────────────────
+function construireEtiquettes() {
+  if (!elEtiqListe) return;
+  elEtiqListe.innerHTML = '';
+  ncProduits.forEach(l => {
+    const btn = document.createElement('button');
+    btn.className = 'pcr-etiq-btn';
+    btn.innerHTML = `🖨️ &nbsp;Étiquette — ${l.produit_nom}`;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await fetch('/api/impression/etiquette-reprise', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            produit_nom:      l.produit_nom,
+            motif:            l.motifs.join(', ') || 'non-conformité',
+            operateur_prenom: personnelPrenom,
+            date_refus:       new Date().toISOString().slice(0, 10),
+          }),
+        });
+        btn.classList.add('imprime');
+        btn.innerHTML = `✓ &nbsp;Imprimé — ${l.produit_nom}`;
+      } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = `⚠️ Erreur impression — ${l.produit_nom}`;
+      }
+    });
+    elEtiqListe.appendChild(btn);
+  });
 }
 
 
@@ -241,9 +314,10 @@ async function enregistrerFiche() {
   if (coeur && coeur.temp_coeur != null) fd.append('temperature_coeur', coeur.temp_coeur);
   if (elCommentaire && elCommentaire.value.trim()) fd.append('commentaire', elCommentaire.value.trim());
 
-  // Joindre la signature PNG si livreur présent
-  if (livreurPresent && sigDataUrl) {
-    fd.append('signature_livreur', dataUrlToBlob(sigDataUrl), 'signature.png');
+  // Joindre la signature PNG si livreur présent (capturée dans ce canvas)
+  if (livreurPresent && sigCtx) {
+    const dataUrl = elSigCanvas.toDataURL('image/png');
+    fd.append('signature_livreur', dataUrlToBlob(dataUrl), 'signature.png');
   }
 
   try {

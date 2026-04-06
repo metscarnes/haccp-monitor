@@ -36,19 +36,16 @@ const elCamionBadge       = document.getElementById('rec-camion-badge');
 const elBtnCamionSuivant  = document.getElementById('rec-btn-camion-suivant');
 
 // Étape 2
-const elPhotoZone         = document.getElementById('rec-photo-zone');
-const elInputPhoto        = document.getElementById('rec-input-photo');
-const elPhotoIcone        = document.getElementById('rec-photo-icone');
-const elPhotoTitre        = document.getElementById('rec-photo-titre');
-const elPhotoVignette     = document.getElementById('rec-photo-vignette');
-const elFournSearch       = document.getElementById('rec-fourn-search');
-const elFournResults      = document.getElementById('rec-fourn-results');
-const elFournSelWrap      = document.getElementById('rec-fourn-sel-wrap');
-const elFournSelNom       = document.getElementById('rec-fourn-sel-nom');
-const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
-const elFournClear        = document.getElementById('rec-fourn-clear');
+const elFournUnBtn        = document.getElementById('rec-fourn-un-btn');
+const elFournMultiBtn     = document.getElementById('rec-fourn-multi-btn');
+const elFournListe        = document.getElementById('rec-fourn-liste');
+const elBtnAddFourn       = document.getElementById('rec-btn-add-fourn');
 const elErreur2           = document.getElementById('rec-erreur-2');
 const elBtnCreerFiche     = document.getElementById('rec-btn-creer-fiche');
+// Legacy refs (kept pour compatibilité, pointent vers éléments vides)
+const elFournResults      = document.getElementById('rec-fourn-results');
+const elFournSelWrap      = document.getElementById('rec-fourn-sel-wrap');
+const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
 
 // Étape 3
 const elBandeauCamionChaud = document.getElementById('rec-bandeau-camion-chaud');
@@ -62,9 +59,6 @@ const elBtnChangerProduit = document.getElementById('rec-btn-changer-produit');
 const elProdSearchWrap    = document.getElementById('rec-produit-search-wrap');
 const elProdSearch        = document.getElementById('rec-prod-search');
 const elProdAutoComplete  = document.getElementById('rec-prod-autocomplete');
-const elTempProduit       = document.getElementById('rec-temp-produit');
-const elTempProduitLabel  = document.getElementById('rec-temp-produit-label');
-const elTempVerdict       = document.getElementById('rec-temp-produit-verdict');
 const elLot               = document.getElementById('rec-lot');
 const elBtnPasLot         = document.getElementById('rec-btn-pas-lot');
 const elBtnAnnulerLot     = document.getElementById('rec-btn-annuler-lot');
@@ -87,8 +81,6 @@ const elRecapCamionInfo   = document.getElementById('rec-recap-camion-info');
 const elRecapCamionBadge  = document.getElementById('rec-recap-camion-badge');
 const elConformiteGlobale = document.getElementById('rec-conformite-globale');
 const elRecapLignes       = document.getElementById('rec-recap-lignes');
-const elChkRefuse         = document.getElementById('rec-chk-refuse');
-const elChkDdpp           = document.getElementById('rec-chk-ddpp');
 const elCommentaireNc     = document.getElementById('rec-commentaire-nc');
 const elErreur4           = document.getElementById('rec-erreur-4');
 const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
@@ -102,11 +94,6 @@ const elNcTousConformes   = document.getElementById('rec-nc-tous-conformes');
 const elNcBtnASuivant     = document.getElementById('rec-nc-btn-a-suivant');
 const elLivreurOui        = document.getElementById('rec-livreur-oui');
 const elLivreurNon        = document.getElementById('rec-livreur-non');
-const elSigZone           = document.getElementById('rec-sig-zone');
-const elSigCanvas         = document.getElementById('rec-sig-canvas');
-const elSigEffacer        = document.getElementById('rec-sig-effacer');
-const elEtiqZone          = document.getElementById('rec-etiq-zone');
-const elEtiqListe         = document.getElementById('rec-etiq-liste');
 const elNcBtnBSuivant     = document.getElementById('rec-nc-btn-b-suivant');
 const elPcrDoneBadge      = document.getElementById('rec-pcr-done-badge');
 
@@ -146,8 +133,6 @@ let ncProduits         = [];      // produits NC confirmés (après contrôle à
 let ncProduitsInitiaux = [];      // produits NC initiaux (avant contrôle à cœur)
 let ncCoeurResultats   = {};      // {ligne_id: {temp_coeur, conforme_apres_coeur}}
 let livreurPresent     = null;    // true | false
-let sigDessin          = false;
-let sigCtx             = null;
 let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
 
 // État formulaire produit
@@ -242,8 +227,6 @@ function allerEtape(cible) {
   if (elBandeauCamionChaud) {
     elBandeauCamionChaud.hidden = !(cible === 3 && camionEstChaud());
   }
-  // Bandeau coeur dans form produit — masqué quand pas à l'étape 3 ou pas de produit sélectionné
-  if (elBandeauCoeur && cible !== 3) elBandeauCoeur.hidden = true;
 
   // Bouton retour
   elBtnRetour.hidden = estConfirm;
@@ -308,21 +291,19 @@ function camionEstChaud(tempMax) {
 
 function majBadgeCamion() {
   const temp = parseFloat(elTempCamion.value);
+  const propreteOk = propreteCamion === 'satisfaisant';
 
   if (isNaN(temp)) {
     elCamionBadge.className = 'rec-badge neutre';
     elCamionBadge.textContent = '— Non évalué';
-  } else if (temp >= 2) {
-    // Signal d'alerte uniquement — la temp camion ne crée PAS de NC
-    elCamionBadge.className = 'rec-badge attention';
-    elCamionBadge.textContent = '⚠️ Contrôle à cœur requis sur chaque produit';
+  } else if (!propreteOk) {
+    elCamionBadge.className = 'rec-badge nc';
+    elCamionBadge.textContent = '✗ Propreté non satisfaisante';
   } else {
+    // La température camion ne crée PAS de NC à cette étape
     elCamionBadge.className = 'rec-badge conforme';
-    elCamionBadge.textContent = '✓ Température OK';
+    elCamionBadge.textContent = '✓ Conforme';
   }
-
-  // Mettre à jour aussi le label temp produit si on est à l'étape 3
-  if (produitSelectionne) majLabelTempProduit();
 }
 
 elTempCamion.addEventListener('input', majBadgeCamion);
@@ -345,10 +326,20 @@ elPropreteNc.addEventListener('click', () => {
   majBadgeCamion();
 });
 
+elDateReception.addEventListener('input', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  if (elDateReception.value && elDateReception.value < today) {
+    elDateReception.classList.add('rec-champ-invalide');
+  } else {
+    elDateReception.classList.remove('rec-champ-invalide');
+  }
+});
+
 elBtnCamionSuivant.addEventListener('click', () => {
-  if (!elDateReception.value) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!elDateReception.value || elDateReception.value < today) {
+    elDateReception.classList.add('rec-champ-invalide');
     elDateReception.focus();
-    elDateReception.reportValidity();
     return;
   }
   if (elTempCamion.value.trim() === '') {
@@ -360,26 +351,11 @@ elBtnCamionSuivant.addEventListener('click', () => {
 });
 
 
-// ── ÉTAPE 2 : Photo BL + Fournisseur ──────────────────────
-// Photo
-elPhotoZone.addEventListener('click', () => elInputPhoto.click());
-elPhotoZone.addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elInputPhoto.click(); }
-});
+// ── ÉTAPE 2 : Photo BL + Fournisseur(s) ───────────────────
+// État fournisseurs multiples : [{id, nom, photoFile, photoUrl}]
+let fournisseursListe = [{ id: null, nom: '', photoFile: null, photoUrl: null }];
+let modeMultiFourn    = false;
 
-elInputPhoto.addEventListener('change', () => {
-  const file = elInputPhoto.files[0];
-  if (!file) return;
-  photoBlFile = file;
-  if (photoBlObjectUrl) URL.revokeObjectURL(photoBlObjectUrl);
-  photoBlObjectUrl = URL.createObjectURL(file);
-  elPhotoVignette.src = photoBlObjectUrl;
-  elPhotoVignette.hidden = false;
-  elPhotoIcone.textContent = '✅';
-  elPhotoTitre.textContent = 'Photo prise';
-});
-
-// Fournisseur
 async function chargerFournisseurs() {
   try {
     tousFournisseurs = await apiFetch('/api/fournisseurs');
@@ -388,43 +364,160 @@ async function chargerFournisseurs() {
   }
 }
 
-function afficherFournisseurs(liste) {
-  elFournResults.innerHTML = '';
-  if (!liste.length) {
-    elFournResults.hidden = true;
-    return;
-  }
-  liste.slice(0, 10).forEach(f => {
-    const div = document.createElement('div');
-    div.className = 'rec-fourn-item';
-    div.textContent = f.nom;
-    div.addEventListener('click', () => selectionnerFournisseur(f));
-    elFournResults.appendChild(div);
+function initBlocFourn(idx) {
+  const photoZone  = document.getElementById(`rec-photo-zone-${idx}`);
+  const inputPhoto = document.getElementById(`rec-input-photo-${idx}`);
+  const photoIcone = document.getElementById(`rec-photo-icone-${idx}`);
+  const photoTitre = document.getElementById(`rec-photo-titre-${idx}`);
+  const photoVign  = document.getElementById(`rec-photo-vignette-${idx}`);
+  const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
+  const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
+  const searchWrap = document.getElementById(`rec-fourn-search-wrap-${idx}`);
+  const searchInp  = document.getElementById(`rec-fourn-search-${idx}`);
+  const results    = document.getElementById(`rec-fourn-results-${idx}`);
+  const clearBtn   = document.getElementById(`rec-fourn-clear-${idx}`);
+
+  photoZone.addEventListener('click', () => inputPhoto.click());
+  photoZone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputPhoto.click(); }
   });
-  elFournResults.hidden = false;
+
+  inputPhoto.addEventListener('change', () => {
+    const file = inputPhoto.files[0];
+    if (!file) return;
+    fournisseursListe[idx].photoFile = file;
+    if (fournisseursListe[idx].photoUrl) URL.revokeObjectURL(fournisseursListe[idx].photoUrl);
+    fournisseursListe[idx].photoUrl = URL.createObjectURL(file);
+    photoVign.src = fournisseursListe[idx].photoUrl;
+    photoVign.hidden = false;
+    photoIcone.textContent = '✅';
+    photoTitre.textContent = 'Photo prise';
+  });
+
+  function afficherResultats(liste) {
+    results.innerHTML = '';
+    if (!liste.length) { results.hidden = true; return; }
+    liste.slice(0, 10).forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'rec-fourn-item';
+      div.textContent = f.nom;
+      div.addEventListener('click', () => {
+        fournisseursListe[idx].id  = f.id;
+        fournisseursListe[idx].nom = f.nom;
+        selNom.textContent = f.nom;
+        selWrap.hidden     = false;
+        searchWrap.hidden  = true;
+        results.hidden     = true;
+        // Mettre à jour fournisseurId principal (index 0)
+        if (idx === 0) fournisseurId = f.id;
+      });
+      results.appendChild(div);
+    });
+    results.hidden = false;
+  }
+
+  clearBtn.addEventListener('click', () => {
+    fournisseursListe[idx].id  = null;
+    fournisseursListe[idx].nom = '';
+    selWrap.hidden     = true;
+    searchWrap.hidden  = false;
+    searchInp.value    = '';
+    results.hidden     = true;
+    if (idx === 0) fournisseurId = null;
+  });
+
+  searchInp.addEventListener('input', () => {
+    const q = searchInp.value.trim().toLowerCase();
+    if (!q) { results.hidden = true; return; }
+    afficherResultats(tousFournisseurs.filter(f => f.nom.toLowerCase().includes(q)));
+  });
+
+  document.addEventListener('click', e => {
+    if (!results.contains(e.target) && e.target !== searchInp) results.hidden = true;
+  }, true);
 }
 
-function selectionnerFournisseur(f) {
-  fournisseurId = f.id;
-  elFournSelNom.textContent = f.nom;
-  elFournSelWrap.hidden = false;
-  elFournSearchWrap.hidden = true;
-  elFournResults.hidden = true;
-}
+// Initialiser le premier bloc
+initBlocFourn(0);
 
-elFournClear.addEventListener('click', () => {
-  fournisseurId = null;
-  elFournSelWrap.hidden = true;
-  elFournSearchWrap.hidden = false;
-  elFournSearch.value = '';
-  elFournResults.hidden = true;
+// Toggle un/plusieurs fournisseurs
+elFournUnBtn.addEventListener('click', () => {
+  modeMultiFourn = false;
+  elFournUnBtn.classList.add('ok-sel');
+  elFournMultiBtn.classList.remove('ok-sel');
+  elFournUnBtn.setAttribute('aria-pressed', 'true');
+  elFournMultiBtn.setAttribute('aria-pressed', 'false');
+  elBtnAddFourn.hidden = true;
+  // Supprimer les blocs supplémentaires
+  while (fournisseursListe.length > 1) {
+    fournisseursListe.pop();
+    const bloc = elFournListe.querySelector(`[id^="rec-fourn-bloc-"]:last-child`);
+    if (bloc && bloc.id !== 'rec-fourn-bloc-0') bloc.remove();
+  }
+  document.getElementById('rec-fourn-bloc-titre-0').hidden = true;
 });
 
-elFournSearch.addEventListener('input', () => {
-  const q = elFournSearch.value.trim().toLowerCase();
-  if (!q) { elFournResults.hidden = true; return; }
-  const filtres = tousFournisseurs.filter(f => f.nom.toLowerCase().includes(q));
-  afficherFournisseurs(filtres);
+elFournMultiBtn.addEventListener('click', () => {
+  modeMultiFourn = true;
+  elFournMultiBtn.classList.add('ok-sel');
+  elFournUnBtn.classList.remove('ok-sel');
+  elFournMultiBtn.setAttribute('aria-pressed', 'true');
+  elFournUnBtn.setAttribute('aria-pressed', 'false');
+  elBtnAddFourn.hidden = false;
+  document.getElementById('rec-fourn-bloc-titre-0').hidden = false;
+});
+
+elBtnAddFourn.addEventListener('click', () => {
+  const idx = fournisseursListe.length;
+  fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+
+  const bloc = document.createElement('div');
+  bloc.className = 'rec-fourn-bloc';
+  bloc.id = `rec-fourn-bloc-${idx}`;
+  bloc.innerHTML = `
+    <div class="rec-fourn-bloc-titre">Fournisseur ${idx + 1}
+      <button class="rec-fourn-sup-btn" data-idx="${idx}" type="button" aria-label="Supprimer">✕</button>
+    </div>
+    <div class="rec-photo-zone" id="rec-photo-zone-${idx}" role="button" tabindex="0"
+         aria-label="Photo BL optionnelle">
+      <span class="rec-photo-icone" id="rec-photo-icone-${idx}">📋</span>
+      <div class="rec-photo-texte">
+        <div class="rec-photo-texte-titre" id="rec-photo-titre-${idx}">Photo du bon de livraison</div>
+        <div class="rec-photo-texte-sous">Optionnel</div>
+      </div>
+      <img id="rec-photo-vignette-${idx}" class="rec-photo-vignette" alt="" hidden>
+    </div>
+    <input type="file" accept="image/*" capture="environment"
+           id="rec-input-photo-${idx}" hidden aria-hidden="true">
+    <div class="rec-fourn-search-group">
+      <div id="rec-fourn-sel-wrap-${idx}" hidden>
+        <div class="rec-fourn-sel">
+          <span>✓</span>
+          <span id="rec-fourn-sel-nom-${idx}"></span>
+          <button class="rec-fourn-clear" id="rec-fourn-clear-${idx}" type="button">✕</button>
+        </div>
+      </div>
+      <div id="rec-fourn-search-wrap-${idx}">
+        <input type="search" id="rec-fourn-search-${idx}" class="rec-input"
+               placeholder="Nom du fournisseur…" autocomplete="off">
+        <div class="rec-fourn-results" id="rec-fourn-results-${idx}" hidden></div>
+      </div>
+    </div>`;
+  elFournListe.insertBefore(bloc, elBtnAddFourn);
+  initBlocFourn(idx);
+
+  bloc.querySelector('.rec-fourn-sup-btn').addEventListener('click', () => {
+    fournisseursListe.splice(idx, 1);
+    bloc.remove();
+    // Renuméroter les titres
+    elFournListe.querySelectorAll('.rec-fourn-bloc-titre').forEach((el, i) => {
+      if (el.id !== 'rec-fourn-bloc-titre-0') {
+        const btnSup = el.querySelector('.rec-fourn-sup-btn');
+        el.firstChild.textContent = `Fournisseur ${i + 1} `;
+        if (btnSup) el.appendChild(btnSup);
+      }
+    });
+  });
 });
 
 // Créer la fiche
@@ -444,8 +537,9 @@ async function creerFiche() {
       fd.append('temperature_camion', elTempCamion.value);
     }
     fd.append('proprete_camion', propreteCamion);
-    if (fournisseurId) fd.append('fournisseur_principal_id', fournisseurId);
-    if (photoBlFile)   fd.append('photo_bl', photoBlFile, photoBlFile.name);
+    const fourn0 = fournisseursListe[0];
+    if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
+    if (fourn0.photoFile) fd.append('photo_bl', fourn0.photoFile, fourn0.photoFile.name);
 
     const rec = await apiFetch('/api/receptions', {
       method: 'POST',
@@ -486,12 +580,12 @@ async function chargerTextesAide() {
 }
 
 function filtrerProduits(q) {
-  if (!q) return tousProduits.slice(0, 12);
+  if (!q) return tousProduits.slice(0, 50);
   const ql = q.toLowerCase();
   return tousProduits.filter(p =>
     p.nom.toLowerCase().includes(ql) ||
     (p.code_unique && p.code_unique.toLowerCase().includes(ql))
-  ).slice(0, 12);
+  ).slice(0, 50);
 }
 
 function afficherAutoComplete(liste) {
@@ -532,8 +626,6 @@ function selectionnerProduit(p) {
   const aideEspece = textesAide[p.espece];
   elPhPlage.textContent = aideEspece ? `(norme : ${aideEspece.ph.normal})` : '';
 
-  // Label temperature selon statut camion
-  majLabelTempProduit();
   majBtnAjouter();
 }
 
@@ -550,16 +642,9 @@ elBtnChangerProduit.addEventListener('click', () => {
   elProdSel.hidden = true;
   elProdSearchWrap.hidden = false;
   elProdSearch.value = '';
-  afficherAutoComplete(tousProduits.slice(0, 12));
+  afficherAutoComplete(tousProduits.slice(0, 50));
   elProdSearch.focus();
   majBtnAjouter();
-  elTempVerdict.textContent = '';
-  elTempVerdict.className = 'rec-temp-verdict';
-  if (elBandeauCoeur) elBandeauCoeur.hidden = true;
-  if (elTempProduitLabel) {
-    elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
-    elTempProduitLabel.classList.remove('coeur-label');
-  }
 });
 
 elProdSearch.addEventListener('input', () => {
@@ -588,47 +673,6 @@ function parseIntervalleTemp(str) {
   return { min: parseFloat(m[1]), max: parseFloat(m[2]) };
 }
 
-function majLabelTempProduit() {
-  if (!produitSelectionne) return;
-  const intervalle = parseIntervalleTemp(produitSelectionne.temperature_conservation);
-  const tempMax = intervalle ? intervalle.max : undefined;
-  const chaud = camionEstChaud(tempMax);
-
-  if (elBandeauCoeur) elBandeauCoeur.hidden = !chaud;
-
-  if (elTempProduitLabel) {
-    const span = elTempProduitLabel.querySelector('.rec-temp-verdict') ||
-                 document.createElement('span');
-    if (chaud) {
-      elTempProduitLabel.firstChild.textContent = 'Température à cœur (°C) ';
-      elTempProduitLabel.classList.add('coeur-label');
-    } else {
-      elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
-      elTempProduitLabel.classList.remove('coeur-label');
-    }
-  }
-}
-
-function majVerdictTemp() {
-  const val = parseFloat(elTempProduit.value);
-  if (isNaN(val) || !produitSelectionne) {
-    elTempVerdict.textContent = '';
-    elTempVerdict.className = 'rec-temp-verdict';
-    return;
-  }
-  const intervalle = parseIntervalleTemp(produitSelectionne.temperature_conservation);
-  if (!intervalle) {
-    elTempVerdict.textContent = '';
-    elTempVerdict.className = 'rec-temp-verdict';
-    return;
-  }
-
-  // Règle unifiée : NC si temp > cible_max + 2°C
-  const conforme = val <= (intervalle.max + 2.0);
-  elTempVerdict.textContent = conforme ? '✓ OK' : '✗ NC';
-  elTempVerdict.className   = 'rec-temp-verdict ' + (conforme ? 'ok' : 'nc');
-}
-elTempProduit.addEventListener('input', majVerdictTemp);
 
 // Critères visuels toggles
 function reinitCriteres() {
@@ -669,12 +713,40 @@ document.querySelectorAll('[data-critere]').forEach(btn => {
 });
 
 function majBtnAjouter() {
-  const lotOk  = lotInterneGenere || elLot.value.trim() !== '';
-  const dlcOk  = elDlc.value.trim() !== '';
+  const lotOk = lotInterneGenere || elLot.value.trim() !== '';
+  const dlcOk = elDlc.value.trim() !== '' && !elDlc.classList.contains('rec-champ-invalide');
   const ok = produitSelectionne !== null && lotOk && dlcOk;
   elBtnAjouter.disabled   = !ok;
   if (elBtnEnregistrer) elBtnEnregistrer.disabled = !ok;
 }
+
+function mettreEnEvidenceChampsManquants() {
+  let manque = false;
+  if (!produitSelectionne) {
+    elProdSearch.classList.add('rec-champ-invalide');
+    elProdSearch.focus();
+    manque = true;
+  }
+  const lotOk = lotInterneGenere || elLot.value.trim() !== '';
+  if (!lotOk) {
+    elLot.classList.add('rec-champ-invalide');
+    if (!manque) elLot.focus();
+    manque = true;
+  }
+  const dlcOk = elDlc.value.trim() !== '' && !elDlc.classList.contains('rec-champ-invalide');
+  if (!dlcOk) {
+    elDlc.classList.add('rec-champ-invalide');
+    if (!manque) elDlc.focus();
+    manque = true;
+  }
+  return manque;
+}
+
+// Retirer la mise en évidence au focus/input
+[elLot, elDlc].forEach(el => {
+  el.addEventListener('input', () => el.classList.remove('rec-champ-invalide'));
+  el.addEventListener('focus', () => el.classList.remove('rec-champ-invalide'));
+});
 
 // ── Lot interne ────────────────────────────────────────────
 elBtnPasLot.addEventListener('click', async () => {
@@ -742,7 +814,20 @@ elDluoBtn.addEventListener('click', () => {
   elDlcBtn.setAttribute('aria-pressed', 'false');
   elDlcLabelText.textContent = 'DLUO';
 });
-elDlc.addEventListener('input', majBtnAjouter);
+elDlc.addEventListener('input', () => {
+  // Validation DLC ≥ aujourd'hui
+  if (elDlc.value) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (elDlc.value < today) {
+      elDlc.classList.add('rec-champ-invalide');
+    } else {
+      elDlc.classList.remove('rec-champ-invalide');
+    }
+  } else {
+    elDlc.classList.remove('rec-champ-invalide');
+  }
+  majBtnAjouter();
+});
 
 function reinitFormProduit() {
   produitSelectionne = null;
@@ -754,9 +839,6 @@ function reinitFormProduit() {
   elProdSearchWrap.hidden = false;
   elProdSearch.value      = '';
   elProdAutoComplete.hidden = true;
-  elTempProduit.value     = '';
-  elTempVerdict.textContent = '';
-  elTempVerdict.className = 'rec-temp-verdict';
 
   // Lot
   elLot.value    = '';
@@ -776,13 +858,6 @@ function reinitFormProduit() {
 
   elPh.value  = '';
   elPhPlage.textContent = '';
-
-  // Reset bandeau coeur
-  if (elBandeauCoeur) elBandeauCoeur.hidden = true;
-  if (elTempProduitLabel) {
-    elTempProduitLabel.firstChild.textContent = 'Température à réception (°C) ';
-    elTempProduitLabel.classList.remove('coeur-label');
-  }
 
   CRITERES.forEach(c => {
     document.getElementById(`rec-aide-${c}`).textContent = '';
@@ -849,9 +924,6 @@ function chargerLigneEnEdition(l, idx) {
   const produit = tousProduits.find(p => p.id === l.produit_id);
   if (produit) selectionnerProduit(produit);
 
-  // Restaurer température
-  elTempProduit.value = l.temperature_reception != null ? l.temperature_reception : '';
-
   // Restaurer lot
   elLot.readOnly = false;
   elLot.style.background = '';
@@ -892,6 +964,12 @@ function chargerLigneEnEdition(l, idx) {
 }
 
 elBtnAjouter.addEventListener('click', ajouterLigne);
+// Clic sur zone autour du bouton grisé → mise en évidence des champs manquants
+document.querySelector('.rec-step3-footer').addEventListener('click', e => {
+  if (e.target === elBtnAjouter || e.target === elBtnEnregistrer) return;
+  if (elBtnAjouter.disabled && !elBtnAjouter.hidden) mettreEnEvidenceChampsManquants();
+  if (elBtnEnregistrer && elBtnEnregistrer.disabled && !elBtnEnregistrer.hidden) mettreEnEvidenceChampsManquants();
+});
 if (elBtnEnregistrer) elBtnEnregistrer.addEventListener('click', enregistrerModification);
 
 function _buildPayload() {
@@ -911,8 +989,6 @@ function _buildPayload() {
   if (obsT) payload.consistance_observation = obsT;
   if (obsE) payload.exsudat_observation    = obsE;
   if (obsO) payload.odeur_observation      = obsO;
-  const tv = parseFloat(elTempProduit.value);
-  if (!isNaN(tv)) payload.temperature_reception = tv;
   const lot = elLot.value.trim();
   if (lot) payload.numero_lot = lot;
   const dateVal = elDlc.value;
@@ -1019,13 +1095,9 @@ function remplirRecap() {
 
   // La température camion ne crée PAS de NC — seule la propreté compte
   const camionProprete = propreteCamion === 'satisfaisant';
-  const camionChaud    = !isNaN(tempCamion) && tempCamion >= 2;
   if (!camionProprete) {
     elRecapCamionBadge.className = 'rec-badge nc';
     elRecapCamionBadge.textContent = '✗ Propreté NC';
-  } else if (camionChaud) {
-    elRecapCamionBadge.className = 'rec-badge attention';
-    elRecapCamionBadge.textContent = '⚠️ Contrôle à cœur requis';
   } else {
     elRecapCamionBadge.className = 'rec-badge conforme';
     elRecapCamionBadge.textContent = '✓ Conforme';
@@ -1089,8 +1161,6 @@ function initNcProcedure() {
   // Réinitialiser les sous-étapes
   elNcStepA.hidden = false;
   elNcStepB.hidden = true;
-  elSigZone.hidden = true;
-  elEtiqZone.hidden = true;
   elNcBtnASuivant.disabled = true;
   elNcBtnBSuivant.disabled = true;
   if (elNcTousConformes) elNcTousConformes.hidden = true;
@@ -1112,6 +1182,14 @@ function initNcProcedure() {
     nomEl.className = 'rec-nc-produit-nom';
     nomEl.textContent = l.produit_nom;
     row.appendChild(nomEl);
+
+    const fourn = tousFournisseurs.find(f => f.id === (l.fournisseur_id || fournisseurId));
+    if (fourn) {
+      const fournEl = document.createElement('div');
+      fournEl.className = 'rec-nc-fourn-nom';
+      fournEl.textContent = `Fournisseur : ${fourn.nom}`;
+      row.appendChild(fournEl);
+    }
 
     const motifEl = document.createElement('div');
     motifEl.className = 'rec-nc-motif';
@@ -1200,7 +1278,6 @@ elNcBtnASuivant.addEventListener('click', () => {
   }
   elNcStepA.hidden = true;
   elNcStepB.hidden = false;
-  initSignatureCanvas();
 });
 
 // Livreur présent / absent
@@ -1208,8 +1285,6 @@ elLivreurOui.addEventListener('click', () => {
   livreurPresent = true;
   elLivreurOui.className = 'rec-livreur-btn sel-oui';
   elLivreurNon.className = 'rec-livreur-btn';
-  elSigZone.hidden  = false;
-  elEtiqZone.hidden = true;
   elNcBtnBSuivant.disabled = false;
 });
 
@@ -1217,38 +1292,6 @@ elLivreurNon.addEventListener('click', () => {
   livreurPresent = false;
   elLivreurNon.className = 'rec-livreur-btn sel-non';
   elLivreurOui.className = 'rec-livreur-btn';
-  elSigZone.hidden  = true;
-  elEtiqZone.hidden = false;
-  // Construire les boutons étiquettes
-  elEtiqListe.innerHTML = '';
-  ncProduits.forEach(l => {
-    const btn = document.createElement('button');
-    btn.className = 'rec-etiq-reprise-btn';
-    btn.innerHTML = `🖨️ &nbsp;<span>Étiquette À REPRENDRE — ${l.produit_nom}</span>`;
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        const fourn = tousFournisseurs.find(f => f.id === l.fournisseur_id);
-        await apiFetch('/api/impression/etiquette-reprise', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            produit_nom:      l.produit_nom,
-            fournisseur_nom:  fourn ? fourn.nom : (fournisseurId ? '' : 'Inconnu'),
-            motif:            l.motifs.join(', ') || 'non-conformité',
-            operateur_prenom: personnelPrenom,
-            date_refus:       new Date().toISOString().slice(0, 10),
-          }),
-        });
-        btn.classList.add('imprime');
-        btn.innerHTML = `✓ &nbsp;<span>Imprimé — ${l.produit_nom}</span>`;
-      } catch (e) {
-        btn.disabled = false;
-        alert(`Impression échouée : ${e.message}`);
-      }
-    });
-    elEtiqListe.appendChild(btn);
-  });
   elNcBtnBSuivant.disabled = false;
 });
 
@@ -1277,50 +1320,12 @@ elNcBtnBSuivant.addEventListener('click', () => {
     ncFicheIndex: 0,
   };
   sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
-
-  // Sauvegarder la signature si livreur présent
-  if (livreurPresent && elSigCanvas && sigCtx) {
-    sessionStorage.setItem('haccp_pcr01_signature', elSigCanvas.toDataURL('image/png'));
-  } else {
-    sessionStorage.removeItem('haccp_pcr01_signature');
-  }
+  sessionStorage.removeItem('haccp_pcr01_signature'); // sera capturée dans pcr01.html
 
   window.location.href = '/pcr01.html';
 });
 
 // chargerFichePcr / enregistrerFichePcr → déplacés dans pcr01.js (écran dédié)
-
-// ── Canvas signature ────────────────────────────────────────
-function initSignatureCanvas() {
-  if (!elSigCanvas) return;
-  const W = elSigCanvas.offsetWidth || 600;
-  elSigCanvas.width  = W * (window.devicePixelRatio || 1);
-  elSigCanvas.height = 180 * (window.devicePixelRatio || 1);
-  elSigCanvas.style.height = '180px';
-  sigCtx = elSigCanvas.getContext('2d');
-  sigCtx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
-  sigCtx.strokeStyle = '#000';
-  sigCtx.lineWidth   = 2;
-  sigCtx.lineCap     = 'round';
-  sigCtx.lineJoin    = 'round';
-
-  function pos(e) {
-    const r = elSigCanvas.getBoundingClientRect();
-    const src = e.touches ? e.touches[0] : e;
-    return { x: src.clientX - r.left, y: src.clientY - r.top };
-  }
-
-  elSigCanvas.addEventListener('mousedown',  e => { sigDessin = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
-  elSigCanvas.addEventListener('mousemove',  e => { if (!sigDessin) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
-  elSigCanvas.addEventListener('mouseup',    () => sigDessin = false);
-  elSigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDessin = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
-  elSigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDessin) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); }, { passive: false });
-  elSigCanvas.addEventListener('touchend',   () => sigDessin = false);
-}
-
-elSigEffacer.addEventListener('click', () => {
-  if (sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
-});
 
 // ── Clôture ─────────────────────────────────────────────────
 elBtnCloturer.addEventListener('click', cloturerFiche);
@@ -1331,9 +1336,7 @@ async function cloturerFiche() {
   elBtnCloturer.textContent = 'Clôture…';
 
   const payload = {
-    livraison_refusee: elChkRefuse.checked,
-    information_ddpp:  elChkDdpp.checked,
-    commentaire_nc:    elCommentaireNc.value.trim() || null,
+    commentaire_nc: elCommentaireNc.value.trim() || null,
   };
 
   try {

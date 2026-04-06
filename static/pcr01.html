@@ -93,12 +93,26 @@
 
     <!-- ── Signature du livreur (visible si livreur présent) ── -->
     <div class="pcr-bloc pcr-bloc-signature" id="pcr-sig-bloc" hidden>
-      <div class="pcr-bloc-titre">Signature du livreur</div>
+      <div class="pcr-bloc-titre">Signature du livreur *</div>
       <div class="pcr-bloc-corps">
         <div class="pcr-sig-info">
-          Feuille de reprise avec retour marchandise signée par le livreur lors de la réception.
+          Feuille de reprise avec retour marchandise. Le livreur signe ci-dessous.
         </div>
-        <img id="pcr-sig-img" class="pcr-sig-img" alt="Signature du livreur">
+        <canvas id="pcr-sig-canvas" class="pcr-sig-canvas" aria-label="Zone de signature du livreur"></canvas>
+        <button class="pcr-btn-effacer-sig" id="pcr-sig-effacer" type="button">↺ Effacer</button>
+      </div>
+    </div>
+
+    <!-- ── Étiquettes À RETOURNER (visible si livreur absent) ── -->
+    <div class="pcr-bloc pcr-bloc-etiq" id="pcr-etiq-bloc" hidden>
+      <div class="pcr-bloc-titre">Étiquettes À RETOURNER</div>
+      <div class="pcr-bloc-corps">
+        <div class="pcr-etiq-info">
+          Le livreur est absent. Imprimer une étiquette À RETOURNER pour chaque produit non conforme.
+        </div>
+        <div id="pcr-etiq-liste">
+          <!-- Boutons impression injectés par JS -->
+        </div>
       </div>
     </div>
 

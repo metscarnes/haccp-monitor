@@ -117,35 +117,65 @@
 
       <div class="rec-section-titre">Bon de livraison</div>
 
-      <div class="rec-photo-zone" id="rec-photo-zone" role="button"
-           tabindex="0" aria-label="Prendre une photo du bon de livraison (optionnel)">
-        <span class="rec-photo-icone" id="rec-photo-icone">📋</span>
-        <div class="rec-photo-texte">
-          <div class="rec-photo-texte-titre" id="rec-photo-titre">Photo du bon de livraison</div>
-          <div class="rec-photo-texte-sous">Optionnel — Appuyer pour photographier</div>
-        </div>
-        <img id="rec-photo-vignette" class="rec-photo-vignette" alt="Aperçu BL" hidden>
-      </div>
-      <input type="file" accept="image/*" capture="environment"
-             id="rec-input-photo" hidden aria-hidden="true">
-
+      <!-- Question plusieurs fournisseurs -->
       <div class="rec-form-group">
-        <label class="rec-champ-label">Fournisseur (optionnel)</label>
-        <div id="rec-fourn-sel-wrap" hidden>
-          <div class="rec-fourn-sel">
-            <span>✓</span>
-            <span id="rec-fourn-sel-nom"></span>
-            <button class="rec-fourn-clear" id="rec-fourn-clear"
-                    aria-label="Effacer le fournisseur sélectionné">✕</button>
+        <div class="rec-champ-label">Plusieurs fournisseurs ?</div>
+        <div class="rec-toggle-pair">
+          <button class="rec-toggle-btn ok-sel" id="rec-fourn-un-btn" aria-pressed="true">
+            Non — un seul
+          </button>
+          <button class="rec-toggle-btn" id="rec-fourn-multi-btn" aria-pressed="false">
+            Oui — plusieurs
+          </button>
+        </div>
+      </div>
+
+      <!-- Liste fournisseurs (injectée dynamiquement) -->
+      <div id="rec-fourn-liste">
+        <!-- Mode 1 fournisseur — fiche unique -->
+        <div class="rec-fourn-bloc" id="rec-fourn-bloc-0">
+          <div class="rec-fourn-bloc-titre" hidden id="rec-fourn-bloc-titre-0">Fournisseur 1</div>
+
+          <div class="rec-photo-zone" id="rec-photo-zone-0" role="button" tabindex="0"
+               aria-label="Photo du bon de livraison (optionnel)">
+            <span class="rec-photo-icone" id="rec-photo-icone-0">📋</span>
+            <div class="rec-photo-texte">
+              <div class="rec-photo-texte-titre" id="rec-photo-titre-0">Photo du bon de livraison</div>
+              <div class="rec-photo-texte-sous">Optionnel — Appuyer pour photographier</div>
+            </div>
+            <img id="rec-photo-vignette-0" class="rec-photo-vignette" alt="Aperçu BL" hidden>
+          </div>
+          <input type="file" accept="image/*" capture="environment"
+                 id="rec-input-photo-0" hidden aria-hidden="true">
+
+          <div class="rec-fourn-search-group">
+            <div id="rec-fourn-sel-wrap-0" hidden>
+              <div class="rec-fourn-sel">
+                <span>✓</span>
+                <span id="rec-fourn-sel-nom-0"></span>
+                <button class="rec-fourn-clear" id="rec-fourn-clear-0"
+                        aria-label="Effacer le fournisseur sélectionné">✕</button>
+              </div>
+            </div>
+            <div id="rec-fourn-search-wrap-0">
+              <input type="search" id="rec-fourn-search-0" class="rec-input"
+                     placeholder="Nom du fournisseur (optionnel)…"
+                     autocomplete="off" aria-label="Fournisseur">
+              <div class="rec-fourn-results" id="rec-fourn-results-0" hidden></div>
+            </div>
           </div>
         </div>
-        <div id="rec-fourn-search-wrap">
-          <input type="search" id="rec-fourn-search" class="rec-input"
-                 placeholder="Rechercher un fournisseur…"
-                 autocomplete="off"
-                 aria-label="Rechercher un fournisseur">
-          <div class="rec-fourn-results" id="rec-fourn-results" hidden></div>
-        </div>
+      </div>
+
+      <!-- Bouton ajouter fournisseur (visible mode multi) -->
+      <button class="rec-btn-add-fourn" id="rec-btn-add-fourn" hidden type="button">
+        + Ajouter un fournisseur
+      </button>
+
+      <!-- Anciens éléments cachés (compat JS) -->
+      <div id="rec-fourn-sel-wrap" hidden></div>
+      <div id="rec-fourn-search-wrap" hidden>
+        <div class="rec-fourn-results" id="rec-fourn-results" hidden></div>
       </div>
 
       <div class="rec-erreur" id="rec-erreur-2" hidden role="alert"></div>
@@ -209,24 +239,6 @@
           </div>
           <div class="rec-autocomplete" id="rec-prod-autocomplete" hidden
                role="listbox" aria-label="Suggestions produits"></div>
-        </div>
-
-        <!-- Bandeau camion hors norme (dans form produit) -->
-        <div class="rec-bandeau-coeur" id="rec-bandeau-coeur" hidden>
-          ⚠️ Température du Camion hors norme — contrôle à cœur obligatoire
-        </div>
-
-        <!-- Température produit -->
-        <div class="rec-form-group">
-          <label class="rec-champ-label" id="rec-temp-produit-label" for="rec-temp-produit">
-            Température à réception (°C)
-            <span class="rec-temp-verdict" id="rec-temp-produit-verdict"></span>
-          </label>
-          <input type="number" id="rec-temp-produit" class="rec-input"
-                 step="0.1" min="-30" max="50"
-                 placeholder="ex : 2.0"
-                 inputmode="decimal"
-                 aria-label="Température du produit">
         </div>
 
         <!-- Numéro de lot -->
@@ -425,26 +437,6 @@
                 </button>
               </div>
 
-              <!-- Zone signature (livreur présent) -->
-              <div id="rec-sig-zone" hidden>
-                <div class="rec-sig-wrap">
-                  <div class="rec-sig-label">Signature du livreur pour reprise de la marchandise</div>
-                  <canvas id="rec-sig-canvas" aria-label="Zone de signature"></canvas>
-                  <button class="rec-btn-effacer-sig" id="rec-sig-effacer" type="button">
-                    ↺ Effacer la signature
-                  </button>
-                </div>
-              </div>
-
-              <!-- Zone étiquettes (livreur absent) -->
-              <div id="rec-etiq-zone" hidden>
-                <div style="font-size:.88rem;color:var(--brun);font-weight:600;margin-bottom:.75rem;">
-                  Imprimer une étiquette À RETOURNER pour chaque produit non conforme.
-                </div>
-                <div id="rec-etiq-liste">
-                  <!-- Boutons impression injectés par JS -->
-                </div>
-              </div>
             </div>
           </div>
           <div class="rec-nc-nav">
@@ -461,18 +453,6 @@
 
       </div>
       <!-- ═══ FIN PROCÉDURE NC ═══ -->
-
-      <!-- Options clôture -->
-      <div class="rec-clot-options" id="rec-clot-options">
-        <label class="rec-clot-option-label">
-          <input type="checkbox" id="rec-chk-refuse">
-          <span class="rec-clot-option-texte">Livraison refusée</span>
-        </label>
-        <label class="rec-clot-option-label">
-          <input type="checkbox" id="rec-chk-ddpp">
-          <span class="rec-clot-option-texte">Informer la DDPP</span>
-        </label>
-      </div>
 
       <div class="rec-form-group">
         <label class="rec-champ-label" for="rec-commentaire-nc">
