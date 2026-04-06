@@ -66,7 +66,7 @@ async def creer_fiche(
     reception_id:               int           = Form(...),
     fournisseur_id:             Optional[int] = Form(None),
     fournisseur_nom:            Optional[str] = Form(None),
-    produit_id:                 int           = Form(...),
+    produit_id:                 Optional[int] = Form(None),
     nature_probleme:            str           = Form(...),
     action_immediate:           str           = Form(...),
     livreur_present:            int           = Form(0),

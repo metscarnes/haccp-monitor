@@ -2209,7 +2209,7 @@ async def create_fiche_incident(db: aiosqlite.Connection, data: dict) -> int:
             data.get("heure_incident", now.strftime("%H:%M")),
             data.get("fournisseur_id"),
             data.get("fournisseur_nom"),
-            data["produit_id"],
+            data.get("produit_id"),
             data.get("numero_lot"),
             data["nature_probleme"],
             data.get("description"),

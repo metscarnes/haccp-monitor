@@ -22,7 +22,9 @@
       "Bash(python -c ':*)",
       "Bash(python3)",
       "Bash(sqlite3 haccp.db)",
-      "Bash(python3 update_tolerances.py)"
+      "Bash(python3 update_tolerances.py)",
+      "Bash(ssh campiglia@ulysserasp \"sudo systemctl restart haccp-backend && sleep 2 && sudo systemctl is-active haccp-backend\")",
+      "Bash(ssh -o StrictHostKeyChecking=no campiglia@ulysserasp \"sudo systemctl restart haccp-backend && sleep 2 && sudo systemctl is-active haccp-backend\")"
     ]
   }
 }
