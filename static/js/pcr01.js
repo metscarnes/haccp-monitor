@@ -335,6 +335,7 @@ function chargerFiche(idx) {
   // Lot
   if (l.numero_lot) {
     elLot.textContent = l.numero_lot;
+    elLotRow.querySelector('.pcr-champ-label').textContent = l.lot_interne ? 'N° lot interne' : 'N° lot';
     elLotRow.hidden   = false;
   } else {
     elLotRow.hidden = true;
