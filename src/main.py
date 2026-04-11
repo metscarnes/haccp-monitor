@@ -29,8 +29,9 @@ from src.api.routes_etiquettes import router as router_etiquettes
 from src.api.routes_reception  import router as router_reception
 from src.api.routes_taches     import router as router_taches
 from src.api.routes_admin      import router as router_admin
-from src.api.routes_ouvertures import router as router_ouvertures
-from src.api.routes_incidents  import router as router_incidents
+from src.api.routes_ouvertures    import router as router_ouvertures
+from src.api.routes_incidents     import router as router_incidents
+from src.api.routes_fabrication   import router as router_fabrication
 
 load_dotenv()
 
@@ -107,6 +108,9 @@ app.include_router(router_taches)
 app.include_router(router_admin)
 app.include_router(router_ouvertures)
 app.include_router(router_incidents)
+
+# Routes API — Phase 3
+app.include_router(router_fabrication)
 
 
 # ---------------------------------------------------------------------------

@@ -2428,3 +2428,213 @@ async def update_fiche_incident(db: aiosqlite.Connection, fiche_id: int, data: d
     )
     await db.commit()
     return cursor.rowcount > 0
+
+
+# ===========================================================================
+# PHASE 3 — Module Fabrication (Recettes & Traçabilité)
+# ===========================================================================
+
+async def get_recettes(db: aiosqlite.Connection) -> list[dict]:
+    """Retourne la liste des recettes avec le nom du produit fini."""
+    cur = await db.execute(
+        """
+        SELECT r.id, r.nom, r.dlc_jours, r.instructions, r.created_at,
+               p.id   AS produit_fini_id,
+               p.nom  AS produit_fini_nom
+        FROM recettes r
+        JOIN produits p ON p.id = r.produit_fini_id
+        ORDER BY r.nom
+        """
+    )
+    rows = await cur.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def get_recette(db: aiosqlite.Connection, recette_id: int) -> Optional[dict]:
+    """Retourne une recette avec ses ingrédients."""
+    cur = await db.execute(
+        """
+        SELECT r.id, r.nom, r.dlc_jours, r.instructions, r.created_at,
+               p.id  AS produit_fini_id,
+               p.nom AS produit_fini_nom
+        FROM recettes r
+        JOIN produits p ON p.id = r.produit_fini_id
+        WHERE r.id = ?
+        """,
+        (recette_id,),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+    recette = dict(row)
+
+    cur2 = await db.execute(
+        """
+        SELECT ri.id, ri.quantite, ri.unite,
+               p.id  AS produit_id,
+               p.nom AS produit_nom
+        FROM recette_ingredients ri
+        JOIN produits p ON p.id = ri.produit_id
+        WHERE ri.recette_id = ?
+        ORDER BY ri.id
+        """,
+        (recette_id,),
+    )
+    recette["ingredients"] = [dict(r) for r in await cur2.fetchall()]
+    return recette
+
+
+async def create_recette(
+    db: aiosqlite.Connection,
+    nom: str,
+    produit_fini_id: int,
+    dlc_jours: int,
+    instructions: Optional[str],
+    ingredients: list[dict],
+) -> dict:
+    """
+    Crée une recette complète (recette + recette_ingredients).
+    Chaque item de `ingredients` doit contenir : produit_id, quantite?, unite?
+    """
+    cur = await db.execute(
+        "INSERT INTO recettes (nom, produit_fini_id, dlc_jours, instructions) VALUES (?,?,?,?)",
+        (nom, produit_fini_id, dlc_jours, instructions),
+    )
+    recette_id = cur.lastrowid
+
+    for ing in ingredients:
+        await db.execute(
+            "INSERT INTO recette_ingredients (recette_id, produit_id, quantite, unite) VALUES (?,?,?,?)",
+            (recette_id, ing["produit_id"], ing.get("quantite"), ing.get("unite")),
+        )
+
+    await db.commit()
+    result = await get_recette(db, recette_id)
+    return result
+
+
+async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]:
+    """
+    Moteur FIFO : pour chaque ingrédient de la recette, retourne le lot de
+    réception le plus ancien à utiliser en priorité.
+
+    Règle FIFO :
+      1. DLC la plus courte en premier (produit qui expire le plus tôt)
+      2. À DLC égale, date de réception la plus ancienne
+      3. Si aucun lot en stock → lot = None (le front demande la saisie manuelle)
+    """
+    recette = await get_recette(db, recette_id)
+    if not recette:
+        return []
+
+    result = []
+    for ing in recette["ingredients"]:
+        cur = await db.execute(
+            """
+            SELECT rl.id        AS reception_ligne_id,
+                   rl.numero_lot,
+                   rl.dlc,
+                   rl.poids_kg,
+                   r.date_reception
+            FROM   reception_lignes rl
+            JOIN   receptions r ON r.id = rl.reception_id
+            WHERE  rl.produit_id = ?
+            ORDER BY
+                CASE WHEN rl.dlc IS NOT NULL THEN 0 ELSE 1 END,
+                rl.dlc          ASC,
+                r.date_reception ASC
+            LIMIT 1
+            """,
+            (ing["produit_id"],),
+        )
+        lot_row = await cur.fetchone()
+        lot = dict(lot_row) if lot_row else None
+
+        result.append({
+            "recette_ingredient_id": ing["id"],
+            "produit_id":            ing["produit_id"],
+            "produit_nom":           ing["produit_nom"],
+            "quantite_prevue":       ing["quantite"],
+            "unite":                 ing["unite"],
+            "lot_fifo":              lot,
+        })
+
+    return result
+
+
+async def generer_lot_fabrication(db: aiosqlite.Connection) -> str:
+    """
+    Génère un numéro de lot interne fabrication unique.
+    Format : MC-YYYYMMDD-XXXX  (XXXX = compteur 4 chiffres, remis à 0 chaque jour)
+    Utilise la table `lot_interne_counters` existante avec code_unique='MC'.
+    """
+    from datetime import date as _date
+    today = _date.today()
+    date_str  = today.strftime("%Y%m%d")   # YYYYMMDD
+    code_unique = "MC"
+
+    await db.execute(
+        """
+        INSERT INTO lot_interne_counters (code_unique, date_jjmmyy, counter)
+        VALUES (?, ?, 1)
+        ON CONFLICT(code_unique, date_jjmmyy) DO UPDATE SET counter = counter + 1
+        """,
+        (code_unique, date_str),
+    )
+    await db.commit()
+
+    cur = await db.execute(
+        "SELECT counter FROM lot_interne_counters WHERE code_unique = ? AND date_jjmmyy = ?",
+        (code_unique, date_str),
+    )
+    row = await cur.fetchone()
+    counter = row[0] if row else 1
+    return f"MC-{date_str}-{counter:04d}"
+
+
+async def create_fabrication(
+    db: aiosqlite.Connection,
+    recette_id: int,
+    date: str,
+    personnel_id: int,
+    lots: list[dict],
+    info_complementaire: Optional[str] = None,
+) -> dict:
+    """
+    Enregistre une fabrication complète.
+
+    `lots` : liste de dicts avec :
+        - recette_ingredient_id : int
+        - reception_ligne_id    : int  (lot fournisseur utilisé)
+
+    Retourne la fabrication créée avec son lot_interne.
+    """
+    lot_interne = await generer_lot_fabrication(db)
+
+    cur = await db.execute(
+        """
+        INSERT INTO fabrications
+            (recette_id, date, lot_interne, personnel_id, info_complementaire)
+        VALUES (?,?,?,?,?)
+        """,
+        (recette_id, date, lot_interne, personnel_id, info_complementaire),
+    )
+    fabrication_id = cur.lastrowid
+
+    for lot in lots:
+        await db.execute(
+            """
+            INSERT INTO fabrication_lots
+                (fabrication_id, recette_ingredient_id, reception_ligne_id)
+            VALUES (?,?,?)
+            """,
+            (fabrication_id, lot["recette_ingredient_id"], lot["reception_ligne_id"]),
+        )
+
+    await db.commit()
+
+    cur2 = await db.execute(
+        "SELECT * FROM fabrications WHERE id = ?", (fabrication_id,)
+    )
+    row = await cur2.fetchone()
+    return dict(row)

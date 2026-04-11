@@ -59,6 +59,12 @@ async def db():
         # Vider toutes les tables pour isolation totale entre tests
         phase2_tables = (
             # Enfants en premier (respecter les FK)
+            # Phase 3 — Fabrication
+            "fabrication_lots",                    # → fabrications, recette_ingredients, reception_lignes
+            "fabrications",                        # → recettes, personnel
+            "recette_ingredients",                 # → recettes, produits
+            "recettes",                            # → produits
+            # Phase 2
             "fiches_incident",                     # → receptions, reception_lignes, fournisseurs, produits, personnel
             "ouvertures",                          # → produits, personnel, reception_lignes
             "tache_validations",                   # → tache_types
