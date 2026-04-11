@@ -188,14 +188,20 @@ function onProduitFiniSelect(p) {
 // ─────────────────────────────────────────────────────────────
 //  Calcul des proportions par groupe d'unité
 // ─────────────────────────────────────────────────────────────
+const FACTEURS_KG = { kg: 1, L: 1, g: 0.001, ml: 0.001, mL: 0.001 };
+
 function calcProportions(list) {
-  const totaux = {};
-  list.forEach(ing => {
-    totaux[ing.unite] = (totaux[ing.unite] || 0) + ing.quantite;
-  });
+  const enKg = ing => ing.quantite * (FACTEURS_KG[ing.unite] ?? null);
+
+  const totalKg = list.reduce((sum, ing) => {
+    const v = enKg(ing);
+    return sum + (v !== null ? v : 0);
+  }, 0);
+
   return list.map(ing => {
-    const total = totaux[ing.unite];
-    return total > 0 ? (ing.quantite / total * 100).toFixed(1) : '—';
+    const v = enKg(ing);
+    if (v === null || totalKg === 0) return '—';
+    return (v / totalKg * 100).toFixed(1);
   });
 }
 
