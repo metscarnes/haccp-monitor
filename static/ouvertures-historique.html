@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Historique ouvertures — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    /* ── Variables charte Mets Carnés ───────────────────────── */
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    /* ── En-tête ─────────────────────────────────────────────── */
+    .hist-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .hist-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 16px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .hist-btn-retour:active { opacity: .7; }
+
+    .hist-header-titre {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      flex: 1;
+      text-align: center;
+    }
+
+    .hist-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    /* ── Filtres ─────────────────────────────────────────────── */
+    .hist-filtres {
+      background: var(--secondaire);
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .hist-filtre-groupe {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .hist-filtre-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .hist-filtre-input {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 17px;
+      height: 48px;
+      padding: 0 12px;
+      width: 100%;
+    }
+    .hist-filtre-input:focus {
+      outline: none;
+      border-color: var(--texte);
+    }
+
+    /* Autocomplete container */
+    .hist-search-wrap {
+      position: relative;
+      flex: 2;
+      min-width: 200px;
+    }
+    .hist-autocomplete {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      left: 0;
+      max-height: 240px;
+      overflow-y: auto;
+      position: absolute;
+      right: 0;
+      top: 100%;
+      z-index: 20;
+    }
+    .hist-autocomplete[hidden] { display: none; }
+    .hist-ac-item {
+      border-bottom: 1px solid #EEE;
+      cursor: pointer;
+      padding: 10px 14px;
+    }
+    .hist-ac-item:last-child { border-bottom: none; }
+    .hist-ac-item:active { background: var(--fond); }
+    .hist-ac-nom { font-weight: 600; }
+    .hist-ac-espece { font-size: 14px; color: #666; }
+
+    .hist-btn-filtrer {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 48px;
+      padding: 0 20px;
+      white-space: nowrap;
+    }
+    .hist-btn-filtrer:active { opacity: .8; }
+
+    .hist-btn-reset {
+      background: none;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 14px;
+      white-space: nowrap;
+    }
+
+    /* ── Compteur ────────────────────────────────────────────── */
+    .hist-compteur {
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Liste cartes ────────────────────────────────────────── */
+    .hist-liste {
+      padding: 0 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Carte ouverture ─────────────────────────────────────── */
+    .hist-carte {
+      background: #FFF;
+      border-radius: 12px;
+      border-left: 5px solid var(--secondaire);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      align-items: flex-start;
+    }
+    .hist-carte--tracee  { border-left-color: var(--ok); }
+    .hist-carte--manuelle { border-left-color: var(--attention); }
+
+    /* Miniature photo */
+    .hist-photo-wrap {
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #EEE;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .hist-photo-wrap:active { opacity: .8; }
+    .hist-photo-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .hist-photo-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+
+    /* Corps carte */
+    .hist-carte-corps {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .hist-carte-entete {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .hist-produit-nom {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--texte);
+      line-height: 1.2;
+    }
+
+    .hist-produit-espece {
+      font-size: 14px;
+      color: #777;
+      margin-bottom: 6px;
+    }
+
+    .hist-meta {
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    /* Badge traçabilité */
+    .hist-badge {
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      align-self: flex-start;
+    }
+    .hist-badge--ok {
+      background: rgba(45,125,70,.15);
+      color: var(--ok);
+    }
+    .hist-badge--attention {
+      background: rgba(232,145,58,.15);
+      color: var(--attention);
+    }
+
+    /* Infos réception */
+    .hist-reception-infos {
+      background: rgba(45,125,70,.06);
+      border-radius: 8px;
+      border: 1px solid rgba(45,125,70,.2);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 12px;
+      margin-top: 8px;
+      padding: 10px 12px;
+    }
+
+    .hist-info-ligne {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .hist-info-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .hist-info-valeur {
+      font-size: 15px;
+      color: var(--texte);
+      font-weight: 500;
+    }
+
+    /* ── Message vide / erreur ───────────────────────────────── */
+    .hist-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--accent);
+      font-size: 18px;
+    }
+    .hist-message-icone {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    /* ── Bouton "Voir plus" ───────────────────────────────────── */
+    .hist-btn-plus-wrap {
+      text-align: center;
+      padding: 8px 16px 32px;
+    }
+    .hist-btn-plus {
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 64px;
+      padding: 0 32px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .hist-btn-plus:disabled {
+      opacity: .4;
+      cursor: default;
+    }
+    .hist-btn-plus[hidden] { display: none; }
+
+    /* ── Modal photo plein écran ─────────────────────────────── */
+    .hist-modal {
+      align-items: center;
+      background: rgba(0,0,0,.88);
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      left: 0;
+      position: fixed;
+      right: 0;
+      top: 0;
+      z-index: 100;
+    }
+    .hist-modal[hidden] { display: none; }
+    .hist-modal img {
+      max-width: 96vw;
+      max-height: 96dvh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="hist-header">
+    <button class="hist-btn-retour" id="hist-btn-retour" aria-label="Retour hub">← Retour</button>
+    <div class="hist-header-titre">HISTORIQUE OUVERTURES</div>
+    <div class="hist-horloge" id="hist-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       FILTRES
+  ============================================================= -->
+  <div class="hist-filtres">
+
+    <!-- Recherche produit avec autocomplete -->
+    <div class="hist-filtre-groupe hist-search-wrap">
+      <label class="hist-filtre-label" for="hist-input-produit">Produit</label>
+      <input
+        type="search"
+        id="hist-input-produit"
+        class="hist-filtre-input"
+        placeholder="Tous les produits"
+        autocomplete="off"
+        inputmode="search"
+        aria-label="Rechercher par produit"
+        aria-autocomplete="list"
+        aria-controls="hist-autocomplete"
+      >
+      <div id="hist-autocomplete" class="hist-autocomplete" hidden role="listbox"></div>
+    </div>
+
+    <!-- Date début -->
+    <div class="hist-filtre-groupe">
+      <label class="hist-filtre-label" for="hist-date-debut">Du</label>
+      <input type="date" id="hist-date-debut" class="hist-filtre-input"
+             aria-label="Date de début">
+    </div>
+
+    <!-- Date fin -->
+    <div class="hist-filtre-groupe">
+      <label class="hist-filtre-label" for="hist-date-fin">Au</label>
+      <input type="date" id="hist-date-fin" class="hist-filtre-input"
+             aria-label="Date de fin">
+    </div>
+
+    <button class="hist-btn-filtrer" id="hist-btn-filtrer" aria-label="Appliquer les filtres">
+      🔍 Rechercher
+    </button>
+    <button class="hist-btn-reset" id="hist-btn-reset" aria-label="Réinitialiser les filtres">
+      ✕ Reset
+    </button>
+  </div>
+
+  <!-- ============================================================
+       COMPTEUR
+  ============================================================= -->
+  <div class="hist-compteur" id="hist-compteur" aria-live="polite"></div>
+
+  <!-- ============================================================
+       LISTE
+  ============================================================= -->
+  <div class="hist-liste" id="hist-liste" role="list" aria-label="Ouvertures"></div>
+
+  <!-- Message vide / chargement -->
+  <div class="hist-message" id="hist-message" hidden>
+    <div class="hist-message-icone" id="hist-message-icone">⏳</div>
+    <div id="hist-message-texte">Chargement…</div>
+  </div>
+
+  <!-- ============================================================
+       BOUTON VOIR PLUS
+  ============================================================= -->
+  <div class="hist-btn-plus-wrap">
+    <button class="hist-btn-plus" id="hist-btn-plus" hidden aria-label="Charger 50 ouvertures supplémentaires">
+      Voir plus…
+    </button>
+  </div>
+
+  <!-- ============================================================
+       MODAL PHOTO PLEIN ÉCRAN
+  ============================================================= -->
+  <div class="hist-modal" id="hist-modal" hidden role="dialog"
+       aria-modal="true" aria-label="Photo en plein écran">
+    <img id="hist-modal-img" src="" alt="Photo de l'ouverture">
+  </div>
+
+  <script src="/static/js/ouvertures-historique.js"></script>
+</body>
+</html>

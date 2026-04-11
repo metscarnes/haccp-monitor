@@ -224,6 +224,7 @@ async def lister_ouvertures(
     date_debut:  Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_fin:    Optional[str] = Query(None, description="YYYY-MM-DD"),
     limit:       int           = Query(50, ge=1, le=500),
+    offset:      int           = Query(0, ge=0),
 ):
     conditions = []
     params: list = []
@@ -246,22 +247,31 @@ async def lister_ouvertures(
             SELECT
                 o.id,
                 o.produit_id,
-                p.nom          AS produit_nom,
+                p.nom              AS produit_nom,
+                p.espece           AS produit_espece,
                 p.code_unique,
                 o.personnel_id,
-                per.prenom     AS personnel_prenom,
+                per.prenom         AS personnel_prenom,
                 o.photo_filename,
                 o.timestamp,
                 o.source,
-                o.reception_ligne_id
+                o.reception_ligne_id,
+                f.nom              AS fournisseur_nom,
+                rl.numero_lot      AS numero_lot,
+                rl.dlc             AS dlc_fournisseur,
+                rl.origine         AS origine,
+                r.date_reception   AS date_reception
             FROM ouvertures o
             JOIN produits  p   ON p.id   = o.produit_id
             JOIN personnel per ON per.id = o.personnel_id
+            LEFT JOIN reception_lignes rl ON rl.id = o.reception_ligne_id
+            LEFT JOIN receptions r        ON r.id  = rl.reception_id
+            LEFT JOIN fournisseurs f      ON f.id  = rl.fournisseur_id
             {where}
             ORDER BY o.timestamp DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            params + [limit],
+            params + [limit, offset],
         )
         rows = await cursor.fetchall()
 
