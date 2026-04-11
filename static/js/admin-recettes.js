@@ -102,6 +102,40 @@ function clearSelection({ inputEl, listeEl, tagEl, hiddenEl }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Sélection du produit fini — auto-fill DLC + affichage détails
+// ─────────────────────────────────────────────────────────────
+function onProduitFiniSelect(p) {
+  const details  = $('produit-details');
+  const dlcInput = $('ar-dlc-jours');
+
+  if (!p) {
+    details.hidden   = true;
+    details.innerHTML = '';
+    dlcInput.value   = '';
+    return;
+  }
+
+  // Auto-remplissage DLC
+  if (p.dlc_jours != null) dlcInput.value = p.dlc_jours;
+
+  // Encart récapitulatif
+  const rows = [
+    { label: 'Catégorie',    val: p.categorie               },
+    { label: 'Destination',  val: p.destination             },
+    { label: 'Température',  val: p.temperature_conservation },
+  ];
+
+  details.innerHTML = rows.map(r => `
+    <div class="ar-produit-details-row">
+      <span class="ar-produit-details-label">${escHtml(r.label)}</span>
+      <span class="ar-produit-details-val">${escHtml(r.val || '—')}</span>
+    </div>
+  `).join('');
+
+  details.hidden = false;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Rendu de la liste des ingrédients
 // ─────────────────────────────────────────────────────────────
 function renderIngredients() {
@@ -252,6 +286,11 @@ function resetFormulaire() {
   });
   $('ar-produit-fini-tag-nom').textContent = '';
 
+  // Reset encart détails produit
+  const details = $('produit-details');
+  details.hidden   = true;
+  details.innerHTML = '';
+
   // Reset ingrédients
   ingredients = [];
   renderIngredients();
@@ -309,6 +348,7 @@ async function init() {
     tagNomEl: $('ar-produit-fini-tag-nom'),
     clearEl:  $('ar-produit-fini-clear'),
     hiddenEl: $('ar-produit-fini-id'),
+    onSelect: onProduitFiniSelect,
   });
 
   // Autocomplete — ingrédient
