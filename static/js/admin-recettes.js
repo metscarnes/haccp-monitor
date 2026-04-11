@@ -118,6 +118,10 @@ function onProduitFiniSelect(p) {
   // Auto-remplissage DLC
   if (p.dlc_jours != null) dlcInput.value = p.dlc_jours;
 
+  // Auto-remplissage nom de recette si champ vide
+  const nomRecetteInput = $('ar-nom-recette');
+  if (!nomRecetteInput.value.trim()) nomRecetteInput.value = p.nom;
+
   // Encart récapitulatif
   const rows = [
     { label: 'Catégorie',    val: p.categorie               },
