@@ -215,6 +215,63 @@
   ========================================================= -->
   <div class="ar-toast" id="ar-toast" hidden role="status" aria-live="polite"></div>
 
+  <!-- ========================================================
+       MODALE — Nouvel ingrédient libre
+  ========================================================= -->
+  <div class="ar-modal-overlay" id="ar-modal-overlay" hidden aria-modal="true" role="dialog"
+       aria-labelledby="ar-modal-titre">
+    <div class="ar-modal">
+      <h3 class="ar-modal-titre" id="ar-modal-titre">Nouvel ingrédient</h3>
+      <p class="ar-modal-desc">Cet ingrédient n'existe pas encore en base. Complétez les informations pour le créer.</p>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-nom">Nom</label>
+        <input type="text" id="ar-modal-nom" class="ar-input" readonly>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-categorie">
+          Catégorie <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <select id="ar-modal-categorie" class="ar-input ar-select">
+          <option value="Ingrédient">Ingrédient</option>
+          <option value="Épice">Épice</option>
+          <option value="Sel / Sucre">Sel / Sucre</option>
+          <option value="Additif">Additif</option>
+          <option value="Condiment">Condiment</option>
+          <option value="Autre">Autre</option>
+        </select>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-dlc">
+          DLC en jours <span class="ar-hint-label">(0 = sans DLC)</span>
+        </label>
+        <input type="number" id="ar-modal-dlc" class="ar-input ar-input-sm"
+               value="0" min="0" max="365" inputmode="numeric">
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-temp">
+          Température de conservation <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <select id="ar-modal-temp" class="ar-input ar-select">
+          <option value="Ambiant">Ambiant</option>
+          <option value="+4°C">+4°C (réfrigéré)</option>
+          <option value="-18°C">-18°C (congelé)</option>
+          <option value="+2°C / +4°C">+2°C / +4°C (viande fraîche)</option>
+        </select>
+      </div>
+
+      <div class="ar-modal-actions">
+        <button type="button" class="ar-btn-modal-annuler" id="ar-modal-annuler">Annuler</button>
+        <button type="button" class="ar-btn-modal-confirmer" id="ar-modal-confirmer">
+          + Ajouter l'ingrédient
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/admin-recettes.js"></script>
 </body>
 </html>

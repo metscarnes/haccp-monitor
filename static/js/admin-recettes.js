@@ -242,6 +242,47 @@ function renderIngredients() {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Modale — Nouvel ingrédient libre
+// ─────────────────────────────────────────────────────────────
+let _pendingIngredient = null; // { nom, quantite, unite } en attente de confirmation
+
+function ouvrirModalNouvelIngredient(nom, quantite, unite) {
+  _pendingIngredient = { nom, quantite, unite };
+  $('ar-modal-nom').value        = nom;
+  $('ar-modal-categorie').value  = 'Ingrédient';
+  $('ar-modal-dlc').value        = '0';
+  $('ar-modal-temp').value       = 'Ambiant';
+  $('ar-modal-overlay').hidden   = false;
+  $('ar-modal-categorie').focus();
+}
+
+function fermerModal() {
+  $('ar-modal-overlay').hidden = true;
+  _pendingIngredient = null;
+}
+
+function confirmerNouvelIngredient() {
+  if (!_pendingIngredient) return;
+
+  const dlcVal = parseInt($('ar-modal-dlc').value);
+
+  ingredients.push({
+    produit_id:               null,
+    nom:                      _pendingIngredient.nom,
+    quantite:                 _pendingIngredient.quantite,
+    unite:                    _pendingIngredient.unite,
+    // champs pour la création BDD
+    categorie:                $('ar-modal-categorie').value,
+    dlc_jours:                isNaN(dlcVal) ? 0 : dlcVal,
+    temperature_conservation: $('ar-modal-temp').value,
+  });
+
+  fermerModal();
+  renderIngredients();
+  resetBlocAjout();
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Ajout d'un ingrédient (saisie libre ou sélection autocomplete)
 // ─────────────────────────────────────────────────────────────
 function ajouterIngredient() {
@@ -259,21 +300,19 @@ function ajouterIngredient() {
     return;
   }
 
-  // Si sélectionné depuis l'autocomplete, utilise le nom canonique du produit
-  const nomFinal = produitId
-    ? (produits.find(p => p.id === parseInt(produitId))?.nom || nomSaisi)
-    : nomSaisi;
+  if (produitId) {
+    // Produit existant — ajout direct
+    const nomFinal = produits.find(p => p.id === parseInt(produitId))?.nom || nomSaisi;
+    ingredients.push({ produit_id: parseInt(produitId), nom: nomFinal, quantite: qte, unite });
+    renderIngredients();
+    resetBlocAjout();
+  } else {
+    // Ingrédient libre — ouvrir la modale de complétion
+    ouvrirModalNouvelIngredient(nomSaisi, qte, unite);
+  }
+}
 
-  ingredients.push({
-    produit_id: produitId ? parseInt(produitId) : null,
-    nom:        nomFinal,
-    quantite:   qte,
-    unite
-  });
-
-  renderIngredients();
-
-  // Reset du bloc ajout
+function resetBlocAjout() {
   $('ar-ingr-produit').value    = '';
   $('ar-ingr-produit-id').value = '';
   $('ar-ingr-hint').hidden      = true;
@@ -330,9 +369,10 @@ async function enregistrerRecette() {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
-            nom:          ing.nom,
-            type_produit: 'brut',
-            categorie:    'Ingrédient'
+            nom:                      ing.nom,
+            categorie:                ing.categorie                || 'Ingrédient',
+            dlc_jours:                ing.dlc_jours                ?? 0,
+            temperature_conservation: ing.temperature_conservation || 'Ambiant',
           })
         });
         if (!res.ok) {
@@ -472,6 +512,16 @@ async function init() {
   // Valider ajout avec Entrée depuis les champs quantité/unité
   $('ar-ingr-qte').addEventListener('keydown', e => {
     if (e.key === 'Enter') ajouterIngredient();
+  });
+
+  // Modale nouvel ingrédient
+  $('ar-modal-annuler').addEventListener('click', fermerModal);
+  $('ar-modal-confirmer').addEventListener('click', confirmerNouvelIngredient);
+  $('ar-modal-overlay').addEventListener('click', e => {
+    if (e.target === $('ar-modal-overlay')) fermerModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('ar-modal-overlay').hidden) fermerModal();
   });
 
   renderIngredients();
