@@ -293,8 +293,9 @@ function creerCarte(rec) {
 function remplirDetail(el, rec) {
   el.innerHTML = '';
 
-  // ── Bouton PCR01 (seulement s'il y a des NC) ────────────
-  if (rec.nb_nc > 0) {
+  // ── Bouton PCR01 (seulement s'il y a des NC, calculé depuis les lignes chargées) ──
+  const nbNc = (rec.lignes || []).filter(l => l.conforme === 0).length;
+  if (nbNc > 0) {
     const btnPcr = document.createElement('button');
     btnPcr.style.cssText = 'display:block;width:100%;background:var(--alerte,#C93030);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;';
     btnPcr.textContent = '⚠️ Voir les fiches PCR01';

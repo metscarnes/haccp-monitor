@@ -590,8 +590,9 @@ function recRemplirDetail(el, rec) {
   });
   btnActions.appendChild(btnFiche);
 
-  // Afficher le bouton PCR01 seulement s'il y a des NC
-  if (rec.nb_nc > 0) {
+  // Afficher le bouton PCR01 seulement s'il y a des NC (calculé depuis les lignes chargées)
+  const nbNc = (rec.lignes || []).filter(l => l.conforme === 0).length;
+  if (nbNc > 0) {
     const btnPcr = document.createElement('button');
     btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
     btnPcr.textContent = '⚠️ Fiches PCR01';
