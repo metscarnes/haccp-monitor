@@ -163,7 +163,26 @@ def charger_ingredients(conn: sqlite3.Connection, demo: bool) -> list[str]:
     if not cursor.fetchone():
         return None  # Table absente
 
-    cursor.execute("SELECT DISTINCT nom_ingredient FROM recette_ingredients WHERE nom_ingredient IS NOT NULL")
+    # Découverte dynamique des colonnes
+    cursor.execute("PRAGMA table_info(recette_ingredients)")
+    colonnes = [row[1] for row in cursor.fetchall()]
+
+    # Candidats possibles pour le nom de l'ingrédient (ordre de priorité)
+    candidats = [
+        "nom_ingredient", "nom", "ingredient", "libelle",
+        "designation", "produit", "article", "name",
+    ]
+    col = next((c for c in candidats if c in colonnes), None)
+
+    if col is None:
+        print(f"⚠️  Colonnes trouvées dans recette_ingredients : {colonnes}")
+        print("    Aucune colonne reconnue comme nom d'ingrédient.")
+        print("    Ajoutez le nom de la colonne correcte dans la liste 'candidats' du script.")
+        return []
+
+    cursor.execute(
+        f"SELECT DISTINCT {col} FROM recette_ingredients WHERE {col} IS NOT NULL"
+    )
     return [r[0] for r in cursor.fetchall()]
 
 
