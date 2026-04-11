@@ -24,7 +24,11 @@
       "Bash(sqlite3 haccp.db)",
       "Bash(python3 update_tolerances.py)",
       "Bash(ssh campiglia@ulysserasp \"sudo systemctl restart haccp-backend && sleep 2 && sudo systemctl is-active haccp-backend\")",
-      "Bash(ssh -o StrictHostKeyChecking=no campiglia@ulysserasp \"sudo systemctl restart haccp-backend && sleep 2 && sudo systemctl is-active haccp-backend\")"
+      "Bash(ssh -o StrictHostKeyChecking=no campiglia@ulysserasp \"sudo systemctl restart haccp-backend && sleep 2 && sudo systemctl is-active haccp-backend\")",
+      "Bash(sqlite3 haccp.db \".tables\")",
+      "Bash(python -c \"import sqlite3; conn=sqlite3.connect\\('haccp.db'\\); c=conn.cursor\\(\\); c.execute\\(\\\\\"SELECT name FROM sqlite_master WHERE type='table'\\\\\"\\); print\\([r[0] for r in c.fetchall\\(\\)]\\)\")",
+      "Bash(python diag_tracabilite.py)",
+      "Bash(python diag_tracabilite.py --demo)"
     ]
   }
 }
