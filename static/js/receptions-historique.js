@@ -157,14 +157,12 @@ function majCompteur() {
 // ── Badge conformité ─────────────────────────────────────────
 function badgeConformite(rec) {
   if (rec.livraison_refusee) return { cls: 'rh-badge--refusee', texte: '✗ Refusée' };
-  if (!rec.statut || rec.statut === 'en_cours') return { cls: 'rh-badge--encours', texte: '⏳ En cours' };
   if (rec.nb_nc > 0) return { cls: 'rh-badge--nc', texte: `⚠ ${rec.nb_nc} NC` };
   return { cls: 'rh-badge--ok', texte: '✓ Conforme' };
 }
 
 function classeCarte(rec) {
   if (rec.livraison_refusee) return 'rh-carte--refusee';
-  if (!rec.statut || rec.statut === 'en_cours') return 'rh-carte--en-cours';
   if (rec.nb_nc > 0) return 'rh-carte--nc';
   return 'rh-carte--conforme';
 }
@@ -295,6 +293,16 @@ function creerCarte(rec) {
 function remplirDetail(el, rec) {
   el.innerHTML = '';
 
+  // ── Bouton PCR01 ─────────────────────────────────────────
+  const btnPcr = document.createElement('button');
+  btnPcr.style.cssText = 'display:block;width:100%;background:var(--alerte,#C93030);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;';
+  btnPcr.textContent = '⚠️ Voir les fiches PCR01';
+  btnPcr.addEventListener('click', e => {
+    e.stopPropagation();
+    window.location.href = `/incidents.html?reception_id=${rec.id}`;
+  });
+  el.appendChild(btnPcr);
+
   // Bouton photo BL grande
   if (rec.photo_bl_filename) {
     const btnBl = document.createElement('button');
@@ -408,7 +416,6 @@ function creerLigne(lig) {
     { label: 'Fournisseur',   valeur: lig.fournisseur_nom || '—' },
     { label: 'N° lot',        valeur: lig.numero_lot || '—' },
     { label: 'DLC',           valeur: formatDateFR(lig.dlc) },
-    { label: 'Origine',       valeur: lig.origine || '—' },
     { label: 'T° réception',  valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur',     valeur: formatTemp(lig.temperature_coeur) },
   ];

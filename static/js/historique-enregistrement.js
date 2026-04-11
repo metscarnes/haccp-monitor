@@ -456,15 +456,13 @@ function recAfficherMessage(icone, texte) {
 function recMasquerMessage() { recRefs.message.hidden = true; }
 
 function recBadgeConformite(rec) {
-  if (rec.livraison_refusee) return { cls: 'he-badge--ok', txt: '✗ Refusée' };
-  if (!rec.statut || rec.statut === 'en_cours') return { cls: 'he-badge--attention', txt: '⏳ En cours' };
-  if (rec.nb_nc > 0) return { cls: 'he-badge--ok', txt: `⚠ ${rec.nb_nc} NC` };
+  if (rec.livraison_refusee) return { cls: 'he-badge--attention', txt: '✗ Refusée' };
+  if (rec.nb_nc > 0) return { cls: 'he-badge--attention', txt: `⚠ ${rec.nb_nc} NC` };
   return { cls: 'he-badge--ok', txt: '✓ OK' };
 }
 
 function recClasseCarte(rec) {
   if (rec.livraison_refusee) return 'he-carte-rec--refusee';
-  if (!rec.statut || rec.statut === 'en_cours') return 'he-carte-rec--en-cours';
   if (rec.nb_nc > 0) return 'he-carte-rec--nc';
   return 'he-carte-rec--conforme';
 }
@@ -711,7 +709,6 @@ function recCreerLigne(lig) {
     { label: 'Fournisseur', valeur: lig.fournisseur_nom || '—' },
     { label: 'N° lot', valeur: lig.numero_lot || '—' },
     { label: 'DLC', valeur: formatDateFR(lig.dlc) },
-    { label: 'Origine', valeur: lig.origine || '—' },
     { label: 'T° réception', valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur', valeur: formatTemp(lig.temperature_coeur) },
   ];
