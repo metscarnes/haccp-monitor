@@ -123,6 +123,7 @@ CREATE TABLE IF NOT EXISTS produits (
     dlc_jours                INTEGER NOT NULL DEFAULT 0,
     temperature_conservation TEXT    NOT NULL DEFAULT '0°C à +4°C',
     format_etiquette         TEXT    DEFAULT 'standard_60x40',
+    type_produit             TEXT    NOT NULL DEFAULT 'brut',
     actif                    BOOLEAN DEFAULT 1,
     created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
@@ -616,6 +617,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE produits ADD COLUMN temperature_tolerance REAL DEFAULT 2.0",
             # fiches_incident : fournisseur_nom pour fournisseurs sans ID (v2.4)
             "ALTER TABLE fiches_incident ADD COLUMN fournisseur_nom TEXT",
+            # produits : type_produit pour distinguer brut / fini (v2.6)
+            "ALTER TABLE produits ADD COLUMN type_produit TEXT NOT NULL DEFAULT 'brut'",
         ]
         for sql in migrations:
             try:
@@ -1315,11 +1318,21 @@ async def purger_anciens_releves(db: aiosqlite.Connection) -> dict:
 # Produits
 # ---------------------------------------------------------------------------
 
-async def get_produits(db: aiosqlite.Connection, boutique_id: int) -> list[dict]:
-    cursor = await db.execute(
-        "SELECT * FROM produits WHERE boutique_id = ? AND actif = 1 ORDER BY nom",
-        (boutique_id,),
-    )
+async def get_produits(
+    db: aiosqlite.Connection,
+    boutique_id: int,
+    type_produit: Optional[str] = None,
+) -> list[dict]:
+    if type_produit:
+        cursor = await db.execute(
+            "SELECT * FROM produits WHERE boutique_id = ? AND actif = 1 AND type_produit = ? ORDER BY nom",
+            (boutique_id, type_produit),
+        )
+    else:
+        cursor = await db.execute(
+            "SELECT * FROM produits WHERE boutique_id = ? AND actif = 1 ORDER BY nom",
+            (boutique_id,),
+        )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 

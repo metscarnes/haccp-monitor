@@ -848,7 +848,7 @@ async function creerFiche() {
 // ── ÉTAPE 3 : Produits ─────────────────────────────────────
 async function chargerProduits() {
   try {
-    tousProduits = await apiFetch('/api/produits');
+    tousProduits = await apiFetch('/api/produits?type=brut');
   } catch {
     tousProduits = [];
   }

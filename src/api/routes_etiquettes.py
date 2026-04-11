@@ -15,7 +15,7 @@ GET    /api/etiquettes/alertes-dlc      → produits DLC proche
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from src.database import (
@@ -75,9 +75,9 @@ class EtiquetteGenerer(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/produits")
-async def lister_produits():
+async def lister_produits(type: Optional[str] = Query(None, description="Filtrer par type : 'brut' ou 'fini'")):
     async with get_db() as db:
-        produits = await get_produits(db, BOUTIQUE_ID)
+        produits = await get_produits(db, BOUTIQUE_ID, type_produit=type)
     return produits
 
 
