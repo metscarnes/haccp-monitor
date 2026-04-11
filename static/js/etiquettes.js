@@ -334,8 +334,12 @@ async function chargerFifoLots() {
   elLots.innerHTML = `<div class="fab-chargement">Chargement des lots FIFO…</div>`;
   try {
     const raw = await apiFetch(`/api/fabrications/fifo-lots?recette_id=${state.recetteId}`);
-    state.fifoLots = Array.isArray(raw) ? raw : (raw?.lots ?? raw?.data ?? []);
-  } catch {
+    console.log('[FIFO] Réponse brute API :', JSON.stringify(raw, null, 2));
+    // L'API retourne { recette_id, recette_nom, ingredients: [...] }
+    state.fifoLots = Array.isArray(raw) ? raw : (raw?.ingredients ?? raw?.lots ?? raw?.data ?? []);
+    console.log('[FIFO] state.fifoLots après parsing :', state.fifoLots);
+  } catch (err) {
+    console.error('[FIFO] Erreur chargement lots :', err);
     state.fifoLots = [];
   }
   state.lotsSubstitues = {};
@@ -353,20 +357,22 @@ function afficherLots() {
 
   elLots.innerHTML = state.fifoLots.map(lot => {
     const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
-    if (lot.lot_numero != null) {
+    console.log('[FIFO] lot affiché :', riId, lot.produit_nom, '→ lot_fifo:', lot.lot_fifo);
+    if (lot.lot_fifo != null) {
       return htmlLigneFifoOk(lot);
     }
-    return htmlLigneManquante(riId, lot.ingredient_nom ?? '');
+    return htmlLigneManquante(riId, lot.produit_nom ?? lot.ingredient_nom ?? '');
   }).join('');
 }
 
 function htmlLigneFifoOk(lot) {
+  const lotFifo = lot.lot_fifo ?? {};
   return `
     <div class="fab-lot-ligne fab-lot-ligne--ok">
       <span class="fab-lot-check">✓</span>
-      <div class="fab-lot-nom">${escHtml(lot.ingredient_nom ?? '')}</div>
+      <div class="fab-lot-nom">${escHtml(lot.produit_nom ?? lot.ingredient_nom ?? '')}</div>
       <div class="fab-lot-info">
-        Lot ${escHtml(lot.lot_numero)} | DLC ${formatDate(lot.lot_dlc)}
+        Lot ${escHtml(lotFifo.numero_lot ?? '—')} | DLC ${formatDate(lotFifo.dlc ?? '')}
       </div>
     </div>`;
 }
@@ -502,7 +508,8 @@ function afficherRecap() {
   const lotsMap = {};
   (state.fifoLots ?? []).forEach(lot => {
     const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
-    if (lot.lot_numero) lotsMap[String(riId)] = lot.lot_numero;
+    const numLot = lot.lot_fifo?.numero_lot;
+    if (numLot) lotsMap[String(riId)] = numLot;
   });
   Object.entries(state.lotsSubstitues).forEach(([riId, v]) => {
     lotsMap[String(riId)] = `Substitut : ${v.nom}`;
@@ -559,7 +566,7 @@ elBtnGenerer.addEventListener('click', async () => {
     const riId = String(lot.recette_ingredient_id ?? lot.ingredient_id);
     lotsParRiId[riId] = {
       recette_ingredient_id: Number(riId),
-      reception_ligne_id:    lot.reception_ligne_id ?? null,
+      reception_ligne_id:    lot.lot_fifo?.reception_ligne_id ?? null,
       quantite:              qtyFor(riId),
     };
   });
