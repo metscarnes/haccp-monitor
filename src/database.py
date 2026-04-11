@@ -369,6 +369,58 @@ CREATE INDEX IF NOT EXISTS idx_ouvertures_produit
 
 CREATE INDEX IF NOT EXISTS idx_ouvertures_timestamp
     ON ouvertures(timestamp);
+
+-- ===========================================================================
+-- PHASE 3 — Module Fabrication (Recettes & Traçabilité)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS recettes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom             TEXT    NOT NULL,
+    produit_fini_id INTEGER NOT NULL,
+    dlc_jours       INTEGER NOT NULL,
+    instructions    TEXT,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (produit_fini_id) REFERENCES produits(id)
+);
+
+CREATE TABLE IF NOT EXISTS recette_ingredients (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    recette_id  INTEGER NOT NULL,
+    produit_id  INTEGER NOT NULL,
+    quantite    REAL,
+    unite       TEXT,
+    FOREIGN KEY (recette_id) REFERENCES recettes(id) ON DELETE CASCADE,
+    FOREIGN KEY (produit_id) REFERENCES produits(id)
+);
+
+CREATE TABLE IF NOT EXISTS fabrications (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    recette_id           INTEGER NOT NULL,
+    date                 TEXT    NOT NULL,
+    lot_interne          TEXT    NOT NULL UNIQUE,
+    personnel_id         INTEGER NOT NULL,
+    info_complementaire  TEXT,
+    created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (recette_id)   REFERENCES recettes(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fabrications_date
+    ON fabrications(date);
+
+CREATE INDEX IF NOT EXISTS idx_fabrications_lot
+    ON fabrications(lot_interne);
+
+CREATE TABLE IF NOT EXISTS fabrication_lots (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    fabrication_id         INTEGER NOT NULL,
+    recette_ingredient_id  INTEGER NOT NULL,
+    reception_ligne_id     INTEGER NOT NULL,
+    FOREIGN KEY (fabrication_id)        REFERENCES fabrications(id) ON DELETE CASCADE,
+    FOREIGN KEY (recette_ingredient_id) REFERENCES recette_ingredients(id),
+    FOREIGN KEY (reception_ligne_id)    REFERENCES reception_lignes(id)
+);
 """
 
 SEED_SQL = """
