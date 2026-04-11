@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#3D2008">
-  <title>Étiquettes DLC — Au Comptoir des Lilas</title>
+  <title>Fabrication — Mets Carnés</title>
   <link rel="manifest" href="/static/manifest.json">
   <link rel="stylesheet" href="/static/css/reset.css">
   <link rel="stylesheet" href="/static/css/tokens.css">
@@ -14,205 +14,101 @@
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/etiquettes.css">
 </head>
-<body class="etiq-body">
+<body class="fab-body">
 
-  <!-- ============================================================
-       EN-TÊTE
-  ============================================================= -->
-  <header class="etiq-header">
-    <a href="/hub.html" class="taches-btn-retour" aria-label="Retour accueil">← Hub</a>
-    <div class="taches-header-centre">
-      <div class="taches-titre">ÉTIQUETTES DLC</div>
-    </div>
-    <div id="etiq-horloge" class="taches-horloge" aria-live="polite"></div>
+  <!-- ── En-tête ── -->
+  <header class="fab-header">
+    <button id="fab-btn-retour" class="fab-btn-retour" aria-label="Retour">←</button>
+    <div class="fab-header-titre">FABRICATION</div>
+    <div id="fab-horloge" class="fab-horloge" aria-live="polite"></div>
   </header>
 
-  <!-- ============================================================
-       CORPS — 2 colonnes (responsive)
-  ============================================================= -->
-  <div class="etiq-layout">
-
-    <!-- ── COLONNE GAUCHE : Formulaire ── -->
-    <div class="etiq-col-form">
-      <form id="etiq-form" class="etiq-form" novalidate autocomplete="off">
-
-        <!-- Produit -->
-        <section class="etiq-section">
-          <div class="etiq-section-titre">1. Produit</div>
-
-          <!-- Recherche dans le catalogue -->
-          <div class="etiq-produit-recherche">
-            <input id="etiq-produit-search" type="text" class="etiq-input"
-                   placeholder="Rechercher dans le catalogue…"
-                   autocomplete="off" list="etiq-datalist">
-            <datalist id="etiq-datalist">
-              <!-- Rempli par JS -->
-            </datalist>
-          </div>
-
-          <!-- Résultat sélectionné -->
-          <div id="etiq-produit-selectionne" class="etiq-produit-selectionne" hidden>
-            <div class="etiq-produit-nom" id="etiq-produit-nom"></div>
-            <div class="etiq-produit-meta" id="etiq-produit-meta"></div>
-            <button type="button" id="etiq-produit-effacer" class="etiq-btn-clear" aria-label="Effacer">✕</button>
-          </div>
-
-          <!-- Saisie manuelle si pas dans le catalogue -->
-          <div class="etiq-produit-manuel" id="etiq-produit-manuel-zone" hidden>
-            <div class="etiq-champ">
-              <label class="etiq-champ-label" for="etiq-nom-manuel">Nom du produit <span class="requis">*</span></label>
-              <input id="etiq-nom-manuel" name="produit_nom" class="etiq-input" type="text"
-                     placeholder="Ex : Merguez maison, Côte de bœuf…">
-            </div>
-            <div class="etiq-grille-2">
-              <div class="etiq-champ">
-                <label class="etiq-champ-label" for="etiq-dlc-jours">Durée DLC (jours) <span class="requis">*</span></label>
-                <input id="etiq-dlc-jours" name="dlc_jours" class="etiq-input etiq-input--nb"
-                       type="number" min="1" max="365" value="">
-              </div>
-              <div class="etiq-champ">
-                <label class="etiq-champ-label" for="etiq-temp-cons">T° conservation</label>
-                <input id="etiq-temp-cons" name="temperature_conservation" class="etiq-input"
-                       type="text" placeholder="0°C à +4°C">
-              </div>
-            </div>
-          </div>
-
-          <button type="button" id="etiq-toggle-manuel" class="etiq-btn-lien">
-            ＋ Produit absent du catalogue
-          </button>
-        </section>
-
-        <!-- Type de date -->
-        <section class="etiq-section">
-          <div class="etiq-section-titre">2. Type de date</div>
-          <div class="etiq-type-choix">
-            <label class="etiq-type-label">
-              <input type="radio" name="type_date" value="fabrication" checked>
-              <span class="etiq-type-btn">
-                <span class="etiq-type-icone">🔨</span>
-                <span class="etiq-type-texte">Fabrication</span>
-              </span>
-            </label>
-            <label class="etiq-type-label">
-              <input type="radio" name="type_date" value="ouverture">
-              <span class="etiq-type-btn">
-                <span class="etiq-type-icone">📦</span>
-                <span class="etiq-type-texte">Ouverture</span>
-              </span>
-            </label>
-            <label class="etiq-type-label">
-              <input type="radio" name="type_date" value="decongélation">
-              <span class="etiq-type-btn">
-                <span class="etiq-type-icone">❄</span>
-                <span class="etiq-type-texte">Décongélation<br><small>J+3 réglementaire</small></span>
-              </span>
-            </label>
-          </div>
-        </section>
-
-        <!-- Date de référence -->
-        <section class="etiq-section">
-          <div class="etiq-section-titre">3. Date de référence</div>
-          <div class="etiq-grille-2">
-            <div class="etiq-champ">
-              <label class="etiq-champ-label" for="etiq-date-ref">Date <span class="requis">*</span></label>
-              <input id="etiq-date-ref" name="date_etiquette" class="etiq-input etiq-input--date"
-                     type="date" required>
-            </div>
-            <!-- DLC calculée -->
-            <div class="etiq-champ">
-              <div class="etiq-champ-label">DLC calculée</div>
-              <div id="etiq-dlc-preview" class="etiq-dlc-preview">—</div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Numéro de lot -->
-        <section class="etiq-section">
-          <div class="etiq-section-titre">4. Numéro de lot</div>
-          <div class="etiq-type-choix etiq-type-choix--sm">
-            <label class="etiq-type-label">
-              <input type="radio" name="lot_type" value="interne" checked>
-              <span class="etiq-type-btn">
-                <span class="etiq-type-texte">Interne (auto)</span>
-              </span>
-            </label>
-            <label class="etiq-type-label">
-              <input type="radio" name="lot_type" value="fournisseur">
-              <span class="etiq-type-btn">
-                <span class="etiq-type-texte">Fournisseur</span>
-              </span>
-            </label>
-          </div>
-          <div id="etiq-lot-fourn-zone" class="etiq-champ" hidden>
-            <label class="etiq-champ-label" for="etiq-lot-fourn">N° lot fournisseur <span class="requis">*</span></label>
-            <input id="etiq-lot-fourn" name="numero_lot_fournisseur" class="etiq-input"
-                   type="text" placeholder="Ex : FR-20260329-001">
-          </div>
-        </section>
-
-        <!-- Opérateur + options -->
-        <section class="etiq-section">
-          <div class="etiq-section-titre">5. Opérateur</div>
-          <div class="etiq-grille-2">
-            <div class="etiq-champ">
-              <label class="etiq-champ-label" for="etiq-operateur">Prénom <span class="requis">*</span></label>
-              <select id="etiq-operateur" name="operateur" class="etiq-input" required>
-                <option value="">— Sélectionner —</option>
-                <!-- Rempli par JS -->
-              </select>
-            </div>
-            <div class="etiq-champ">
-              <label class="etiq-champ-label" for="etiq-info-comp">Info complémentaire</label>
-              <input id="etiq-info-comp" name="info_complementaire" class="etiq-input"
-                     type="text" placeholder="Ex : batch 2, promotion…">
-            </div>
-          </div>
-        </section>
-
-        <!-- Bouton générer -->
-        <div class="etiq-actions">
-          <button type="submit" id="etiq-btn-generer" class="btn-valider etiq-btn-generer">
-            🖨 Générer &amp; imprimer
-          </button>
-        </div>
-
-        <!-- Résultat -->
-        <div id="etiq-resultat" class="etiq-resultat" hidden></div>
-        <div id="etiq-erreur" class="etiq-erreur" hidden></div>
-
-      </form>
+  <!-- ── Barre de progression + bandeau recette ── -->
+  <div class="fab-topbar">
+    <nav class="fab-progress" aria-label="Étapes du wizard">
+      <div class="fab-dot fab-dot--active" data-step="1"><span>1</span></div>
+      <div class="fab-dot-line" data-line="1"></div>
+      <div class="fab-dot" data-step="2"><span>2</span></div>
+      <div class="fab-dot-line" data-line="2"></div>
+      <div class="fab-dot" data-step="3"><span>3</span></div>
+      <div class="fab-dot-line" data-line="3"></div>
+      <div class="fab-dot" data-step="4"><span>4</span></div>
+    </nav>
+    <div class="fab-bandeau" id="fab-bandeau" hidden>
+      <span id="fab-bandeau-nom" class="fab-bandeau-nom"></span>
+      <span id="fab-bandeau-dlc" class="fab-bandeau-dlc"></span>
     </div>
+  </div>
 
-    <!-- ── COLONNE DROITE : Alertes + Historique ── -->
-    <div class="etiq-col-info">
+  <!-- ── Wizard ── -->
+  <div class="fab-wizard-wrap" id="fab-wizard-wrap">
 
-      <!-- Alertes DLC proches -->
-      <div class="etiq-panel">
-        <div class="etiq-panel-titre">
-          ⚠ DLC proches (&lt; 2 jours)
-          <button class="etiq-btn-refresh" id="etiq-refresh-alertes" title="Actualiser" aria-label="Actualiser alertes">↺</button>
-        </div>
-        <div id="etiq-alertes-liste" class="etiq-panel-corps">
-          <div class="etiq-panel-vide">Chargement…</div>
+    <!-- Étape 1 : Choix de la recette -->
+    <div class="fab-step fab-step--active" id="fab-step-1">
+      <div class="fab-step-inner">
+        <h2 class="fab-step-titre">Choisir une recette</h2>
+        <div class="fab-search-wrap">
+          <input id="fab-recette-search" type="search" class="fab-input fab-search-input"
+                 placeholder="Rechercher une recette…" autocomplete="off" inputmode="text"
+                 aria-label="Rechercher une recette" aria-autocomplete="list"
+                 aria-controls="fab-recette-results">
+          <div id="fab-recette-results" class="fab-autocomplete" role="listbox" aria-label="Résultats" hidden></div>
         </div>
       </div>
-
-      <!-- Dernières étiquettes générées aujourd'hui -->
-      <div class="etiq-panel">
-        <div class="etiq-panel-titre">
-          📋 Étiquettes du jour
-          <button class="etiq-btn-refresh" id="etiq-refresh-histo" title="Actualiser" aria-label="Actualiser historique">↺</button>
-        </div>
-        <div id="etiq-histo-liste" class="etiq-panel-corps">
-          <div class="etiq-panel-vide">Chargement…</div>
-        </div>
-      </div>
-
     </div>
 
-  </div><!-- /.etiq-layout -->
+    <!-- Étape 2 : Ajustement des quantités -->
+    <div class="fab-step fab-step--right" id="fab-step-2">
+      <div class="fab-step-inner">
+        <h2 class="fab-step-titre">Ajuster les quantités</h2>
+        <div id="fab-ingredients-liste" class="fab-ingredients-liste"></div>
+        <div class="fab-step-actions">
+          <button id="fab-btn-step2-next" class="fab-btn-primary">Suivant →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Étape 3 : Traçabilité & Lots -->
+    <div class="fab-step fab-step--right" id="fab-step-3">
+      <div class="fab-step-inner">
+        <h2 class="fab-step-titre">Traçabilité &amp; Lots</h2>
+        <div id="fab-lots-liste" class="fab-lots-liste"></div>
+        <div class="fab-step-actions">
+          <button id="fab-btn-confirmer-lots" class="fab-btn-primary">Confirmer les lots →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Étape 4 : Récapitulatif & Impression -->
+    <div class="fab-step fab-step--right" id="fab-step-4">
+      <div class="fab-step-inner">
+        <h2 class="fab-step-titre">Récapitulatif</h2>
+        <div id="fab-recap-content" class="fab-recap-content"></div>
+        <div class="fab-step-actions fab-step-actions--col">
+          <div class="fab-champ">
+            <label class="fab-champ-label" for="fab-operateur">Opérateur <span class="fab-requis">*</span></label>
+            <select id="fab-operateur" class="fab-input">
+              <option value="">— Sélectionner —</option>
+            </select>
+          </div>
+          <button id="fab-btn-generer" class="fab-btn-generer">🖨 Générer &amp; imprimer</button>
+          <div id="fab-erreur" class="fab-erreur" hidden></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.fab-wizard-wrap -->
+
+  <!-- ── Écran de succès (overlay) ── -->
+  <div class="fab-succes" id="fab-succes" hidden>
+    <div class="fab-succes-check" aria-hidden="true">✓</div>
+    <div class="fab-succes-titre">Fabrication enregistrée !</div>
+    <div class="fab-succes-lot" id="fab-succes-lot"></div>
+    <div class="fab-succes-actions">
+      <button id="fab-btn-meme-recette" class="fab-btn-secondary">Même recette</button>
+      <button id="fab-btn-nouvelle-fab" class="fab-btn-primary">Nouvelle fabrication</button>
+    </div>
+  </div>
 
   <script src="/static/js/etiquettes.js"></script>
 </body>
