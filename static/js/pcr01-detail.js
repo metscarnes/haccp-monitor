@@ -54,13 +54,21 @@ if (!ficheId) {
 async function charger() {
   try {
     const fiche = await apiFetch(`/api/fiches-incident/${ficheId}`);
-    afficherFiche(fiche);
+    // Récupérer le nom de l'opérateur depuis la réception liée
+    let operateurPrenom = '—';
+    if (fiche.reception_id) {
+      try {
+        const rec = await apiFetch(`/api/receptions/${fiche.reception_id}`);
+        operateurPrenom = rec.personnel_prenom || '—';
+      } catch { /* opérateur inconnu */ }
+    }
+    afficherFiche(fiche, operateurPrenom);
   } catch (err) {
     elMain.innerHTML = `<div style="padding:24px;text-align:center;color:#C93030;"><div style="font-size:48px;margin-bottom:12px;">⚠️</div><div>Erreur : ${err.message}</div></div>`;
   }
 }
 
-function afficherFiche(fiche) {
+function afficherFiche(fiche, operateurPrenom) {
   elMain.innerHTML = '';
 
   // ── En-tête ──────────────────────────────────────────
@@ -79,7 +87,7 @@ function afficherFiche(fiche) {
 
   const operateur = document.createElement('div');
   operateur.className = 'pcr-operateur';
-  operateur.innerHTML = `Opérateur : ${fiche.produit_id ? '<em>Voir détail ci-dessous</em>' : '—'}`;
+  operateur.textContent = `Opérateur : ${operateurPrenom}`;
   docHeader.appendChild(operateur);
 
   elMain.appendChild(docHeader);
