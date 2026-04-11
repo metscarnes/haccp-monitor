@@ -583,10 +583,10 @@ elBtnGenerer.addEventListener('click', async () => {
   const lotsUtilises = Object.values(lotsParPid);
 
   const payload = {
-    recette_id:    state.recetteId,
-    personnel_id:  Number(personnelId),
-    poids_total:   state.productionCiblee || null,
-    lots_utilises: lotsUtilises,
+    recette_id:   state.recetteId,
+    personnel_id: Number(personnelId),
+    date:         new Date().toISOString().slice(0, 10),
+    lots:         lotsUtilises,
   };
 
   elBtnGenerer.disabled    = true;
