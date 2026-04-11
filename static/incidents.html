@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Fiches PCR01 — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    .inc-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .inc-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .inc-btn-retour:active { opacity: .7; }
+
+    .inc-header-titre {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      flex: 1;
+      text-align: center;
+    }
+
+    .inc-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    .inc-main {
+      padding: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .inc-compteur {
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+      background: var(--secondaire);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+
+    .inc-liste {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .inc-carte {
+      background: #FFF;
+      border: 1px solid var(--alerte);
+      border-radius: 12px;
+      border-left: 5px solid var(--alerte);
+      box-shadow: 0 2px 6px rgba(61,32,8,.08);
+      padding: 16px;
+    }
+
+    .inc-carte-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .inc-carte-titre {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+
+    .inc-badge {
+      background: rgba(201,48,48,.15);
+      color: var(--alerte);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .inc-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .inc-row.full { grid-template-columns: 1fr; }
+
+    .inc-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .inc-champ-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+
+    .inc-champ-val {
+      font-size: 15px;
+      color: var(--texte);
+    }
+
+    .inc-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--accent);
+    }
+
+    .inc-message-icone { font-size: 48px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+  <header class="inc-header">
+    <button class="inc-btn-retour" id="inc-btn-retour" aria-label="Retour">← Retour</button>
+    <div class="inc-header-titre">FICHES PCR01</div>
+    <div class="inc-horloge" id="inc-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="inc-main" id="inc-main" role="main">
+    <div id="inc-compteur" class="inc-compteur" aria-live="polite"></div>
+    <div class="inc-liste" id="inc-liste" role="list" aria-label="Incidents PCR01"></div>
+    <div class="inc-message" id="inc-message">
+      <div class="inc-message-icone">⏳</div>
+      <div>Chargement…</div>
+    </div>
+  </main>
+
+  <script src="/static/js/incidents.js"></script>
+</body>
+</html>

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Détail réception — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    .rd-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .rd-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .rd-btn-retour:active { opacity: .7; }
+
+    .rd-header-titre {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      flex: 1;
+      text-align: center;
+    }
+
+    .rd-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    .rd-main {
+      padding: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .rd-section {
+      background: #FFF;
+      border-radius: 12px;
+      border: 1px solid var(--secondaire);
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 6px rgba(61,32,8,.08);
+    }
+
+    .rd-section-titre {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 12px;
+      border-bottom: 2px solid var(--secondaire);
+      padding-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .rd-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .rd-row.full { grid-template-columns: 1fr; }
+
+    .rd-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .rd-champ-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+
+    .rd-champ-val {
+      font-size: 16px;
+      color: var(--texte);
+    }
+
+    .rd-badge {
+      display: inline-block;
+      background: rgba(45,125,70,.15);
+      color: var(--ok);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+    .rd-badge.nc {
+      background: rgba(201,48,48,.15);
+      color: var(--alerte);
+    }
+
+    .rd-lignes {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .rd-ligne {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .rd-ligne.nc { border-color: var(--alerte); background: rgba(201,48,48,.04); }
+
+    .rd-ligne-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .rd-ligne-nom { font-size: 17px; font-weight: 700; }
+    .rd-ligne-espece { font-size: 13px; color: #777; }
+
+    .rd-ligne-badge {
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(45,125,70,.15);
+      color: var(--ok);
+      border-radius: 12px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .rd-ligne-badge.nc {
+      background: rgba(201,48,48,.12);
+      color: var(--alerte);
+    }
+
+    .rd-ligne-grille {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .rd-ligne-champ-label { font-size: 11px; color: #888; text-transform: uppercase; font-weight: 600; }
+    .rd-ligne-champ-val { font-size: 14px; font-weight: 500; color: var(--texte); }
+
+    .rd-criteres { padding: 8px 10px; background: rgba(201,48,48,.08); border: 1px solid rgba(201,48,48,.2); border-radius: 6px; font-size: 13px; color: var(--alerte); margin-top: 6px; }
+
+    .rd-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--accent);
+    }
+
+    .rd-modal {
+      align-items: center;
+      background: rgba(0,0,0,.88);
+      bottom: 0; left: 0; right: 0; top: 0;
+      display: flex;
+      justify-content: center;
+      position: fixed;
+      z-index: 100;
+    }
+    .rd-modal[hidden] { display: none; }
+    .rd-modal img {
+      max-width: 96vw;
+      max-height: 96dvh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="rd-header">
+    <button class="rd-btn-retour" id="rd-btn-retour" aria-label="Retour">← Retour</button>
+    <div class="rd-header-titre">DÉTAIL RÉCEPTION</div>
+    <div class="rd-horloge" id="rd-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="rd-main" id="rd-main" role="main">
+    <div class="rd-message" id="rd-message">
+      <div style="font-size:48px;margin-bottom:12px;">⏳</div>
+      <div>Chargement…</div>
+    </div>
+  </main>
+
+  <div class="rd-modal" id="rd-modal" hidden role="dialog" aria-modal="true">
+    <img id="rd-modal-img" src="" alt="Photo">
+  </div>
+
+  <script src="/static/js/reception-detail.js"></script>
+</body>
+</html>

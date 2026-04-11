@@ -579,6 +579,32 @@ function recCreerCarte(rec) {
 function recRemplirDetail(el, rec) {
   el.innerHTML = '';
 
+  // ── Boutons d'action ────────────────────────────────────
+  const btnActions = document.createElement('div');
+  btnActions.style.cssText = 'display:flex;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #DDD;';
+
+  const btnFiche = document.createElement('button');
+  btnFiche.style.cssText = 'flex:1;background:var(--accent);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
+  btnFiche.textContent = '📋 Fiche d\'enregistrement';
+  btnFiche.addEventListener('click', e => {
+    e.stopPropagation();
+    window.location.href = `/reception-detail.html?id=${rec.id}`;
+  });
+  btnActions.appendChild(btnFiche);
+
+  if (rec.nb_nc > 0) {
+    const btnPcr = document.createElement('button');
+    btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
+    btnPcr.textContent = '⚠️ Fiches PCR01';
+    btnPcr.addEventListener('click', e => {
+      e.stopPropagation();
+      window.location.href = `/incidents.html?reception_id=${rec.id}`;
+    });
+    btnActions.appendChild(btnPcr);
+  }
+
+  el.appendChild(btnActions);
+
   if (rec.photo_bl_filename) {
     const btn = document.createElement('button');
     btn.className = 'he-detail-bl-btn';

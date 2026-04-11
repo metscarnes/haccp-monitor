@@ -436,6 +436,23 @@ async def declarer_non_conformite(body: NonConformiteCreate):
 
 
 @router.get("/non-conformites")
-async def historique_non_conformites(limit: int = 50):
+async def historique_non_conformites(
+    reception_id: Optional[int] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+):
     async with get_db() as db:
-        return await get_non_conformites(db, 1, limit=limit)
+        if reception_id:
+            # Filtrer par reception_id
+            cursor = await db.execute(
+                """
+                SELECT * FROM non_conformites_fournisseur
+                WHERE reception_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (reception_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+        else:
+            return await get_non_conformites(db, 1, limit=limit)
