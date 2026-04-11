@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Gestion des Recettes — HACCP Monitor</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/admin-recettes.css">
+</head>
+<body class="ar-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="ar-header">
+    <a href="/hub.html" class="ar-btn-retour" aria-label="Retour au hub">← Retour</a>
+    <div class="ar-header-titre">Gestion des Recettes</div>
+  </header>
+
+  <!-- ========================================================
+       CONTENU PRINCIPAL
+  ========================================================= -->
+  <main class="ar-main" role="main">
+
+    <!-- ── SECTION 1 : Informations générales ── -->
+    <section class="ar-section" aria-labelledby="ar-titre-general">
+      <h2 class="ar-section-titre" id="ar-titre-general">Informations générales</h2>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-nom-recette">
+          Nom de la recette <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <input
+          type="text"
+          id="ar-nom-recette"
+          class="ar-input"
+          placeholder="ex : Saucisse Toulouse"
+          autocomplete="off"
+          required
+          aria-required="true"
+        >
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-produit-fini">
+          Produit fini associé <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <div class="ar-autocomplete-wrap">
+          <input
+            type="search"
+            id="ar-produit-fini"
+            class="ar-input"
+            placeholder="Rechercher un produit fini…"
+            autocomplete="off"
+            aria-required="true"
+            aria-autocomplete="list"
+            aria-controls="ar-produit-fini-liste"
+          >
+          <div class="ar-autocomplete-liste" id="ar-produit-fini-liste" hidden
+               role="listbox" aria-label="Produits finis disponibles"></div>
+        </div>
+        <div class="ar-selection-tag" id="ar-produit-fini-tag" hidden>
+          <span id="ar-produit-fini-tag-nom"></span>
+          <button type="button" class="ar-tag-clear" id="ar-produit-fini-clear"
+                  aria-label="Effacer la sélection">✕</button>
+        </div>
+        <input type="hidden" id="ar-produit-fini-id">
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-dlc-jours">
+          DLC (en jours) <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <input
+          type="number"
+          id="ar-dlc-jours"
+          class="ar-input ar-input-sm"
+          placeholder="ex : 4"
+          inputmode="numeric"
+          min="1"
+          max="365"
+          required
+          aria-required="true"
+        >
+      </div>
+    </section>
+
+    <!-- ── SECTION 2 : Ingrédients ── -->
+    <section class="ar-section" aria-labelledby="ar-titre-ingredients">
+      <h2 class="ar-section-titre" id="ar-titre-ingredients">Ingrédients</h2>
+
+      <!-- Liste des ingrédients ajoutés -->
+      <div class="ar-ingredients-liste" id="ar-ingredients-liste" aria-live="polite" aria-label="Ingrédients ajoutés">
+        <div class="ar-ingredients-vide" id="ar-ingredients-vide">
+          Aucun ingrédient ajouté
+        </div>
+        <ul class="ar-ingredients-ul" id="ar-ingredients-ul" hidden></ul>
+      </div>
+
+      <!-- Formulaire ajout ingrédient -->
+      <div class="ar-ajout-bloc">
+        <div class="ar-ajout-titre">Ajouter un ingrédient</div>
+
+        <div class="ar-form-group">
+          <label class="ar-label" for="ar-ingr-produit">Produit</label>
+          <div class="ar-autocomplete-wrap">
+            <input
+              type="search"
+              id="ar-ingr-produit"
+              class="ar-input"
+              placeholder="Rechercher un ingrédient…"
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-controls="ar-ingr-produit-liste"
+            >
+            <div class="ar-autocomplete-liste" id="ar-ingr-produit-liste" hidden
+                 role="listbox" aria-label="Produits disponibles"></div>
+          </div>
+          <div class="ar-selection-tag" id="ar-ingr-tag" hidden>
+            <span id="ar-ingr-tag-nom"></span>
+            <button type="button" class="ar-tag-clear" id="ar-ingr-clear"
+                    aria-label="Effacer la sélection">✕</button>
+          </div>
+          <input type="hidden" id="ar-ingr-produit-id">
+        </div>
+
+        <div class="ar-ajout-qte-row">
+          <div class="ar-form-group ar-form-group--qte">
+            <label class="ar-label" for="ar-ingr-qte">Quantité</label>
+            <input
+              type="number"
+              id="ar-ingr-qte"
+              class="ar-input"
+              placeholder="ex : 500"
+              inputmode="numeric"
+              min="0"
+              step="any"
+            >
+          </div>
+          <div class="ar-form-group ar-form-group--unite">
+            <label class="ar-label" for="ar-ingr-unite">Unité</label>
+            <select id="ar-ingr-unite" class="ar-input ar-select">
+              <option value="kg">kg</option>
+              <option value="g" selected>g</option>
+              <option value="L">L</option>
+              <option value="pièce">pièce</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="ar-btn-ajouter" id="ar-btn-ajouter">
+          + Ajouter cet ingrédient
+        </button>
+      </div>
+    </section>
+
+    <!-- ── SECTION 3 : Validation ── -->
+    <section class="ar-section ar-section--submit" aria-labelledby="ar-titre-validation">
+      <h2 class="ar-section-titre" id="ar-titre-validation" hidden>Validation</h2>
+
+      <div class="ar-erreur" id="ar-erreur" hidden role="alert"></div>
+
+      <button type="button" class="ar-btn-submit" id="ar-btn-submit">
+        ✓ Enregistrer la recette
+      </button>
+    </section>
+
+  </main>
+
+  <!-- ========================================================
+       TOAST DE SUCCÈS
+  ========================================================= -->
+  <div class="ar-toast" id="ar-toast" hidden role="status" aria-live="polite"></div>
+
+  <script src="/static/js/admin-recettes.js"></script>
+</body>
+</html>
