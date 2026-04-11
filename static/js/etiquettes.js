@@ -239,10 +239,11 @@ async function chargerIngredientsRecette(id) {
 
     const raw = detail.ingredients ?? detail.lignes ?? [];
     state.ingredients = raw.map(ing => ({
-      produit_id:    ing.produit_id,
-      nom:           ing.produit_nom ?? ing.nom ?? '',
-      quantite_base: ing.quantite ?? 0,
-      unite:         ing.unite ?? 'kg',
+      recette_ingredient_id: ing.id ?? ing.recette_ingredient_id,
+      produit_id:            ing.produit_id,
+      nom:                   ing.produit_nom ?? ing.nom ?? '',
+      quantite_base:         ing.quantite ?? 0,
+      unite:                 ing.unite ?? 'kg',
     }));
   } catch {
     state.ingredients    = [];
@@ -345,16 +346,17 @@ function afficherLots() {
   if (!state.fifoLots || state.fifoLots.length === 0) {
     // Aucun lot FIFO du tout → tout manquant
     elLots.innerHTML = state.ingredients.map(ing =>
-      htmlLigneManquante(ing.produit_id, ing.nom)
+      htmlLigneManquante(ing.recette_ingredient_id, ing.nom)
     ).join('');
     return;
   }
 
   elLots.innerHTML = state.fifoLots.map(lot => {
+    const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
     if (lot.lot_numero != null) {
       return htmlLigneFifoOk(lot);
     }
-    return htmlLigneManquante(lot.ingredient_id, lot.ingredient_nom ?? '');
+    return htmlLigneManquante(riId, lot.ingredient_nom ?? '');
   }).join('');
 }
 
@@ -496,18 +498,19 @@ function afficherRecap() {
     ? `${state.productionCiblee} ${state.rendementUnite}`
     : '—';
 
-  // Map lot par produit_id
+  // Map lot par recette_ingredient_id
   const lotsMap = {};
   (state.fifoLots ?? []).forEach(lot => {
-    if (lot.lot_numero) lotsMap[String(lot.ingredient_id)] = lot.lot_numero;
+    const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
+    if (lot.lot_numero) lotsMap[String(riId)] = lot.lot_numero;
   });
-  Object.entries(state.lotsSubstitues).forEach(([pid, v]) => {
-    lotsMap[String(pid)] = `Substitut : ${v.nom}`;
+  Object.entries(state.lotsSubstitues).forEach(([riId, v]) => {
+    lotsMap[String(riId)] = `Substitut : ${v.nom}`;
   });
 
   const linesHtml = state.ingredients.map(ing => {
     const qty = state.quantities[ing.produit_id] ?? 0;
-    const lot = lotsMap[String(ing.produit_id)] ?? '—';
+    const lot = lotsMap[String(ing.recette_ingredient_id)] ?? '—';
     return `
       <div class="fab-recap-ing-ligne">
         <span class="fab-recap-ing-nom">${escHtml(ing.nom)}</span>
@@ -540,47 +543,40 @@ elBtnGenerer.addEventListener('click', async () => {
     return;
   }
 
-  // Construit la map lots par produit_id
-  const lotsParPid = {};
+  // Helper : quantité calculée pour un recette_ingredient_id
+  function qtyFor(riId) {
+    const ing = state.ingredients.find(
+      i => String(i.recette_ingredient_id) === String(riId)
+    );
+    return ing ? (state.quantities[ing.produit_id] ?? 0) : 0;
+  }
 
-  // 1) Lots FIFO valides
+  // Construit la map lots par recette_ingredient_id
+  const lotsParRiId = {};
+
+  // 1) Lots FIFO (trouvés ou manquants, avec reception_ligne_id)
   (state.fifoLots ?? []).forEach(lot => {
-    const pid = String(lot.ingredient_id);
-    lotsParPid[pid] = {
-      ingredient_id: lot.ingredient_id,
-      lot_numero:    lot.lot_numero ?? null,
-      lot_dlc:       lot.lot_dlc    ?? null,
-      quantite:      state.quantities[pid] ?? state.quantities[Number(pid)] ?? 0,
+    const riId = String(lot.recette_ingredient_id ?? lot.ingredient_id);
+    lotsParRiId[riId] = {
+      recette_ingredient_id: Number(riId),
+      reception_ligne_id:    lot.reception_ligne_id ?? null,
+      quantite:              qtyFor(riId),
     };
   });
 
-  // 2) Lots manquants non substitués (ingrédients sans FIFO et sans substitut)
-  if (Object.keys(lotsParPid).length === 0) {
-    state.ingredients.forEach(ing => {
-      const pid = String(ing.produit_id);
-      lotsParPid[pid] = {
-        ingredient_id: ing.produit_id,
-        lot_numero:    null,
-        lot_dlc:       null,
-        quantite:      state.quantities[pid] ?? 0,
-      };
-    });
-  }
-
-  // 3) Substituts (pas de lot, lot_numero null)
-  Object.entries(state.lotsSubstitues).forEach(([pid, _v]) => {
-    if (!lotsParPid[pid]) {
-      lotsParPid[pid] = {
-        ingredient_id: Number(pid),
-        lot_numero:    null,
-        lot_dlc:       null,
-        quantite:      state.quantities[pid] ?? 0,
+  // 2) Ingrédients non couverts par FIFO (fifoLots vide ou ingredient absent)
+  state.ingredients.forEach(ing => {
+    const riId = String(ing.recette_ingredient_id);
+    if (!lotsParRiId[riId]) {
+      lotsParRiId[riId] = {
+        recette_ingredient_id: ing.recette_ingredient_id,
+        reception_ligne_id:    null,
+        quantite:              state.quantities[ing.produit_id] ?? 0,
       };
     }
-    // Lot déjà absent, la substitution est validée côté front seulement
   });
 
-  const lotsUtilises = Object.values(lotsParPid);
+  const lotsUtilises = Object.values(lotsParRiId);
 
   const payload = {
     recette_id:   state.recetteId,
