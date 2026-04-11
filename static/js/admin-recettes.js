@@ -3,8 +3,8 @@
 // ─────────────────────────────────────────────────────────────
 //  État interne
 // ─────────────────────────────────────────────────────────────
-let produits = [];          // liste complète chargée depuis /api/produits
-let ingredients = [];       // ingrédients sélectionnés pour la recette en cours
+let produits     = [];   // liste complète chargée depuis /api/produits
+let ingredients  = [];   // { produit_id|null, nom, quantite, unite }
 
 // ─────────────────────────────────────────────────────────────
 //  Utilitaires DOM
@@ -35,7 +35,7 @@ async function loadProduits() {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Autocomplete générique
+//  Autocomplete générique (produit fini — sélection obligatoire)
 //  options : { inputEl, listeEl, tagEl, tagNomEl, clearEl, hiddenEl, onSelect }
 // ─────────────────────────────────────────────────────────────
 function initAutocomplete({ inputEl, listeEl, tagEl, tagNomEl, clearEl, hiddenEl, onSelect }) {
@@ -50,10 +50,7 @@ function initAutocomplete({ inputEl, listeEl, tagEl, tagNomEl, clearEl, hiddenEl
     ).slice(0, 10);
 
     listeEl.innerHTML = '';
-    if (matches.length === 0) {
-      listeEl.hidden = true;
-      return;
-    }
+    if (matches.length === 0) { listeEl.hidden = true; return; }
 
     matches.forEach(p => {
       const opt = document.createElement('div');
@@ -67,7 +64,6 @@ function initAutocomplete({ inputEl, listeEl, tagEl, tagNomEl, clearEl, hiddenEl
       });
       listeEl.appendChild(opt);
     });
-
     listeEl.hidden = false;
   });
 
@@ -102,6 +98,59 @@ function clearSelection({ inputEl, listeEl, tagEl, hiddenEl }) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Autocomplete ingrédient — saisie libre autorisée
+// ─────────────────────────────────────────────────────────────
+function initIngrAutocomplete() {
+  const inputEl  = $('ar-ingr-produit');
+  const listeEl  = $('ar-ingr-produit-liste');
+  const hiddenEl = $('ar-ingr-produit-id');
+  const hintEl   = $('ar-ingr-hint');
+
+  function updateHint() {
+    // Hint visible uniquement si du texte est saisi mais sans ID (= ingrédient libre)
+    hintEl.hidden = !inputEl.value.trim() || !!hiddenEl.value;
+  }
+
+  inputEl.addEventListener('input', () => {
+    // Toute frappe manuelle efface l'ID stocké (retour en mode libre)
+    hiddenEl.value = '';
+    updateHint();
+
+    const q = inputEl.value.trim().toLowerCase();
+    if (!q) { listeEl.hidden = true; return; }
+
+    const matches = produits.filter(p =>
+      (p.nom || '').toLowerCase().includes(q) ||
+      (p.code || '').toLowerCase().includes(q)
+    ).slice(0, 10);
+
+    listeEl.innerHTML = '';
+    if (matches.length === 0) { listeEl.hidden = true; return; }
+
+    matches.forEach(p => {
+      const opt = document.createElement('div');
+      opt.className = 'ar-autocomplete-option';
+      opt.setAttribute('role', 'option');
+      opt.textContent = p.nom + (p.code ? ` (${p.code})` : '');
+      opt.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        // Sélection depuis l'autocomplete : on stocke l'ID et le nom propre
+        inputEl.value  = p.nom;
+        hiddenEl.value = p.id;
+        listeEl.hidden = true;
+        updateHint();
+      });
+      listeEl.appendChild(opt);
+    });
+    listeEl.hidden = false;
+  });
+
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => { listeEl.hidden = true; }, 150);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Sélection du produit fini — auto-fill DLC + affichage détails
 // ─────────────────────────────────────────────────────────────
 function onProduitFiniSelect(p) {
@@ -109,24 +158,21 @@ function onProduitFiniSelect(p) {
   const dlcInput = $('ar-dlc-jours');
 
   if (!p) {
-    details.hidden   = true;
+    details.hidden    = true;
     details.innerHTML = '';
-    dlcInput.value   = '';
+    dlcInput.value    = '';
     return;
   }
 
-  // Auto-remplissage DLC
   if (p.dlc_jours != null) dlcInput.value = p.dlc_jours;
 
-  // Auto-remplissage nom de recette si champ vide
   const nomRecetteInput = $('ar-nom-recette');
   if (!nomRecetteInput.value.trim()) nomRecetteInput.value = p.nom;
 
-  // Encart récapitulatif
   const rows = [
-    { label: 'Catégorie',    val: p.categorie               },
-    { label: 'Destination',  val: p.destination             },
-    { label: 'Température',  val: p.temperature_conservation },
+    { label: 'Catégorie',   val: p.categorie               },
+    { label: 'Destination', val: p.destination             },
+    { label: 'Température', val: p.temperature_conservation },
   ];
 
   details.innerHTML = rows.map(r => `
@@ -140,51 +186,72 @@ function onProduitFiniSelect(p) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Rendu de la liste des ingrédients
+//  Calcul des proportions par groupe d'unité
 // ─────────────────────────────────────────────────────────────
-function renderIngredients() {
-  const ul    = $('ar-ingredients-ul');
-  const vide  = $('ar-ingredients-vide');
-
-  if (ingredients.length === 0) {
-    ul.hidden = true;
-    vide.hidden = false;
-    return;
-  }
-
-  vide.hidden = true;
-  ul.hidden = false;
-  ul.innerHTML = '';
-
-  ingredients.forEach((ing, idx) => {
-    const li = document.createElement('li');
-    li.className = 'ar-ingredient-item';
-    li.innerHTML = `
-      <div class="ar-ingredient-info">
-        <span class="ar-ingredient-nom">${escHtml(ing.nom)}</span>
-        <span class="ar-ingredient-qte">${escHtml(String(ing.quantite))} ${escHtml(ing.unite)}</span>
-      </div>
-      <button type="button" class="ar-btn-suppr" aria-label="Supprimer ${escHtml(ing.nom)}">🗑</button>
-    `;
-    li.querySelector('.ar-btn-suppr').addEventListener('click', () => {
-      ingredients.splice(idx, 1);
-      renderIngredients();
-    });
-    ul.appendChild(li);
+function calcProportions(list) {
+  const totaux = {};
+  list.forEach(ing => {
+    totaux[ing.unite] = (totaux[ing.unite] || 0) + ing.quantite;
+  });
+  return list.map(ing => {
+    const total = totaux[ing.unite];
+    return total > 0 ? (ing.quantite / total * 100).toFixed(1) : '—';
   });
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Ajout d'un ingrédient
+//  Rendu du tableau des ingrédients
+// ─────────────────────────────────────────────────────────────
+function renderIngredients() {
+  const tbody = $('ar-ingredients-tbody');
+  const vide  = $('ar-ingredients-vide');
+  const wrap  = $('ar-table-wrap');
+
+  if (ingredients.length === 0) {
+    wrap.hidden  = true;
+    vide.hidden  = false;
+    return;
+  }
+
+  vide.hidden = true;
+  wrap.hidden = false;
+
+  const proportions = calcProportions(ingredients);
+  tbody.innerHTML   = '';
+
+  ingredients.forEach((ing, idx) => {
+    const tr = document.createElement('tr');
+    const badgeNouv = ing.produit_id === null
+      ? ' <span class="ar-badge-nouveau">nouveau</span>'
+      : '';
+    tr.innerHTML = `
+      <td class="ar-td-nom">${escHtml(ing.nom)}${badgeNouv}</td>
+      <td class="ar-td-qte">${escHtml(String(ing.quantite))}</td>
+      <td class="ar-td-unite">${escHtml(ing.unite)}</td>
+      <td class="ar-td-prop">${escHtml(String(proportions[idx]))}%</td>
+      <td class="ar-td-action">
+        <button type="button" class="ar-btn-suppr" aria-label="Supprimer ${escHtml(ing.nom)}">✕</button>
+      </td>
+    `;
+    tr.querySelector('.ar-btn-suppr').addEventListener('click', () => {
+      ingredients.splice(idx, 1);
+      renderIngredients();
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Ajout d'un ingrédient (saisie libre ou sélection autocomplete)
 // ─────────────────────────────────────────────────────────────
 function ajouterIngredient() {
-  const produitId  = $('ar-ingr-produit-id').value;
-  const tagNom     = $('ar-ingr-tag-nom').textContent;
-  const qte        = parseFloat($('ar-ingr-qte').value);
-  const unite      = $('ar-ingr-unite').value;
+  const produitId = $('ar-ingr-produit-id').value;
+  const nomSaisi  = $('ar-ingr-produit').value.trim();
+  const qte       = parseFloat($('ar-ingr-qte').value);
+  const unite     = $('ar-ingr-unite').value;
 
-  if (!produitId) {
-    flashErreurChamp($('ar-ingr-produit'), 'Sélectionnez un produit ingrédient.');
+  if (!nomSaisi) {
+    flashErreurChamp($('ar-ingr-produit'), 'Saisissez un nom d\'ingrédient.');
     return;
   }
   if (!qte || qte <= 0) {
@@ -192,19 +259,27 @@ function ajouterIngredient() {
     return;
   }
 
-  ingredients.push({ produit_id: parseInt(produitId), nom: tagNom, quantite: qte, unite });
+  // Si sélectionné depuis l'autocomplete, utilise le nom canonique du produit
+  const nomFinal = produitId
+    ? (produits.find(p => p.id === parseInt(produitId))?.nom || nomSaisi)
+    : nomSaisi;
+
+  ingredients.push({
+    produit_id: produitId ? parseInt(produitId) : null,
+    nom:        nomFinal,
+    quantite:   qte,
+    unite
+  });
+
   renderIngredients();
 
   // Reset du bloc ajout
-  clearSelection({
-    inputEl:  $('ar-ingr-produit'),
-    listeEl:  $('ar-ingr-produit-liste'),
-    tagEl:    $('ar-ingr-tag'),
-    hiddenEl: $('ar-ingr-produit-id')
-  });
-  $('ar-ingr-tag-nom').textContent = '';
-  $('ar-ingr-qte').value = '';
-  $('ar-ingr-unite').value = 'g';
+  $('ar-ingr-produit').value    = '';
+  $('ar-ingr-produit-id').value = '';
+  $('ar-ingr-hint').hidden      = true;
+  $('ar-ingr-qte').value        = '';
+  $('ar-ingr-unite').value      = 'g';
+  $('ar-ingr-produit').focus();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -213,9 +288,9 @@ function ajouterIngredient() {
 async function enregistrerRecette() {
   hideErreur();
 
-  const nom        = $('ar-nom-recette').value.trim();
-  const produitId  = $('ar-produit-fini-id').value;
-  const dlcJours   = parseInt($('ar-dlc-jours').value);
+  const nom       = $('ar-nom-recette').value.trim();
+  const produitId = $('ar-produit-fini-id').value;
+  const dlcJours  = parseInt($('ar-dlc-jours').value);
 
   if (!nom) {
     showErreur('Le nom de la recette est obligatoire.');
@@ -236,22 +311,53 @@ async function enregistrerRecette() {
     return;
   }
 
-  const payload = {
-    nom,
-    produit_fini_id: parseInt(produitId),
-    dlc_jours: dlcJours,
-    ingredients: ingredients.map(ing => ({
-      produit_id: ing.produit_id,
-      quantite:   ing.quantite,
-      unite:      ing.unite
-    }))
-  };
+  // Préfixe rendement → instructions
+  const rendQte   = parseFloat($('ar-rendement-qte').value);
+  const rendUnite = $('ar-rendement-unite').value;
+  const instructionsPrefix = rendQte && rendQte > 0
+    ? `Base pour ${rendQte} ${rendUnite}.\n\n`
+    : '';
 
   const btn = $('ar-btn-submit');
-  btn.disabled = true;
+  btn.disabled    = true;
   btn.textContent = 'Enregistrement…';
 
   try {
+    // ── Étape 1 : créer silencieusement les ingrédients libres ──
+    for (const ing of ingredients) {
+      if (ing.produit_id === null) {
+        const res = await fetch('/api/produits', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            nom:          ing.nom,
+            type_produit: 'brut',
+            categorie:    'Ingrédient'
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(`Création "${ing.nom}" : ${err.message || `HTTP ${res.status}`}`);
+        }
+        const nouveau = await res.json();
+        ing.produit_id = nouveau.id;
+        produits.push(nouveau); // mise à jour du cache local
+      }
+    }
+
+    // ── Étape 2 : envoyer la recette ──
+    const payload = {
+      nom,
+      produit_fini_id: parseInt(produitId),
+      dlc_jours:       dlcJours,
+      instructions:    instructionsPrefix,
+      ingredients:     ingredients.map(ing => ({
+        produit_id: ing.produit_id,
+        quantite:   ing.quantite,
+        unite:      ing.unite
+      }))
+    };
+
     const res = await fetch('/api/recettes', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -269,7 +375,7 @@ async function enregistrerRecette() {
   } catch (err) {
     showErreur(`Erreur lors de l'enregistrement : ${err.message}`);
   } finally {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = '✓ Enregistrer la recette';
   }
 }
@@ -278,8 +384,10 @@ async function enregistrerRecette() {
 //  Reset du formulaire après succès
 // ─────────────────────────────────────────────────────────────
 function resetFormulaire() {
-  $('ar-nom-recette').value = '';
-  $('ar-dlc-jours').value  = '';
+  $('ar-nom-recette').value  = '';
+  $('ar-dlc-jours').value    = '';
+  $('ar-rendement-qte').value = '';
+  $('ar-rendement-unite').value = 'kg';
 
   // Reset produit fini
   clearSelection({
@@ -291,8 +399,8 @@ function resetFormulaire() {
   $('ar-produit-fini-tag-nom').textContent = '';
 
   // Reset encart détails produit
-  const details = $('produit-details');
-  details.hidden   = true;
+  const details     = $('produit-details');
+  details.hidden    = true;
   details.innerHTML = '';
 
   // Reset ingrédients
@@ -314,7 +422,7 @@ function showErreur(msg) {
 
 function hideErreur() {
   const el = $('ar-erreur');
-  el.hidden = true;
+  el.hidden    = true;
   el.textContent = '';
 }
 
@@ -344,7 +452,7 @@ function showToast(msg) {
 async function init() {
   await loadProduits();
 
-  // Autocomplete — produit fini
+  // Autocomplete — produit fini (sélection obligatoire avec tag)
   initAutocomplete({
     inputEl:  $('ar-produit-fini'),
     listeEl:  $('ar-produit-fini-liste'),
@@ -355,18 +463,16 @@ async function init() {
     onSelect: onProduitFiniSelect,
   });
 
-  // Autocomplete — ingrédient
-  initAutocomplete({
-    inputEl:  $('ar-ingr-produit'),
-    listeEl:  $('ar-ingr-produit-liste'),
-    tagEl:    $('ar-ingr-tag'),
-    tagNomEl: $('ar-ingr-tag-nom'),
-    clearEl:  $('ar-ingr-clear'),
-    hiddenEl: $('ar-ingr-produit-id'),
-  });
+  // Autocomplete — ingrédient (saisie libre autorisée)
+  initIngrAutocomplete();
 
   $('ar-btn-ajouter').addEventListener('click', ajouterIngredient);
   $('ar-btn-submit').addEventListener('click', enregistrerRecette);
+
+  // Valider ajout avec Entrée depuis les champs quantité/unité
+  $('ar-ingr-qte').addEventListener('keydown', e => {
+    if (e.key === 'Enter') ajouterIngredient();
+  });
 
   renderIngredients();
 }

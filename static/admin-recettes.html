@@ -93,18 +93,51 @@
           aria-required="true"
         >
       </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label">Rendement de cette recette de base</label>
+        <div class="ar-rendement-row">
+          <input
+            type="number"
+            id="ar-rendement-qte"
+            class="ar-input"
+            placeholder="ex : 1"
+            inputmode="decimal"
+            min="0.001"
+            step="any"
+          >
+          <select id="ar-rendement-unite" class="ar-input ar-select">
+            <option value="kg">kg</option>
+            <option value="L">L</option>
+            <option value="pièces">pièces</option>
+          </select>
+        </div>
+      </div>
     </section>
 
     <!-- ── SECTION 2 : Ingrédients ── -->
     <section class="ar-section" aria-labelledby="ar-titre-ingredients">
       <h2 class="ar-section-titre" id="ar-titre-ingredients">Ingrédients</h2>
 
-      <!-- Liste des ingrédients ajoutés -->
+      <!-- Tableau des ingrédients -->
       <div class="ar-ingredients-liste" id="ar-ingredients-liste" aria-live="polite" aria-label="Ingrédients ajoutés">
         <div class="ar-ingredients-vide" id="ar-ingredients-vide">
           Aucun ingrédient ajouté
         </div>
-        <ul class="ar-ingredients-ul" id="ar-ingredients-ul" hidden></ul>
+        <div class="ar-table-wrap" id="ar-table-wrap" hidden>
+          <table class="ar-table-ingredients">
+            <thead>
+              <tr>
+                <th>Ingrédient</th>
+                <th>Quantité</th>
+                <th>Unité</th>
+                <th>%</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="ar-ingredients-tbody"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Formulaire ajout ingrédient -->
@@ -112,13 +145,15 @@
         <div class="ar-ajout-titre">Ajouter un ingrédient</div>
 
         <div class="ar-form-group">
-          <label class="ar-label" for="ar-ingr-produit">Produit</label>
+          <label class="ar-label" for="ar-ingr-produit">
+            Produit <span class="ar-hint-label">(existant ou saisie libre)</span>
+          </label>
           <div class="ar-autocomplete-wrap">
             <input
-              type="search"
+              type="text"
               id="ar-ingr-produit"
               class="ar-input"
-              placeholder="Rechercher un ingrédient…"
+              placeholder="ex : Sel, Poivre, Viande bœuf…"
               autocomplete="off"
               aria-autocomplete="list"
               aria-controls="ar-ingr-produit-liste"
@@ -126,12 +161,10 @@
             <div class="ar-autocomplete-liste" id="ar-ingr-produit-liste" hidden
                  role="listbox" aria-label="Produits disponibles"></div>
           </div>
-          <div class="ar-selection-tag" id="ar-ingr-tag" hidden>
-            <span id="ar-ingr-tag-nom"></span>
-            <button type="button" class="ar-tag-clear" id="ar-ingr-clear"
-                    aria-label="Effacer la sélection">✕</button>
-          </div>
           <input type="hidden" id="ar-ingr-produit-id">
+          <div class="ar-hint-nouveau" id="ar-ingr-hint" hidden>
+            Ingrédient libre — sera créé automatiquement à l'enregistrement
+          </div>
         </div>
 
         <div class="ar-ajout-qte-row">

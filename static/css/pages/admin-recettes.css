@@ -400,6 +400,116 @@
   color: var(--color-text);
 }
 
+/* ── Rendement ────────────────────────────────────────────── */
+.ar-rendement-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.ar-rendement-row .ar-input:first-child {
+  flex: 1.2;
+  max-width: 160px;
+}
+
+.ar-rendement-row .ar-select {
+  flex: 1;
+  max-width: 120px;
+}
+
+/* ── Hint label (texte gris dans le label) ─────────────────── */
+.ar-hint-label {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--color-offline);
+}
+
+/* ── Hint ingrédient libre ────────────────────────────────── */
+.ar-hint-nouveau {
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  font-style: italic;
+  padding: var(--space-1) 0;
+}
+
+/* ── Tableau des ingrédients ──────────────────────────────── */
+.ar-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--color-secondary);
+}
+
+.ar-table-ingredients {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+
+.ar-table-ingredients thead {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+.ar-table-ingredients th {
+  padding: var(--space-2) var(--space-3);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ar-table-ingredients tbody tr {
+  border-top: 1px solid rgba(61,32,8,.08);
+  transition: background .1s;
+}
+
+.ar-table-ingredients tbody tr:hover {
+  background: rgba(61,32,8,.04);
+}
+
+.ar-table-ingredients td {
+  padding: var(--space-2) var(--space-3);
+  vertical-align: middle;
+}
+
+.ar-td-nom {
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.ar-td-qte,
+.ar-td-unite {
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.ar-td-prop {
+  font-weight: 700;
+  color: var(--color-ok);
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.ar-td-action {
+  text-align: right;
+  padding-right: var(--space-2);
+}
+
+/* Badge "nouveau" pour ingrédients libres */
+.ar-badge-nouveau {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(107,58,31,.12);
+  color: var(--color-accent);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  margin-left: var(--space-2);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 /* ── Toast ────────────────────────────────────────────────── */
 .ar-toast {
   position: fixed;
