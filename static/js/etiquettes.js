@@ -51,7 +51,7 @@ const elBandeau        = document.getElementById('fab-bandeau');
 const elBandeauNom     = document.getElementById('fab-bandeau-nom');
 const elBandeauDlc     = document.getElementById('fab-bandeau-dlc');
 const elSearch         = document.getElementById('fab-recette-search');
-const elResults        = document.getElementById('fab-recette-results');
+const elGrid           = document.getElementById('recettes-grid');
 const elIngredients    = document.getElementById('fab-ingredients-liste');
 const elBtnStep2Next   = document.getElementById('fab-btn-step2-next');
 const elLots           = document.getElementById('fab-lots-liste');
@@ -132,78 +132,76 @@ elBtnRetour.addEventListener('click', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-//  ÉTAPE 1 : Recherche de recette
+//  ÉTAPE 1 : Grille de tuiles recettes
 // ─────────────────────────────────────────────────────────────
 let recettes = [];
 
 async function chargerRecettes() {
+  elGrid.innerHTML = `<div class="recettes-grid-vide">Chargement des recettes…</div>`;
   try {
     recettes = await apiFetch('/api/recettes');
-  } catch {
+  } catch (err) {
     recettes = [];
-  }
-}
-
-let searchTimeout;
-elSearch.addEventListener('input', () => {
-  clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => afficherResultatsRecette(elSearch.value.trim()), 180);
-});
-
-elSearch.addEventListener('focus', () => {
-  if (elSearch.value.trim()) afficherResultatsRecette(elSearch.value.trim());
-});
-
-// Fermer dropdown sur clic extérieur
-document.addEventListener('click', e => {
-  if (!e.target.closest('.fab-search-wrap')) elResults.hidden = true;
-});
-
-function afficherResultatsRecette(query) {
-  if (!query) { elResults.hidden = true; return; }
-  const q = query.toLowerCase();
-  const filtres = recettes.filter(r => r.nom.toLowerCase().includes(q));
-
-  if (filtres.length === 0) {
-    elResults.innerHTML = `<div class="fab-autocomplete-vide">Aucune recette trouvée pour « ${escHtml(query)} »</div>`;
-    elResults.hidden = false;
+    elGrid.innerHTML = `<div class="recettes-grid-vide">⚠ Impossible de charger les recettes (${escHtml(err.message)})</div>`;
     return;
   }
-
-  elResults.innerHTML = filtres.map(r => `
-    <div class="fab-autocomplete-item" data-id="${r.id}" tabindex="0" role="option"
-         aria-selected="false">
-      <div class="fab-autocomplete-nom">${escHtml(r.nom)}</div>
-      <div class="fab-autocomplete-dlc">DLC J+${r.dlc_jours ?? '?'}</div>
-    </div>
-  `).join('');
-  elResults.hidden = false;
+  genererTuiles(recettes);
 }
 
-elResults.addEventListener('click', e => {
-  const item = e.target.closest('.fab-autocomplete-item[data-id]');
-  if (item) selectionnerRecette(Number(item.dataset.id));
+function genererTuiles(liste) {
+  if (liste.length === 0) {
+    elGrid.innerHTML = `<div class="recettes-grid-vide">Aucune recette disponible.</div>`;
+    return;
+  }
+  elGrid.innerHTML = liste.map(r => `
+    <div class="recette-tuile" data-id="${r.id}" role="listitem" tabindex="0"
+         aria-label="${escHtml(r.nom)}, DLC J+${r.dlc_jours ?? '?'}">
+      <div class="recette-tuile-img">🍖</div>
+      <div class="recette-tuile-nom">${escHtml(r.nom)}</div>
+      <div class="recette-tuile-dlc">DLC J+${r.dlc_jours ?? '?'}</div>
+    </div>
+  `).join('');
+}
+
+// Clic sur une tuile
+elGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.recette-tuile[data-id]');
+  if (tuile) selectionnerRecette(Number(tuile.dataset.id));
 });
 
-elResults.addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  const item = e.target.closest('.fab-autocomplete-item[data-id]');
-  if (item) selectionnerRecette(Number(item.dataset.id));
+elGrid.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const tuile = e.target.closest('.recette-tuile[data-id]');
+  if (tuile) { e.preventDefault(); selectionnerRecette(Number(tuile.dataset.id)); }
+});
+
+// Filtre textuel instantané
+elSearch.addEventListener('input', () => {
+  const q = elSearch.value.trim().toLowerCase();
+  if (!q) {
+    // Réaffiche toutes les tuiles
+    elGrid.querySelectorAll('.recette-tuile').forEach(t => { t.style.display = ''; });
+    return;
+  }
+  elGrid.querySelectorAll('.recette-tuile').forEach(t => {
+    const nom = (t.querySelector('.recette-tuile-nom')?.textContent ?? '').toLowerCase();
+    t.style.display = nom.includes(q) ? '' : 'none';
+  });
 });
 
 async function selectionnerRecette(id) {
   const recette = recettes.find(r => r.id === id);
   if (!recette) return;
 
-  state.recetteId      = recette.id;
-  state.recetteNom     = recette.nom;
+  state.recetteId       = recette.id;
+  state.recetteNom      = recette.nom;
   state.recetteDlcJours = recette.dlc_jours ?? null;
 
   elBandeauNom.textContent = recette.nom;
   elBandeauDlc.textContent = recette.dlc_jours ? `DLC J+${recette.dlc_jours}` : '';
 
-  elResults.hidden = true;
-  elSearch.value   = '';
+  // Réinitialise le filtre pour la prochaine fois
+  elSearch.value = '';
 
   await chargerIngredientsRecette(id);
   allerEtape(2);
@@ -219,9 +217,9 @@ async function chargerIngredientsRecette(id) {
     // Normalise le tableau d'ingrédients (gère plusieurs noms de propriété possibles)
     const raw = detail.ingredients ?? detail.lignes ?? [];
     state.ingredients = raw.map(ing => ({
-      produit_id: ing.produit_id ?? ing.id,
-      nom:        ing.nom ?? ing.ingredient_nom ?? '',
-      quantite:   ing.quantite ?? ing.quantite_defaut ?? 0,
+      produit_id: ing.produit_id,
+      nom:        ing.produit_nom ?? ing.nom ?? '',
+      quantite:   ing.quantite ?? 0,
       unite:      ing.unite ?? 'kg',
     }));
   } catch {
