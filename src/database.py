@@ -1820,6 +1820,7 @@ async def get_receptions(
     date_fin: Optional[str] = None,
     fournisseur_id: Optional[int] = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict]:
     conditions = []
     params: list = []
@@ -1851,9 +1852,9 @@ async def get_receptions(
         {where}
         GROUP BY r.id
         ORDER BY r.created_at DESC
-        LIMIT ?
+        LIMIT ? OFFSET ?
         """,
-        params + [limit],
+        params + [limit, offset],
     )
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]

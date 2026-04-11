@@ -385,6 +385,7 @@ async def historique_receptions(
     date_fin:      Optional[str] = Query(None, description="YYYY-MM-DD"),
     fournisseur_id: Optional[int] = Query(None),
     limit:         int            = Query(50, ge=1, le=500),
+    offset:        int            = Query(0, ge=0),
 ):
     async with get_db() as db:
         return await get_receptions(
@@ -393,6 +394,7 @@ async def historique_receptions(
             date_fin=date_fin,
             fournisseur_id=fournisseur_id,
             limit=limit,
+            offset=offset,
         )
 
 

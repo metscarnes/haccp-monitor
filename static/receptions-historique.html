@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Historique réceptions — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    /* ── En-tête ─────────────────────────────────────────────── */
+    .rh-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .rh-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 16px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .rh-btn-retour:active { opacity: .7; }
+
+    .rh-header-titre {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      flex: 1;
+      text-align: center;
+    }
+
+    .rh-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    /* ── Filtres ─────────────────────────────────────────────── */
+    .rh-filtres {
+      background: var(--secondaire);
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .rh-filtre-groupe {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .rh-filtre-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .rh-filtre-input {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 17px;
+      height: 48px;
+      padding: 0 12px;
+      width: 100%;
+    }
+    .rh-filtre-input:focus { outline: none; border-color: var(--texte); }
+
+    /* Autocomplete fournisseur */
+    .rh-search-wrap { position: relative; flex: 2; min-width: 200px; }
+    .rh-autocomplete {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      left: 0; right: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      position: absolute;
+      top: 100%;
+      z-index: 20;
+    }
+    .rh-autocomplete[hidden] { display: none; }
+    .rh-ac-item {
+      border-bottom: 1px solid #EEE;
+      cursor: pointer;
+      padding: 10px 14px;
+      font-size: 16px;
+    }
+    .rh-ac-item:last-child { border-bottom: none; }
+    .rh-ac-item:active { background: var(--fond); }
+
+    .rh-btn-filtrer {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 48px;
+      padding: 0 20px;
+      white-space: nowrap;
+    }
+    .rh-btn-filtrer:active { opacity: .8; }
+
+    .rh-btn-reset {
+      background: none;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 14px;
+      white-space: nowrap;
+    }
+
+    /* ── Compteur ────────────────────────────────────────────── */
+    .rh-compteur {
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Liste cartes ────────────────────────────────────────── */
+    .rh-liste {
+      padding: 0 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Carte réception ─────────────────────────────────────── */
+    .rh-carte {
+      background: #FFF;
+      border-radius: 12px;
+      border-left: 5px solid var(--secondaire);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      overflow: hidden;
+    }
+    .rh-carte--conforme   { border-left-color: var(--ok); }
+    .rh-carte--nc         { border-left-color: var(--alerte); }
+    .rh-carte--en-cours   { border-left-color: var(--attention); }
+    .rh-carte--refusee    { border-left-color: #888; }
+
+    /* Bandeau résumé (toujours visible) */
+    .rh-carte-resume {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+    .rh-carte-resume:active { background: rgba(0,0,0,.03); }
+
+    /* Photo BL miniature */
+    .rh-photo-bl {
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #EEE;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .rh-photo-bl img { width: 100%; height: 100%; object-fit: cover; }
+    .rh-photo-bl-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    /* Infos principales */
+    .rh-carte-info { flex: 1; min-width: 0; }
+
+    .rh-carte-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .rh-date {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+
+    .rh-badge {
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .rh-badge--ok        { background: rgba(45,125,70,.15);  color: var(--ok); }
+    .rh-badge--nc        { background: rgba(201,48,48,.12);  color: var(--alerte); }
+    .rh-badge--encours   { background: rgba(232,145,58,.15); color: var(--attention); }
+    .rh-badge--refusee   { background: rgba(100,100,100,.12);color: #555; }
+
+    .rh-meta {
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .rh-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .rh-chip {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 16px;
+      font-size: 13px;
+      padding: 3px 10px;
+      color: var(--texte);
+    }
+    .rh-chip--nc { border-color: var(--alerte); color: var(--alerte); }
+    .rh-chip--refus { border-color: #888; color: #555; background: #f5f5f5; }
+
+    /* Chevron expand */
+    .rh-chevron {
+      font-size: 20px;
+      color: var(--secondaire);
+      flex-shrink: 0;
+      align-self: center;
+      transition: transform .2s;
+    }
+    .rh-carte.ouvert .rh-chevron { transform: rotate(180deg); }
+
+    /* ── Détail expandable ───────────────────────────────────── */
+    .rh-detail {
+      border-top: 1px solid #EEE;
+      padding: 0 14px;
+      display: none;
+    }
+    .rh-carte.ouvert .rh-detail { display: block; }
+
+    /* Photo BL grande */
+    .rh-detail-bl-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 12px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    /* Camion */
+    .rh-detail-section-titre {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin: 12px 0 6px;
+      border-bottom: 1px solid var(--secondaire);
+      padding-bottom: 4px;
+    }
+
+    .rh-detail-camion {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .rh-camion-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .rh-camion-label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .rh-camion-valeur {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    /* Lignes produits */
+    .rh-lignes {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-bottom: 14px;
+    }
+
+    .rh-ligne {
+      background: var(--fond);
+      border-radius: 8px;
+      border: 1px solid var(--secondaire);
+      padding: 10px 12px;
+    }
+    .rh-ligne--nc { border-color: var(--alerte); background: rgba(201,48,48,.04); }
+
+    .rh-ligne-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .rh-ligne-nom {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .rh-ligne-espece {
+      font-size: 13px;
+      color: #777;
+    }
+
+    .rh-ligne-badge {
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 12px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .rh-ligne-badge--ok { background: rgba(45,125,70,.15); color: var(--ok); }
+    .rh-ligne-badge--nc { background: rgba(201,48,48,.12); color: var(--alerte); }
+
+    .rh-ligne-grille {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+    }
+
+    .rh-ligne-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .rh-ligne-champ-label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .rh-ligne-champ-val {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* Critères NC */
+    .rh-criteres-nc {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: rgba(201,48,48,.08);
+      border-radius: 6px;
+      border: 1px solid rgba(201,48,48,.25);
+      font-size: 13px;
+      color: var(--alerte);
+    }
+
+    /* Commentaire NC global */
+    .rh-commentaire {
+      background: rgba(232,145,58,.08);
+      border: 1px solid rgba(232,145,58,.3);
+      border-radius: 8px;
+      font-size: 15px;
+      margin: 8px 0;
+      padding: 10px 12px;
+    }
+    .rh-commentaire-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--attention);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    /* ── Message vide / chargement ───────────────────────────── */
+    .rh-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--accent);
+      font-size: 18px;
+    }
+    .rh-message-icone { font-size: 48px; margin-bottom: 12px; }
+
+    /* ── Bouton Voir plus ────────────────────────────────────── */
+    .rh-btn-plus-wrap { text-align: center; padding: 8px 16px 32px; }
+    .rh-btn-plus {
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 64px;
+      padding: 0 32px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .rh-btn-plus:disabled { opacity: .4; cursor: default; }
+    .rh-btn-plus[hidden] { display: none; }
+
+    /* ── Modal photo plein écran ─────────────────────────────── */
+    .rh-modal {
+      align-items: center;
+      background: rgba(0,0,0,.88);
+      bottom: 0; left: 0; right: 0; top: 0;
+      display: flex;
+      justify-content: center;
+      position: fixed;
+      z-index: 100;
+    }
+    .rh-modal[hidden] { display: none; }
+    .rh-modal img {
+      max-width: 96vw;
+      max-height: 96dvh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="rh-header">
+    <button class="rh-btn-retour" id="rh-btn-retour" aria-label="Retour hub">← Retour</button>
+    <div class="rh-header-titre">HISTORIQUE RÉCEPTIONS</div>
+    <div class="rh-horloge" id="rh-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       FILTRES
+  ============================================================= -->
+  <div class="rh-filtres">
+
+    <!-- Fournisseur (autocomplete) -->
+    <div class="rh-filtre-groupe rh-search-wrap">
+      <label class="rh-filtre-label" for="rh-input-fourn">Fournisseur</label>
+      <input type="search" id="rh-input-fourn" class="rh-filtre-input"
+             placeholder="Tous les fournisseurs"
+             autocomplete="off" inputmode="search"
+             aria-label="Filtrer par fournisseur"
+             aria-autocomplete="list" aria-controls="rh-autocomplete">
+      <div id="rh-autocomplete" class="rh-autocomplete" hidden role="listbox"></div>
+    </div>
+
+    <!-- Date début -->
+    <div class="rh-filtre-groupe">
+      <label class="rh-filtre-label" for="rh-date-debut">Du</label>
+      <input type="date" id="rh-date-debut" class="rh-filtre-input" aria-label="Date de début">
+    </div>
+
+    <!-- Date fin -->
+    <div class="rh-filtre-groupe">
+      <label class="rh-filtre-label" for="rh-date-fin">Au</label>
+      <input type="date" id="rh-date-fin" class="rh-filtre-input" aria-label="Date de fin">
+    </div>
+
+    <button class="rh-btn-filtrer" id="rh-btn-filtrer">🔍 Rechercher</button>
+    <button class="rh-btn-reset"   id="rh-btn-reset">✕ Reset</button>
+  </div>
+
+  <!-- ============================================================
+       COMPTEUR
+  ============================================================= -->
+  <div class="rh-compteur" id="rh-compteur" aria-live="polite"></div>
+
+  <!-- ============================================================
+       LISTE
+  ============================================================= -->
+  <div class="rh-liste" id="rh-liste" role="list" aria-label="Réceptions"></div>
+
+  <!-- Message vide / chargement -->
+  <div class="rh-message" id="rh-message" hidden>
+    <div class="rh-message-icone" id="rh-message-icone">⏳</div>
+    <div id="rh-message-texte">Chargement…</div>
+  </div>
+
+  <!-- ============================================================
+       BOUTON VOIR PLUS
+  ============================================================= -->
+  <div class="rh-btn-plus-wrap">
+    <button class="rh-btn-plus" id="rh-btn-plus" hidden
+            aria-label="Charger 50 réceptions supplémentaires">
+      Voir plus…
+    </button>
+  </div>
+
+  <!-- ============================================================
+       MODAL PHOTO PLEIN ÉCRAN
+  ============================================================= -->
+  <div class="rh-modal" id="rh-modal" hidden role="dialog"
+       aria-modal="true" aria-label="Photo en plein écran">
+    <img id="rh-modal-img" src="" alt="Photo">
+  </div>
+
+  <script src="/static/js/receptions-historique.js"></script>
+</body>
+</html>
