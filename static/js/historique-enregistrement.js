@@ -590,15 +590,17 @@ function recRemplirDetail(el, rec) {
   });
   btnActions.appendChild(btnFiche);
 
-  // Toujours afficher le bouton PCR01 (les fiches peuvent être enregistrées même sans NC visibles)
-  const btnPcr = document.createElement('button');
-  btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
-  btnPcr.textContent = '⚠️ Fiches PCR01';
-  btnPcr.addEventListener('click', e => {
-    e.stopPropagation();
-    window.location.href = `/incidents.html?reception_id=${rec.id}`;
-  });
-  btnActions.appendChild(btnPcr);
+  // Afficher le bouton PCR01 uniquement s'il y a des NC
+  if (rec.nb_nc > 0) {
+    const btnPcr = document.createElement('button');
+    btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
+    btnPcr.textContent = '⚠️ Fiches PCR01';
+    btnPcr.addEventListener('click', e => {
+      e.stopPropagation();
+      window.location.href = `/incidents.html?reception_id=${rec.id}`;
+    });
+    btnActions.appendChild(btnPcr);
+  }
 
   el.appendChild(btnActions);
 
@@ -679,6 +681,7 @@ function recCreerLigne(lig) {
 
   const div = document.createElement('div');
   div.className = `he-ligne ${estNC ? 'he-ligne--nc' : ''}`;
+  div.style.cssText = `border: 3px solid ${estNC ? '#C93030' : '#2D7D46'}; border-radius: 8px; padding: 12px;`;
 
   const entete = document.createElement('div');
   entete.className = 'he-ligne-entete';

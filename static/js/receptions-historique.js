@@ -293,15 +293,17 @@ function creerCarte(rec) {
 function remplirDetail(el, rec) {
   el.innerHTML = '';
 
-  // ── Bouton PCR01 ─────────────────────────────────────────
-  const btnPcr = document.createElement('button');
-  btnPcr.style.cssText = 'display:block;width:100%;background:var(--alerte,#C93030);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;';
-  btnPcr.textContent = '⚠️ Voir les fiches PCR01';
-  btnPcr.addEventListener('click', e => {
-    e.stopPropagation();
-    window.location.href = `/incidents.html?reception_id=${rec.id}`;
-  });
-  el.appendChild(btnPcr);
+  // ── Bouton PCR01 (uniquement s'il y a des NC) ────────────
+  if (rec.nb_nc > 0) {
+    const btnPcr = document.createElement('button');
+    btnPcr.style.cssText = 'display:block;width:100%;background:var(--alerte,#C93030);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;';
+    btnPcr.textContent = '⚠️ Voir les fiches PCR01';
+    btnPcr.addEventListener('click', e => {
+      e.stopPropagation();
+      window.location.href = `/incidents.html?reception_id=${rec.id}`;
+    });
+    el.appendChild(btnPcr);
+  }
 
   // Bouton photo BL grande
   if (rec.photo_bl_filename) {
@@ -385,6 +387,7 @@ function creerLigne(lig) {
 
   const div = document.createElement('div');
   div.className = `rh-ligne ${estNC ? 'rh-ligne--nc' : ''}`;
+  div.style.cssText = `border: 3px solid ${estNC ? '#C93030' : '#2D7D46'}; border-radius: 8px; padding: 12px;`;
 
   const entete = document.createElement('div');
   entete.className = 'rh-ligne-entete';
