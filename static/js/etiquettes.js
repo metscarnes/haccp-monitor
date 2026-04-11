@@ -332,7 +332,8 @@ elBtnStep2Next.addEventListener('click', async () => {
 async function chargerFifoLots() {
   elLots.innerHTML = `<div class="fab-chargement">Chargement des lots FIFO…</div>`;
   try {
-    state.fifoLots = await apiFetch(`/api/fabrications/fifo-lots?recette_id=${state.recetteId}`);
+    const raw = await apiFetch(`/api/fabrications/fifo-lots?recette_id=${state.recetteId}`);
+    state.fifoLots = Array.isArray(raw) ? raw : (raw?.lots ?? raw?.data ?? []);
   } catch {
     state.fifoLots = [];
   }
