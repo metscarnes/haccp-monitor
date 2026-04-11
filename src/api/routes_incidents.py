@@ -136,6 +136,7 @@ async def creer_fiche(
 
 @router.get("/fiches-incident")
 async def lister_fiches(
+    reception_id:   Optional[int] = Query(None),
     statut:        Optional[str] = Query(None),
     fournisseur_id: Optional[int] = Query(None),
     date_debut:    Optional[str] = Query(None),
@@ -143,14 +144,28 @@ async def lister_fiches(
     limit:         int           = Query(50, ge=1, le=500),
 ):
     async with get_db() as db:
-        return await get_fiches_incident(
-            db,
-            statut=statut,
-            fournisseur_id=fournisseur_id,
-            date_debut=date_debut,
-            date_fin=date_fin,
-            limit=limit,
-        )
+        if reception_id:
+            # Filtre spécifique par reception_id
+            cursor = await db.execute(
+                """
+                SELECT * FROM fiches_incident
+                WHERE reception_id = ?
+                ORDER BY date_incident DESC, heure_incident DESC
+                LIMIT ?
+                """,
+                (reception_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+        else:
+            return await get_fiches_incident(
+                db,
+                statut=statut,
+                fournisseur_id=fournisseur_id,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                limit=limit,
+            )
 
 
 # ---------------------------------------------------------------------------

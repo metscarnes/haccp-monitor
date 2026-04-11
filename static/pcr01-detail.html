@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#C93030">
+  <title>Fiche Incident PCR01 — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/pages/pcr01.css">
+  <style>
+    .pcr-btn-retour {
+      cursor: pointer;
+    }
+    .pcr-btn-retour:active { opacity: .7; }
+    .pcr-main {
+      opacity: 0;
+      animation: fadeIn 0.3s ease-in forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body class="pcr-body">
+
+  <header class="pcr-header">
+    <button class="pcr-btn-retour" id="pcr-btn-retour" aria-label="Retour">← Retour</button>
+    <div class="pcr-header-titre">FICHE INCIDENT PCR01</div>
+    <div class="pcr-header-badge"id="pcr-header-badge" aria-live="polite">Consultation</div>
+  </header>
+
+  <main class="pcr-main" id="pcr-main" role="main">
+    <div style="padding:24px;text-align:center;color:#888;">
+      <div style="font-size:48px;margin-bottom:12px;">⏳</div>
+      <div>Chargement…</div>
+    </div>
+  </main>
+
+  <script src="/static/js/pcr01-detail.js"></script>
+</body>
+</html>
