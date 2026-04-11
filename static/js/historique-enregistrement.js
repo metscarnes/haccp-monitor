@@ -592,16 +592,15 @@ function recRemplirDetail(el, rec) {
   });
   btnActions.appendChild(btnFiche);
 
-  if (rec.nb_nc > 0) {
-    const btnPcr = document.createElement('button');
-    btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
-    btnPcr.textContent = '⚠️ Fiches PCR01';
-    btnPcr.addEventListener('click', e => {
-      e.stopPropagation();
-      window.location.href = `/incidents.html?reception_id=${rec.id}`;
-    });
-    btnActions.appendChild(btnPcr);
-  }
+  // Toujours afficher le bouton PCR01 (les fiches peuvent être enregistrées même sans NC visibles)
+  const btnPcr = document.createElement('button');
+  btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
+  btnPcr.textContent = '⚠️ Fiches PCR01';
+  btnPcr.addEventListener('click', e => {
+    e.stopPropagation();
+    window.location.href = `/incidents.html?reception_id=${rec.id}`;
+  });
+  btnActions.appendChild(btnPcr);
 
   el.appendChild(btnActions);
 
