@@ -7,6 +7,17 @@
           → 4 (récap + impression) → Écran succès
    ============================================================ */
 
+// ── Lexique codes viande ──────────────────────────────────────
+const LEXIQUE = {
+  VB: ['Bœuf', 'Boeuf', 'Vache', 'Bovine', 'Bf'],
+  VX: ['Veau'],
+  PC: ['Porc', 'Cochon'],
+  AG: ['Agneau'],
+  GI: ['Gibier', 'Cerf', 'Sanglier'],
+};
+const CODES_VIANDE = Object.keys(LEXIQUE);
+const MOTS_PARASITES = new Set(['SANS', 'AVEC', 'OS', 'PAD', 'VRAC', 'DE', 'LA', 'LE', 'LES', 'DU', 'EN', 'ET', 'AU']);
+
 // ── Helpers ──────────────────────────────────────────────────
 function escHtml(str) {
   return String(str ?? '')
@@ -77,6 +88,7 @@ const elBtnMemeRecette = document.getElementById('fab-btn-meme-recette');
 const elBtnNouvelleFab = document.getElementById('fab-btn-nouvelle-fab');
 const elSubOverlay     = document.getElementById('fab-sub-overlay');
 const elSubTitre       = document.getElementById('fab-sub-titre');
+const elSubSearch      = document.getElementById('fab-sub-search');
 const elSubGrid        = document.getElementById('fab-sub-grid');
 const elSubCancel      = document.getElementById('fab-sub-cancel');
 
@@ -392,8 +404,67 @@ function htmlLigneManquante(ingId, ingNom) {
 }
 
 // ── Substitution produit — logique modale ─────────────────────
-let subPidCourant = null;
-let subNomCourant = null;
+let subPidCourant  = null;
+let subNomCourant  = null;
+let subAllProduits = [];   // cache produits bruts chargés
+
+/** Détecte le code viande en tête du nom (ex: "VB-COLLIER" → "VB") */
+function extraireCode(nom) {
+  const m = (nom ?? '').trim().toUpperCase().match(/^(VB|VX|PC|AG|GI)\b/);
+  return m ? m[1] : null;
+}
+
+/** Isole le mot-muscle principal après nettoyage du nom */
+function extraireMotMuscle(nom) {
+  let clean = (nom ?? '').toUpperCase()
+    .replace(new RegExp(`^(${CODES_VIANDE.join('|')})\\b[\\s\\-_]*`, 'i'), '')
+    .replace(/[\-_]+/g, ' ')
+    .trim();
+  const mots = clean.split(/\s+/).filter(m => m.length > 1 && !MOTS_PARASITES.has(m));
+  return mots[0] ?? '';
+}
+
+/** Filtre intelligent : muscle + catégorie via lexique. Fallback = tout le catalogue. */
+function filtrerProduitsIntelligent(produits, ingNom) {
+  const motMuscle = extraireMotMuscle(ingNom);
+  const code      = extraireCode(ingNom);
+
+  if (!motMuscle) return produits;
+
+  let resultats;
+  if (code && LEXIQUE[code]) {
+    // Synonymes = le code lui-même + les mots du lexique
+    const synonymes = [code, ...LEXIQUE[code]].map(s => s.toUpperCase());
+    resultats = produits.filter(p => {
+      const nomP = (p.nom ?? '').toUpperCase();
+      return nomP.includes(motMuscle) && synonymes.some(s => nomP.includes(s));
+    });
+  } else {
+    resultats = produits.filter(p => (p.nom ?? '').toUpperCase().includes(motMuscle));
+  }
+
+  return resultats.length > 0 ? resultats : produits;
+}
+
+function htmlSubTuile(p) {
+  return `
+    <div class="fab-sub-tuile" data-produit-id="${p.id}"
+         data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0">
+      <div class="fab-sub-tuile-icon">📦</div>
+      <div class="fab-sub-tuile-nom">${escHtml(p.nom)}</div>
+      ${p.stock != null
+        ? `<div class="fab-sub-tuile-stock">${p.stock} ${escHtml(p.unite ?? '')}</div>`
+        : ''}
+    </div>`;
+}
+
+function afficherSubProduits(produits) {
+  if (produits.length === 0) {
+    elSubGrid.innerHTML = `<div class="fab-sub-vide">Aucun produit trouvé.</div>`;
+    return;
+  }
+  elSubGrid.innerHTML = produits.map(htmlSubTuile).join('');
+}
 
 elLots.addEventListener('click', async e => {
   const btn = e.target.closest('.fab-lot-btn-remplacer');
@@ -405,41 +476,27 @@ elLots.addEventListener('click', async e => {
 
 async function ouvrirModalSubstitution(ingNom) {
   elSubTitre.textContent = `Substitut pour : ${ingNom}`;
+  elSubSearch.value = '';
   elSubGrid.innerHTML = `<div class="fab-chargement">Recherche de produits…</div>`;
   elSubOverlay.hidden = false;
 
   try {
-    const produits = await apiFetch('/api/produits?type=brut');
-
-    // Filtre : premier mot-clé du nom de l'ingrédient
-    const motCle = (ingNom ?? '').trim().split(/[\s\-_]+/)[0].toUpperCase();
-    const filtres = produits.filter(p =>
-      (p.nom ?? '').toUpperCase().includes(motCle)
-    );
-
-    if (filtres.length === 0) {
-      elSubGrid.innerHTML = `
-        <div class="fab-sub-vide">
-          Aucun produit trouvé pour « ${escHtml(motCle)} ».<br>
-          Contactez votre responsable.
-        </div>`;
-      return;
-    }
-
-    elSubGrid.innerHTML = filtres.map(p => `
-      <div class="fab-sub-tuile" data-produit-id="${p.id}"
-           data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0">
-        <div class="fab-sub-tuile-icon">📦</div>
-        <div class="fab-sub-tuile-nom">${escHtml(p.nom)}</div>
-        ${p.stock != null
-          ? `<div class="fab-sub-tuile-stock">${p.stock} ${escHtml(p.unite ?? '')}</div>`
-          : ''}
-      </div>
-    `).join('');
+    subAllProduits = await apiFetch('/api/produits?type=brut');
+    afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, ingNom));
   } catch (err) {
     elSubGrid.innerHTML = `<div class="fab-sub-vide">Erreur : ${escHtml(err.message)}</div>`;
   }
 }
+
+// Recherche manuelle — désactive le filtre automatique
+elSubSearch.addEventListener('input', () => {
+  const q = elSubSearch.value.trim().toUpperCase();
+  if (!q) {
+    afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, subNomCourant));
+    return;
+  }
+  afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
+});
 
 elSubGrid.addEventListener('click', e => {
   const tuile = e.target.closest('.fab-sub-tuile');
