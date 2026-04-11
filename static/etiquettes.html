@@ -155,12 +155,30 @@
       </div>
     </div>
 
-    <!-- Étape 2 : Ajustement des quantités -->
+    <!-- Étape 2 : Calculateur de production -->
     <div class="fab-step fab-step--right" id="fab-step-2">
       <div class="fab-step-inner">
-        <h2 class="fab-step-titre">Ajuster les quantités</h2>
+        <h2 class="fab-step-titre">Calculateur de production</h2>
+
+        <!-- Cible de production -->
+        <div class="fab-calc-target-wrap">
+          <label class="fab-calc-label" for="fab-prod-ciblee">
+            Production ciblée du jour
+          </label>
+          <div class="fab-calc-row">
+            <input id="fab-prod-ciblee" type="number" inputmode="decimal"
+                   min="0" step="0.1" class="fab-calc-input"
+                   placeholder="0" aria-label="Production ciblée du jour">
+            <span id="fab-prod-unite" class="fab-calc-unite">kg</span>
+          </div>
+          <div id="fab-calc-base-info" class="fab-calc-base-info"></div>
+        </div>
+
+        <!-- Liste ingrédients calculée (lecture seule) -->
         <div id="fab-ingredients-liste" class="fab-ingredients-liste"></div>
+
         <div class="fab-step-actions">
+          <div id="fab-calc-erreur" class="fab-erreur" hidden></div>
           <button id="fab-btn-step2-next" class="fab-btn-primary">Suivant →</button>
         </div>
       </div>
@@ -196,6 +214,15 @@
     </div>
 
   </div><!-- /.fab-wizard-wrap -->
+
+  <!-- ── Modal substitution produit ── -->
+  <div class="fab-modal-overlay" id="fab-sub-overlay" hidden>
+    <div class="fab-modal">
+      <div class="fab-modal-titre" id="fab-sub-titre">Choisir un substitut</div>
+      <div id="fab-sub-grid" class="fab-sub-grid"></div>
+      <button class="fab-btn-secondary fab-sub-cancel-btn" id="fab-sub-cancel">✕ Annuler</button>
+    </div>
+  </div>
 
   <!-- ── Écran de succès (overlay) ── -->
   <div class="fab-succes" id="fab-succes" hidden>

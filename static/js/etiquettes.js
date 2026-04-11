@@ -3,7 +3,7 @@
    etiquettes.js — Wizard Fabrication & Traçabilité
    Mets Carnés — HACCP Monitor
 
-   Flux : Étape 1 (recette) → 2 (quantités) → 3 (lots FIFO)
+   Flux : Étape 1 (recette) → 2 (calculateur) → 3 (lots FIFO)
           → 4 (récap + impression) → Écran succès
    ============================================================ */
 
@@ -32,16 +32,23 @@ function formatDate(dateStr) {
   } catch { return String(dateStr); }
 }
 
+function arrondir(v) {
+  return Math.round(v * 100) / 100;
+}
+
 // ── État global ───────────────────────────────────────────────
 const state = {
-  etape: 1,
-  recetteId:       null,
-  recetteNom:      null,
-  recetteDlcJours: null,
-  ingredients:     [],   // [{produit_id, nom, quantite, unite}, ...]
-  quantities:      {},   // {produit_id: valeur}
-  fifoLots:        [],   // [{ingredient_id, ingredient_nom, lot_numero, lot_dlc}, ...]
-  lotsManuel:      {},   // {produit_id: {numero_lot, dlc}}
+  etape:            1,
+  recetteId:        null,
+  recetteNom:       null,
+  recetteDlcJours:  null,
+  rendementBase:    null,   // nombre extrait de "Base pour X kg"
+  rendementUnite:   'kg',   // unité extraite
+  productionCiblee: 0,      // valeur saisie à l'étape 2
+  ingredients:      [],     // [{produit_id, nom, quantite_base, unite}, ...]
+  quantities:       {},     // {produit_id: valeur calculée}
+  fifoLots:         [],     // [{ingredient_id, ingredient_nom, lot_numero, lot_dlc}, ...]
+  lotsSubstitues:   {},     // {produit_id: {produit_id_sub, nom_sub}} — substituts choisis
 };
 
 // ── Références DOM ────────────────────────────────────────────
@@ -53,6 +60,10 @@ const elBandeauDlc     = document.getElementById('fab-bandeau-dlc');
 const elSearch         = document.getElementById('fab-recette-search');
 const elGrid           = document.getElementById('recettes-grid');
 const elIngredients    = document.getElementById('fab-ingredients-liste');
+const elProdCiblee     = document.getElementById('fab-prod-ciblee');
+const elProdUnite      = document.getElementById('fab-prod-unite');
+const elCalcBaseInfo   = document.getElementById('fab-calc-base-info');
+const elCalcErreur     = document.getElementById('fab-calc-erreur');
 const elBtnStep2Next   = document.getElementById('fab-btn-step2-next');
 const elLots           = document.getElementById('fab-lots-liste');
 const elBtnConfLots    = document.getElementById('fab-btn-confirmer-lots');
@@ -64,6 +75,10 @@ const elSucces         = document.getElementById('fab-succes');
 const elSuccesLot      = document.getElementById('fab-succes-lot');
 const elBtnMemeRecette = document.getElementById('fab-btn-meme-recette');
 const elBtnNouvelleFab = document.getElementById('fab-btn-nouvelle-fab');
+const elSubOverlay     = document.getElementById('fab-sub-overlay');
+const elSubTitre       = document.getElementById('fab-sub-titre');
+const elSubGrid        = document.getElementById('fab-sub-grid');
+const elSubCancel      = document.getElementById('fab-sub-cancel');
 
 // ── Horloge ───────────────────────────────────────────────────
 (function majHorloge() {
@@ -96,8 +111,7 @@ function allerEtape(suivante) {
   elNext.classList.remove('fab-step--active', 'fab-step--left', 'fab-step--right');
   elNext.classList.add(forward ? 'fab-step--right' : 'fab-step--left');
 
-  // Forcer le reflow pour que la position de départ soit peinte avant la transition
-  elNext.getBoundingClientRect();
+  elNext.getBoundingClientRect(); // forcer reflow
 
   elNext.classList.remove('fab-step--left', 'fab-step--right');
   elNext.classList.add('fab-step--active');
@@ -114,7 +128,7 @@ function majProgress() {
   document.querySelectorAll('.fab-dot').forEach(dot => {
     const n = Number(dot.dataset.step);
     dot.classList.remove('fab-dot--active', 'fab-dot--done');
-    if (n < state.etape)      dot.classList.add('fab-dot--done');
+    if (n < state.etape)       dot.classList.add('fab-dot--done');
     else if (n === state.etape) dot.classList.add('fab-dot--active');
   });
   document.querySelectorAll('.fab-dot-line').forEach(line => {
@@ -163,7 +177,6 @@ function genererTuiles(liste) {
   `).join('');
 }
 
-// Clic sur une tuile
 elGrid.addEventListener('click', e => {
   const tuile = e.target.closest('.recette-tuile[data-id]');
   if (tuile) selectionnerRecette(Number(tuile.dataset.id));
@@ -175,17 +188,11 @@ elGrid.addEventListener('keydown', e => {
   if (tuile) { e.preventDefault(); selectionnerRecette(Number(tuile.dataset.id)); }
 });
 
-// Filtre textuel instantané
 elSearch.addEventListener('input', () => {
   const q = elSearch.value.trim().toLowerCase();
-  if (!q) {
-    // Réaffiche toutes les tuiles
-    elGrid.querySelectorAll('.recette-tuile').forEach(t => { t.style.display = ''; });
-    return;
-  }
   elGrid.querySelectorAll('.recette-tuile').forEach(t => {
     const nom = (t.querySelector('.recette-tuile-nom')?.textContent ?? '').toLowerCase();
-    t.style.display = nom.includes(q) ? '' : 'none';
+    t.style.display = (!q || nom.includes(q)) ? '' : 'none';
   });
 });
 
@@ -199,8 +206,6 @@ async function selectionnerRecette(id) {
 
   elBandeauNom.textContent = recette.nom;
   elBandeauDlc.textContent = recette.dlc_jours ? `DLC J+${recette.dlc_jours}` : '';
-
-  // Réinitialise le filtre pour la prochaine fois
   elSearch.value = '';
 
   await chargerIngredientsRecette(id);
@@ -208,29 +213,73 @@ async function selectionnerRecette(id) {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  ÉTAPE 2 : Ingrédients + quantités
+//  ÉTAPE 2 : Calculateur de production
 // ─────────────────────────────────────────────────────────────
+
+/** Extrait "Base pour X kg/pièces" depuis le champ instructions */
+function extraireRendement(instructions) {
+  if (!instructions) return { base: null, unite: 'kg' };
+  const m = String(instructions).match(/base pour (\d+(?:[.,]\d+)?)\s*(kg|g|pièces?|pc|l)?/i);
+  if (!m) return { base: null, unite: 'kg' };
+  const base = parseFloat(m[1].replace(',', '.'));
+  if (isNaN(base) || base <= 0) return { base: null, unite: 'kg' };
+  const unite = (m[2] ?? 'kg').replace(/pièces?/i, 'pièces').toLowerCase();
+  return { base, unite };
+}
+
 async function chargerIngredientsRecette(id) {
   elIngredients.innerHTML = `<div class="fab-chargement">Chargement des ingrédients…</div>`;
   try {
     const detail = await apiFetch(`/api/recettes/${id}`);
-    // Normalise le tableau d'ingrédients (gère plusieurs noms de propriété possibles)
+
+    // Rendement de base depuis les instructions
+    const { base, unite } = extraireRendement(detail.instructions);
+    state.rendementBase  = base;
+    state.rendementUnite = unite;
+
     const raw = detail.ingredients ?? detail.lignes ?? [];
     state.ingredients = raw.map(ing => ({
-      produit_id: ing.produit_id,
-      nom:        ing.produit_nom ?? ing.nom ?? '',
-      quantite:   ing.quantite ?? 0,
-      unite:      ing.unite ?? 'kg',
+      produit_id:    ing.produit_id,
+      nom:           ing.produit_nom ?? ing.nom ?? '',
+      quantite_base: ing.quantite ?? 0,
+      unite:         ing.unite ?? 'kg',
     }));
   } catch {
-    state.ingredients = [];
+    state.ingredients    = [];
+    state.rendementBase  = null;
+    state.rendementUnite = 'kg';
   }
-  // Initialise les quantités
+
+  // Réinitialise la production ciblée
+  state.productionCiblee = 0;
+  elProdCiblee.value = '';
+
+  // Affiche l'unité et l'info de base
+  elProdUnite.textContent = state.rendementUnite;
+  if (state.rendementBase) {
+    elCalcBaseInfo.textContent = `Base recette : ${state.rendementBase} ${state.rendementUnite}`;
+    elCalcBaseInfo.classList.remove('fab-calc-base-info--warn');
+  } else {
+    elCalcBaseInfo.textContent = 'Aucune base de rendement trouvée — quantités fixes affichées.';
+    elCalcBaseInfo.classList.add('fab-calc-base-info--warn');
+  }
+
+  recalculerQuantites();
+  afficherIngredients();
+}
+
+/** Recalcule les quantités selon la production ciblée */
+function recalculerQuantites() {
   state.quantities = {};
   state.ingredients.forEach(ing => {
-    state.quantities[ing.produit_id] = ing.quantite;
+    let qty;
+    if (state.rendementBase && state.productionCiblee > 0) {
+      qty = arrondir((ing.quantite_base / state.rendementBase) * state.productionCiblee);
+    } else {
+      qty = ing.quantite_base;
+    }
+    state.quantities[ing.produit_id] = qty;
   });
-  afficherIngredients();
 }
 
 function afficherIngredients() {
@@ -238,36 +287,47 @@ function afficherIngredients() {
     elIngredients.innerHTML = `<div class="fab-chargement">Aucun ingrédient trouvé pour cette recette.</div>`;
     return;
   }
-  elIngredients.innerHTML = state.ingredients.map(ing => `
-    <div class="fab-ingredient-ligne">
-      <div class="fab-ingredient-nom">${escHtml(ing.nom)}</div>
-      <input class="fab-ingredient-qty"
-             type="number" inputmode="numeric" min="0" step="any"
-             value="${escHtml(String(ing.quantite ?? 0))}"
-             data-pid="${ing.produit_id}"
-             aria-label="Quantité de ${escHtml(ing.nom)}">
-      <div class="fab-ingredient-unite">${escHtml(ing.unite)}</div>
-    </div>
-  `).join('');
-
-  elIngredients.querySelectorAll('.fab-ingredient-qty').forEach(input => {
-    input.addEventListener('change', () => {
-      state.quantities[input.dataset.pid] = parseFloat(input.value) || 0;
-    });
-  });
+  elIngredients.innerHTML = state.ingredients.map(ing => {
+    const qty = state.quantities[ing.produit_id] ?? 0;
+    return `
+      <div class="fab-ingredient-ligne">
+        <div class="fab-ingredient-nom">${escHtml(ing.nom)}</div>
+        <div class="fab-ingredient-qty-display" data-pid="${ing.produit_id}">
+          ${qty > 0 ? qty : '—'}
+        </div>
+        <div class="fab-ingredient-unite">${escHtml(ing.unite)}</div>
+      </div>
+    `;
+  }).join('');
 }
 
-elBtnStep2Next.addEventListener('click', async () => {
-  // Persiste les quantités actuelles
-  elIngredients.querySelectorAll('.fab-ingredient-qty').forEach(input => {
-    state.quantities[input.dataset.pid] = parseFloat(input.value) || 0;
+// Recalcul live à chaque frappe dans le champ de production
+elProdCiblee.addEventListener('input', () => {
+  state.productionCiblee = parseFloat(elProdCiblee.value) || 0;
+  recalculerQuantites();
+  elIngredients.querySelectorAll('.fab-ingredient-qty-display[data-pid]').forEach(el => {
+    const qty = state.quantities[el.dataset.pid] ?? 0;
+    el.textContent = qty > 0 ? qty : '—';
   });
+});
+
+elBtnStep2Next.addEventListener('click', async () => {
+  elCalcErreur.hidden = true;
+
+  // Si la recette a un rendement et que rien n'est saisi → bloquer
+  if (state.rendementBase && state.productionCiblee <= 0) {
+    elCalcErreur.textContent = 'Veuillez saisir la production ciblée du jour.';
+    elCalcErreur.hidden = false;
+    elProdCiblee.focus();
+    return;
+  }
+
   await chargerFifoLots();
   allerEtape(3);
 });
 
 // ─────────────────────────────────────────────────────────────
-//  ÉTAPE 3 : Traçabilité & Lots (FIFO auto)
+//  ÉTAPE 3 : Traçabilité & Lots (FIFO + Substitution Zéro Clavier)
 // ─────────────────────────────────────────────────────────────
 async function chargerFifoLots() {
   elLots.innerHTML = `<div class="fab-chargement">Chargement des lots FIFO…</div>`;
@@ -276,73 +336,138 @@ async function chargerFifoLots() {
   } catch {
     state.fifoLots = [];
   }
-  state.lotsManuel = {};
+  state.lotsSubstitues = {};
   afficherLots();
 }
 
 function afficherLots() {
-  // Si l'API ne renvoie rien, afficher une ligne manuelle pour chaque ingrédient
   if (!state.fifoLots || state.fifoLots.length === 0) {
+    // Aucun lot FIFO du tout → tout manquant
     elLots.innerHTML = state.ingredients.map(ing =>
-      htmlLigneManuelle(ing.produit_id, ing.nom)
+      htmlLigneManquante(ing.produit_id, ing.nom)
     ).join('');
-    attachListenersManuel();
     return;
   }
 
   elLots.innerHTML = state.fifoLots.map(lot => {
     if (lot.lot_numero != null) {
-      return `
-        <div class="fab-lot-ligne">
-          <span class="fab-lot-check">✓</span>
-          <div class="fab-lot-nom">${escHtml(lot.ingredient_nom ?? '')}</div>
-          <div class="fab-lot-info">
-            Lot ${escHtml(lot.lot_numero)} | DLC ${formatDate(lot.lot_dlc)}
-          </div>
-        </div>`;
+      return htmlLigneFifoOk(lot);
     }
-    return htmlLigneManuelle(lot.ingredient_id, lot.ingredient_nom ?? '');
+    return htmlLigneManquante(lot.ingredient_id, lot.ingredient_nom ?? '');
   }).join('');
-
-  attachListenersManuel();
 }
 
-function htmlLigneManuelle(ingId, ingNom) {
+function htmlLigneFifoOk(lot) {
   return `
-    <div class="fab-lot-ligne fab-lot-ligne--manquant" data-pid="${ingId}">
-      <div class="fab-lot-manquant-titre">
-        <span>⚠</span>
-        <span>${escHtml(ingNom)} — Lot manquant, saisie manuelle</span>
-      </div>
-      <div class="fab-lot-manquant-champs">
-        <input class="fab-lot-manquant-input" type="text"
-               placeholder="N° lot (ex: FR-20260401-087)"
-               data-pid="${ingId}" data-field="numero_lot">
-        <input class="fab-lot-manquant-input" type="text"
-               placeholder="DLC (ex: 18/04/2026)"
-               data-pid="${ingId}" data-field="dlc" inputmode="numeric">
+    <div class="fab-lot-ligne fab-lot-ligne--ok">
+      <span class="fab-lot-check">✓</span>
+      <div class="fab-lot-nom">${escHtml(lot.ingredient_nom ?? '')}</div>
+      <div class="fab-lot-info">
+        Lot ${escHtml(lot.lot_numero)} | DLC ${formatDate(lot.lot_dlc)}
       </div>
     </div>`;
 }
 
-function attachListenersManuel() {
-  elLots.querySelectorAll('.fab-lot-manquant-input').forEach(input => {
-    input.addEventListener('input', syncLotsManuel);
-  });
+function htmlLigneManquante(ingId, ingNom) {
+  return `
+    <div class="fab-lot-ligne fab-lot-ligne--manquant" data-pid="${ingId}">
+      <span class="fab-lot-manquant-icon">⚠</span>
+      <div class="fab-lot-nom">${escHtml(ingNom)}</div>
+      <button class="fab-lot-btn-remplacer"
+              data-pid="${ingId}"
+              data-nom="${escHtml(ingNom)}"
+              aria-label="Remplacer le lot de ${escHtml(ingNom)}">
+        🔄 Remplacer
+      </button>
+    </div>`;
 }
 
-function syncLotsManuel() {
-  state.lotsManuel = {};
-  elLots.querySelectorAll('.fab-lot-ligne--manquant').forEach(ligne => {
-    const pid = ligne.dataset.pid;
-    const numeroLot = ligne.querySelector('[data-field="numero_lot"]')?.value?.trim() ?? '';
-    const dlc       = ligne.querySelector('[data-field="dlc"]')?.value?.trim() ?? '';
-    state.lotsManuel[pid] = { numero_lot: numeroLot, dlc };
-  });
+// ── Substitution produit — logique modale ─────────────────────
+let subPidCourant = null;
+let subNomCourant = null;
+
+elLots.addEventListener('click', async e => {
+  const btn = e.target.closest('.fab-lot-btn-remplacer');
+  if (!btn) return;
+  subPidCourant = btn.dataset.pid;
+  subNomCourant = btn.dataset.nom;
+  await ouvrirModalSubstitution(subNomCourant);
+});
+
+async function ouvrirModalSubstitution(ingNom) {
+  elSubTitre.textContent = `Substitut pour : ${ingNom}`;
+  elSubGrid.innerHTML = `<div class="fab-chargement">Recherche de produits…</div>`;
+  elSubOverlay.hidden = false;
+
+  try {
+    const produits = await apiFetch('/api/produits?type=brut');
+
+    // Filtre : premier mot-clé du nom de l'ingrédient
+    const motCle = (ingNom ?? '').trim().split(/[\s\-_]+/)[0].toUpperCase();
+    const filtres = produits.filter(p =>
+      (p.nom ?? '').toUpperCase().includes(motCle)
+    );
+
+    if (filtres.length === 0) {
+      elSubGrid.innerHTML = `
+        <div class="fab-sub-vide">
+          Aucun produit trouvé pour « ${escHtml(motCle)} ».<br>
+          Contactez votre responsable.
+        </div>`;
+      return;
+    }
+
+    elSubGrid.innerHTML = filtres.map(p => `
+      <div class="fab-sub-tuile" data-produit-id="${p.id}"
+           data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0">
+        <div class="fab-sub-tuile-icon">📦</div>
+        <div class="fab-sub-tuile-nom">${escHtml(p.nom)}</div>
+        ${p.stock != null
+          ? `<div class="fab-sub-tuile-stock">${p.stock} ${escHtml(p.unite ?? '')}</div>`
+          : ''}
+      </div>
+    `).join('');
+  } catch (err) {
+    elSubGrid.innerHTML = `<div class="fab-sub-vide">Erreur : ${escHtml(err.message)}</div>`;
+  }
 }
+
+elSubGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.fab-sub-tuile');
+  if (!tuile) return;
+  validerSubstitution(tuile.dataset.produitId, tuile.dataset.produitNom);
+});
+
+elSubGrid.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const tuile = e.target.closest('.fab-sub-tuile');
+  if (tuile) { e.preventDefault(); validerSubstitution(tuile.dataset.produitId, tuile.dataset.produitNom); }
+});
+
+function validerSubstitution(produitId, produitNom) {
+  // Enregistre la substitution
+  state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
+
+  // Met à jour la ligne dans le DOM → verte
+  const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
+  if (ligne) {
+    ligne.outerHTML = `
+      <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
+        <span class="fab-lot-check">✓</span>
+        <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
+        <div class="fab-lot-info fab-lot-sub-badge">→ ${escHtml(produitNom)} (substitut)</div>
+      </div>`;
+  }
+
+  elSubOverlay.hidden = true;
+}
+
+elSubCancel.addEventListener('click', () => { elSubOverlay.hidden = true; });
+elSubOverlay.addEventListener('click', e => {
+  if (e.target === elSubOverlay) elSubOverlay.hidden = true;
+});
 
 elBtnConfLots.addEventListener('click', () => {
-  syncLotsManuel();
   afficherRecap();
   allerEtape(4);
 });
@@ -365,18 +490,23 @@ function afficherRecap() {
   const diff = Math.ceil((dlcDate - today) / 86400000);
   const dlcClass = diff > 2 ? 'fab-recap-dlc--ok' : 'fab-recap-dlc--attention';
 
-  // Construit une map lot par produit_id (FIFO en priorité, manuel en fallback)
+  // Poids total fabriqué
+  const poidsTotal = state.productionCiblee > 0
+    ? `${state.productionCiblee} ${state.rendementUnite}`
+    : '—';
+
+  // Map lot par produit_id
   const lotsMap = {};
   (state.fifoLots ?? []).forEach(lot => {
     if (lot.lot_numero) lotsMap[String(lot.ingredient_id)] = lot.lot_numero;
   });
-  Object.entries(state.lotsManuel).forEach(([pid, v]) => {
-    if (v.numero_lot) lotsMap[String(pid)] = v.numero_lot;
+  Object.entries(state.lotsSubstitues).forEach(([pid, v]) => {
+    lotsMap[String(pid)] = `Substitut : ${v.nom}`;
   });
 
   const linesHtml = state.ingredients.map(ing => {
-    const qty   = state.quantities[ing.produit_id] ?? 0;
-    const lot   = lotsMap[String(ing.produit_id)] ?? '—';
+    const qty = state.quantities[ing.produit_id] ?? 0;
+    const lot = lotsMap[String(ing.produit_id)] ?? '—';
     return `
       <div class="fab-recap-ing-ligne">
         <span class="fab-recap-ing-nom">${escHtml(ing.nom)}</span>
@@ -388,6 +518,7 @@ function afficherRecap() {
   elRecap.innerHTML = `
     <div class="fab-recap-recette">${escHtml(state.recetteNom)}</div>
     <div class="fab-recap-date">Fabrication du ${dateFabFmt}</div>
+    <div class="fab-recap-poids">⚖ ${escHtml(poidsTotal)} fabriqués</div>
     <div class="fab-recap-dlc ${dlcClass}">DLC : ${dlcFmt}</div>
     <div class="fab-recap-sep"></div>
     <div class="fab-recap-ing-titre">Ingrédients &amp; lots</div>
@@ -408,11 +539,10 @@ elBtnGenerer.addEventListener('click', async () => {
     return;
   }
 
-  // Construit le tableau lots_utilises
-  const lotsUtilises = [];
-  const lotsParPid   = {};
+  // Construit la map lots par produit_id
+  const lotsParPid = {};
 
-  // Lots FIFO valides
+  // 1) Lots FIFO valides
   (state.fifoLots ?? []).forEach(lot => {
     const pid = String(lot.ingredient_id);
     lotsParPid[pid] = {
@@ -423,8 +553,21 @@ elBtnGenerer.addEventListener('click', async () => {
     };
   });
 
-  // Surcharge / complète avec les lots saisis manuellement
-  Object.entries(state.lotsManuel).forEach(([pid, v]) => {
+  // 2) Lots manquants non substitués (ingrédients sans FIFO et sans substitut)
+  if (Object.keys(lotsParPid).length === 0) {
+    state.ingredients.forEach(ing => {
+      const pid = String(ing.produit_id);
+      lotsParPid[pid] = {
+        ingredient_id: ing.produit_id,
+        lot_numero:    null,
+        lot_dlc:       null,
+        quantite:      state.quantities[pid] ?? 0,
+      };
+    });
+  }
+
+  // 3) Substituts (pas de lot, lot_numero null)
+  Object.entries(state.lotsSubstitues).forEach(([pid, _v]) => {
     if (!lotsParPid[pid]) {
       lotsParPid[pid] = {
         ingredient_id: Number(pid),
@@ -433,29 +576,15 @@ elBtnGenerer.addEventListener('click', async () => {
         quantite:      state.quantities[pid] ?? 0,
       };
     }
-    if (v.numero_lot) lotsParPid[pid].lot_numero = v.numero_lot;
-    if (v.dlc)        lotsParPid[pid].lot_dlc    = v.dlc;
+    // Lot déjà absent, la substitution est validée côté front seulement
   });
 
-  // Cas où fifoLots est vide : tous les ingrédients vont en manquants
-  if (Object.keys(lotsParPid).length === 0) {
-    state.ingredients.forEach(ing => {
-      const pid = String(ing.produit_id);
-      const manuel = state.lotsManuel[pid] ?? {};
-      lotsParPid[pid] = {
-        ingredient_id: ing.produit_id,
-        lot_numero:    manuel.numero_lot || null,
-        lot_dlc:       manuel.dlc || null,
-        quantite:      state.quantities[pid] ?? 0,
-      };
-    });
-  }
-
-  Object.values(lotsParPid).forEach(l => lotsUtilises.push(l));
+  const lotsUtilises = Object.values(lotsParPid);
 
   const payload = {
     recette_id:    state.recetteId,
     personnel_id:  Number(personnelId),
+    poids_total:   state.productionCiblee || null,
     lots_utilises: lotsUtilises,
   };
 
@@ -484,23 +613,24 @@ elBtnGenerer.addEventListener('click', async () => {
 // ─────────────────────────────────────────────────────────────
 elBtnMemeRecette.addEventListener('click', async () => {
   elSucces.hidden = true;
-  // Conserve la recette, recharge les ingrédients et repart à l'étape 2
   await chargerIngredientsRecette(state.recetteId);
   allerEtape(2);
 });
 
 elBtnNouvelleFab.addEventListener('click', () => {
   elSucces.hidden = true;
-  // Réinitialise tout
   Object.assign(state, {
     recetteId: null, recetteNom: null, recetteDlcJours: null,
-    ingredients: [], quantities: {}, fifoLots: [], lotsManuel: {},
+    rendementBase: null, rendementUnite: 'kg', productionCiblee: 0,
+    ingredients: [], quantities: {}, fifoLots: [], lotsSubstitues: {},
   });
-  elSearch.value = '';
-  elOperateur.value = '';
-  elErreur.hidden = true;
-  elBandeau.hidden = true;
-  // Ramène toutes les étapes à leur position initiale
+  elSearch.value     = '';
+  elProdCiblee.value = '';
+  elOperateur.value  = '';
+  elErreur.hidden    = true;
+  elCalcErreur.hidden = true;
+  elBandeau.hidden   = true;
+
   [2, 3, 4].forEach(n => {
     const el = document.getElementById(`fab-step-${n}`);
     el.classList.remove('fab-step--active', 'fab-step--left');
