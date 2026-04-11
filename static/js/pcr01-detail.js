@@ -123,6 +123,8 @@ async function charger() {
     // Récupérer la réception liée pour : opérateur + lot_interne
     let operateurPrenom = '—';
     let lotInterne = false;
+    let dlc  = null;
+    let dluo = null;
     if (fiche.reception_id) {
       try {
         const rec = await apiFetch(`/api/receptions/${fiche.reception_id}`);
@@ -130,12 +132,16 @@ async function charger() {
         // Trouver la ligne correspondante pour savoir si c'est un lot interne
         if (fiche.reception_ligne_id && rec.lignes) {
           const ligne = rec.lignes.find(l => l.id === fiche.reception_ligne_id);
-          if (ligne) lotInterne = !!ligne.lot_interne;
+          if (ligne) {
+            lotInterne = !!ligne.lot_interne;
+            dlc   = ligne.dlc   || null;
+            dluo  = ligne.dluo  || null;
+          }
         }
       } catch { /* opérateur inconnu */ }
     }
 
-    afficherFiche(fiche, operateurPrenom, lotInterne);
+    afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo);
   } catch (err) {
     elMain.innerHTML = `<div style="padding:24px;text-align:center;color:#C93030;"><div style="font-size:48px;margin-bottom:12px;">⚠️</div><div>Erreur : ${err.message}</div></div>`;
   }
@@ -176,7 +182,7 @@ function creerChampLigne(label, valeur, extraClass) {
 }
 
 // ── Affichage ────────────────────────────────────────────────
-function afficherFiche(fiche, operateurPrenom, lotInterne) {
+function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
   elMain.innerHTML = '';
 
   // ── En-tête ──────────────────────────────────────────
@@ -218,6 +224,13 @@ function afficherFiche(fiche, operateurPrenom, lotInterne) {
   if (fiche.numero_lot) {
     const lotLabel = lotInterne ? 'N° lot interne' : 'N° lot';
     corpsProduit.appendChild(creerChampLigne(lotLabel, fiche.numero_lot));
+  }
+
+  // DLC / DLUO
+  const dlcVal   = dlc || dluo;
+  const dlcLabel = dluo ? 'DLUO' : 'DLC';
+  if (dlcVal) {
+    corpsProduit.appendChild(creerChampLigne(dlcLabel, dlcVal));
   }
 
   // Non-conformité (nature_probleme traduite)
