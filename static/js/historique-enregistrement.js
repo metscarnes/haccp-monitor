@@ -590,7 +590,7 @@ function recRemplirDetail(el, rec) {
   });
   btnActions.appendChild(btnFiche);
 
-  // Afficher le bouton PCR01 uniquement s'il y a des NC
+  // Afficher le bouton PCR01 seulement s'il y a des NC
   if (rec.nb_nc > 0) {
     const btnPcr = document.createElement('button');
     btnPcr.style.cssText = 'flex:1;background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;';
