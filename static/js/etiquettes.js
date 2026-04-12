@@ -47,6 +47,30 @@ function arrondir(v) {
   return Math.round(v * 100) / 100;
 }
 
+// ── Modale confirmation personnalisée (remplace window.confirm) ───────────
+function afficherCustomConfirm(titre, message, callbackOui) {
+  const overlay  = document.getElementById('modal-custom-confirm');
+  const elTitre  = document.getElementById('custom-confirm-title');
+  const elMsg    = document.getElementById('custom-confirm-message');
+  const btnOk    = document.getElementById('custom-confirm-ok');
+  const btnCancel = document.getElementById('custom-confirm-cancel');
+
+  elTitre.textContent = titre;
+  elMsg.textContent   = message;
+  overlay.style.display = 'flex';
+
+  function fermer() {
+    overlay.style.display = 'none';
+    btnOk.removeEventListener('click', onOk);
+    btnCancel.removeEventListener('click', onCancel);
+  }
+  function onOk()     { fermer(); callbackOui(); }
+  function onCancel() { fermer(); }
+
+  btnOk.addEventListener('click', onOk);
+  btnCancel.addEventListener('click', onCancel);
+}
+
 // ── État global ───────────────────────────────────────────────
 const state = {
   etape:            1,
@@ -450,6 +474,11 @@ function filtrerProduitsIntelligent(produits, ingNom) {
 }
 
 function htmlSubTuile(p) {
+  const lotInfo = (p.numero_lot || p.dlc)
+    ? `<div style="font-size:.75rem;color:#6b7280;margin-top:.35rem">
+         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | DLC&nbsp;: ${formatDate(p.dlc)}
+       </div>`
+    : '';
   return `
     <div class="fab-sub-tuile" data-produit-id="${p.id}"
          data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0">
@@ -458,6 +487,7 @@ function htmlSubTuile(p) {
       ${p.stock != null
         ? `<div class="fab-sub-tuile-stock">${p.stock} ${escHtml(p.unite ?? '')}</div>`
         : ''}
+      ${lotInfo}
     </div>`;
 }
 
@@ -542,38 +572,79 @@ elSubGrid.addEventListener('keydown', e => {
 });
 
 function validerSubstitution(produitId, produitNom) {
-  // Confirmation selon le niveau actif
+  // Logique commune exécutée après confirmation (quelle que soit la modale)
+  function confirmerEtEnregistrer() {
+    // Récupère le vrai lot FIFO du produit substitut
+    apiFetch(`/api/fabrications/produit-fifo/${produitId}`)
+      .then(data => {
+        // Met à jour state.fifoLots avec les vraies données du nouveau lot
+        const lot = state.fifoLots.find(l =>
+          String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
+        );
+        if (lot) {
+          lot.lot_fifo = {
+            reception_ligne_id: data.id,
+            numero_lot:         data.numero_lot,
+            dlc:                data.dlc,
+          };
+          lot.produit_nom    = produitNom + ' (substitut)';
+          lot.ingredient_nom = produitNom + ' (substitut)';
+        }
+
+        state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
+
+        // Rafraîchit la ligne → verte avec les vraies infos FIFO
+        const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
+        if (ligne) {
+          ligne.outerHTML = `
+            <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
+              <span class="fab-lot-check">✓</span>
+              <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
+              <div class="fab-lot-info fab-lot-sub-badge">
+                → ${escHtml(produitNom)} (substitut)
+                | Lot ${escHtml(data.numero_lot ?? '—')}
+                | DLC ${formatDate(data.dlc)}
+              </div>
+            </div>`;
+        }
+      })
+      .catch(() => {
+        // L'API n'a pas de lot — on enregistre quand même la substitution sans données FIFO
+        state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
+        const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
+        if (ligne) {
+          ligne.outerHTML = `
+            <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
+              <span class="fab-lot-check">✓</span>
+              <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
+              <div class="fab-lot-info fab-lot-sub-badge">→ ${escHtml(produitNom)} (substitut)</div>
+            </div>`;
+        }
+      })
+      .finally(() => { elSubOverlay.hidden = true; });
+  }
+
+  // Demande de confirmation selon le niveau actif
   if (subModeManuel) {
     // Niveau 4 — alerte critique rouge
-    const ok = window.confirm(
-      `🚨 ALERTE CRITIQUE : Ce produit n'est pas issu du filtrage recommandé.\n\n` +
+    afficherCustomConfirm(
+      '🚨 ALERTE CRITIQUE',
+      `Ce produit n'est pas issu du filtrage recommandé.\n\n` +
       `Vous sélectionnez "${produitNom}" en mode manuel.\n\n` +
-      `Confirmez-vous ce choix sous votre responsabilité ?`
+      `Confirmez-vous ce choix sous votre responsabilité ?`,
+      confirmerEtEnregistrer
     );
-    if (!ok) return;
   } else if (produitNom !== subNomCourant) {
-    // Niveau 3 — substitution sémantique hors correspondance exacte
-    const ok = window.confirm(
-      `⚠️ Substitution : Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`
+    // Niveau 3 — substitution sémantique
+    afficherCustomConfirm(
+      '⚠️ Substitution',
+      `Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`,
+      confirmerEtEnregistrer
     );
-    if (!ok) return;
+  } else {
+    // Même nom : pas de confirmation nécessaire
+    confirmerEtEnregistrer();
   }
-
-  // Enregistre la substitution
-  state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
-
-  // Met à jour la ligne dans le DOM → verte
-  const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
-  if (ligne) {
-    ligne.outerHTML = `
-      <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
-        <span class="fab-lot-check">✓</span>
-        <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
-        <div class="fab-lot-info fab-lot-sub-badge">→ ${escHtml(produitNom)} (substitut)</div>
-      </div>`;
-  }
-
-  elSubOverlay.hidden = true;
 }
 
 elSubCancel.addEventListener('click', () => { elSubOverlay.hidden = true; });

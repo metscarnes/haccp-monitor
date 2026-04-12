@@ -81,23 +81,52 @@ async def lister_produits(
 ):
     async with get_db() as db:
         if en_stock:
-            # Filtre stock réel : produit doit avoir au moins une ligne de réception
+            # Filtre stock réel : produit doit avoir au moins une ligne de réception.
+            # On joint le lot FIFO (DLC la plus courte → date réception la plus ancienne)
+            # pour exposer numero_lot, dlc et reception_ligne_id sur chaque produit.
+            _fifo_sub = """
+                (SELECT rl2.numero_lot FROM reception_lignes rl2
+                 JOIN receptions r2 ON r2.id = rl2.reception_id
+                 WHERE rl2.produit_id = p.id
+                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
+                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+            """
+            _fifo_dlc = """
+                (SELECT rl2.dlc FROM reception_lignes rl2
+                 JOIN receptions r2 ON r2.id = rl2.reception_id
+                 WHERE rl2.produit_id = p.id
+                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
+                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+            """
+            _fifo_id = """
+                (SELECT rl2.id FROM reception_lignes rl2
+                 JOIN receptions r2 ON r2.id = rl2.reception_id
+                 WHERE rl2.produit_id = p.id
+                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
+                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+            """
             if type:
                 cursor = await db.execute(
-                    """
-                    SELECT DISTINCT p.* FROM produits p
-                    INNER JOIN reception_lignes rl ON rl.produit_id = p.id
+                    f"""
+                    SELECT p.*, {_fifo_sub} AS numero_lot,
+                           {_fifo_dlc} AS dlc,
+                           {_fifo_id}  AS reception_ligne_id
+                    FROM produits p
                     WHERE p.boutique_id = ? AND p.actif = 1 AND p.type_produit = ?
+                      AND EXISTS (SELECT 1 FROM reception_lignes rl WHERE rl.produit_id = p.id)
                     ORDER BY p.nom
                     """,
                     (BOUTIQUE_ID, type),
                 )
             else:
                 cursor = await db.execute(
-                    """
-                    SELECT DISTINCT p.* FROM produits p
-                    INNER JOIN reception_lignes rl ON rl.produit_id = p.id
+                    f"""
+                    SELECT p.*, {_fifo_sub} AS numero_lot,
+                           {_fifo_dlc} AS dlc,
+                           {_fifo_id}  AS reception_ligne_id
+                    FROM produits p
                     WHERE p.boutique_id = ? AND p.actif = 1
+                      AND EXISTS (SELECT 1 FROM reception_lignes rl WHERE rl.produit_id = p.id)
                     ORDER BY p.nom
                     """,
                     (BOUTIQUE_ID,),

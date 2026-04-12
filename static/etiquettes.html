@@ -295,6 +295,35 @@
     </div>
   </div>
 
+  <!-- ── Modale confirmation personnalisée (remplace window.confirm) ── -->
+  <div id="modal-custom-confirm"
+       style="display:none;position:fixed;inset:0;z-index:9999;
+              background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+    <div style="background:#F5ECD7;color:#3D2008;border-radius:1.25rem;padding:2rem 1.75rem;
+                max-width:420px;width:92%;text-align:center;
+                box-shadow:0 8px 40px rgba(0,0,0,.45)">
+      <div id="custom-confirm-title"
+           style="font-size:1.35rem;font-weight:800;margin-bottom:.6rem;line-height:1.3"></div>
+      <div id="custom-confirm-message"
+           style="font-size:1rem;line-height:1.55;margin-bottom:1.75rem;
+                  white-space:pre-line;opacity:.9"></div>
+      <div style="display:flex;gap:1rem">
+        <button id="custom-confirm-cancel"
+                style="flex:1;padding:1rem .5rem;border:none;border-radius:.85rem;
+                       background:#9E8572;color:#fff;font-size:1.05rem;font-weight:700;
+                       cursor:pointer;touch-action:manipulation">
+          Annuler
+        </button>
+        <button id="custom-confirm-ok"
+                style="flex:1;padding:1rem .5rem;border:none;border-radius:.85rem;
+                       background:#C0392B;color:#fff;font-size:1.05rem;font-weight:700;
+                       cursor:pointer;touch-action:manipulation">
+          Confirmer
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/etiquettes.js"></script>
 </body>
 </html>

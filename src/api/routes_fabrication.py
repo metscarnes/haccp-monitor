@@ -129,6 +129,44 @@ async def fifo_lots(recette_id: int = Query(..., description="ID de la recette �
 
 
 # ---------------------------------------------------------------------------
+# B2. Lot FIFO unitaire pour un produit donné (utilisé par le wizard substitution)
+# ---------------------------------------------------------------------------
+
+@router.get("/fabrications/produit-fifo/{produit_id}")
+async def fifo_produit(produit_id: int):
+    """
+    Retourne le meilleur lot FIFO disponible pour un produit donné :
+    la ligne de reception_lignes avec la DLC la plus courte
+    (à égalité : date de réception la plus ancienne).
+
+    Retourne 404 si aucune réception n'existe pour ce produit.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT rl.id              AS id,
+                   rl.numero_lot,
+                   rl.dlc,
+                   rl.poids_kg,
+                   r.date_reception
+            FROM   reception_lignes rl
+            JOIN   receptions r ON r.id = rl.reception_id
+            WHERE  rl.produit_id = ?
+            ORDER BY
+                CASE WHEN rl.dlc IS NOT NULL THEN 0 ELSE 1 END,
+                rl.dlc           ASC,
+                r.date_reception ASC
+            LIMIT 1
+            """,
+            (produit_id,),
+        )
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Aucun lot disponible pour ce produit")
+    return dict(row)
+
+
+# ---------------------------------------------------------------------------
 # C. Enregistrement d'une fabrication
 # ---------------------------------------------------------------------------
 
