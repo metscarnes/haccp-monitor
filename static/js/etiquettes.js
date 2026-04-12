@@ -905,7 +905,23 @@ elBtnGenerer.addEventListener('click', async () => {
       const li = document.createElement('li');
       const nom    = lot.produit_nom ?? lot.ingredient_nom ?? '?';
       const numLot = lot.lot_fifo?.numero_lot ?? 'N/A';
-      li.textContent = `${nom} (Lot : ${numLot})`;
+
+      // DLC de l'ingrédient — format court DD/MM/AA pour gagner de la place
+      let dlcIng = 'N/A';
+      if (lot.lot_fifo?.dlc) {
+        dlcIng = new Date(lot.lot_fifo.dlc).toLocaleDateString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: '2-digit',
+        });
+      }
+
+      // Quantité — dans state.quantities[produit_id], jointure via state.ingredients
+      const riId  = lot.recette_ingredient_id ?? lot.ingredient_id;
+      const ing   = state.ingredients.find(i => String(i.recette_ingredient_id) === String(riId));
+      const qte   = ing ? (state.quantities[ing.produit_id] ?? '') : '';
+      const unite = ing?.unite ?? '';
+      const qteTexte = qte !== '' ? `${qte}${unite} ` : '';
+
+      li.textContent = `${qteTexte}${nom} (L:${numLot} | DLC:${dlcIng})`;
       ulIngredients.appendChild(li);
     });
 
