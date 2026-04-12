@@ -1003,6 +1003,16 @@ function fabCreerCarte(fab) {
     cInfo.textContent = fab.info_complementaire;
     chips.appendChild(cInfo);
   }
+
+  const btnPrint = document.createElement('button');
+  btnPrint.className = 'he-btn-reimprimer';
+  btnPrint.textContent = '🖨 Imprimer';
+  btnPrint.addEventListener('click', e => {
+    e.stopPropagation();
+    fabReimprimer(fab);
+  });
+  chips.appendChild(btnPrint);
+
   info.appendChild(chips);
   resume.appendChild(info);
 
@@ -1074,6 +1084,40 @@ function fabRemplirIngredients(el, ingredients) {
   });
 
   el.appendChild(liste);
+}
+
+// ── Ré-impression d'un ticket depuis l'historique ────────────
+function fabReimprimer(fab) {
+  const dlcFormatee = fab.dlc_finale
+    ? fab.dlc_finale.split('-').reverse().join('/')
+    : '--/--/----';
+
+  document.getElementById('print-nom').textContent = fab.recette_nom || '—';
+
+  // Le poids n'est pas stocké en BDD — on affiche info_complementaire si renseigné
+  const elPoids = document.getElementById('print-poids');
+  elPoids.textContent = fab.info_complementaire || '';
+  elPoids.hidden = !fab.info_complementaire;
+
+  document.getElementById('print-dlc').textContent = dlcFormatee;
+  document.getElementById('print-lot').textContent = `Lot : ${fab.lot_interne || '—'}`;
+  document.getElementById('print-meta').textContent =
+    `Fabriqué le ${formatDateFR(fab.date)} par ${fab.personnel_prenom || '—'}`;
+
+  const ul = document.getElementById('print-ingredients');
+  ul.innerHTML = '';
+  (fab.ingredients || []).forEach(ing => {
+    const li     = document.createElement('li');
+    const nom    = ing.produit_nom || '?';
+    const lot    = ing.numero_lot || 'N/A';
+    const dlcIng = ing.dlc
+      ? new Date(ing.dlc).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+      : 'N/A';
+    li.textContent = `${nom} (L:${lot} | DLC:${dlcIng})`;
+    ul.appendChild(li);
+  });
+
+  setTimeout(() => window.print(), 100);
 }
 
 // ── Boutons fabrications ─────────────────────────────────────
