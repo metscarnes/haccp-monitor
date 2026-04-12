@@ -21,6 +21,7 @@ from src.database import (
     create_recette,
     get_fifo_lots,
     create_fabrication,
+    get_fabrications_historique,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,35 @@ async def fifo_produit(produit_id: int):
 
 
 # ---------------------------------------------------------------------------
-# C. Enregistrement d'une fabrication
+# C. Historique des fabrications
+# ---------------------------------------------------------------------------
+
+@router.get("/fabrications")
+async def historique_fabrications(
+    date_debut: Optional[str] = Query(None, description="Date de début (YYYY-MM-DD)"),
+    date_fin:   Optional[str] = Query(None, description="Date de fin (YYYY-MM-DD)"),
+    recette_id: Optional[int] = Query(None, description="Filtrer par recette"),
+    limit:  int = Query(50, ge=1, le=200),
+    offset: int = Query(0,  ge=0),
+):
+    """
+    Retourne la liste des fabrications avec, pour chaque fabrication,
+    les ingrédients utilisés (produit, lot, DLC).
+    """
+    async with get_db() as db:
+        fabrications = await get_fabrications_historique(
+            db,
+            date_debut=date_debut,
+            date_fin=date_fin,
+            recette_id=recette_id,
+            limit=limit,
+            offset=offset,
+        )
+    return fabrications
+
+
+# ---------------------------------------------------------------------------
+# D. Enregistrement d'une fabrication
 # ---------------------------------------------------------------------------
 
 @router.post("/fabrications", status_code=201)

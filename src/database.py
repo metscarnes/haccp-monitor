@@ -2651,3 +2651,74 @@ async def create_fabrication(
     )
     row = await cur2.fetchone()
     return dict(row)
+
+
+async def get_fabrications_historique(
+    db: aiosqlite.Connection,
+    date_debut: Optional[str] = None,
+    date_fin: Optional[str] = None,
+    recette_id: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list:
+    """
+    Retourne la liste des fabrications (ordre anti-chronologique) avec,
+    pour chaque fabrication, la liste des ingrédients utilisés.
+    """
+    conditions: list[str] = []
+    params: list = []
+
+    if date_debut:
+        conditions.append("f.date >= ?")
+        params.append(date_debut)
+    if date_fin:
+        conditions.append("f.date <= ?")
+        params.append(date_fin)
+    if recette_id is not None:
+        conditions.append("f.recette_id = ?")
+        params.append(recette_id)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    cur = await db.execute(
+        f"""
+        SELECT
+            f.id,
+            f.lot_interne,
+            f.date,
+            f.info_complementaire,
+            r.nom       AS recette_nom,
+            pe.prenom   AS personnel_prenom
+        FROM fabrications f
+        JOIN recettes  r  ON r.id  = f.recette_id
+        JOIN personnel pe ON pe.id = f.personnel_id
+        {where}
+        ORDER BY f.date DESC, f.id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (*params, limit, offset),
+    )
+    rows = await cur.fetchall()
+    fabrications = [dict(r) for r in rows]
+
+    for fab in fabrications:
+        cur2 = await db.execute(
+            """
+            SELECT
+                p.nom           AS produit_nom,
+                rl.numero_lot,
+                rl.dlc,
+                ri.unite
+            FROM fabrication_lots fl
+            JOIN recette_ingredients ri ON ri.id  = fl.recette_ingredient_id
+            JOIN produits           p   ON p.id   = ri.produit_id
+            LEFT JOIN reception_lignes rl ON rl.id = fl.reception_ligne_id
+            WHERE fl.fabrication_id = ?
+            ORDER BY p.nom
+            """,
+            (fab["id"],),
+        )
+        ing_rows = await cur2.fetchall()
+        fab["ingredients"] = [dict(r) for r in ing_rows]
+
+    return fabrications

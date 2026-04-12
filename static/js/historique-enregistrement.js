@@ -9,8 +9,10 @@ const elHorloge = document.getElementById('he-horloge');
 const elBtnRetour = document.getElementById('he-btn-retour');
 const elTabOuv = document.getElementById('he-tab-ouv');
 const elTabRec = document.getElementById('he-tab-rec');
+const elTabFab = document.getElementById('he-tab-fab');
 const elContentOuv = document.getElementById('he-content-ouv');
 const elContentRec = document.getElementById('he-content-rec');
+const elContentFab = document.getElementById('he-content-fab');
 
 // ── Onglet Ouvertures ────────────────────────────────────────
 const ouvRefs = {
@@ -26,6 +28,20 @@ const ouvRefs = {
   icone: document.getElementById('he-ouv-icone'),
   texte: document.getElementById('he-ouv-texte'),
   plus: document.getElementById('he-ouv-plus'),
+};
+
+// ── Onglet Fabrications ──────────────────────────────────────
+const fabRefs = {
+  debut:    document.getElementById('he-fab-debut'),
+  fin:      document.getElementById('he-fab-fin'),
+  filtrer:  document.getElementById('he-fab-filtrer'),
+  reset:    document.getElementById('he-fab-reset'),
+  compteur: document.getElementById('he-fab-compteur'),
+  liste:    document.getElementById('he-fab-liste'),
+  message:  document.getElementById('he-fab-message'),
+  icone:    document.getElementById('he-fab-icone'),
+  texte:    document.getElementById('he-fab-texte'),
+  plus:     document.getElementById('he-fab-plus'),
 };
 
 // ── Onglet Réceptions ────────────────────────────────────────
@@ -63,6 +79,12 @@ const recState = {
   totalCharges: 0,
   debounce: null,
   inactivite: null,
+};
+
+const fabState = {
+  offset: 0,
+  totalCharges: 0,
+  charge: false,   // true une fois le 1er chargement effectué
 };
 
 const LIMIT = 50;
@@ -132,17 +154,27 @@ function initDates(refs) {
   refs.debut.value = il7.toISOString().slice(0, 10);
 }
 
-function basculerTab(tabActuel, tabNouveau, contentActuel, contentNouveau) {
-  tabActuel.classList.remove('actif');
-  tabActuel.setAttribute('aria-selected', 'false');
-  tabNouveau.classList.add('actif');
-  tabNouveau.setAttribute('aria-selected', 'true');
-  contentActuel.classList.remove('actif');
-  contentNouveau.classList.add('actif');
+const TOUS_TABS = [
+  { btn: elTabOuv, content: elContentOuv },
+  { btn: elTabRec, content: elContentRec },
+  { btn: elTabFab, content: elContentFab },
+];
+
+function basculerTab(tabNouveau, contentNouveau) {
+  TOUS_TABS.forEach(({ btn, content }) => {
+    const actif = btn === tabNouveau;
+    btn.classList.toggle('actif', actif);
+    btn.setAttribute('aria-selected', String(actif));
+    content.classList.toggle('actif', actif);
+  });
 }
 
-elTabOuv.addEventListener('click', () => basculerTab(elTabRec, elTabOuv, elContentRec, elContentOuv));
-elTabRec.addEventListener('click', () => basculerTab(elTabOuv, elTabRec, elContentOuv, elContentRec));
+elTabOuv.addEventListener('click', () => basculerTab(elTabOuv, elContentOuv));
+elTabRec.addEventListener('click', () => basculerTab(elTabRec, elContentRec));
+elTabFab.addEventListener('click', () => {
+  basculerTab(elTabFab, elContentFab);
+  if (!fabState.charge) fabCharger();
+});
 
 // ══════════════════════════════════════════════════════════════
 // ONGLET OUVERTURES
@@ -832,11 +864,211 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !elModal.hidden) fermerModal();
 });
 
+// ══════════════════════════════════════════════════════════════
+// ONGLET FABRICATIONS
+// ══════════════════════════════════════════════════════════════
+
+function fabBuildUrl(offset = 0) {
+  const p = new URLSearchParams();
+  p.set('limit', String(LIMIT));
+  p.set('offset', String(offset));
+  if (fabRefs.debut.value) p.set('date_debut', fabRefs.debut.value);
+  if (fabRefs.fin.value)   p.set('date_fin',   fabRefs.fin.value);
+  return `/api/fabrications?${p.toString()}`;
+}
+
+async function fabCharger() {
+  fabState.offset = 0;
+  fabState.totalCharges = 0;
+  fabState.charge = true;
+  fabRefs.liste.innerHTML = '';
+  fabRefs.plus.hidden = true;
+  fabRefs.compteur.textContent = '';
+  fabAfficherMessage('⏳', 'Chargement…');
+
+  try {
+    const rows = await apiFetch(fabBuildUrl(0));
+    fabMasquerMessage();
+    fabAjouterResultats(rows);
+  } catch (err) {
+    fabAfficherMessage('⚠️', `Erreur : ${err.message}`);
+  }
+}
+
+async function fabChargerSuite() {
+  fabRefs.plus.disabled = true;
+  fabRefs.plus.textContent = 'Chargement…';
+  try {
+    const rows = await apiFetch(fabBuildUrl(fabState.offset));
+    fabAjouterResultats(rows);
+  } catch (err) {
+    fabRefs.plus.disabled = false;
+    fabRefs.plus.textContent = 'Voir plus…';
+    alert(`Erreur : ${err.message}`);
+  }
+}
+
+function fabAjouterResultats(rows) {
+  if (rows.length === 0 && fabState.totalCharges === 0) {
+    fabAfficherMessage('🔍', 'Aucune fabrication trouvée.');
+    return;
+  }
+
+  rows.forEach(fab => fabRefs.liste.appendChild(fabCreerCarte(fab)));
+
+  fabState.offset       += rows.length;
+  fabState.totalCharges += rows.length;
+  fabMajCompteur();
+
+  if (rows.length === LIMIT) {
+    fabRefs.plus.hidden = false;
+    fabRefs.plus.disabled = false;
+    fabRefs.plus.textContent = 'Voir plus…';
+  } else {
+    fabRefs.plus.hidden = true;
+  }
+}
+
+function fabMajCompteur() {
+  fabRefs.compteur.textContent = fabState.totalCharges === 1
+    ? '1 fabrication'
+    : `${fabState.totalCharges} fabrications`;
+}
+
+function fabAfficherMessage(icone, texte) {
+  fabRefs.icone.textContent = icone;
+  fabRefs.texte.textContent = texte;
+  fabRefs.message.hidden = false;
+}
+function fabMasquerMessage() { fabRefs.message.hidden = true; }
+
+function fabCreerCarte(fab) {
+  const carte = document.createElement('div');
+  carte.className = 'he-carte-fab';
+  carte.setAttribute('role', 'listitem');
+
+  // ── Résumé (cliquable) ───────────────────────────────────
+  const resume = document.createElement('div');
+  resume.className = 'he-carte-fab-resume';
+
+  const icone = document.createElement('div');
+  icone.className = 'he-fab-icone';
+  icone.setAttribute('aria-hidden', 'true');
+  icone.textContent = '🏭';
+  resume.appendChild(icone);
+
+  const info = document.createElement('div');
+  info.className = 'he-carte-fab-info';
+
+  const entete = document.createElement('div');
+  entete.className = 'he-fab-entete';
+
+  const nom = document.createElement('div');
+  nom.className = 'he-fab-nom';
+  nom.textContent = fab.recette_nom || '—';
+  entete.appendChild(nom);
+
+  const lot = document.createElement('span');
+  lot.className = 'he-fab-lot';
+  lot.textContent = fab.lot_interne || '—';
+  entete.appendChild(lot);
+  info.appendChild(entete);
+
+  const meta = document.createElement('div');
+  meta.className = 'he-fab-meta';
+  meta.textContent = `${formatDateFR(fab.date)} — ${fab.personnel_prenom || '—'}`;
+  info.appendChild(meta);
+
+  const chips = document.createElement('div');
+  chips.className = 'he-fab-chips';
+
+  const nbIng = (fab.ingredients || []).length;
+  const cIng = document.createElement('span');
+  cIng.className = 'he-fab-chip';
+  cIng.textContent = `${nbIng} ingrédient${nbIng > 1 ? 's' : ''}`;
+  chips.appendChild(cIng);
+
+  if (fab.info_complementaire) {
+    const cInfo = document.createElement('span');
+    cInfo.className = 'he-fab-chip';
+    cInfo.textContent = fab.info_complementaire;
+    chips.appendChild(cInfo);
+  }
+  info.appendChild(chips);
+  resume.appendChild(info);
+
+  const chev = document.createElement('span');
+  chev.className = 'he-chevron';
+  chev.textContent = '▾';
+  chev.setAttribute('aria-hidden', 'true');
+  resume.appendChild(chev);
+
+  carte.appendChild(resume);
+
+  // ── Détail ingrédients (accordéon) ──────────────────────
+  const detail = document.createElement('div');
+  detail.className = 'he-fab-detail';
+  carte.appendChild(detail);
+
+  resume.addEventListener('click', () => {
+    carte.classList.toggle('ouvert');
+    if (carte.classList.contains('ouvert') && !detail.dataset.charge) {
+      detail.dataset.charge = '1';
+      fabRemplirIngredients(detail, fab.ingredients || []);
+    }
+  });
+
+  return carte;
+}
+
+function fabRemplirIngredients(el, ingredients) {
+  if (ingredients.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:#888;font-size:15px;">Aucun ingrédient enregistré.</div>';
+    return;
+  }
+
+  const liste = document.createElement('div');
+  liste.className = 'he-fab-ing-liste';
+
+  ingredients.forEach(ing => {
+    const div = document.createElement('div');
+    div.className = 'he-fab-ing';
+
+    const nomEl = document.createElement('div');
+    nomEl.className = 'he-fab-ing-nom';
+    nomEl.textContent = ing.produit_nom || '—';
+    div.appendChild(nomEl);
+
+    const lotEl = document.createElement('div');
+    lotEl.className = 'he-fab-ing-lot';
+    lotEl.textContent = ing.numero_lot ? `Lot ${ing.numero_lot}` : '—';
+    div.appendChild(lotEl);
+
+    const dlcEl = document.createElement('div');
+    dlcEl.className = 'he-fab-ing-dlc';
+    dlcEl.textContent = ing.dlc ? `DLC ${formatDateFR(ing.dlc)}` : '';
+    div.appendChild(dlcEl);
+
+    liste.appendChild(div);
+  });
+
+  el.appendChild(liste);
+}
+
+// ── Boutons fabrications ─────────────────────────────────────
+fabRefs.filtrer.addEventListener('click', fabCharger);
+fabRefs.reset.addEventListener('click', () => {
+  initDates(fabRefs);
+  fabCharger();
+});
+fabRefs.plus.addEventListener('click', fabChargerSuite);
+
 // ── Bouton retour ────────────────────────────────────────────
 elBtnRetour.addEventListener('click', () => { window.location.href = '/hub.html'; });
 
 // ── Init ─────────────────────────────────────────────────────
 initDates(ouvRefs);
 initDates(recRefs);
+initDates(fabRefs);
 ouvCharger();
 recCharger();
