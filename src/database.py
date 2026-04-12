@@ -621,6 +621,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE produits ADD COLUMN type_produit TEXT NOT NULL DEFAULT 'brut'",
             # fabrications : dlc_finale calculée selon HACCP (v2.7)
             "ALTER TABLE fabrications ADD COLUMN dlc_finale TEXT",
+            # receptions : fournisseur_nom pour saisies manuelles sans ID (v2.8)
+            "ALTER TABLE receptions ADD COLUMN fournisseur_nom TEXT",
+            # reception_lignes : fournisseur_nom pour saisies manuelles sans ID (v2.8)
+            "ALTER TABLE reception_lignes ADD COLUMN fournisseur_nom TEXT",
         ]
         for sql in migrations:
             try:
@@ -1561,8 +1565,8 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
             """
             INSERT INTO receptions
                 (personnel_id, date_reception, heure_reception, temperature_camion, proprete_camion,
-                 camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["personnel_id"],
@@ -1572,6 +1576,7 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
                 proprete,
                 camion_conforme,
                 data.get("fournisseur_principal_id"),
+                data.get("fournisseur_nom"),
                 data.get("photo_bl_filename"),
                 data.get("commentaire"),
             ),
@@ -1581,8 +1586,8 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
             """
             INSERT INTO receptions
                 (personnel_id, heure_reception, temperature_camion, proprete_camion,
-                 camion_conforme, fournisseur_principal_id, photo_bl_filename, commentaire)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["personnel_id"],
@@ -1591,6 +1596,7 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
                 proprete,
                 camion_conforme,
                 data.get("fournisseur_principal_id"),
+                data.get("fournisseur_nom"),
                 data.get("photo_bl_filename"),
                 data.get("commentaire"),
             ),
@@ -1675,7 +1681,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     cursor = await db.execute(
         """
         INSERT INTO reception_lignes
-            (reception_id, produit_id, fournisseur_id, numero_lot, lot_interne, dlc, dluo,
+            (reception_id, produit_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
              origine, poids_kg, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
@@ -1683,12 +1689,13 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
             data["produit_id"],
             data.get("fournisseur_id"),
+            data.get("fournisseur_nom"),
             data.get("numero_lot"),
             int(data.get("lot_interne", 0)),
             data.get("dlc"),
@@ -1909,7 +1916,7 @@ async def get_receptions(
         SELECT
             r.*,
             p.prenom            AS personnel_prenom,
-            f.nom               AS fournisseur_nom,
+            COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
             COUNT(rl.id)        AS nb_lignes,
             SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc
         FROM receptions r
@@ -1932,7 +1939,7 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
         """
         SELECT r.*,
                p.prenom AS personnel_prenom,
-               f.nom    AS fournisseur_nom
+               COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom
         FROM receptions r
         LEFT JOIN personnel    p ON p.id = r.personnel_id
         LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
@@ -1950,7 +1957,7 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
         SELECT rl.*,
                pr.nom  AS produit_nom,
                pr.espece,
-               fv.nom  AS fournisseur_nom
+               COALESCE(fv.nom, rl.fournisseur_nom) AS fournisseur_nom
         FROM reception_lignes rl
         LEFT JOIN produits     pr ON pr.id = rl.produit_id
         LEFT JOIN fournisseurs fv ON fv.id = rl.fournisseur_id

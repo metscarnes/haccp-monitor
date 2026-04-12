@@ -139,6 +139,7 @@ class FournisseurUpdate(BaseModel):
 class LigneCreate(BaseModel):
     produit_id: int
     fournisseur_id: Optional[int] = None
+    fournisseur_nom: Optional[str] = None
     numero_lot: Optional[str] = None
     lot_interne: int = 0
     dlc: Optional[str] = None
@@ -161,6 +162,7 @@ class LigneCreate(BaseModel):
 class LigneUpdate(BaseModel):
     produit_id: Optional[int] = None
     fournisseur_id: Optional[int] = None
+    fournisseur_nom: Optional[str] = None
     numero_lot: Optional[str] = None
     lot_interne: int = 0
     dlc: Optional[str] = None
@@ -244,6 +246,7 @@ async def creer_reception(
     temperature_camion:      Optional[float]= Form(None),
     proprete_camion:         str            = Form("satisfaisant"),
     fournisseur_principal_id: Optional[int] = Form(None),
+    fournisseur_nom:         Optional[str]  = Form(None),
     commentaire:             Optional[str]  = Form(None),
     photo_bl:                Optional[UploadFile] = File(None),
 ):
@@ -254,6 +257,7 @@ async def creer_reception(
         "temperature_camion":      temperature_camion,
         "proprete_camion":         proprete_camion,
         "fournisseur_principal_id": fournisseur_principal_id,
+        "fournisseur_nom":         fournisseur_nom,
         "commentaire":             commentaire,
     }
 

@@ -547,7 +547,8 @@ function recCreerCarte(rec) {
 
   const meta = document.createElement('div');
   meta.className = 'he-meta';
-  meta.textContent = rec.personnel_prenom || '—';
+  const fournisseurLabel = rec.fournisseur_nom ? ` — ${rec.fournisseur_nom}` : '';
+  meta.textContent = `${rec.personnel_prenom || '—'}${fournisseurLabel}`;
   info.appendChild(meta);
 
   const chips = document.createElement('div');
@@ -703,13 +704,13 @@ function recRemplirDetail(el, rec) {
     vide.textContent = 'Aucun produit enregistré.';
     divLignes.appendChild(vide);
   } else {
-    rec.lignes.forEach(lig => divLignes.appendChild(recCreerLigne(lig)));
+    rec.lignes.forEach(lig => divLignes.appendChild(recCreerLigne(lig, rec.fournisseur_nom)));
   }
 
   el.appendChild(divLignes);
 }
 
-function recCreerLigne(lig) {
+function recCreerLigne(lig, receptionFournisseurNom = null) {
   const estNC = lig.conforme === 0;
 
   const div = document.createElement('div');
@@ -742,7 +743,7 @@ function recCreerLigne(lig) {
   grille.className = 'he-ligne-grille';
 
   const champs = [
-    { label: 'Fournisseur', valeur: lig.fournisseur_nom || '—' },
+    { label: 'Fournisseur', valeur: lig.fournisseur_nom || receptionFournisseurNom || '—' },
     { label: 'N° lot', valeur: lig.numero_lot || '—' },
     { label: 'DLC', valeur: formatDateFR(lig.dlc) },
     { label: 'T° réception', valeur: formatTemp(lig.temperature_reception) },
