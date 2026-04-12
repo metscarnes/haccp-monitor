@@ -2728,11 +2728,13 @@ async def get_fabrications_historique(
                 p.nom           AS produit_nom,
                 rl.numero_lot,
                 rl.dlc,
-                ri.unite
+                ri.unite,
+                rec.id          AS reception_id
             FROM fabrication_lots fl
             JOIN recette_ingredients ri ON ri.id  = fl.recette_ingredient_id
             JOIN produits           p   ON p.id   = ri.produit_id
-            LEFT JOIN reception_lignes rl ON rl.id = fl.reception_ligne_id
+            LEFT JOIN reception_lignes rl  ON rl.id  = fl.reception_ligne_id
+            LEFT JOIN receptions       rec ON rec.id = rl.reception_id
             WHERE fl.fabrication_id = ?
             ORDER BY p.nom
             """,

@@ -1044,7 +1044,19 @@ function fabRemplirIngredients(el, ingredients) {
 
     const nomEl = document.createElement('div');
     nomEl.className = 'he-fab-ing-nom';
-    nomEl.textContent = ing.produit_nom || '—';
+
+    if (ing.reception_id) {
+      const lien = document.createElement('a');
+      lien.href = `/reception-detail.html?id=${ing.reception_id}`;
+      lien.textContent = (ing.produit_nom || '—') + ' 🔗';
+      lien.style.cssText = 'color:inherit;text-decoration:none;cursor:pointer;';
+      lien.addEventListener('mouseenter', () => { lien.style.textDecoration = 'underline'; });
+      lien.addEventListener('mouseleave', () => { lien.style.textDecoration = 'none'; });
+      nomEl.appendChild(lien);
+    } else {
+      nomEl.textContent = ing.produit_nom || '—';
+    }
+
     div.appendChild(nomEl);
 
     const lotEl = document.createElement('div');
