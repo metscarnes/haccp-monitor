@@ -17,7 +17,7 @@ GET    /api/receptions/{id}/photo-bl              → BL photo (FileResponse)
 import io
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
@@ -186,7 +186,8 @@ class CloturerBody(BaseModel):
     livraison_refusee: bool = False
     information_ddpp: bool = False
     commentaire_nc: Optional[str] = None
-    coeur_conformes: list[int] = []  # IDs des lignes conformes après contrôle à cœur
+    coeur_conformes: list[int] = []              # IDs des lignes conformes après contrôle à cœur
+    coeur_temperatures: Dict[int, float] = {}    # {ligne_id: temp_coeur} pour persistance
 
 
 class NonConformiteCreate(BaseModel):
@@ -372,6 +373,7 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
             information_ddpp=body.information_ddpp,
             commentaire_nc=body.commentaire_nc,
             coeur_conformes=body.coeur_conformes,
+            coeur_temperatures=body.coeur_temperatures,
         )
     return reception
 

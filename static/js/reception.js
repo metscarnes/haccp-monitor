@@ -1766,9 +1766,17 @@ async function cloturerFiche() {
     .map(([id]) => parseInt(id, 10))
     .filter(id => !isNaN(id));
 
+  const coeurTemperatures = {};
+  for (const [id, r] of Object.entries(ncCoeurResultats)) {
+    if (r.temp_coeur !== null && r.temp_coeur !== undefined) {
+      coeurTemperatures[parseInt(id, 10)] = r.temp_coeur;
+    }
+  }
+
   const payload = {
     commentaire_nc: elCommentaireNc.value.trim() || null,
     coeur_conformes: coeurConformes,
+    coeur_temperatures: coeurTemperatures,
   };
 
   try {

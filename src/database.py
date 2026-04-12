@@ -1729,8 +1729,17 @@ async def cloturer_reception(
     information_ddpp: bool = False,
     commentaire_nc: Optional[str] = None,
     coeur_conformes: list = None,
+    coeur_temperatures: dict = None,
 ) -> Optional[dict]:
     """Clôture une réception : calcule conformite_globale depuis les lignes."""
+    # Persister les températures à cœur mesurées
+    if coeur_temperatures:
+        for ligne_id, temp in coeur_temperatures.items():
+            await db.execute(
+                "UPDATE reception_lignes SET temperature_coeur = ? WHERE id = ? AND reception_id = ?",
+                (float(temp), int(ligne_id), reception_id),
+            )
+
     # Mettre à jour les lignes conformes après contrôle à cœur
     if coeur_conformes:
         for ligne_id in coeur_conformes:
