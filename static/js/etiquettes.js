@@ -88,7 +88,9 @@ const elBtnMemeRecette = document.getElementById('fab-btn-meme-recette');
 const elBtnNouvelleFab = document.getElementById('fab-btn-nouvelle-fab');
 const elSubOverlay     = document.getElementById('fab-sub-overlay');
 const elSubTitre       = document.getElementById('fab-sub-titre');
-const elSubSearch      = document.getElementById('fab-sub-search');
+const elAlertManuel    = document.getElementById('alert-manuel');
+const elSubSearch      = document.getElementById('search-substitut');
+const elBtnModeManuel  = document.getElementById('btn-mode-manuel');
 const elSubGrid        = document.getElementById('fab-sub-grid');
 const elSubCancel      = document.getElementById('fab-sub-cancel');
 
@@ -407,6 +409,7 @@ function htmlLigneManquante(ingId, ingNom) {
 let subPidCourant  = null;
 let subNomCourant  = null;
 let subAllProduits = [];   // cache produits bruts chargés
+let subModeManuel  = false; // true = catalogue complet déverrouillé (Niveau 4)
 
 /** Détecte le code viande en tête du nom (ex: "VB-COLLIER" → "VB") */
 function extraireCode(nom) {
@@ -475,27 +478,55 @@ elLots.addEventListener('click', async e => {
 });
 
 async function ouvrirModalSubstitution(ingNom) {
+  // Reset au mode Niveau 3 (stock réel + filtre sémantique)
+  subModeManuel = false;
+  elAlertManuel.hidden = true;
   elSubTitre.textContent = `Substitut pour : ${ingNom}`;
   elSubSearch.value = '';
-  elSubGrid.innerHTML = `<div class="fab-chargement">Recherche de produits…</div>`;
+  elSubGrid.innerHTML = `<div class="fab-chargement">Recherche dans le stock réel…</div>`;
   elSubOverlay.hidden = false;
 
   try {
-    subAllProduits = await apiFetch('/api/produits?type=brut');
-    afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, ingNom));
+    // Niveau 3 : uniquement produits ayant une réception active
+    subAllProduits = await apiFetch('/api/produits?en_stock=true&type=brut');
+    const filtres = filtrerProduitsIntelligent(subAllProduits, ingNom);
+    afficherSubProduits(filtres);
   } catch (err) {
     elSubGrid.innerHTML = `<div class="fab-sub-vide">Erreur : ${escHtml(err.message)}</div>`;
   }
 }
 
-// Recherche manuelle — désactive le filtre automatique
+// Recherche texte — comportement selon le mode actif
 elSubSearch.addEventListener('input', () => {
   const q = elSubSearch.value.trim().toUpperCase();
-  if (!q) {
-    afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, subNomCourant));
-    return;
+  if (subModeManuel) {
+    // Niveau 4 : filtre libre sur le catalogue complet
+    afficherSubProduits(
+      q ? subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)) : subAllProduits
+    );
+  } else {
+    // Niveau 3 : filtre libre sur les résultats sémantiques déjà filtrés
+    if (!q) {
+      afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, subNomCourant));
+      return;
+    }
+    afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
   }
-  afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
+});
+
+// Niveau 4 : déverrouillage catalogue complet
+elBtnModeManuel.addEventListener('click', async () => {
+  subModeManuel = true;
+  elAlertManuel.hidden = false;
+  elSubSearch.value = '';
+  elSubGrid.innerHTML = `<div class="fab-chargement">Chargement du catalogue complet…</div>`;
+
+  try {
+    subAllProduits = await apiFetch('/api/produits?en_stock=false&type=brut');
+    afficherSubProduits(subAllProduits);
+  } catch (err) {
+    elSubGrid.innerHTML = `<div class="fab-sub-vide">Erreur : ${escHtml(err.message)}</div>`;
+  }
 });
 
 elSubGrid.addEventListener('click', e => {
@@ -511,6 +542,23 @@ elSubGrid.addEventListener('keydown', e => {
 });
 
 function validerSubstitution(produitId, produitNom) {
+  // Confirmation selon le niveau actif
+  if (subModeManuel) {
+    // Niveau 4 — alerte critique rouge
+    const ok = window.confirm(
+      `🚨 ALERTE CRITIQUE : Ce produit n'est pas issu du filtrage recommandé.\n\n` +
+      `Vous sélectionnez "${produitNom}" en mode manuel.\n\n` +
+      `Confirmez-vous ce choix sous votre responsabilité ?`
+    );
+    if (!ok) return;
+  } else if (produitNom !== subNomCourant) {
+    // Niveau 3 — substitution sémantique hors correspondance exacte
+    const ok = window.confirm(
+      `⚠️ Substitution : Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`
+    );
+    if (!ok) return;
+  }
+
   // Enregistre la substitution
   state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
 

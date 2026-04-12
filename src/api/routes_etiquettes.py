@@ -75,9 +75,37 @@ class EtiquetteGenerer(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.get("/produits")
-async def lister_produits(type: Optional[str] = Query(None, description="Filtrer par type : 'brut' ou 'fini'")):
+async def lister_produits(
+    type: Optional[str] = Query(None, description="Filtrer par type : 'brut' ou 'fini'"),
+    en_stock: bool = Query(False, description="Si True, retourne uniquement les produits ayant une réception enregistrée"),
+):
     async with get_db() as db:
-        produits = await get_produits(db, BOUTIQUE_ID, type_produit=type)
+        if en_stock:
+            # Filtre stock réel : produit doit avoir au moins une ligne de réception
+            if type:
+                cursor = await db.execute(
+                    """
+                    SELECT DISTINCT p.* FROM produits p
+                    INNER JOIN reception_lignes rl ON rl.produit_id = p.id
+                    WHERE p.boutique_id = ? AND p.actif = 1 AND p.type_produit = ?
+                    ORDER BY p.nom
+                    """,
+                    (BOUTIQUE_ID, type),
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    SELECT DISTINCT p.* FROM produits p
+                    INNER JOIN reception_lignes rl ON rl.produit_id = p.id
+                    WHERE p.boutique_id = ? AND p.actif = 1
+                    ORDER BY p.nom
+                    """,
+                    (BOUTIQUE_ID,),
+                )
+            rows = await cursor.fetchall()
+            produits = [dict(r) for r in rows]
+        else:
+            produits = await get_produits(db, BOUTIQUE_ID, type_produit=type)
     return produits
 
 
