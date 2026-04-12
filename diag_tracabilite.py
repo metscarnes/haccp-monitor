@@ -174,7 +174,7 @@ def match_produit(ingredient: str, stock_norm: list):
 # Chargement des données (READ-ONLY)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def charger_donnees(db_path: str, demo: bool):
+def charger_donnees(db_path: str, demo: bool, catalogue: bool = False):
     """
     Ouvre la base en lecture seule et retourne :
       (besoins, stock, source_a, source_b)
@@ -208,23 +208,40 @@ def charger_donnees(db_path: str, demo: bool):
         besoins  = DEMO_INGREDIENTS
         source_a = "Jeu de demo interne (--demo)"
 
-    elif "recette_ingredients" in tbls:
-        # Découverte dynamique de la colonne « nom »
-        cur.execute("PRAGMA table_info(recette_ingredients)")
-        cols = [r[1] for r in cur.fetchall()]
-        candidats = ["nom_ingredient", "nom", "ingredient", "libelle", "designation", "produit"]
-        col_nom = next((c for c in candidats if c in cols), None)
+    elif catalogue:
+        # --catalogue : scan direct du catalogue, sans toucher recette_ingredients
+        cur.execute("SELECT DISTINCT nom FROM produits WHERE actif = 1 ORDER BY nom")
+        besoins  = [r[0] for r in cur.fetchall() if r[0]]
+        source_a = "produits.nom [--catalogue : audit force du catalogue complet]"
 
-        if col_nom:
-            cur.execute(
-                f"SELECT DISTINCT {col_nom} FROM recette_ingredients "
-                f"WHERE {col_nom} IS NOT NULL"
-            )
+    elif "recette_ingredients" in tbls:
+        # Mode normal : jointure produits pour récupérer le nom depuis produit_id
+        cur.execute("PRAGMA table_info(recette_ingredients)")
+        cols = {r[1] for r in cur.fetchall()}
+
+        if "produit_id" in cols and "produits" in tbls:
+            cur.execute("""
+                SELECT DISTINCT p.nom
+                FROM   recette_ingredients ri
+                JOIN   produits p ON ri.produit_id = p.id
+                WHERE  p.nom IS NOT NULL
+            """)
             besoins  = [r[0] for r in cur.fetchall() if r[0]]
-            source_a = f"recette_ingredients.{col_nom}"
+            source_a = "recette_ingredients JOIN produits ON produit_id (p.nom)"
         else:
-            besoins  = []
-            source_a = f"recette_ingredients (colonne introuvable parmi {cols})"
+            # Fallback : colonne nom textuelle directe
+            candidats = ["nom_ingredient", "nom", "ingredient", "libelle", "designation", "produit"]
+            col_nom = next((c for c in candidats if c in cols), None)
+            if col_nom:
+                cur.execute(
+                    f"SELECT DISTINCT {col_nom} FROM recette_ingredients "
+                    f"WHERE {col_nom} IS NOT NULL"
+                )
+                besoins  = [r[0] for r in cur.fetchall() if r[0]]
+                source_a = f"recette_ingredients.{col_nom} (colonne texte directe)"
+            else:
+                besoins  = []
+                source_a = f"recette_ingredients (aucune colonne utilisable parmi {sorted(cols)})"
 
     else:
         # Pas de table de recettes → on audite le catalogue complet
@@ -345,9 +362,10 @@ def afficher_rapport(besoins, stock_norm, source_a, source_b):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    demo = "--demo" in sys.argv
+    demo      = "--demo"      in sys.argv
+    catalogue = "--catalogue" in sys.argv
 
-    besoins, stock, source_a, source_b = charger_donnees(DB_PATH, demo)
+    besoins, stock, source_a, source_b = charger_donnees(DB_PATH, demo, catalogue)
 
     if not besoins:
         print(f"\n{YELLOW}Aucun besoin a auditer. "
