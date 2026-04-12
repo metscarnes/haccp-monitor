@@ -179,6 +179,25 @@
     .dlc-critique { color: #DC2626; font-weight: 700; }
     .dlc-attention { color: #D97706; font-weight: 700; }
     .dlc-ok        { color: #6b7280; }
+
+    /* ── Gabarit impression thermique Brother 62mm ── */
+    #print-label { display: none; }
+    @media print {
+      body * { visibility: hidden; }
+      #print-label, #print-label * { visibility: visible; }
+      #print-label {
+        display: block;
+        position: absolute;
+        left: 0; top: 0;
+        width: 62mm;
+        padding: 2mm;
+        margin: 0;
+        color: black;
+        font-family: sans-serif;
+        background: white;
+      }
+      @page { margin: 0; }
+    }
   </style>
 </head>
 <body class="fab-body">
@@ -346,6 +365,19 @@
         </button>
       </div>
     </div>
+  </div>
+
+  <!-- ── Gabarit ticket thermique (invisible à l'écran, imprimé via @media print) ── -->
+  <div id="print-label" style="background: white;">
+    <h1 id="print-nom" style="font-size: 1.25rem; font-weight: 900; text-align: center; margin-bottom: 4px; text-transform: uppercase;">NOM PRODUIT</h1>
+    <div style="border: 3px solid black; padding: 4px; text-align: center; margin-bottom: 4px;">
+      <div style="font-size: 0.875rem; font-weight: bold;">À CONSOMMER JUSQU'AU</div>
+      <div id="print-dlc" style="font-size: 1.5rem; font-weight: 900; color: red;">--/--/----</div>
+    </div>
+    <div id="print-lot" style="font-size: 0.875rem; font-weight: bold; text-align: center; margin-bottom: 8px;">Lot : ---------</div>
+    <div style="font-size: 0.65rem; font-weight: bold; border-bottom: 1px solid black; margin-bottom: 4px;">INGRÉDIENTS :</div>
+    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.2; margin-bottom: 8px; padding-left: 12px; list-style-type: disc;"></ul>
+    <div id="print-meta" style="font-size: 0.6rem; text-align: center; font-style: italic;">Fabriqué le --/--/----</div>
   </div>
 
   <script src="/static/js/etiquettes.js"></script>

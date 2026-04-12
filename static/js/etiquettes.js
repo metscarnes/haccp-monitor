@@ -854,6 +854,33 @@ elBtnGenerer.addEventListener('click', async () => {
     });
     elSuccesLot.textContent = result.numero_lot ? `Lot : ${result.numero_lot}` : '';
     elSucces.hidden = false;
+
+    // ── Remplissage du gabarit d'impression ──────────────────
+    const dlcFormatee = state.dlcFinale
+      ? state.dlcFinale.split('-').reverse().join('/')
+      : '--/--/----';
+    const operateurNom = elOperateur.options[elOperateur.selectedIndex]?.text ?? '';
+
+    document.getElementById('print-nom').textContent = state.recetteNom ?? '';
+    document.getElementById('print-dlc').textContent = dlcFormatee;
+    document.getElementById('print-lot').textContent = result.numero_lot
+      ? `Lot : ${result.numero_lot}`
+      : 'Lot : —';
+    document.getElementById('print-meta').textContent =
+      `Fabriqué le ${new Date().toLocaleDateString('fr-FR')} par ${operateurNom}`;
+
+    const ulIngredients = document.getElementById('print-ingredients');
+    ulIngredients.innerHTML = '';
+    (state.fifoLots ?? []).forEach(lot => {
+      const li = document.createElement('li');
+      const nom    = lot.produit_nom ?? lot.ingredient_nom ?? '?';
+      const numLot = lot.lot_fifo?.numero_lot ?? 'N/A';
+      li.textContent = `${nom} (Lot : ${numLot})`;
+      ulIngredients.appendChild(li);
+    });
+
+    // ── Déclenchement impression (léger délai pour rendu DOM) ─
+    setTimeout(() => window.print(), 100);
   } catch (err) {
     elErreur.textContent = `Erreur : ${err.message}`;
     elErreur.hidden = false;
