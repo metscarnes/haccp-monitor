@@ -368,16 +368,30 @@
   </div>
 
   <!-- ── Gabarit ticket thermique (invisible à l'écran, imprimé via @media print) ── -->
-  <div id="print-label" style="background: white;">
-    <h1 id="print-nom" style="font-size: 1.25rem; font-weight: 900; text-align: center; margin-bottom: 4px; text-transform: uppercase;">NOM PRODUIT</h1>
-    <div style="border: 3px solid black; padding: 4px; text-align: center; margin-bottom: 4px;">
-      <div style="font-size: 0.875rem; font-weight: bold;">À CONSOMMER JUSQU'AU</div>
-      <div id="print-dlc" style="font-size: 1.5rem; font-weight: 900; color: red;">--/--/----</div>
+  <div id="print-label" style="background: white; color: black; font-family: sans-serif;">
+
+    <!-- Entête : nom produit + poids -->
+    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 6px;">
+      <h1 id="print-nom" style="font-size: 1.1rem; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1.1;">NOM PRODUIT</h1>
+      <div id="print-poids" style="font-size: 0.8rem; font-weight: bold; margin-top: 2px;">-- kg fabriqués</div>
     </div>
-    <div id="print-lot" style="font-size: 0.875rem; font-weight: bold; text-align: center; margin-bottom: 8px;">Lot : ---------</div>
-    <div style="font-size: 0.65rem; font-weight: bold; border-bottom: 1px solid black; margin-bottom: 4px;">INGRÉDIENTS :</div>
-    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.2; margin-bottom: 8px; padding-left: 12px; list-style-type: disc;"></ul>
-    <div id="print-meta" style="font-size: 0.6rem; text-align: center; font-style: italic;">Fabriqué le --/--/----</div>
+
+    <!-- DLC encadrée -->
+    <div style="border: 2px solid black; border-radius: 6px; padding: 4px; text-align: center; margin-bottom: 6px;">
+      <div style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">DLC :</div>
+      <div id="print-dlc" style="font-size: 1.4rem; font-weight: 900; color: red;">--/--/----</div>
+    </div>
+
+    <!-- Numéro de lot -->
+    <div id="print-lot" style="font-size: 0.8rem; font-weight: bold; text-align: center; margin-bottom: 6px; padding: 2px; border: 1px dashed black;">Lot : ---------</div>
+
+    <!-- Liste ingrédients -->
+    <div style="font-size: 0.65rem; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">Ingrédients &amp; Lots :</div>
+    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.3; margin: 0 0 8px 0; padding-left: 12px; list-style-type: square;"></ul>
+
+    <!-- Pied de ticket -->
+    <div id="print-meta" style="font-size: 0.55rem; text-align: center; border-top: 1px solid black; padding-top: 2px;">Fabriqué le --/--/----</div>
+
   </div>
 
   <script src="/static/js/etiquettes.js"></script>

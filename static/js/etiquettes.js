@@ -893,6 +893,9 @@ elBtnGenerer.addEventListener('click', async () => {
     const operateurNom = elOperateur.options[elOperateur.selectedIndex]?.text ?? '';
 
     document.getElementById('print-nom').textContent = state.recetteNom ?? '';
+    document.getElementById('print-poids').textContent = state.productionCiblee > 0
+      ? `${state.productionCiblee} ${state.rendementUnite} fabriqués`
+      : '— fabriqués';
     document.getElementById('print-dlc').textContent = dlcFormatee;
     document.getElementById('print-lot').textContent = result.lot_interne
       ? `Lot : ${result.lot_interne}`
