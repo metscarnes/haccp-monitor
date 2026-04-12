@@ -496,7 +496,15 @@ function afficherSubProduits(produits) {
     elSubGrid.innerHTML = `<div class="fab-sub-vide">Aucun produit trouvé.</div>`;
     return;
   }
-  elSubGrid.innerHTML = produits.map(htmlSubTuile).join('');
+  const tries = [...produits].sort((a, b) => {
+    const da = a.dlc ? new Date(a.dlc) : null;
+    const db = b.dlc ? new Date(b.dlc) : null;
+    if (!da && !db) return 0;
+    if (!da) return 1;   // sans DLC → fin de liste
+    if (!db) return -1;
+    return da - db;
+  });
+  elSubGrid.innerHTML = tries.map(htmlSubTuile).join('');
 }
 
 elLots.addEventListener('click', async e => {
