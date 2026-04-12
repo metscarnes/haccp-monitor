@@ -391,6 +391,7 @@ function afficherLots() {
     elLots.innerHTML = state.ingredients.map(ing =>
       htmlLigneManquante(ing.recette_ingredient_id, ing.nom)
     ).join('');
+    verifierLotsComplets();
     return;
   }
 
@@ -402,6 +403,23 @@ function afficherLots() {
     }
     return htmlLigneManquante(riId, lot.produit_nom ?? lot.ingredient_nom ?? '');
   }).join('');
+  verifierLotsComplets();
+}
+
+/** Active ou désactive le bouton "Confirmer les lots" selon l'état des lots FIFO. */
+function verifierLotsComplets() {
+  const tousLotsValides = state.fifoLots.every(ing => ing.lot_fifo != null);
+  if (elBtnConfLots) {
+    if (tousLotsValides) {
+      elBtnConfLots.disabled = false;
+      elBtnConfLots.classList.remove('opacity-50', 'cursor-not-allowed');
+      elBtnConfLots.title = '';
+    } else {
+      elBtnConfLots.disabled = true;
+      elBtnConfLots.classList.add('opacity-50', 'cursor-not-allowed');
+      elBtnConfLots.title = 'Veuillez substituer les produits manquants avant de valider.';
+    }
+  }
 }
 
 function htmlLigneFifoOk(lot) {
@@ -634,6 +652,15 @@ function validerSubstitution(produitId, produitNom) {
       })
       .catch(() => {
         // L'API n'a pas de lot — on enregistre quand même la substitution sans données FIFO
+        const lot = state.fifoLots.find(l =>
+          String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
+        );
+        if (lot) {
+          // Marque le lot comme résolu (substitut sans données FIFO) pour débloquer le bouton
+          lot.lot_fifo = { numero_lot: null, dlc: null };
+          lot.produit_nom    = produitNom + ' (substitut)';
+          lot.ingredient_nom = produitNom + ' (substitut)';
+        }
         state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
         const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
         if (ligne) {
@@ -645,7 +672,10 @@ function validerSubstitution(produitId, produitNom) {
             </div>`;
         }
       })
-      .finally(() => { elSubOverlay.hidden = true; });
+      .finally(() => {
+        elSubOverlay.hidden = true;
+        verifierLotsComplets();
+      });
   }
 
   // Demande de confirmation selon le niveau actif
