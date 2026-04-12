@@ -215,7 +215,7 @@ function afficherReception(rec) {
     vide.textContent = 'Aucun produit enregistré.';
     divLignes.appendChild(vide);
   } else {
-    rec.lignes.forEach(lig => divLignes.appendChild(creerLigne(lig)));
+    rec.lignes.forEach(lig => divLignes.appendChild(creerLigne(lig, rec.fournisseur_nom)));
   }
 
   secProd.appendChild(divLignes);
@@ -241,7 +241,7 @@ function afficherReception(rec) {
 
 }
 
-function creerLigne(lig) {
+function creerLigne(lig, receptionFournisseurNom = null) {
   const estNC = lig.conforme === 0;
 
   const div = document.createElement('div');
@@ -273,7 +273,7 @@ function creerLigne(lig) {
   grille.className = 'rd-ligne-grille';
 
   const champs = [
-    { label: 'Fournisseur', valeur: lig.fournisseur_nom || '—' },
+    { label: 'Fournisseur', valeur: lig.fournisseur_nom || receptionFournisseurNom || '—' },
     { label: 'N° lot', valeur: lig.numero_lot || '—' },
     { label: 'DLC', valeur: formatDateFR(lig.dlc) },
     { label: 'Origine', valeur: lig.origine || '—' },
