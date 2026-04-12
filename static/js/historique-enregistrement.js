@@ -1113,7 +1113,11 @@ function fabReimprimer(fab) {
     const dlcIng = ing.dlc
       ? new Date(ing.dlc).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
       : 'N/A';
-    li.textContent = `${nom} (L:${lot} | DLC:${dlcIng})`;
+    // quantite_base = quantité de la recette de base (non scalée à la production réelle)
+    const qteTexte = ing.quantite_base != null
+      ? `${ing.quantite_base}${ing.unite || ''} `
+      : '';
+    li.textContent = `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng})`;
     ul.appendChild(li);
   });
 

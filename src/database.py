@@ -2744,6 +2744,7 @@ async def get_fabrications_historique(
                 p.nom           AS produit_nom,
                 rl.numero_lot,
                 rl.dlc,
+                ri.quantite     AS quantite_base,
                 ri.unite,
                 rec.id          AS reception_id
             FROM fabrication_lots fl
