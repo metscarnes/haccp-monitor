@@ -1,346 +1,364 @@
 #!/usr/bin/env python3
 """
-diag_tracabilite.py
--------------------
-Vérifie la correspondance entre les ingrédients des recettes et les produits
-présents en stock (réceptions) dans la base haccp.db.
+diag_tracabilite.py — Audit FIFO / Matching par Lexique
+========================================================
+Simule l'algorithme de substitution JS pour vérifier que chaque ingrédient
+de recette (ou chaque produit du catalogue) trouve une correspondance en stock.
+
+READ-ONLY : aucune modification de la base de données.
+Bibliotheques : sqlite3, re, sys (stdlib uniquement — aucun pip install).
 
 Usage :
-  python diag_tracabilite.py           # mode normal (recette_ingredients réelle)
-  python diag_tracabilite.py --demo    # mode démo avec ingrédients simulés
+  python diag_tracabilite.py           # audit complet sur recette_ingredients
+                                       # (fallback : catalogue produits si absent)
+  python diag_tracabilite.py --demo    # test rapide sur un jeu de données simulé
 """
 
 import sqlite3
+import re
 import sys
-import os
 import io
 
-# Force UTF-8 sur Windows pour les emojis et caractères accentués
-if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+# Force UTF-8 sur la sortie (Windows cmd/PowerShell en cp1252 par defaut)
+if hasattr(sys.stdout, "buffer"):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "buffer"):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
+# ── Codes ANSI ───────────────────────────────────────────────────────────────
+GREEN  = "\033[92m"
+RED    = "\033[91m"
+YELLOW = "\033[93m"
+CYAN   = "\033[96m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
+RESET  = "\033[0m"
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "haccp.db")
+# ── Chemin de la base ────────────────────────────────────────────────────────
+DB_PATH = "haccp.db"
 
+# ── Lexique espèces → synonymes ──────────────────────────────────────────────
+# Couvre tous les codes préfixes observés dans produits.nom
 LEXIQUE = {
-    "VB": ["bœuf", "vache", "bovine", "bf", "boeuf", "viande bovine"],
-    "VX": ["veau", "vx"],
-    "PC": ["porc", "cochon", "pork"],
-    "AG": ["agneau", "agn"],
-    "GI": ["gibier", "cerf", "sanglier"],
-    "CH": ["cheval", "equin", "chevalin"],
-    "VO": ["volaille", "poulet", "dinde", "canard", "pintade"],
-    "EX": ["exotique"],
+    # Bœuf
+    "VB":       ["boeuf", "bœuf", "vache", "bovine", "bf", "viande bovine"],
+    # Veau
+    "VX":       ["veau", "vx"],
+    # Porc
+    "PC":       ["porc", "cochon", "porcin"],
+    # Agneau (deux formes de préfixe dans le catalogue)
+    "AG":       ["agneau", "agn"],
+    "AGN":      ["agneau", "agn"],
+    # Gibier (préfixe long dans le catalogue)
+    "GI":       ["gibier", "cerf", "sanglier"],
+    "GIBIER":   ["gibier", "cerf", "sanglier", "chevreuil", "daim", "chevreau"],
+    # Volaille
+    "VOLAILLE": ["volaille", "poulet", "canard", "dinde", "pintade",
+                 "lapin", "oie", "pigeon", "caille", "poularde", "coq", "coquelet"],
+    # Cheval
+    "CHEVAL":   ["cheval", "equin"],
+    # Exotique
+    "EXOTIQUE": ["exotique", "autruche", "kangourou", "bison",
+                 "zebre", "lama", "crocodile"],
 }
 
-# Tous les synonymes indexés par valeur (pour recherche inverse)
-_SYNONYMES_INVERSE = {
-    syn.lower(): code
-    for code, syns in LEXIQUE.items()
-    for syn in syns
-}
+# ── Mots parasites (ignorés pour l'extraction du muscle) ────────────────────
+MOTS_PARASITES = frozenset({
+    "sans", "avec", "os", "pad", "vrac", "de", "la", "le", "du", "des",
+    "ac", "ent", "entier", "entiere", "tranche", "coupe", "par", "une",
+    "les", "au", "aux", "et", "en", "sur", "un", "pf",
+})
 
-MOTS_PARASITES = {
-    "sans", "avec", "os", "pad", "vrac", "de", "la", "le", "les", "du",
-    "et", "en", "sur", "par", "un", "une", "des", "au", "aux",
-    "carcasse", "entier", "entière", "desossé", "désossé",
-}
-
-# Ingrédients de démo quand recette_ingredients n'existe pas encore
+# ── Ingrédients de démonstration (utilisés avec --demo) ─────────────────────
 DEMO_INGREDIENTS = [
     "VB-COLLIER SANS OS",
     "VB-PALERON",
-    "VB-MACREUSE À BIFTECK",
+    "VB-MACREUSE A BIFTECK",
     "VX-QUASI",
     "VX-NOIX",
     "PC-ECHINE",
-    "AG-GIGOT",
-    "GI-FILET DE CERF",
-    "VO-POULET ENTIER",
-    "VB-FICTIF INEXISTANT",   # intentionnellement sans match
+    "AGN-GIGOT SANS OS",
+    "GIBIER-CERF CIVET",
+    "VOLAILLE- AIGUILLETTE DE CANARD",
+    "CHEVAL- STEAK DE CHEVAL",
+    "VB-FICTIF INEXISTANT 999",   # intentionnellement sans match
 ]
 
+# ── Table de remplacement accents → ASCII ────────────────────────────────────
+_ACCENTS = str.maketrans(
+    "éèêëàâäôöœûüùîïçæÉÈÊËÀÂÄÔÖŒÛÜÙÎÏÇÆ",
+    "eeeaaaoooeuuuiicaEEEAAAOOOEUUUIICA"
+)
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fonctions utilitaires
+# ─────────────────────────────────────────────────────────────────────────────
 
 def normaliser(texte: str) -> str:
-    """Minuscule + suppression des accents courants."""
-    remplacement = str.maketrans(
-        "àâäéèêëîïôùûüç",
-        "aaaeeeeiioouuc"
-    )
-    return texte.lower().translate(remplacement)
+    """Minuscule + suppression des accents courants (pas d'import unicodedata)."""
+    return texte.lower().translate(_ACCENTS)
 
 
-def extraire_code(ingredient: str) -> tuple[str, str]:
+# Regex pour détecter le code préfixe (avec ou sans tiret, avec espace optionnel)
+# Ex: "VB-COLLIER", "AGN- GIGOT", "VB COEUR CUBE", "VOLAILLE- AIGUILLETTE"
+_RE_PREFIXE = re.compile(r'^([A-Z]{2,8})\s*-\s*(.+)$|^([A-Z]{2,3})\s+(.+)$')
+
+
+def extraire_code_et_muscle(nom: str):
     """
-    Retourne (code, reste) depuis un ingredient type "VB-COLLIER SANS OS".
-    Le code est la partie avant le premier tiret s'il existe dans le LEXIQUE,
-    sinon on tente de déduire le code depuis les synonymes du lexique.
+    Retourne (code, muscle) depuis un nom de produit.
+
+    Exemples :
+      "VB-COLLIER SANS OS"             → ("VB",       "collier")
+      "AGN-GIGOT SANS OS"              → ("AGN",      "gigot")
+      "GIBIER-CERF CIVET"              → ("GIBIER",   "cerf")
+      "VOLAILLE- AIGUILLETTE DE CANARD"→ ("VOLAILLE", "aiguillette")
+      "VB COEUR CUBE VRAC"             → ("VB",       "coeur")
+      "AG FOIE TRANCHE"                → ("AG",       "foie")
     """
-    ingredient = ingredient.strip()
-    if "-" in ingredient:
-        parties = ingredient.split("-", 1)
-        code_candidat = parties[0].strip().upper()
-        reste = parties[1].strip()
-        if code_candidat in LEXIQUE:
-            return code_candidat, reste
-        # Le préfixe n'est pas un code connu → on cherche dans le reste
-        return "", ingredient
-    return "", ingredient
-
-
-def extraire_muscle(reste: str) -> str:
-    """
-    Supprime les mots parasites et le code pour ne garder que le muscle.
-    Exemple : "COLLIER SANS OS PAD" → "COLLIER"
-    """
-    mots = normaliser(reste).split()
-    mots_filtres = [m for m in mots if m not in MOTS_PARASITES and len(m) > 1]
-    # Retourne le premier mot significatif (la coupe principale)
-    return mots_filtres[0] if mots_filtres else normaliser(reste)
-
-
-def synonymes_pour_code(code: str) -> list[str]:
-    """Retourne tous les synonymes (normalisés) associés à un code espèce."""
-    return [normaliser(s) for s in LEXIQUE.get(code, [])]
-
-
-# ---------------------------------------------------------------------------
-# Chargement des données
-# ---------------------------------------------------------------------------
-
-def charger_produits_en_stock(conn: sqlite3.Connection) -> list[dict]:
-    """
-    Retourne les produits qui ont au moins une ligne de réception en stock
-    (quantite > 0 et dlc >= aujourd'hui).
-    Si reception_lignes est vide, retourne tous les produits du catalogue.
-    """
-    cursor = conn.cursor()
-
-    # Vérifie s'il y a du stock réel
-    cursor.execute("SELECT COUNT(*) FROM reception_lignes WHERE quantite > 0")
-    nb_stock = cursor.fetchone()[0]
-
-    if nb_stock > 0:
-        cursor.execute("""
-            SELECT DISTINCT p.nom, p.espece, p.code_unique
-            FROM produits p
-            JOIN reception_lignes rl ON rl.produit_nom = p.nom
-            WHERE rl.quantite > 0
-              AND (rl.dlc IS NULL OR rl.dlc >= date('now'))
-        """)
-        source = "stock réel (réceptions)"
+    nom = nom.strip()
+    m = _RE_PREFIXE.match(nom)
+    if m:
+        # Groupe 1+2 = tiret, groupe 3+4 = espace
+        code  = (m.group(1) or m.group(3)).strip().upper()
+        reste = (m.group(2) or m.group(4)).strip()
     else:
-        # Fallback : catalogue complet (base de comparaison théorique)
-        cursor.execute("SELECT nom, espece, code_unique FROM produits")
-        source = "catalogue produits (aucun stock reçu pour l'instant)"
+        code  = ""
+        reste = nom
 
-    rows = cursor.fetchall()
-    produits = [{"nom": r[0], "espece": r[1], "code_unique": r[2]} for r in rows]
-    return produits, source
+    # Retire les non-lettres (chiffres, slashes…) et passe en minuscules
+    mots = re.sub(r"[^a-zA-Z\xc0-\xff\s]", " ", reste.lower()).split()
 
-
-def charger_ingredients(conn: sqlite3.Connection, demo: bool) -> list[str]:
-    """
-    Retourne la liste des ingrédients uniques.
-    En mode démo, utilise DEMO_INGREDIENTS.
-    Sinon, tente de lire recette_ingredients.
-    """
-    if demo:
-        return DEMO_INGREDIENTS
-
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='recette_ingredients'"
-    )
-    if not cursor.fetchone():
-        return None  # Table absente
-
-    # Découverte dynamique des colonnes
-    cursor.execute("PRAGMA table_info(recette_ingredients)")
-    colonnes = [row[1] for row in cursor.fetchall()]
-
-    # Candidats possibles pour le nom de l'ingrédient (ordre de priorité)
-    candidats = [
-        "nom_ingredient", "nom", "ingredient", "libelle",
-        "designation", "produit", "article", "name",
+    # Filtre les mots parasites et les trop courts (≤ 2 caractères)
+    utiles = [
+        w for w in mots
+        if len(w) > 2 and normaliser(w) not in MOTS_PARASITES
     ]
-    col = next((c for c in candidats if c in colonnes), None)
 
-    if col is None:
-        print(f"⚠️  Colonnes trouvées dans recette_ingredients : {colonnes}")
-        print("    Aucune colonne reconnue comme nom d'ingrédient.")
-        print("    Ajoutez le nom de la colonne correcte dans la liste 'candidats' du script.")
-        return []
-
-    cursor.execute(
-        f"SELECT DISTINCT {col} FROM recette_ingredients WHERE {col} IS NOT NULL"
-    )
-    return [r[0] for r in cursor.fetchall()]
+    muscle = normaliser(utiles[0]) if utiles else normaliser(reste)
+    return code, muscle
 
 
-# ---------------------------------------------------------------------------
-# Moteur de correspondance
-# ---------------------------------------------------------------------------
+def synonymes_code(code: str) -> list:
+    """Renvoie code + tous ses synonymes, normalisés."""
+    syns = LEXIQUE.get(code, [])
+    return [normaliser(code)] + [normaliser(s) for s in syns]
 
-def chercher_correspondance(ingredient: str, produits: list[dict]) -> dict | None:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Algorithme de matching (simulateur JS)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def match_produit(ingredient: str, stock_norm: list):
     """
-    Cherche parmi `produits` un produit qui correspond à `ingredient`.
-    Critère : le nom du produit doit contenir le muscle ET (le code OU un synonyme).
-    Retourne le premier produit matchant, ou None.
+    Cherche dans stock_norm (liste de tuples (nom_original, nom_normalise))
+    un article qui contient à la fois :
+      - le MUSCLE extrait de l'ingrédient
+      - le CODE espèce ou un de ses SYNONYMES
+
+    Retourne le nom original du premier match, ou None.
     """
-    code, reste = extraire_code(ingredient)
-    muscle = extraire_muscle(reste if reste else ingredient)
+    code, muscle = extraire_code_et_muscle(ingredient)
+    syns = synonymes_code(code)
 
-    for produit in produits:
-        nom_produit = normaliser(produit["nom"])
-        espece_produit = normaliser(produit["espece"] or "")
-
-        # 1. Le nom du produit contient-il le muscle ?
-        if muscle not in nom_produit:
-            continue
-
-        # 2. Le code correspond-il ?
-        if code:
-            # Vérification directe : le nom commence par "CODE-"
-            if nom_produit.startswith(code.lower() + "-"):
-                return produit
-            # Vérification via synonymes du lexique dans l'espèce du produit
-            for syn in synonymes_pour_code(code):
-                if syn in espece_produit or syn in nom_produit:
-                    return produit
-        else:
-            # Pas de code → correspondance muscle seul (moins fiable)
-            return produit
-
+    for nom_orig, nom_nrm in stock_norm:
+        has_muscle = muscle in nom_nrm
+        has_espece = any(s in nom_nrm for s in syns)
+        if has_muscle and has_espece:
+            return nom_orig
     return None
 
 
-# ---------------------------------------------------------------------------
-# Affichage
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Chargement des données (READ-ONLY)
+# ─────────────────────────────────────────────────────────────────────────────
 
-VERT  = "\033[92m"
-ROUGE = "\033[91m"
-RESET = "\033[0m"
-GRAS  = "\033[1m"
+def charger_donnees(db_path: str, demo: bool):
+    """
+    Ouvre la base en lecture seule et retourne :
+      (besoins, stock, source_a, source_b)
 
-def icone_ok(ok: bool) -> str:
-    return "🟢" if ok else "🔴"
+    Liste A (besoins) :
+      - En mode --demo : DEMO_INGREDIENTS
+      - Si recette_ingredients existe : SELECT DISTINCT <col_nom>
+      - Sinon (Phase 2 non encore déployée) : SELECT DISTINCT nom FROM produits
 
+    Liste B (stock) :
+      - reception_lignes JOIN produits WHERE quantite_restante > 0  (idéal)
+      - reception_lignes.produit_nom WHERE quantite > 0             (fallback 1)
+      - produits.nom catalogue complet                              (fallback 2 = simulation)
+    """
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    except Exception:
+        # SQLite < 3.5 ne supporte pas uri=True ; fallback mode normal
+        conn = sqlite3.connect(db_path)
 
-def afficher_rapport(resultats: list[dict], source_stock: str, demo: bool):
-    mode_label = " [MODE DÉMO]" if demo else ""
-    print()
-    print(f"{GRAS}{'=' * 62}{RESET}")
-    print(f"{GRAS}  DIAGNOSTIC TRAÇABILITÉ INGRÉDIENTS → STOCK{mode_label}{RESET}")
-    print(f"{'=' * 62}")
-    print(f"  Source stock : {source_stock}")
-    print(f"{'=' * 62}{RESET}")
-    print()
+    cur = conn.cursor()
 
-    nb_match = 0
-    for r in resultats:
-        ok = r["match"] is not None
-        if ok:
-            nb_match += 1
-        couleur = VERT if ok else ROUGE
-        icone = icone_ok(ok)
-        ingredient = r["ingredient"]
-        code = r["code"] or "??"
-        muscle = r["muscle"]
+    def tables():
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        return {r[0] for r in cur.fetchall()}
 
-        if ok:
-            detail = f"  → {r['match']['nom']}"
+    tbls = tables()
+
+    # ── Liste A : Besoins ─────────────────────────────────────────────────────
+    if demo:
+        besoins  = DEMO_INGREDIENTS
+        source_a = "Jeu de demo interne (--demo)"
+
+    elif "recette_ingredients" in tbls:
+        # Découverte dynamique de la colonne « nom »
+        cur.execute("PRAGMA table_info(recette_ingredients)")
+        cols = [r[1] for r in cur.fetchall()]
+        candidats = ["nom_ingredient", "nom", "ingredient", "libelle", "designation", "produit"]
+        col_nom = next((c for c in candidats if c in cols), None)
+
+        if col_nom:
+            cur.execute(
+                f"SELECT DISTINCT {col_nom} FROM recette_ingredients "
+                f"WHERE {col_nom} IS NOT NULL"
+            )
+            besoins  = [r[0] for r in cur.fetchall() if r[0]]
+            source_a = f"recette_ingredients.{col_nom}"
         else:
-            detail = "  → Aucun lot en stock"
+            besoins  = []
+            source_a = f"recette_ingredients (colonne introuvable parmi {cols})"
 
-        print(f"  {icone} {couleur}{ingredient:<35}{RESET}  [{code}] muscle={muscle}")
-        print(f"        {couleur}{detail}{RESET}")
-        print()
+    else:
+        # Pas de table de recettes → on audite le catalogue complet
+        cur.execute("SELECT DISTINCT nom FROM produits WHERE actif = 1 ORDER BY nom")
+        besoins  = [r[0] for r in cur.fetchall() if r[0]]
+        source_a = "produits.nom [recette_ingredients absente — audit catalogue complet]"
 
-    total = len(resultats)
-    taux = (nb_match / total * 100) if total > 0 else 0
-    couleur_taux = VERT if taux >= 80 else (ROUGE if taux < 50 else "\033[93m")
+    # ── Liste B : Stock disponible ────────────────────────────────────────────
+    stock, source_b = [], ""
 
-    print(f"{'=' * 62}")
-    print(f"{GRAS}  Résultats : {nb_match}/{total} ingrédients couverts{RESET}")
-    print(f"{GRAS}  {couleur_taux}Taux de couverture de la traçabilité : {taux:.1f}%{RESET}")
-    print(f"{'=' * 62}")
+    if "reception_lignes" in tbls:
+        cur.execute("PRAGMA table_info(reception_lignes)")
+        rl_cols = {r[1] for r in cur.fetchall()}
+
+        # Cas idéal : produit_id + quantite_restante
+        if "produit_id" in rl_cols and "quantite_restante" in rl_cols and "produits" in tbls:
+            cur.execute("""
+                SELECT DISTINCT p.nom
+                FROM   reception_lignes rl
+                JOIN   produits p ON rl.produit_id = p.id
+                WHERE  rl.quantite_restante > 0
+            """)
+            stock    = [r[0] for r in cur.fetchall() if r[0]]
+            source_b = "reception_lignes JOIN produits (quantite_restante > 0)"
+
+        # Fallback 1 : produit_nom + quantite
+        if not stock and "produit_nom" in rl_cols:
+            col_qty = "quantite_restante" if "quantite_restante" in rl_cols else "quantite"
+            cur.execute(
+                f"SELECT DISTINCT produit_nom FROM reception_lignes WHERE {col_qty} > 0"
+            )
+            stock = [r[0] for r in cur.fetchall() if r[0]]
+            if stock:
+                source_b = f"reception_lignes.produit_nom ({col_qty} > 0)"
+
+    # Fallback final : catalogue produits comme stock simulé
+    if not stock and "produits" in tbls:
+        cur.execute("SELECT DISTINCT nom FROM produits WHERE actif = 1 ORDER BY nom")
+        stock    = [r[0] for r in cur.fetchall() if r[0]]
+        source_b = "produits.nom [MODE SIMULATION — aucun stock reel en reception_lignes]"
+
+    conn.close()
+    return besoins, stock, source_a, source_b
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rapport terminal
+# ─────────────────────────────────────────────────────────────────────────────
+
+SEP  = "-" * 72
+SEP2 = "=" * 72
+
+
+def afficher_rapport(besoins, stock_norm, source_a, source_b):
+    print(f"\n{BOLD}{CYAN}{SEP2}{RESET}")
+    print(f"{BOLD}{CYAN}  DIAGNOSTIC TRACABILITE — MATCHING FIFO / LEXIQUE ESPECES{RESET}")
+    print(f"{BOLD}{CYAN}  Base : {DB_PATH}{RESET}")
+    print(f"{BOLD}{CYAN}{SEP2}{RESET}\n")
+    print(f"  {BOLD}Liste A — Besoins  :{RESET} {len(besoins):>4} entree(s)")
+    print(f"  {DIM}  Source : {source_a}{RESET}")
+    print(f"  {BOLD}Liste B — Stock    :{RESET} {len(stock_norm):>4} entree(s)")
+    print(f"  {DIM}  Source : {source_b}{RESET}")
+    print(f"\n{SEP}")
+
+    succes, echecs = [], []
+
+    for ing in besoins:
+        match = match_produit(ing, stock_norm)
+        code, muscle = extraire_code_et_muscle(ing)
+
+        if match:
+            print(
+                f"  {GREEN}[OK]   {ing:<46}{RESET}"
+                f"  {GREEN}---> {match}{RESET}"
+            )
+            succes.append(ing)
+        else:
+            print(
+                f"  {RED}[ECHEC] {ing:<45}{RESET}"
+                f"  {RED}---> Aucune correspondance stock.{RESET}"
+                f"  {DIM}[code={code!r} muscle={muscle!r}]{RESET}"
+            )
+            echecs.append(ing)
+
+    print(f"{SEP}\n")
+
+    # ── Statistiques finales ──────────────────────────────────────────────────
+    total      = len(besoins)
+    nb_ok      = len(succes)
+    nb_ko      = len(echecs)
+    couverture = (nb_ok / total * 100) if total > 0 else 0.0
+
+    couleur_taux = GREEN if couverture >= 80 else (YELLOW if couverture >= 50 else RED)
+
+    print(
+        f"  {BOLD}RECAPITULATIF :{RESET}"
+        f"  Total testes : {BOLD}{total}{RESET}"
+        f"  |  Succes : {GREEN}{BOLD}{nb_ok}{RESET}"
+        f"  |  Echecs : {RED}{BOLD}{nb_ko}{RESET}"
+        f"  |  Couverture : {couleur_taux}{BOLD}{couverture:.1f}%{RESET}"
+    )
+
+    if echecs:
+        print(f"\n  {BOLD}{RED}Ingredients sans correspondance ({nb_ko}) :{RESET}")
+        for nom in echecs:
+            code, muscle = extraire_code_et_muscle(nom)
+            print(
+                f"    {RED}•{RESET} {nom:<48}"
+                f"  {DIM}code={code!r}  muscle={muscle!r}{RESET}"
+            )
+
     print()
-
-    if total == 0:
-        print("  ⚠️  Aucun ingrédient trouvé dans recette_ingredients.")
-        print("      Utilisez --demo pour tester le moteur de correspondance.")
-        print()
+    return nb_ko  # code de retour : 0 si tout est OK
 
 
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 # Point d'entrée
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
     demo = "--demo" in sys.argv
 
-    if not os.path.exists(DB_PATH):
-        print(f"❌ Base de données introuvable : {DB_PATH}")
-        sys.exit(1)
+    besoins, stock, source_a, source_b = charger_donnees(DB_PATH, demo)
 
-    conn = sqlite3.connect(DB_PATH)
+    if not besoins:
+        print(f"\n{YELLOW}Aucun besoin a auditer. "
+              f"Utilisez --demo pour un test rapide.{RESET}\n")
+        sys.exit(0)
 
-    try:
-        # Chargement des ingrédients
-        ingredients = charger_ingredients(conn, demo)
+    # Pré-calcul du stock normalisé (1 seule fois pour tous les matchings)
+    stock_norm = [(nom, normaliser(nom)) for nom in stock]
 
-        if ingredients is None:
-            print()
-            print("⚠️  La table 'recette_ingredients' n'existe pas encore dans la base.")
-            print("    Elle sera créée lors de la Phase 2 (module Recettes).")
-            print()
-            print("    Pour tester le moteur dès maintenant :")
-            print("      python diag_tracabilite.py --demo")
-            print()
-            conn.close()
-            return
-
-        if not ingredients:
-            print()
-            print("ℹ️  La table recette_ingredients existe mais est vide.")
-            print("   Ajoutez des recettes pour lancer le diagnostic.")
-            print()
-            conn.close()
-            return
-
-        # Chargement du stock
-        produits, source_stock = charger_produits_en_stock(conn)
-
-        # Analyse de chaque ingrédient
-        resultats = []
-        for ing in ingredients:
-            code, reste = extraire_code(ing)
-            muscle = extraire_muscle(reste if reste else ing)
-            match = chercher_correspondance(ing, produits)
-            resultats.append({
-                "ingredient": ing,
-                "code": code,
-                "muscle": muscle,
-                "match": match,
-            })
-
-        # Tri : 🔴 en premier pour repérer rapidement les manques
-        resultats.sort(key=lambda r: (r["match"] is not None, r["ingredient"]))
-
-        afficher_rapport(resultats, source_stock, demo)
-
-    finally:
-        conn.close()
+    nb_echecs = afficher_rapport(besoins, stock_norm, source_a, source_b)
+    sys.exit(0 if nb_echecs == 0 else 1)
 
 
 if __name__ == "__main__":
