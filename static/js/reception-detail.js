@@ -87,63 +87,49 @@ function afficherReception(rec) {
   titGen.textContent = 'Général';
   secGen.appendChild(titGen);
 
-  const rowGen1 = document.createElement('div');
-  rowGen1.className = 'rd-row';
+  function creerChamp(labelTxt, id) {
+    const ch = document.createElement('div');
+    ch.className = 'rd-champ';
+    const lbl = document.createElement('span');
+    lbl.className = 'rd-champ-label';
+    lbl.textContent = labelTxt;
+    const val = document.createElement('span');
+    val.className = 'rd-champ-val';
+    if (id) val.id = id;
+    ch.appendChild(lbl);
+    ch.appendChild(val);
+    return { ch, val };
+  }
 
-  const chDate = document.createElement('div');
-  chDate.className = 'rd-champ';
-  const lblDate = document.createElement('span');
-  lblDate.className = 'rd-champ-label';
-  lblDate.textContent = 'Date de réception';
-  const valDate = document.createElement('span');
-  valDate.className = 'rd-champ-val';
+  // Ligne 1 : Fournisseur (pleine largeur)
+  const rowFourn = document.createElement('div');
+  rowFourn.className = 'rd-row full';
+  const { ch: chFourn, val: valFourn } = creerChamp('Fournisseur', 'detail-fournisseur');
+  valFourn.textContent = rec.fournisseur_nom || 'Non renseigné';
+  rowFourn.appendChild(chFourn);
+  secGen.appendChild(rowFourn);
+
+  // Ligne 2 : N° BL | Date de réception
+  const rowBLDate = document.createElement('div');
+  rowBLDate.className = 'rd-row';
+  const { ch: chBL, val: valBL } = creerChamp('N° Bon de livraison', 'detail-bl');
+  valBL.textContent = rec.numero_bon_livraison || '—';
+  rowBLDate.appendChild(chBL);
+  const { ch: chDate, val: valDate } = creerChamp('Date de réception', 'detail-date');
   valDate.textContent = formatDateFR(rec.date_reception);
-  chDate.appendChild(lblDate);
-  chDate.appendChild(valDate);
-  rowGen1.appendChild(chDate);
+  rowBLDate.appendChild(chDate);
+  secGen.appendChild(rowBLDate);
 
-  const chHeure = document.createElement('div');
-  chHeure.className = 'rd-champ';
-  const lblHeure = document.createElement('span');
-  lblHeure.className = 'rd-champ-label';
-  lblHeure.textContent = 'Heure';
-  const valHeure = document.createElement('span');
-  valHeure.className = 'rd-champ-val';
+  // Ligne 3 : Heure | Opérateur
+  const rowHeureOp = document.createElement('div');
+  rowHeureOp.className = 'rd-row';
+  const { ch: chHeure, val: valHeure } = creerChamp('Heure', 'detail-heure');
   valHeure.textContent = rec.heure_reception || '—';
-  chHeure.appendChild(lblHeure);
-  chHeure.appendChild(valHeure);
-  rowGen1.appendChild(chHeure);
-
-  secGen.appendChild(rowGen1);
-
-  const rowGen2 = document.createElement('div');
-  rowGen2.className = 'rd-row';
-
-  const chOp = document.createElement('div');
-  chOp.className = 'rd-champ';
-  const lblOp = document.createElement('span');
-  lblOp.className = 'rd-champ-label';
-  lblOp.textContent = 'Opérateur';
-  const valOp = document.createElement('span');
-  valOp.className = 'rd-champ-val';
+  rowHeureOp.appendChild(chHeure);
+  const { ch: chOp, val: valOp } = creerChamp('Opérateur', 'detail-operateur');
   valOp.textContent = rec.personnel_prenom || '—';
-  chOp.appendChild(lblOp);
-  chOp.appendChild(valOp);
-  rowGen2.appendChild(chOp);
-
-  const chFourn = document.createElement('div');
-  chFourn.className = 'rd-champ';
-  const lblFourn = document.createElement('span');
-  lblFourn.className = 'rd-champ-label';
-  lblFourn.textContent = 'Fournisseur principal';
-  const valFourn = document.createElement('span');
-  valFourn.className = 'rd-champ-val';
-  valFourn.textContent = rec.fournisseur_nom || '—';
-  chFourn.appendChild(lblFourn);
-  chFourn.appendChild(valFourn);
-  rowGen2.appendChild(chFourn);
-
-  secGen.appendChild(rowGen2);
+  rowHeureOp.appendChild(chOp);
+  secGen.appendChild(rowHeureOp);
 
   elMain.appendChild(secGen);
 
@@ -253,37 +239,6 @@ function afficherReception(rec) {
     elMain.appendChild(secCmt);
   }
 
-  // ── Statut global ──────────────────────────────────────
-  const secStatut = document.createElement('div');
-  secStatut.className = 'rd-section';
-
-  const rowStatut = document.createElement('div');
-  rowStatut.className = 'rd-row full';
-
-  const chStatut = document.createElement('div');
-  chStatut.className = 'rd-champ';
-  const lblStatut = document.createElement('span');
-  lblStatut.className = 'rd-champ-label';
-  lblStatut.textContent = 'Statut';
-  const valStatut = document.createElement('span');
-  valStatut.className = 'rd-champ-val';
-
-  if (rec.livraison_refusee) {
-    valStatut.textContent = '✗ Livraison refusée';
-  } else if (!rec.statut || rec.statut === 'en_cours') {
-    valStatut.textContent = '⏳ En cours';
-  } else if (rec.nb_nc > 0) {
-    valStatut.textContent = `⚠️ ${rec.nb_nc} Non-conformité${rec.nb_nc > 1 ? 's' : ''}`;
-  } else {
-    valStatut.textContent = '✓ Conforme';
-  }
-
-  chStatut.appendChild(lblStatut);
-  chStatut.appendChild(valStatut);
-  rowStatut.appendChild(chStatut);
-  secStatut.appendChild(rowStatut);
-
-  elMain.appendChild(secStatut);
 }
 
 function creerLigne(lig) {
