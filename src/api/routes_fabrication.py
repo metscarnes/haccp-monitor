@@ -59,6 +59,7 @@ class FabricationCreate(BaseModel):
     personnel_id: int
     lots: list[LotValide]
     info_complementaire: Optional[str] = None
+    dlc_finale: Optional[str] = None    # "YYYY-MM-DD" calculée côté client (règle HACCP)
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +227,8 @@ async def enregistrer_fabrication(payload: FabricationCreate):
                 personnel_id=payload.personnel_id,
                 lots=[lot.model_dump() for lot in payload.lots],
                 info_complementaire=payload.info_complementaire,
+                recette_nom=recette["nom"],
+                dlc_finale=payload.dlc_finale,
             )
         except Exception as exc:
             logger.error("Erreur création fabrication : %s", exc)

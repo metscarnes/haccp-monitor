@@ -84,6 +84,7 @@ const state = {
   quantities:       {},     // {produit_id: valeur calculée}
   fifoLots:         [],     // [{ingredient_id, ingredient_nom, lot_numero, lot_dlc}, ...]
   lotsSubstitues:   {},     // {produit_id: {produit_id_sub, nom_sub}} — substituts choisis
+  dlcFinale:        null,   // "YYYY-MM-DD" calculée selon règle HACCP (min théorique/ingrédients)
 };
 
 // ── Références DOM ────────────────────────────────────────────
@@ -680,6 +681,19 @@ elBtnConfLots.addEventListener('click', () => {
   allerEtape(4);
 });
 
+// ── Toast notification ────────────────────────────────────────
+function afficherToast(message, type = 'warning') {
+  const toast = document.createElement('div');
+  toast.className = `fab-toast fab-toast--${type}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('fab-toast--visible'));
+  setTimeout(() => {
+    toast.classList.remove('fab-toast--visible');
+    setTimeout(() => toast.remove(), 400);
+  }, 5000);
+}
+
 // ─────────────────────────────────────────────────────────────
 //  ÉTAPE 4 : Récapitulatif
 // ─────────────────────────────────────────────────────────────
@@ -690,13 +704,48 @@ function afficherRecap() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
-  const dlcDate = new Date(today);
-  dlcDate.setDate(dlcDate.getDate() + (state.recetteDlcJours ?? 0));
+  // ── DLC théorique du produit fini ────────────────────────
+  const dlcTheorique = new Date(today);
+  dlcTheorique.setDate(dlcTheorique.getDate() + (state.recetteDlcJours ?? 0));
+
+  // ── DLC minimale parmi les ingrédients FIFO ───────────────
+  let dlcIngredientMin = null;
+  let ingredientCritique = null;
+  (state.fifoLots ?? []).forEach(lot => {
+    const dlcStr = lot.lot_fifo?.dlc;
+    if (!dlcStr) return;
+    const dlcIng = new Date(dlcStr);
+    dlcIng.setHours(0, 0, 0, 0);
+    if (dlcIngredientMin === null || dlcIng < dlcIngredientMin) {
+      dlcIngredientMin = dlcIng;
+      ingredientCritique = lot.produit_nom ?? lot.ingredient_nom ?? 'ingrédient';
+    }
+  });
+
+  // ── Règle HACCP : retenir la date la plus courte ─────────
+  let dlcDate = dlcTheorique;
+  let dlcReduite = false;
+  if (dlcIngredientMin !== null && dlcIngredientMin < dlcTheorique) {
+    dlcDate = dlcIngredientMin;
+    dlcReduite = true;
+  }
+
+  // Stocker en ISO pour l'envoi serveur
+  state.dlcFinale = dlcDate.toISOString().slice(0, 10);
+
   const dlcFmt = dlcDate.toLocaleDateString('fr-FR', {
     weekday: 'short', day: '2-digit', month: 'long', year: 'numeric',
   });
   const diff = Math.ceil((dlcDate - today) / 86400000);
   const dlcClass = diff > 2 ? 'fab-recap-dlc--ok' : 'fab-recap-dlc--attention';
+
+  // ── Toast d'alerte si DLC réduite ─────────────────────────
+  if (dlcReduite) {
+    const dlcAfficheeCourte = dlcDate.toLocaleDateString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    });
+    afficherToast(`⚠️ DLC réduite à ${dlcAfficheeCourte} à cause de : ${ingredientCritique}`, 'warning');
+  }
 
   // Poids total fabriqué
   const poidsTotal = state.productionCiblee > 0
@@ -789,6 +838,7 @@ elBtnGenerer.addEventListener('click', async () => {
     personnel_id: Number(personnelId),
     date:         new Date().toISOString().slice(0, 10),
     lots:         lotsUtilises,
+    dlc_finale:   state.dlcFinale ?? null,
   };
 
   elBtnGenerer.disabled    = true;

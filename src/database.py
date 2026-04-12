@@ -619,6 +619,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE fiches_incident ADD COLUMN fournisseur_nom TEXT",
             # produits : type_produit pour distinguer brut / fini (v2.6)
             "ALTER TABLE produits ADD COLUMN type_produit TEXT NOT NULL DEFAULT 'brut'",
+            # fabrications : dlc_finale calculée selon HACCP (v2.7)
+            "ALTER TABLE fabrications ADD COLUMN dlc_finale TEXT",
         ]
         for sql in migrations:
             try:
@@ -2575,16 +2577,28 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
     return result
 
 
-async def generer_lot_fabrication(db: aiosqlite.Connection) -> str:
+def _initiales_recette(nom: str) -> str:
+    """Calcule les initiales d'un nom de recette (mots > 2 lettres), en majuscules.
+
+    Exemple : "Merguez forte de boeuf" → "MFB"
+    Les mots de 2 lettres ou moins (de, la, le, du…) sont ignorés.
+    Retourne "FAB" si aucune lettre n'est trouvée.
+    """
+    mots = nom.strip().split()
+    initiales = "".join(m[0].upper() for m in mots if len(m) > 2)
+    return initiales or "FAB"
+
+
+async def generer_lot_fabrication(db: aiosqlite.Connection, recette_nom: str) -> str:
     """
     Génère un numéro de lot interne fabrication unique.
-    Format : MC-YYYYMMDD-XXXX  (XXXX = compteur 4 chiffres, remis à 0 chaque jour)
-    Utilise la table `lot_interne_counters` existante avec code_unique='MC'.
+    Format : {INITIALES}-YYYYMMDD-XXXX  (XXXX = compteur 4 chiffres, remis à 0 chaque jour)
+    Les initiales sont dérivées du nom de la recette (mots > 2 lettres).
     """
     from datetime import date as _date
     today = _date.today()
-    date_str  = today.strftime("%Y%m%d")   # YYYYMMDD
-    code_unique = "MC"
+    date_str    = today.strftime("%Y%m%d")
+    code_unique = _initiales_recette(recette_nom)
 
     await db.execute(
         """
@@ -2602,7 +2616,7 @@ async def generer_lot_fabrication(db: aiosqlite.Connection) -> str:
     )
     row = await cur.fetchone()
     counter = row[0] if row else 1
-    return f"MC-{date_str}-{counter:04d}"
+    return f"{code_unique}-{date_str}-{counter:04d}"
 
 
 async def create_fabrication(
@@ -2612,6 +2626,8 @@ async def create_fabrication(
     personnel_id: int,
     lots: list[dict],
     info_complementaire: Optional[str] = None,
+    recette_nom: str = "FAB",
+    dlc_finale: Optional[str] = None,
 ) -> dict:
     """
     Enregistre une fabrication complète.
@@ -2620,17 +2636,20 @@ async def create_fabrication(
         - recette_ingredient_id : int
         - reception_ligne_id    : int  (lot fournisseur utilisé)
 
+    `dlc_finale` : date ISO "YYYY-MM-DD" calculée côté client selon règle HACCP
+    (min entre DLC théorique produit et DLC la plus courte des ingrédients).
+
     Retourne la fabrication créée avec son lot_interne.
     """
-    lot_interne = await generer_lot_fabrication(db)
+    lot_interne = await generer_lot_fabrication(db, recette_nom)
 
     cur = await db.execute(
         """
         INSERT INTO fabrications
-            (recette_id, date, lot_interne, personnel_id, info_complementaire)
-        VALUES (?,?,?,?,?)
+            (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale)
+        VALUES (?,?,?,?,?,?)
         """,
-        (recette_id, date, lot_interne, personnel_id, info_complementaire),
+        (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale),
     )
     fabrication_id = cur.lastrowid
 
@@ -2686,6 +2705,7 @@ async def get_fabrications_historique(
             f.id,
             f.lot_interne,
             f.date,
+            f.dlc_finale,
             f.info_complementaire,
             r.nom       AS recette_nom,
             pe.prenom   AS personnel_prenom

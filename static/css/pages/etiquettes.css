@@ -648,6 +648,31 @@
   margin: .25rem 0;
 }
 
+/* ── Toast HACCP ─────────────────────────────────── */
+.fab-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(120%);
+  background: #fff3cd;
+  color: #856404;
+  border: 1.5px solid #ffc107;
+  border-radius: 10px;
+  padding: .75rem 1.25rem;
+  font-size: .95rem;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgba(0,0,0,.18);
+  z-index: 9999;
+  transition: transform .35s cubic-bezier(.34,1.56,.64,1), opacity .35s;
+  opacity: 0;
+  max-width: 90vw;
+  text-align: center;
+}
+.fab-toast--visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
 .fab-recap-ing-titre {
   font-size: var(--text-xs);
   font-weight: 800;
