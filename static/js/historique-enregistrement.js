@@ -975,8 +975,8 @@ function fabCreerCarte(fab) {
 
   if (fab.dlc_finale) {
     const dlcBadge = document.createElement('span');
-    dlcBadge.className = 'badge text-xs bg-red-100 text-red-800';
-    dlcBadge.style.cssText = 'display:inline-block;padding:1px 6px;border-radius:4px;font-size:.7rem;font-weight:600;margin-left:6px;';
+    dlcBadge.className = 'ml-4 text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded';
+    dlcBadge.style.cssText = 'display:inline-block;margin-left:1rem;font-size:.7rem;font-weight:700;color:#dc2626;background:#fee2e2;padding:2px 8px;border-radius:4px;';
     dlcBadge.textContent = `DLC: ${formatDateFR(fab.dlc_finale)}`;
     entete.appendChild(dlcBadge);
   }

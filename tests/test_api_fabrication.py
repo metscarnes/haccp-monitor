@@ -247,16 +247,20 @@ async def test_post_fabrication_retourne_201_avec_lot_mc(app_client, db):
     fab = r.json()
     assert "lot_interne" in fab
 
-    # Vérifier le format MC-YYYYMMDD-XXXX
+    # Vérifier le format INITIALES-YYYYMMDD-XXXX (initiales extraites du nom de recette)
+    # "Merguez Test FIFO" → MTF ; format : {initiales}-{YYYYMMDD}-{counter:04d}
     lot = fab["lot_interne"]
     import re
-    pattern = r"^MC-\d{8}-\d{4}$"
+    pattern = r"^[A-Z]+-\d{8}-\d{4}$"
     assert re.match(pattern, lot), (
-        f"Format lot_interne invalide : '{lot}' (attendu MC-YYYYMMDD-XXXX)"
+        f"Format lot_interne invalide : '{lot}' (attendu INITIALES-YYYYMMDD-XXXX)"
     )
 
     today_str = date.today().strftime("%Y%m%d")
     assert today_str in lot, f"La date du jour {today_str} devrait être dans le lot : {lot}"
+    assert lot.startswith("MTF-"), (
+        f"Initiales incorrectes : '{lot}' (attendu MTF- pour 'Merguez Test FIFO')"
+    )
 
 
 @pytest.mark.anyio

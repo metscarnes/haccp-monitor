@@ -705,8 +705,9 @@ function afficherRecap() {
   });
 
   // ── DLC théorique du produit fini ────────────────────────
+  const dlcJours = parseInt(state.recetteDlcJours, 10) || 3;
   const dlcTheorique = new Date(today);
-  dlcTheorique.setDate(dlcTheorique.getDate() + (state.recetteDlcJours ?? 0));
+  dlcTheorique.setDate(dlcTheorique.getDate() + dlcJours);
 
   // ── DLC minimale parmi les ingrédients FIFO ───────────────
   let dlcIngredientMin = null;
@@ -730,8 +731,9 @@ function afficherRecap() {
     dlcReduite = true;
   }
 
-  // Stocker en ISO pour l'envoi serveur
-  state.dlcFinale = dlcDate.toISOString().slice(0, 10);
+  // Stocker en YYYY-MM-DD local (évite le décalage UTC de toISOString)
+  const _p = n => String(n).padStart(2, '0');
+  state.dlcFinale = `${dlcDate.getFullYear()}-${_p(dlcDate.getMonth() + 1)}-${_p(dlcDate.getDate())}`;
 
   const dlcFmt = dlcDate.toLocaleDateString('fr-FR', {
     weekday: 'short', day: '2-digit', month: 'long', year: 'numeric',
@@ -836,7 +838,7 @@ elBtnGenerer.addEventListener('click', async () => {
   const payload = {
     recette_id:   state.recetteId,
     personnel_id: Number(personnelId),
-    date:         new Date().toISOString().slice(0, 10),
+    date:         new Date().toLocaleDateString('en-CA'),
     lots:         lotsUtilises,
     dlc_finale:   state.dlcFinale ?? null,
   };
