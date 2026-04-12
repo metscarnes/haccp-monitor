@@ -473,15 +473,30 @@ function filtrerProduitsIntelligent(produits, ingNom) {
   return resultats.length > 0 ? resultats : produits;
 }
 
-function htmlSubTuile(p) {
+function htmlSubTuile(p, index = 0) {
+  const isPriority = index === 0;
+
+  // Calcul urgence DLC
+  let dlcClasse = '';
+  let dlcTexte  = formatDate(p.dlc);
+  if (p.dlc) {
+    const jours = Math.ceil((new Date(p.dlc) - new Date()) / (1000 * 60 * 60 * 24));
+    if (jours <= 2)      dlcClasse = 'dlc-critique';
+    else if (jours <= 5) dlcClasse = 'dlc-attention';
+    else                 dlcClasse = 'dlc-ok';
+  }
+
   const lotInfo = (p.numero_lot || p.dlc)
-    ? `<div style="font-size:.75rem;color:#6b7280;margin-top:.35rem">
-         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | DLC&nbsp;: ${formatDate(p.dlc)}
+    ? `<div style="font-size:.75rem;margin-top:.35rem">
+         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | DLC&nbsp;: <span class="${dlcClasse}">${dlcTexte}</span>
        </div>`
     : '';
+
   return `
-    <div class="fab-sub-tuile" data-produit-id="${p.id}"
-         data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0">
+    <div class="fab-sub-tuile${isPriority ? ' tuile-priorite' : ''}" data-produit-id="${p.id}"
+         data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0"
+         style="position:relative;">
+      ${isPriority ? `<div class="badge-fifo">⭐ PRIORITÉ FIFO</div>` : ''}
       <div class="fab-sub-tuile-icon">📦</div>
       <div class="fab-sub-tuile-nom">${escHtml(p.nom)}</div>
       ${p.stock != null
@@ -504,7 +519,7 @@ function afficherSubProduits(produits) {
     if (!db) return -1;
     return da - db;
   });
-  elSubGrid.innerHTML = tries.map(htmlSubTuile).join('');
+  elSubGrid.innerHTML = tries.map((p, i) => htmlSubTuile(p, i)).join('');
 }
 
 elLots.addEventListener('click', async e => {
