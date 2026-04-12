@@ -882,7 +882,8 @@ elBtnGenerer.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
-    elSuccesLot.textContent = result.numero_lot ? `Lot : ${result.numero_lot}` : '';
+    console.log('[Fabrication] Réponse API :', result);
+    elSuccesLot.textContent = result.lot_interne ? `Lot : ${result.lot_interne}` : '';
     elSucces.hidden = false;
 
     // ── Remplissage du gabarit d'impression ──────────────────
@@ -893,8 +894,8 @@ elBtnGenerer.addEventListener('click', async () => {
 
     document.getElementById('print-nom').textContent = state.recetteNom ?? '';
     document.getElementById('print-dlc').textContent = dlcFormatee;
-    document.getElementById('print-lot').textContent = result.numero_lot
-      ? `Lot : ${result.numero_lot}`
+    document.getElementById('print-lot').textContent = result.lot_interne
+      ? `Lot : ${result.lot_interne}`
       : 'Lot : —';
     document.getElementById('print-meta').textContent =
       `Fabriqué le ${new Date().toLocaleDateString('fr-FR')} par ${operateurNom}`;
