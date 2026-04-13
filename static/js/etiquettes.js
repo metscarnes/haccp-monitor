@@ -354,12 +354,23 @@ elProdCiblee.addEventListener('input', () => {
 elBtnStep2Next.addEventListener('click', async () => {
   elCalcErreur.hidden = true;
 
-  // Si la recette a un rendement et que rien n'est saisi → bloquer
-  if (state.rendementBase && state.productionCiblee <= 0) {
-    elCalcErreur.textContent = 'Veuillez saisir la production ciblée du jour.';
-    elCalcErreur.hidden = false;
-    elProdCiblee.focus();
-    return;
+  // Relecture explicite de l'input au moment du clic (capture coller/autofill/navigation clavier)
+  const saisi = parseFloat(elProdCiblee.value) || 0;
+  state.productionCiblee = saisi;
+  recalculerQuantites();
+
+  if (state.rendementBase) {
+    // Recette avec base de rendement : le poids est obligatoire
+    if (state.productionCiblee <= 0) {
+      elCalcErreur.textContent = 'Veuillez saisir la production ciblée du jour.';
+      elCalcErreur.hidden = false;
+      elProdCiblee.focus();
+      return;
+    }
+  } else if (state.productionCiblee <= 0) {
+    // Recette sans base : fallback sur la somme des quantités de base
+    const totalBase = state.ingredients.reduce((s, ing) => s + (ing.quantite_base ?? 0), 0);
+    state.productionCiblee = totalBase > 0 ? totalBase : null;
   }
 
   await chargerFifoLots();
