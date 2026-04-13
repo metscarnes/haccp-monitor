@@ -183,13 +183,23 @@
     /* ── Gabarit impression thermique Brother 62mm ── */
     #print-label { display: none; }
     @media print {
+      @page {
+        size: 62mm auto;
+        margin: 0mm;
+      }
+
       body * { visibility: hidden; }
-      #print-label, #print-label * { visibility: visible; }
+
+      #print-label, #print-label * {
+        visibility: visible;
+      }
+
       #print-label {
         display: block;
         position: absolute;
-        left: 0; top: 0;
-        width: 58mm;
+        left: 0;
+        top: 0;
+        width: 100%;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
@@ -197,7 +207,6 @@
         font-family: sans-serif;
         background: white;
       }
-      @page { margin: 0; }
     }
   </style>
 </head>
