@@ -985,7 +985,11 @@ function fabCreerCarte(fab) {
 
   const meta = document.createElement('div');
   meta.className = 'he-fab-meta';
-  meta.textContent = `${formatDateFR(fab.date)} — ${fab.personnel_prenom || '—'}`;
+  const { unite: uniteMetaBase } = fabExtraireBase(fab.recette_instructions);
+  const poidsLabel = (fab.poids_fabrique != null && fab.poids_fabrique > 0)
+    ? ` — ⚖️ ${fab.poids_fabrique} ${uniteMetaBase} fabriqués`
+    : '';
+  meta.textContent = `${formatDateFR(fab.date)} — ${fab.personnel_prenom || '—'}${poidsLabel}`;
   info.appendChild(meta);
 
   const chips = document.createElement('div');
