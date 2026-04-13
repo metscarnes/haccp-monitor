@@ -368,6 +368,14 @@ body.pcr-body {
 }
 
 @media print {
+  /* Débloquer l'overflow qui clipe le contenu en mode écran */
+  html,
+  body.pcr-body {
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+  }
+
   /* Masquer toute la page sauf le gabarit */
   body.pcr-body > *:not(#print-label-retour) {
     display: none !important;
@@ -375,8 +383,6 @@ body.pcr-body {
 
   #print-label-retour {
     display: block !important;
-    position: fixed;
-    inset: 0;
     width: 100%;
     background: white;
     padding: 1.4rem 1.6rem 1rem;
