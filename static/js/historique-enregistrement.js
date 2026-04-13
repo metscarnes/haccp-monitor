@@ -1033,16 +1033,32 @@ function fabCreerCarte(fab) {
     carte.classList.toggle('ouvert');
     if (carte.classList.contains('ouvert') && !detail.dataset.charge) {
       detail.dataset.charge = '1';
-      fabRemplirIngredients(detail, fab.ingredients || []);
+      fabRemplirIngredients(detail, fab.ingredients || [], fab);
     }
   });
 
   return carte;
 }
 
-function fabRemplirIngredients(el, ingredients) {
+function fabRemplirIngredients(el, ingredients, fab) {
+  // ── Calcul du multiplicateur ─────────────────────────────
+  const { base: baseKg, unite: uniteBase } = fabExtraireBase(fab ? fab.recette_instructions : null);
+  const poids = (fab && fab.poids_fabrique != null && fab.poids_fabrique > 0) ? fab.poids_fabrique : 0;
+  const multiplicateur = (baseKg && baseKg > 0 && poids > 0) ? (poids / baseKg) : null;
+
+  // ── Badge poids fabriqué ─────────────────────────────────
+  if (poids > 0) {
+    const poidsEl = document.createElement('div');
+    poidsEl.className = 'he-fab-det-poids';
+    poidsEl.textContent = `⚖️ ${poids} ${uniteBase} fabriqués`;
+    el.appendChild(poidsEl);
+  }
+
   if (ingredients.length === 0) {
-    el.innerHTML = '<div style="padding:12px;color:#888;font-size:15px;">Aucun ingrédient enregistré.</div>';
+    const vide = document.createElement('div');
+    vide.style.cssText = 'padding:10px 14px;color:#888;font-size:15px;';
+    vide.textContent = 'Aucun ingrédient enregistré.';
+    el.appendChild(vide);
     return;
   }
 
@@ -1053,33 +1069,50 @@ function fabRemplirIngredients(el, ingredients) {
     const div = document.createElement('div');
     div.className = 'he-fab-ing';
 
+    // Colonne gauche : nom de l'ingrédient
     const nomEl = document.createElement('div');
     nomEl.className = 'he-fab-ing-nom';
+    nomEl.textContent = ing.produit_nom || '—';
+    div.appendChild(nomEl);
+
+    // Colonne milieu : quantité proportionnelle calculée
+    const qteEl = document.createElement('div');
+    qteEl.className = 'he-fab-ing-qte';
+    if (ing.quantite_base != null) {
+      const qte = multiplicateur !== null ? ing.quantite_base * multiplicateur : ing.quantite_base;
+      const qteStr = parseFloat(qte.toFixed(3)).toString();
+      qteEl.textContent = `${qteStr} ${ing.unite || 'kg'}`;
+    } else {
+      qteEl.textContent = '—';
+    }
+    div.appendChild(qteEl);
+
+    // Colonne droite : lot + DLC + lien traçabilité
+    const lotEl = document.createElement('div');
+    lotEl.className = 'he-fab-ing-lot';
+
+    const lotTxt = document.createElement('span');
+    lotTxt.textContent = ing.numero_lot ? `Lot ${ing.numero_lot}` : '—';
+    lotEl.appendChild(lotTxt);
+
+    if (ing.dlc) {
+      const dlcTxt = document.createElement('span');
+      dlcTxt.className = 'he-fab-ing-dlc';
+      dlcTxt.textContent = ` · DLC ${formatDateFR(ing.dlc)}`;
+      lotEl.appendChild(dlcTxt);
+    }
 
     if (ing.reception_id) {
       const lien = document.createElement('a');
       lien.href = `/reception-detail.html?id=${ing.reception_id}`;
-      lien.textContent = (ing.produit_nom || '—') + ' 🔗';
-      lien.style.cssText = 'color:inherit;text-decoration:none;cursor:pointer;';
-      lien.addEventListener('mouseenter', () => { lien.style.textDecoration = 'underline'; });
-      lien.addEventListener('mouseleave', () => { lien.style.textDecoration = 'none'; });
-      nomEl.appendChild(lien);
-    } else {
-      nomEl.textContent = ing.produit_nom || '—';
+      lien.textContent = ' 🔗';
+      lien.title = 'Voir la réception';
+      lien.style.cssText = 'color:var(--accent);text-decoration:none;font-size:14px;';
+      lien.addEventListener('click', e => e.stopPropagation());
+      lotEl.appendChild(lien);
     }
 
-    div.appendChild(nomEl);
-
-    const lotEl = document.createElement('div');
-    lotEl.className = 'he-fab-ing-lot';
-    lotEl.textContent = ing.numero_lot ? `Lot ${ing.numero_lot}` : '—';
     div.appendChild(lotEl);
-
-    const dlcEl = document.createElement('div');
-    dlcEl.className = 'he-fab-ing-dlc';
-    dlcEl.textContent = ing.dlc ? `DLC ${formatDateFR(ing.dlc)}` : '';
-    div.appendChild(dlcEl);
-
     liste.appendChild(div);
   });
 
