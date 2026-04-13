@@ -2727,9 +2727,11 @@ async def get_fabrications_historique(
             f.lot_interne,
             f.date,
             f.dlc_finale,
+            f.poids_fabrique,
             f.info_complementaire,
-            r.nom       AS recette_nom,
-            pe.prenom   AS personnel_prenom
+            r.nom           AS recette_nom,
+            r.instructions  AS recette_instructions,
+            pe.prenom       AS personnel_prenom
         FROM fabrications f
         JOIN recettes  r  ON r.id  = f.recette_id
         JOIN personnel pe ON pe.id = f.personnel_id

@@ -1087,6 +1087,17 @@ function fabRemplirIngredients(el, ingredients) {
 }
 
 // ── Ré-impression d'un ticket depuis l'historique ────────────
+
+/** Extrait "Base pour X kg/pièces" depuis le champ instructions (même logique que etiquettes.js) */
+function fabExtraireBase(instructions) {
+  if (!instructions) return { base: null, unite: 'kg' };
+  const m = String(instructions).match(/base pour (\d+(?:[.,]\d+)?)\s*(kg|g|pièces?|pc|l)?/i);
+  if (!m) return { base: null, unite: 'kg' };
+  const base = parseFloat(m[1].replace(',', '.'));
+  if (isNaN(base) || base <= 0) return { base: null, unite: 'kg' };
+  return { base, unite: m[2] || 'kg' };
+}
+
 function fabReimprimer(fab) {
   const dlcFormatee = fab.dlc_finale
     ? fab.dlc_finale.split('-').reverse().join('/')
@@ -1094,15 +1105,29 @@ function fabReimprimer(fab) {
 
   document.getElementById('print-nom').textContent = fab.recette_nom || '—';
 
-  // Le poids n'est pas stocké en BDD — on affiche info_complementaire si renseigné
+  // Afficher le poids réellement fabriqué (stocké en BDD)
   const elPoids = document.getElementById('print-poids');
-  elPoids.textContent = fab.info_complementaire || '';
-  elPoids.hidden = !fab.info_complementaire;
+  if (fab.poids_fabrique != null && fab.poids_fabrique > 0) {
+    const { unite } = fabExtraireBase(fab.recette_instructions);
+    elPoids.textContent = `${fab.poids_fabrique} ${unite} fabriqués`;
+    elPoids.hidden = false;
+  } else if (fab.info_complementaire) {
+    elPoids.textContent = fab.info_complementaire;
+    elPoids.hidden = false;
+  } else {
+    elPoids.textContent = '';
+    elPoids.hidden = true;
+  }
 
   document.getElementById('print-dlc').textContent = dlcFormatee;
   document.getElementById('print-lot').textContent = `Lot : ${fab.lot_interne || '—'}`;
   document.getElementById('print-meta').textContent =
     `Fabriqué le ${formatDateFR(fab.date)} par ${fab.personnel_prenom || '—'}`;
+
+  // Calcul du multiplicateur pour remettre à l'échelle les quantités d'ingrédients
+  const { base: baseKg } = fabExtraireBase(fab.recette_instructions);
+  const poids = fab.poids_fabrique ?? 0;
+  const multiplicateur = (baseKg && baseKg > 0 && poids > 0) ? (poids / baseKg) : 1;
 
   const ul = document.getElementById('print-ingredients');
   ul.innerHTML = '';
@@ -1113,10 +1138,13 @@ function fabReimprimer(fab) {
     const dlcIng = ing.dlc
       ? new Date(ing.dlc).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
       : 'N/A';
-    // quantite_base = quantité de la recette de base (non scalée à la production réelle)
-    const qteTexte = ing.quantite_base != null
-      ? `${ing.quantite_base}${ing.unite || ''} `
-      : '';
+    let qteTexte = '';
+    if (ing.quantite_base != null) {
+      const qteScalee = multiplicateur !== 1
+        ? Math.round(ing.quantite_base * multiplicateur * 100) / 100
+        : ing.quantite_base;
+      qteTexte = `${qteScalee}${ing.unite || ''} `;
+    }
     li.textContent = `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng})`;
     ul.appendChild(li);
   });
