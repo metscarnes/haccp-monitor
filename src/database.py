@@ -402,6 +402,8 @@ CREATE TABLE IF NOT EXISTS fabrications (
     lot_interne          TEXT    NOT NULL UNIQUE,
     personnel_id         INTEGER NOT NULL,
     info_complementaire  TEXT,
+    poids_fabrique       REAL,
+    dlc_finale           TEXT,
     created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (recette_id)   REFERENCES recettes(id),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id)
@@ -621,6 +623,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE produits ADD COLUMN type_produit TEXT NOT NULL DEFAULT 'brut'",
             # fabrications : dlc_finale calculée selon HACCP (v2.7)
             "ALTER TABLE fabrications ADD COLUMN dlc_finale TEXT",
+            # fabrications : poids fabriqué en kg pour traçabilité légale (v2.9)
+            "ALTER TABLE fabrications ADD COLUMN poids_fabrique REAL",
             # receptions : fournisseur_nom pour saisies manuelles sans ID (v2.8)
             "ALTER TABLE receptions ADD COLUMN fournisseur_nom TEXT",
             # reception_lignes : fournisseur_nom pour saisies manuelles sans ID (v2.8)
@@ -2644,6 +2648,7 @@ async def create_fabrication(
     info_complementaire: Optional[str] = None,
     recette_nom: str = "FAB",
     dlc_finale: Optional[str] = None,
+    poids_fabrique: Optional[float] = None,
 ) -> dict:
     """
     Enregistre une fabrication complète.
@@ -2662,10 +2667,10 @@ async def create_fabrication(
     cur = await db.execute(
         """
         INSERT INTO fabrications
-            (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale)
-        VALUES (?,?,?,?,?,?)
+            (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale, poids_fabrique)
+        VALUES (?,?,?,?,?,?,?)
         """,
-        (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale),
+        (recette_id, date, lot_interne, personnel_id, info_complementaire, dlc_finale, poids_fabrique),
     )
     fabrication_id = cur.lastrowid
 
