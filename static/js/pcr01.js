@@ -213,26 +213,11 @@ if (elLivreurRefuse) {
 
 // Bouton impression étiquette (si refus)
 if (elEtiqRepriseBtn) {
-  elEtiqRepriseBtn.addEventListener('click', async () => {
+  elEtiqRepriseBtn.addEventListener('click', () => {
     const l = ncProduits[ncFicheIndex];
-    elEtiqRepriseBtn.disabled = true;
-    try {
-      await fetch('/api/impression/etiquette-reprise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          produit_nom:      l.produit_nom,
-          motif:            l.motifs.join(', ') || 'non-conformité',
-          operateur_prenom: personnelPrenom,
-          date_refus:       new Date().toISOString().slice(0, 10),
-        }),
-      });
-      elEtiqRepriseBtn.classList.add('imprime');
-      elEtiqRepriseBtn.innerHTML = `✓ Imprimé — ${l.produit_nom}`;
-    } catch (e) {
-      elEtiqRepriseBtn.disabled = false;
-      alert(`Impression échouée : ${e.message}`);
-    }
+    imprimerEtiquetteRetour(l.produit_nom, l.motifs.join(', ') || 'non-conformité');
+    elEtiqRepriseBtn.classList.add('imprime');
+    elEtiqRepriseBtn.innerHTML = `✓ Imprimé — ${l.produit_nom}`;
   });
 }
 
@@ -244,25 +229,10 @@ function construireEtiquettes() {
     const btn = document.createElement('button');
     btn.className = 'pcr-etiq-btn';
     btn.innerHTML = `🖨️ &nbsp;Étiquette — ${l.produit_nom}`;
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      try {
-        await fetch('/api/impression/etiquette-reprise', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            produit_nom:      l.produit_nom,
-            motif:            l.motifs.join(', ') || 'non-conformité',
-            operateur_prenom: personnelPrenom,
-            date_refus:       new Date().toISOString().slice(0, 10),
-          }),
-        });
-        btn.classList.add('imprime');
-        btn.innerHTML = `✓ &nbsp;Imprimé — ${l.produit_nom}`;
-      } catch (e) {
-        btn.disabled = false;
-        btn.innerHTML = `⚠️ Erreur impression — ${l.produit_nom}`;
-      }
+    btn.addEventListener('click', () => {
+      imprimerEtiquetteRetour(l.produit_nom, l.motifs.join(', ') || 'non-conformité');
+      btn.classList.add('imprime');
+      btn.innerHTML = `✓ &nbsp;Imprimé — ${l.produit_nom}`;
     });
     elEtiqListe.appendChild(btn);
   });
@@ -486,6 +456,20 @@ function chargerFiche(idx) {
 
   // Masquer l'erreur
   elErreur.hidden = true;
+}
+
+
+// ── Impression étiquette À RETOURNER (window.print) ─────────
+function imprimerEtiquetteRetour(nomProduit, motif) {
+  const elNom   = document.getElementById('print-retour-nom');
+  const elMotif = document.getElementById('print-retour-motif');
+  const elDate  = document.getElementById('print-retour-date');
+  if (elNom)   elNom.textContent   = nomProduit;
+  if (elMotif) elMotif.textContent = motif || 'non-conformité';
+  if (elDate)  elDate.textContent  = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+  window.print();
 }
 
 

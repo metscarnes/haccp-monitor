@@ -362,6 +362,95 @@ body.pcr-body {
   color: var(--color-ok);
 }
 
+/* ── Gabarit impression étiquette À RETOURNER ─────────────── */
+#print-label-retour {
+  display: none;
+}
+
+@media print {
+  /* Masquer toute la page sauf le gabarit */
+  body.pcr-body > *:not(#print-label-retour) {
+    display: none !important;
+  }
+
+  #print-label-retour {
+    display: flex !important;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    background: white;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2.5rem;
+    box-sizing: border-box;
+    font-family: Arial, Helvetica, sans-serif;
+    gap: 1.2rem;
+  }
+
+  .print-retour-bandeau {
+    font-size: 1.1rem;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: white;
+    background: #C93030;
+    padding: .55rem 2rem;
+    border-radius: 6px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .print-retour-titre {
+    font-size: 3.5rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    color: #C93030;
+    text-transform: uppercase;
+    border: 4px solid #C93030;
+    padding: .4rem 2rem;
+    border-radius: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .print-retour-produit {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #1a1a1a;
+    text-transform: uppercase;
+    word-break: break-word;
+    padding: .5rem 0;
+    border-bottom: 2px solid #ccc;
+    width: 100%;
+  }
+
+  .print-retour-ligne {
+    font-size: 1.1rem;
+    color: #333;
+    display: flex;
+    gap: .6rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .print-retour-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #555;
+  }
+
+  .print-retour-pied {
+    font-size: .85rem;
+    color: #888;
+    margin-top: 1rem;
+    font-style: italic;
+  }
+}
+
 /* ── Zone erreur ───────────────────────────────────────────── */
 .pcr-erreur {
   background: #FFF0F0;

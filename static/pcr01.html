@@ -173,6 +173,25 @@
     💾 Enregistrer cette fiche
   </button>
 
+  <!-- ============================================================
+       GABARIT D'IMPRESSION — ÉTIQUETTE À RETOURNER
+       Invisible à l'écran, affiché uniquement lors de window.print()
+  ============================================================= -->
+  <div id="print-label-retour" aria-hidden="true">
+    <div class="print-retour-bandeau">PRODUIT NON CONFORME</div>
+    <div class="print-retour-titre">À RETOURNER</div>
+    <div class="print-retour-produit" id="print-retour-nom"></div>
+    <div class="print-retour-ligne">
+      <span class="print-retour-label">Motif :</span>
+      <span id="print-retour-motif"></span>
+    </div>
+    <div class="print-retour-ligne">
+      <span class="print-retour-label">Date :</span>
+      <span id="print-retour-date"></span>
+    </div>
+    <div class="print-retour-pied">Au Comptoir des Lilas — Réf. PCR01</div>
+  </div>
+
   <script src="/static/js/pcr01.js"></script>
 </body>
 </html>
