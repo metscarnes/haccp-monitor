@@ -11,7 +11,7 @@
 const REFRESH_MS = 60_000;
 
 // Seuls ces deux codes de tâche sont affichés et traités
-const CODES_ACTIFS = new Set(['nettoyage_desinfection', 'nettoyage_pieges_oiseaux']);
+const CODES_ACTIFS = new Set(['nettoyage_desinfection', 'pieges_rongeurs', 'nettoyage_pieges_oiseaux']);
 
 // ── État ──────────────────────────────────────────────────────
 let operateur     = null;   // prénom sélectionné
@@ -185,6 +185,7 @@ function carteHtml(tache, etat) {
 function iconeParCode(code) {
   const ICONES = {
     nettoyage_desinfection:   '🧹',
+    pieges_rongeurs:          '🪤',
     nettoyage_pieges_oiseaux: '🪤',
   };
   return ICONES[code] ?? '📋';
@@ -255,6 +256,26 @@ function construireChamps(code) {
           </div>
         </fieldset>`;
 
+    case 'pieges_rongeurs': {
+      const rongeurs = pieges.filter(p => p.type === 'rongeur');
+      if (rongeurs.length === 0) {
+        return `<p class="modal-info">Aucun piège rongeur configuré — <a href="/admin.html">configurer</a></p>`;
+      }
+      return `
+        <fieldset class="modal-fieldset">
+          <legend class="modal-fieldset-titre">État des pièges rongeurs</legend>
+          ${rongeurs.map(p => `
+            <label class="modal-checkbox-ligne">
+              <input type="checkbox" name="piege_${p.id}" id="piege_${p.id}">
+              <span>
+                <strong>${escHtml(p.identifiant)}</strong>
+                ${p.localisation ? ` — ${escHtml(p.localisation)}` : ''}
+                &ensp;— Rongeur présent
+              </span>
+            </label>`).join('')}
+        </fieldset>`;
+    }
+
     case 'nettoyage_pieges_oiseaux': {
       const oiseaux = pieges.filter(p => p.type === 'oiseau');
       if (oiseaux.length === 0) {
@@ -295,6 +316,16 @@ function collecterDonneesSpecifiques(code) {
       ds.produit_nettoyage = val('ds_produit_nett');
       ds.dilution          = val('ds_dilution');
       break;
+
+    case 'pieges_rongeurs': {
+      const etat = {};
+      pieges.filter(p => p.type === 'rongeur').forEach(p => {
+        const cb = form.querySelector(`[name="piege_${p.id}"]`);
+        etat[p.identifiant] = cb ? cb.checked : false;
+      });
+      ds.pieges_rongeurs = etat;
+      break;
+    }
 
     case 'nettoyage_pieges_oiseaux': {
       const etat = {};
