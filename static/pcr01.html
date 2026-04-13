@@ -180,15 +180,34 @@
   <div id="print-label-retour" aria-hidden="true">
     <div class="print-retour-bandeau">PRODUIT NON CONFORME</div>
     <div class="print-retour-titre">À RETOURNER</div>
-    <div class="print-retour-produit" id="print-retour-nom"></div>
-    <div class="print-retour-ligne">
-      <span class="print-retour-label">Motif :</span>
-      <span id="print-retour-motif"></span>
-    </div>
-    <div class="print-retour-ligne">
-      <span class="print-retour-label">Date :</span>
-      <span id="print-retour-date"></span>
-    </div>
+    <div class="print-retour-ref">Réf. PCR01 — Non-conformité réception</div>
+    <div class="print-retour-datetime" id="print-nc-datetime"></div>
+    <table class="print-retour-table">
+      <tr>
+        <th>Produit</th>
+        <td id="print-nc-produit"></td>
+      </tr>
+      <tr id="print-nc-fournisseur-row">
+        <th>Fournisseur</th>
+        <td id="print-nc-fournisseur"></td>
+      </tr>
+      <tr id="print-nc-lot-row">
+        <th id="print-nc-lot-label">N° lot</th>
+        <td id="print-nc-lot"></td>
+      </tr>
+      <tr id="print-nc-dlc-row">
+        <th id="print-nc-dlc-label">DLC</th>
+        <td id="print-nc-dlc"></td>
+      </tr>
+      <tr>
+        <th>Non-conformité</th>
+        <td id="print-nc-motifs"></td>
+      </tr>
+      <tr>
+        <th>Action immédiate</th>
+        <td id="print-nc-action"></td>
+      </tr>
+    </table>
     <div class="print-retour-pied">Au Comptoir des Lilas — Réf. PCR01</div>
   </div>
 

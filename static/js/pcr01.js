@@ -215,7 +215,7 @@ if (elLivreurRefuse) {
 if (elEtiqRepriseBtn) {
   elEtiqRepriseBtn.addEventListener('click', () => {
     const l = ncProduits[ncFicheIndex];
-    imprimerEtiquetteRetour(l.produit_nom, l.motifs.join(', ') || 'non-conformité');
+    imprimerEtiquetteRetour(l);
     elEtiqRepriseBtn.classList.add('imprime');
     elEtiqRepriseBtn.innerHTML = `✓ Imprimé — ${l.produit_nom}`;
   });
@@ -230,7 +230,7 @@ function construireEtiquettes() {
     btn.className = 'pcr-etiq-btn';
     btn.innerHTML = `🖨️ &nbsp;Étiquette — ${l.produit_nom}`;
     btn.addEventListener('click', () => {
-      imprimerEtiquetteRetour(l.produit_nom, l.motifs.join(', ') || 'non-conformité');
+      imprimerEtiquetteRetour(l);
       btn.classList.add('imprime');
       btn.innerHTML = `✓ &nbsp;Imprimé — ${l.produit_nom}`;
     });
@@ -460,15 +460,45 @@ function chargerFiche(idx) {
 
 
 // ── Impression étiquette À RETOURNER (window.print) ─────────
-function imprimerEtiquetteRetour(nomProduit, motif) {
-  const elNom   = document.getElementById('print-retour-nom');
-  const elMotif = document.getElementById('print-retour-motif');
-  const elDate  = document.getElementById('print-retour-date');
-  if (elNom)   elNom.textContent   = nomProduit;
-  if (elMotif) elMotif.textContent = motif || 'non-conformité';
-  if (elDate)  elDate.textContent  = new Date().toLocaleDateString('fr-FR', {
+function imprimerEtiquetteRetour(produit) {
+  const now      = new Date();
+  const dateStr  = now.toLocaleDateString('fr-FR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
+  const heureStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const coeur    = ncCoeurResultats[produit.id] || ncCoeurResultats[String(produit.id)];
+  const actionTxt = coeur
+    ? `Contrôle à cœur effectué — NC confirmé (T° cœur : ${coeur.temp_coeur}°C)`
+    : 'Contrôle à cœur effectué — NC confirmé';
+
+  function set(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val || '';
+  }
+  function setRow(rowId, cellId, labelId, val, label) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    if (val) {
+      set(cellId, val);
+      if (labelId && label) set(labelId, label);
+      row.hidden = false;
+    } else {
+      row.hidden = true;
+    }
+  }
+
+  const operateurStr = personnelPrenom + (heureReception ? ` à ${heureReception}` : ` à ${heureStr}`);
+  set('print-nc-datetime', `${dateStr} — ${operateurStr}`);
+  set('print-nc-produit',  produit.produit_nom);
+  setRow('print-nc-fournisseur-row', 'print-nc-fournisseur', null,
+         produit.fournisseur_nom, null);
+  setRow('print-nc-lot-row', 'print-nc-lot', 'print-nc-lot-label',
+         produit.numero_lot, produit.lot_interne ? 'N° lot interne' : 'N° lot');
+  setRow('print-nc-dlc-row', 'print-nc-dlc', 'print-nc-dlc-label',
+         produit.dlc || produit.dluo, produit.dluo ? 'DLUO' : 'DLC');
+  set('print-nc-motifs', produit.motifs.join(', ') || 'non-conformité');
+  set('print-nc-action', actionTxt);
+
   window.print();
 }
 
