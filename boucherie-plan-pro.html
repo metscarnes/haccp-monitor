@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Dashboard HACCP — Au Comptoir des Lilas</title>
+<title>Checklist Nettoyage HACCP — Au Comptoir des Lilas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -20,7 +20,7 @@
   --clean-fill:#e8f5e9;--clean-stroke:#43a047;
 }
 html,body{height:100%;overflow:hidden}
-body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:13px}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:14px}
 
 /* ── LAYOUT ── */
 .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
@@ -36,218 +36,194 @@ body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:13
 .app-header .sub{font-size:9px;opacity:.6;font-family:var(--mono)}
 .badge{background:var(--accent);padding:3px 9px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:3px;white-space:nowrap}
 
-/* ── TOOLBAR ── */
-.app-toolbar{
-  display:flex;align-items:center;gap:4px;padding:5px 10px;
-  background:#fff;border-bottom:1px solid var(--border);
-  flex-shrink:0;flex-wrap:nowrap;min-height:46px;overflow:hidden;
+/* ══════════════════════════════════════════════════════════
+   PANNEAU GAUCHE — Plan SVG (verrouillé, affichage seul)
+══════════════════════════════════════════════════════════ */
+.plan-pane{
+  flex:1 1 50%;min-width:0;display:flex;flex-direction:column;
+  background:#c0bfb8;border-right:1px solid var(--border);
+  position:relative;overflow:hidden;
 }
-.tb-sep{width:1px;height:22px;background:var(--border);margin:0 2px;flex-shrink:0}
-.tb-label{font-size:9px;color:var(--light);font-family:var(--mono);flex-shrink:0}
-button.tb{
-  font-family:var(--font);font-size:11px;font-weight:600;
-  padding:6px 11px;border:1.5px solid var(--border);border-radius:6px;
+.plan-toolbar{
+  display:flex;align-items:center;gap:8px;padding:6px 12px;
+  background:#fff;border-bottom:1px solid var(--border);flex-shrink:0;
+  min-height:44px;
+}
+.plan-toolbar .pt-title{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--mid);margin-right:auto}
+.plan-toolbar button{
+  font-family:var(--font);font-size:12px;font-weight:600;
+  padding:7px 12px;border:1.5px solid var(--border);border-radius:6px;
   cursor:pointer;background:#fff;color:var(--dark);
-  transition:all .1s;display:flex;align-items:center;gap:4px;
-  white-space:nowrap;line-height:1.2;flex-shrink:0;
+  display:flex;align-items:center;gap:4px;
   min-height:34px;touch-action:manipulation;
 }
-button.tb:hover{border-color:#999;background:#f5f5f0}
-button.tb:active{background:#eee}
-.zoom-wrap{display:flex;align-items:center;gap:5px;flex-shrink:0}
-.zoom-wrap input[type="range"]{width:80px;accent-color:var(--dark);cursor:pointer}
-.zoom-lbl{font-family:var(--mono);font-size:10px;color:var(--mid);min-width:40px;text-align:center}
-.tb-legend{display:flex;align-items:center;gap:10px;font-size:10px;color:var(--mid);flex-shrink:0}
-.tb-legend span{display:flex;align-items:center;gap:4px}
-.leg-dot{width:13px;height:13px;border-radius:2px;flex-shrink:0;display:inline-block}
-
-/* ── CANVAS ── */
-.canvas-area{flex:1;overflow:hidden;position:relative;background:#c0bfb8;min-width:0}
-.canvas-scroll{position:absolute;inset:0;overflow:hidden}
+.plan-toolbar button:active{background:#eee}
+.plan-canvas{flex:1;overflow:hidden;position:relative}
 #fp{width:100%;height:100%;display:block;cursor:default;touch-action:none}
-#fp.panning{cursor:grabbing}
 
-/* ── RIGHT PANEL (desktop) ── */
-.panel-right{
-  width:270px;min-width:220px;max-width:520px;
-  flex-shrink:0;background:var(--panel);
-  border-left:1px solid var(--border);
-  overflow-y:auto;display:flex;flex-direction:column;position:relative;
+.plan-legend{
+  display:flex;justify-content:center;gap:14px;padding:6px 10px;
+  background:#fff;border-top:1px solid var(--border);flex-shrink:0;
+  font-size:10px;color:var(--mid);
 }
-.panel-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:ew-resize;z-index:10;background:transparent;transition:background .15s}
-.panel-resize-handle:hover,.panel-resize-handle.dragging{background:rgba(0,112,243,0.25)}
-.panel-right::-webkit-scrollbar{width:4px}
-.panel-right::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.props-empty{padding:24px 14px;text-align:center;color:var(--light);font-size:11px;line-height:2}
-.p-title{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--light);padding:8px 12px 6px;border-bottom:1px solid var(--border);background:#fff;position:sticky;top:0;z-index:1}
-.ps{padding:12px 14px;border-bottom:1px solid var(--border)}
-.ps:last-child{border-bottom:none}
-.ps-title{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--light);letter-spacing:.7px;margin-bottom:8px}
+.plan-legend .leg{display:flex;align-items:center;gap:5px}
+.leg-dot{width:14px;height:10px;border-radius:2px;flex-shrink:0}
+.leg-dot.pending {background:var(--pending-fill); border:1.5px solid var(--pending-stroke)}
+.leg-dot.progress{background:var(--progress-fill);border:1.5px solid var(--progress-stroke)}
+.leg-dot.clean   {background:var(--clean-fill);   border:1.5px solid var(--clean-stroke)}
 
-/* ── HACCP STATUS SYSTEM ── */
-.haccp-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:4px}
-.haccp-stat{text-align:center;padding:8px 4px;border-radius:6px;background:var(--panel2);border:1px solid var(--border)}
-.haccp-stat-val{font-size:22px;font-weight:700;line-height:1.2}
-.haccp-stat-lbl{font-size:7px;color:var(--light);margin-top:2px;font-family:var(--mono);letter-spacing:.3px}
-.haccp-zone-name{font-size:15px;font-weight:700;color:var(--dark);text-align:center;padding:12px 8px 2px;line-height:1.3}
-.haccp-zone-sub{font-size:9px;color:var(--light);text-align:center;margin-bottom:10px;font-family:var(--mono)}
-.haccp-current{text-align:center;margin-bottom:10px}
-.haccp-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700}
-.haccp-badge.pending {background:var(--pending-fill);color:#b71c1c;border:1.5px solid var(--pending-stroke)}
-.haccp-badge.progress{background:var(--progress-fill);color:#bf360c;border:1.5px solid var(--progress-stroke)}
-.haccp-badge.clean   {background:var(--clean-fill);  color:#1b5e20;border:1.5px solid var(--clean-stroke)}
-.haccp-btn{
-  width:100%;padding:13px 10px;font-family:var(--font);font-size:12px;font-weight:700;
-  border-radius:8px;cursor:pointer;margin-bottom:8px;border:2.5px solid transparent;
-  transition:all .15s;display:flex;align-items:center;justify-content:center;
-  gap:8px;letter-spacing:.2px;touch-action:manipulation;
+/* ── SVG ── */
+.plan-el{cursor:default;pointer-events:none}
+
+/* ══════════════════════════════════════════════════════════
+   PANNEAU DROIT — Checklist
+══════════════════════════════════════════════════════════ */
+.checklist-pane{
+  flex:1 1 50%;min-width:0;display:flex;flex-direction:column;
+  background:var(--panel);overflow:hidden;
 }
-.haccp-btn:last-child{margin-bottom:0}
-.haccp-btn.pending {background:var(--pending-fill);color:#b71c1c;border-color:var(--pending-stroke)}
-.haccp-btn.progress{background:var(--progress-fill);color:#bf360c;border-color:var(--progress-stroke)}
-.haccp-btn.clean   {background:var(--clean-fill);  color:#1b5e20;border-color:var(--clean-stroke)}
-.haccp-btn:hover{filter:brightness(.95)}
-.haccp-btn:active{filter:brightness(.88)}
-.haccp-btn.is-active{box-shadow:inset 0 0 0 2px rgba(0,0,0,.18),0 3px 10px rgba(0,0,0,.15);transform:scale(1.02)}
-.haccp-progress-bar{height:8px;border-radius:4px;background:#e0e0e0;overflow:hidden;margin-top:6px}
-.haccp-progress-fill{height:100%;border-radius:4px;transition:width .3s ease}
 
-/* ── SVG STYLES ── */
-.plan-el{cursor:pointer}
-.plan-el.no-haccp{cursor:default;pointer-events:none}
-
-/* ── STATUS BAR (desktop only) ── */
-.app-status{height:24px;flex-shrink:0;background:var(--dark);color:#888;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-family:var(--mono);font-size:9px}
-
-/* ── STATS STRIP (mobile only) ── */
-.stats-strip{
-  display:none;/* hidden on desktop, shown via media query */
-  flex-shrink:0;background:var(--dark);color:#fff;
-  height:54px;align-items:stretch;
-  border-top:1px solid rgba(255,255,255,.08);
+/* Bandeau progression global */
+.cl-progress{
+  flex-shrink:0;background:#fff;border-bottom:1px solid var(--border);
+  padding:10px 14px;
 }
-.ss-item{
-  flex:1;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:4px 2px;
-  border-right:1px solid rgba(255,255,255,.1);
+.cl-progress-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.cl-progress-title{font-size:12px;font-weight:700;color:var(--dark);letter-spacing:.4px;text-transform:uppercase;flex:1}
+.cl-progress-pct{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green)}
+.cl-progress-bar{height:9px;border-radius:5px;background:#e0e0e0;overflow:hidden}
+.cl-progress-fill{height:100%;border-radius:5px;background:#43a047;transition:width .3s ease,background .3s ease}
+.cl-progress-lbl{font-size:10px;color:var(--light);font-family:var(--mono);margin-top:4px;text-align:center;letter-spacing:.3px}
+
+/* Liste des zones */
+.cl-list{flex:1;overflow-y:auto;padding:10px 12px 8px;-webkit-overflow-scrolling:touch}
+.cl-zone{
+  background:#fff;border:1.5px solid var(--border);border-radius:10px;
+  margin-bottom:10px;overflow:hidden;
+  transition:border-color .2s ease;
 }
-.ss-item:last-of-type{border-right:none}
-.ss-val{font-size:20px;font-weight:700;line-height:1.1}
-.ss-lbl{font-size:8px;opacity:.55;font-family:var(--mono);margin-top:1px;letter-spacing:.2px;text-align:center}
-.ss-pending  .ss-val{color:#ef9a9a}
-.ss-progress .ss-val{color:#ffcc80}
-.ss-clean    .ss-val{color:#a5d6a7}
-.ss-reset{
-  width:52px;flex-shrink:0;background:none;border:none;
-  color:rgba(255,255,255,.45);font-size:20px;cursor:pointer;
+.cl-zone.zs-pending {border-color:var(--pending-stroke)}
+.cl-zone.zs-progress{border-color:var(--progress-stroke)}
+.cl-zone.zs-clean   {border-color:var(--clean-stroke);opacity:.92}
+
+.cl-zone-header{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  background:var(--panel2);border-bottom:1px solid var(--border);
+  cursor:pointer;user-select:none;touch-action:manipulation;
+}
+.cl-zone.zs-pending  .cl-zone-header{background:var(--pending-fill)}
+.cl-zone.zs-progress .cl-zone-header{background:var(--progress-fill)}
+.cl-zone.zs-clean    .cl-zone-header{background:var(--clean-fill)}
+.cl-zone-name{font-size:14px;font-weight:700;color:var(--dark);flex:1;letter-spacing:.3px}
+.cl-zone-count{
+  font-family:var(--mono);font-size:12px;font-weight:700;
+  padding:3px 9px;border-radius:10px;background:#fff;color:var(--dark);
+  border:1px solid rgba(0,0,0,.12);
+}
+.cl-zone.zs-clean .cl-zone-count{background:var(--green);color:#fff;border-color:var(--green)}
+.cl-zone-chevron{font-size:11px;color:var(--mid);transition:transform .2s ease}
+.cl-zone.is-collapsed .cl-zone-chevron{transform:rotate(-90deg)}
+.cl-zone.is-collapsed .cl-tasks{display:none}
+
+/* Tâches */
+.cl-tasks{padding:6px 8px}
+.cl-task{
+  display:flex;align-items:center;gap:12px;
+  width:100%;padding:14px 12px;margin:3px 0;
+  background:#fff;border:1.5px solid var(--border);border-radius:8px;
+  cursor:pointer;user-select:none;touch-action:manipulation;
+  transition:background .12s ease,border-color .12s ease;
+  font-family:var(--font);font-size:14px;color:var(--dark);text-align:left;
+  font-weight:500;
+}
+.cl-task:active{background:#f0efe9}
+.cl-task .cl-check{
+  width:26px;height:26px;border-radius:6px;
+  border:2px solid var(--border);background:#fff;
   display:flex;align-items:center;justify-content:center;
-  border-left:1px solid rgba(255,255,255,.1);
-  touch-action:manipulation;
+  font-size:18px;font-weight:700;color:transparent;flex-shrink:0;
+  transition:all .15s ease;
 }
-.ss-reset:active{color:#fff;background:rgba(255,255,255,.07)}
+.cl-task .cl-label{flex:1;line-height:1.3}
+.cl-task.is-done{
+  background:var(--clean-fill);border-color:var(--clean-stroke);
+}
+.cl-task.is-done .cl-check{
+  background:var(--clean-stroke);border-color:var(--clean-stroke);color:#fff;
+}
+.cl-task.is-done .cl-label{color:#1b5e20;text-decoration:line-through;text-decoration-thickness:1.5px;text-decoration-color:#7cb87f}
 
-/* ── COORD HUD ── */
-.coord-hud{position:fixed;bottom:28px;left:10px;background:rgba(26,26,26,.88);color:#fff;font-family:var(--mono);font-size:9px;padding:5px 10px;border-radius:4px;pointer-events:none;z-index:200;line-height:1.9;display:none}
-.coord-hud.vis{display:block}
-.ch-k{color:#f39c12}.ch-v{color:#81c784}
-
-/* ── LEGEND OVERLAY ── */
-#lLegend{display:none}
+/* Footer validation */
+.cl-footer{
+  flex-shrink:0;background:#fff;border-top:1px solid var(--border);
+  padding:10px 14px env(safe-area-inset-bottom,10px);
+}
+.cl-footer-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.cl-operator-label{font-size:11px;color:var(--mid);font-weight:600;flex-shrink:0}
+.cl-operator-input{
+  flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:6px;
+  font-family:var(--font);font-size:14px;color:var(--dark);background:#fff;
+  min-height:40px;
+}
+.cl-operator-input:focus{outline:2px solid #0070f3;border-color:#0070f3}
+.cl-validate-btn{
+  width:100%;padding:16px;border:none;border-radius:10px;
+  background:linear-gradient(180deg,#43a047,#2e7d32);
+  color:#fff;font-family:var(--font);font-size:15px;font-weight:700;
+  cursor:pointer;letter-spacing:.4px;text-transform:uppercase;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  box-shadow:0 3px 0 #1b5e20,0 4px 12px rgba(46,125,50,.3);
+  touch-action:manipulation;transition:transform .1s ease;
+}
+.cl-validate-btn:active{transform:translateY(2px);box-shadow:0 1px 0 #1b5e20,0 2px 6px rgba(46,125,50,.3)}
+.cl-validate-btn:disabled{
+  background:#bdbdbd;color:#757575;cursor:not-allowed;
+  box-shadow:0 3px 0 #9e9e9e;
+}
+.cl-reset-btn{
+  background:none;border:1px solid var(--border);color:var(--mid);
+  padding:6px 11px;border-radius:6px;font-family:var(--font);font-size:11px;
+  cursor:pointer;font-weight:600;
+}
+.cl-reset-btn:active{background:var(--panel2)}
 
 /* ── NOTIFY ── */
-.notify{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.9);color:#fff;font-family:var(--mono);font-size:11px;padding:6px 16px;border-radius:6px;pointer-events:none;z-index:3000;opacity:0;transition:opacity .3s;white-space:nowrap}
+.notify{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.92);color:#fff;font-family:var(--mono);font-size:12px;padding:8px 18px;border-radius:6px;pointer-events:none;z-index:3000;opacity:0;transition:opacity .3s;white-space:nowrap}
 .notify.vis{opacity:1}
 
 /* ══════════════════════════════════════════════════════════
-   BOTTOM SHEET (mobile / tablet)
+   RESPONSIVE — Tablette portrait & mobile
 ══════════════════════════════════════════════════════════ */
-.sheet-overlay{
-  display:none;position:fixed;inset:0;
-  background:rgba(0,0,0,.45);z-index:400;
+@media (max-width:1023px){
+  .app-body{flex-direction:column}
+  .plan-pane{
+    flex:0 0 38vh;min-height:220px;max-height:42vh;
+    border-right:none;border-bottom:1px solid var(--border);
+  }
+  .plan-toolbar{padding:5px 10px;min-height:40px}
+  .plan-toolbar .pt-title{font-size:10px}
+  .plan-legend{font-size:9px;gap:10px;padding:4px 8px}
+  .checklist-pane{flex:1 1 auto}
 }
-.sheet-overlay.open{display:block}
-.sheet{
-  position:fixed;bottom:0;left:0;right:0;
-  background:var(--panel);
-  border-radius:20px 20px 0 0;
-  z-index:401;
-  transform:translateY(100%);
-  transition:transform .32s cubic-bezier(.32,.72,0,1);
-  max-height:78vh;
-  display:flex;flex-direction:column;
-  box-shadow:0 -8px 32px rgba(0,0,0,.28);
-  padding-bottom:env(safe-area-inset-bottom,0);
-}
-.sheet.open{transform:translateY(0)}
-.sheet-drag-handle{width:40px;height:5px;background:var(--border);border-radius:3px;margin:10px auto 0;flex-shrink:0}
-.sheet-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 16px 8px;border-bottom:1px solid var(--border);flex-shrink:0;
-}
-.sheet-title{font-size:14px;font-weight:700;color:var(--dark)}
-.sheet-close{
-  width:30px;height:30px;border-radius:50%;background:var(--panel2);
-  border:1px solid var(--border);cursor:pointer;font-size:14px;
-  display:flex;align-items:center;justify-content:center;color:var(--mid);
-  touch-action:manipulation;
-}
-.sheet-close:active{background:var(--border)}
-.sheet-body{overflow-y:auto;flex:1}
 
-/* ══════════════════════════════════════════════════════════
-   RESPONSIVE OVERRIDES
-══════════════════════════════════════════════════════════ */
-@media (max-width:899px){
-  /* Header compact */
-  .app-header{height:44px;padding:0 12px}
+@media (max-width:599px){
+  .app-header{height:42px;padding:0 10px}
   .app-header h1{font-size:12px}
   .app-header .sub{display:none}
-
-  /* Toolbar compact — only zoom buttons */
-  .app-toolbar{padding:4px 8px;min-height:48px;gap:3px}
-  .tb-label{display:none}
-  .tb-sep{display:none}
-  .tb-legend{display:none}
-  .zoom-slider{display:none}
-  .tb-reset{display:none} /* moved to stats strip */
-  button.tb{padding:10px 14px;font-size:13px;min-height:40px;border-radius:8px}
-  .zoom-lbl{font-size:12px;min-width:46px}
-
-  /* Hide desktop-only elements */
-  .panel-right{display:none}
-  .app-status{display:none}
-  .coord-hud{display:none!important}
-  #legend{display:none!important}
-
-  /* Stats strip visible */
-  .stats-strip{display:flex}
-
-  /* Bigger HACCP buttons in sheet */
-  .haccp-btn{padding:18px 14px;font-size:15px;border-radius:12px;margin-bottom:10px;border-width:3px}
-  .haccp-btn:last-child{margin-bottom:4px}
-  .haccp-zone-name{font-size:18px;padding:16px 14px 4px}
-  .haccp-zone-sub{font-size:10px;margin-bottom:12px}
-  .haccp-badge{font-size:11px;padding:5px 14px}
-  .ps{padding:14px 16px}
-  .haccp-stat-val{font-size:26px}
-}
-
-/* Desktop: hide mobile-only elements */
-@media (min-width:900px){
-  .stats-strip{display:none!important}
-  .sheet{display:none!important}
-  .sheet-overlay{display:none!important}
+  .plan-pane{flex:0 0 32vh;min-height:180px}
+  .cl-zone-name{font-size:13px}
+  .cl-task{font-size:13px;padding:13px 10px;gap:10px}
+  .cl-task .cl-check{width:24px;height:24px;font-size:16px}
+  .cl-validate-btn{font-size:14px;padding:14px}
+  .cl-progress-pct{font-size:16px}
 }
 
 /* ── PRINT ── */
 @media print{
-  .app-header,.app-toolbar,.panel-right,.app-status,.stats-strip,
-  .coord-hud,.notify,.sheet,.sheet-overlay{display:none!important}
+  .app-header,.plan-toolbar,.plan-legend,.cl-footer{display:none!important}
   .app-body{display:block}
-  .canvas-area{width:100%;height:auto;overflow:visible;background:#fff;position:relative}
-  .canvas-scroll{position:relative!important;inset:auto!important;overflow:visible!important}
+  .plan-pane,.checklist-pane{flex:none;width:100%;border:none;background:#fff}
   #fp{width:100%!important;height:auto!important}
-  #lLegend{display:block}
 }
 </style>
 </head>
@@ -257,139 +233,76 @@ button.tb:active{background:#eee}
   <!-- ── HEADER ── -->
   <div class="app-header">
     <div>
-      <h1>DASHBOARD HACCP — NETTOYAGE</h1>
+      <h1>CHECKLIST NETTOYAGE HACCP</h1>
       <div class="sub">Au Comptoir des Lilas · 122 rue de Paris · 93260 Les Lilas</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px">
-      <span id="dateHdr" style="font-size:9px;opacity:.45;font-family:var(--mono)"></span>
+      <span id="dateHdr" style="font-size:9px;opacity:.55;font-family:var(--mono)"></span>
       <div class="badge">HACCP</div>
-    </div>
-  </div>
-
-  <!-- ── TOOLBAR ── -->
-  <div class="app-toolbar">
-    <span class="tb-label">Zoom</span>
-    <div class="zoom-wrap">
-      <button class="tb" onclick="setZoom(zoom-0.15)" style="padding:6px 10px" aria-label="Zoom arrière">−</button>
-      <input type="range" class="zoom-slider" id="zoomSlider" min="15" max="400" value="100" oninput="setZoom(this.value/100)">
-      <button class="tb" onclick="setZoom(zoom+0.15)" style="padding:6px 10px" aria-label="Zoom avant">+</button>
-      <span class="zoom-lbl" id="zoomLbl">100%</span>
-      <button class="tb" onclick="fitView()" title="Ajuster la vue (F)" aria-label="Ajuster vue">⊡</button>
-    </div>
-    <div class="tb-sep"></div>
-    <div class="tb-legend">
-      <span><span class="leg-dot" style="background:#ffebee;border:2px solid #e53935"></span>À nettoyer</span>
-      <span><span class="leg-dot" style="background:#fff3e0;border:2px solid #fb8c00"></span>En cours</span>
-      <span><span class="leg-dot" style="background:#e8f5e9;border:2px solid #43a047"></span>Nettoyé</span>
-    </div>
-    <div class="tb-reset" style="margin-left:auto">
-      <button class="tb" onclick="resetAllPending()">↺ Nouvelle session</button>
     </div>
   </div>
 
   <!-- ── BODY ── -->
   <div class="app-body">
 
-    <!-- ── CANVAS ── -->
-    <div class="canvas-area" id="canvasArea">
-      <div id="legend" style="position:absolute;bottom:30px;left:10px;background:rgba(255,255,255,0.94);border:1px solid #d0cfc8;border-radius:6px;padding:8px 12px;font-size:9px;z-index:50;min-width:150px;box-shadow:0 2px 8px rgba(0,0,0,.12)">
-        <div style="font-weight:700;font-size:8px;letter-spacing:.7px;text-transform:uppercase;color:#888;margin-bottom:6px">Légende</div>
-        <div id="legend-items"></div>
+    <!-- ═══════════ PANNEAU GAUCHE — PLAN ═══════════ -->
+    <div class="plan-pane">
+      <div class="plan-toolbar">
+        <span class="pt-title">Plan — progression visuelle</span>
+        <button onclick="setZoom(zoom-0.15)" aria-label="Zoom arrière">−</button>
+        <button onclick="setZoom(zoom+0.15)" aria-label="Zoom avant">+</button>
+        <button onclick="fitView()" title="Ajuster" aria-label="Ajuster vue">⊡</button>
       </div>
-      <div class="canvas-scroll">
+      <div class="plan-canvas">
         <svg id="fp" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <marker id="da1" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto"><path d="M5,0 L0,2.5 L5,5Z" fill="#555"/></marker>
             <marker id="da2" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5Z" fill="#555"/></marker>
             <pattern id="ha" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#888" stroke-width=".7"/></pattern>
           </defs>
-          <g id="lGrid"></g>
           <g id="lElems"></g>
-          <g id="lLegend"></g>
-          <g id="lHandles"></g>
         </svg>
+      </div>
+      <div class="plan-legend">
+        <span class="leg"><span class="leg-dot pending"></span>À nettoyer</span>
+        <span class="leg"><span class="leg-dot progress"></span>En cours</span>
+        <span class="leg"><span class="leg-dot clean"></span>Nettoyé</span>
       </div>
     </div>
 
-    <!-- ── RIGHT PANEL (desktop) ── -->
-    <div class="panel-right" id="panelRight">
-      <div class="panel-resize-handle" id="panelResizeHandle"></div>
-      <div class="p-title">Contrôle HACCP</div>
-      <!-- Dashboard (toujours visible) -->
-      <div class="ps" id="haccpDashboard">
-        <div class="ps-title">État du nettoyage</div>
-        <div class="haccp-summary">
-          <div class="haccp-stat">
-            <div class="haccp-stat-val" id="cntPending" style="color:#c62828">—</div>
-            <div class="haccp-stat-lbl">À nettoyer</div>
-          </div>
-          <div class="haccp-stat">
-            <div class="haccp-stat-val" id="cntProgress" style="color:#e65100">—</div>
-            <div class="haccp-stat-lbl">En cours</div>
-          </div>
-          <div class="haccp-stat">
-            <div class="haccp-stat-val" id="cntClean" style="color:#2e7d32">—</div>
-            <div class="haccp-stat-lbl">Nettoyés</div>
-          </div>
+    <!-- ═══════════ PANNEAU DROIT — CHECKLIST ═══════════ -->
+    <div class="checklist-pane">
+
+      <!-- Bandeau progression -->
+      <div class="cl-progress">
+        <div class="cl-progress-row">
+          <div class="cl-progress-title">Checklist du jour</div>
+          <div class="cl-progress-pct" id="globalPct">0%</div>
+          <button class="cl-reset-btn" onclick="resetAll()" title="Réinitialiser">↺ Reset</button>
         </div>
-        <div class="haccp-progress-bar" style="margin-top:8px">
-          <div class="haccp-progress-fill" id="progressBar" style="width:0%"></div>
+        <div class="cl-progress-bar"><div class="cl-progress-fill" id="globalBar" style="width:0%"></div></div>
+        <div class="cl-progress-lbl" id="globalLbl">0 / 0 tâches effectuées</div>
+      </div>
+
+      <!-- Liste des zones et tâches -->
+      <div class="cl-list" id="checklistRoot"></div>
+
+      <!-- Footer validation -->
+      <div class="cl-footer">
+        <div class="cl-footer-row">
+          <label class="cl-operator-label" for="operatorInput">👤 Opérateur :</label>
+          <input type="text" id="operatorInput" class="cl-operator-input" placeholder="Nom / signature…" autocomplete="off">
         </div>
-        <div id="progressLbl" style="font-size:8px;color:var(--light);text-align:center;margin-top:4px;font-family:var(--mono)">0 / 0 zones nettoyées</div>
+        <button class="cl-validate-btn" id="validateBtn" onclick="validateDay()">
+          ✓ Valider le nettoyage du jour
+        </button>
       </div>
-      <!-- Fiche de nettoyage (zone sélectionnée) -->
-      <div id="propsPanel">
-        <div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule · 65 px = 1 m</small></div>
-      </div>
+
     </div>
 
   </div><!-- end app-body -->
 
-  <!-- ── STATS STRIP (mobile/tablet uniquement) ── -->
-  <div class="stats-strip" id="statsStrip">
-    <div class="ss-item ss-pending">
-      <span class="ss-val" id="stripPending">—</span>
-      <span class="ss-lbl">À nettoyer</span>
-    </div>
-    <div class="ss-item ss-progress">
-      <span class="ss-val" id="stripProgress">—</span>
-      <span class="ss-lbl">En cours</span>
-    </div>
-    <div class="ss-item ss-clean">
-      <span class="ss-val" id="stripClean">—</span>
-      <span class="ss-lbl">Nettoyés</span>
-    </div>
-    <button class="ss-reset" onclick="resetAllPending()" title="Nouvelle session" aria-label="Nouvelle session">↺</button>
-  </div>
-
-  <!-- ── STATUS BAR (desktop) ── -->
-  <div class="app-status">
-    <span id="stLeft">Mode : Viewer HACCP</span>
-    <span id="stMid">—</span>
-    <span id="stRight">1=À nettoyer · 2=En cours · 3=Nettoyé · F=Vue</span>
-  </div>
-
 </div><!-- end app -->
-
-<!-- ── BOTTOM SHEET (mobile/tablet) ── -->
-<div class="sheet-overlay" id="sheetOverlay" onclick="closeBottomSheet()"></div>
-<div class="sheet" id="sheet">
-  <div class="sheet-drag-handle"></div>
-  <div class="sheet-header">
-    <span class="sheet-title" id="sheetTitle">Fiche de nettoyage</span>
-    <button class="sheet-close" onclick="closeBottomSheet()" aria-label="Fermer">✕</button>
-  </div>
-  <div class="sheet-body" id="sheetBody">
-    <div class="props-empty">Touchez une zone pour gérer son nettoyage</div>
-  </div>
-</div>
-
-<!-- ── COORD HUD (desktop) ── -->
-<div class="coord-hud" id="coordHud">
-  <span class="ch-k">X :</span> <span class="ch-v" id="chX">—</span> &nbsp;
-  <span class="ch-k">Y :</span> <span class="ch-v" id="chY">—</span><br>
-  <span class="ch-k">Zone :</span> <span class="ch-v" id="chEl">—</span>
-</div>
 
 <!-- ── NOTIFY ── -->
 <div class="notify" id="notify"></div>
@@ -402,49 +315,76 @@ button.tb:active{background:#eee}
 const S = 65;
 const CW = 1800;
 const CH = 700;
+const STORAGE_KEY = 'haccp_checklist_state_v1';
 
 // ════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════
 let zoom = 1.0;
 let panX = 0, panY = 0;
-let selectedId = null;
-
-// Mouse state
-let isPanning = false;
 let _mouseButtonDown = false;
+let isPanning = false;
 let _panRawStart = {x:0,y:0};
 let _panStart    = {x:0,y:0};
-
-// Touch state
 let _touchStartDist = 0;
 let _touchStartZoom = 1;
 
+let checkedTasks = new Set();          // task IDs cochées
+let collapsedZones = new Set();        // zones repliées
+
 // ════════════════════════════════════════════════════════════
-// DATA MODEL — Plan boucherie + statuts HACCP
+// CHECKLIST — Tâches par zone
 // ════════════════════════════════════════════════════════════
-let elements = [
-  // ── ZONES tracées HACCP ──
+const CHECKLIST = [
+  {zoneId:'frigo1', label:'FRIGO 1', tasks:[
+    'Sol', 'Étagères', 'Joints porte', 'Évaporateur', 'Désinfection complète'
+  ]},
+  {zoneId:'frigo2', label:'FRIGO 2', tasks:[
+    'Sol', 'Étagères', 'Joints porte', 'Évaporateur', 'Désinfection complète'
+  ]},
+  {zoneId:'vitrine', label:'VITRINE FROID', tasks:[
+    'Vitres intérieures', 'Vitres extérieures', 'Bacs amovibles', 'Joints', 'Tablettes'
+  ]},
+  {zoneId:'prepa', label:'ESPACE PRÉPA', tasks:[
+    'Sol', 'Siphon', 'Plan de travail', 'Murs', 'Billot', 'Plonge'
+  ]},
+  {zoneId:'cuisine', label:'CUISINE', tasks:[
+    'Sol', 'Siphon', 'Plonge', 'Four', 'Plan de travail', 'Murs', 'Hotte'
+  ]},
+  {zoneId:'vente', label:'ESPACE CLIENT', tasks:[
+    'Sol', 'Vitrines extérieures', 'Comptoir caisse', 'Poignées de porte'
+  ]},
+  {zoneId:'wc', label:'WC', tasks:[
+    'Sol', 'Cuvette', 'Lavabo', 'Murs', 'Distributeur savon'
+  ]},
+];
+
+function taskId(zoneId, idx){ return `${zoneId}::${idx}`; }
+
+// ════════════════════════════════════════════════════════════
+// DATA MODEL — Plan boucherie
+// ════════════════════════════════════════════════════════════
+const elements = [
   {id:'frigo2',      type:'zone', label:'FRIGO 2',         sublabel:'4 m × 1,55 m',
    x:40/S, y:30/S,  w:260/S, h:101/S, fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',
-   haccpStatus:'pending'},
+   tracked:true},
   {id:'wc',          type:'zone', label:'WC',              sublabel:'2 m × 0,94 m',
    x:315/S,y:30/S,  w:130/S, h:61/S,  fill:'#efebe9',stroke:'#1a1a1a',sw:2.2,
-   haccpStatus:'pending'},
+   tracked:true},
   {id:'cuisine',     type:'zone', label:'CUISINE',         sublabel:'2,21 × 2,71 m',
    x:462/S,y:30/S,  w:143/S, h:176/S, fill:'#f3e5f5',stroke:'#1a1a1a',sw:2.2,
-   haccpStatus:'pending'},
+   tracked:true},
   {id:'frigo1',      type:'zone', label:'FRIGO 1',         sublabel:'4 m × 1,155 m',
-   x:620/S,y:30/S,  w:260/S, h:75/S,  fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',badge:'HS',
-   haccpStatus:'pending'},
+   x:620/S,y:30/S,  w:260/S, h:75/S,  fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',
+   tracked:true},
   {id:'prepa',       type:'zone', label:'ESPACE PRÉPA',    sublabel:'4 m × 1,66 m',
    x:620/S,y:112/S, w:260/S, h:108/S, fill:'#fce4ec',stroke:'#1a1a1a',sw:2.2,
-   haccpStatus:'pending'},
+   tracked:true},
   {id:'vente',       type:'zone', label:'',                sublabel:'',
    x:895/S,y:30/S,  w:377/S, h:290/S, fill:'#fff8e1',stroke:'#1a1a1a',sw:3,
-   haccpStatus:'pending', haccpLabel:'Espace client'},
+   tracked:true, displayLabel:'Espace client'},
 
-  // ── ZONES non suivies (décor) ──
+  // Décor non suivi
   {id:'jardinet',    type:'zone', label:'JARDINET',        sublabel:'8,26 m × 3,27 m',
    x:40/S, y:152/S, w:537/S, h:213/S, fill:'#e8f5e9',stroke:'#1a1a1a',sw:1.8,dash:'7 4',pattern:'hatch',lc:'#2e7d32'},
   {id:'zone-boucher',type:'zone', label:'Zone boucher',    sublabel:'4,35 m × 1,30 m',
@@ -452,7 +392,7 @@ let elements = [
   {id:'espace-arriere',type:'zone',label:'Espace arrière', sublabel:'',
    x:895/S,y:151/S, w:55/S,  h:88/S,  fill:'#f5f5f0',stroke:'#999',sw:1,dash:'4 3',lc:'#999'},
 
-  // ── ÉQUIPEMENTS non suivis ──
+  // Équipements décor
   {id:'meuble-bas',  type:'equip', label:'MEUBLE BAS',   sublabel:'55 cm prof.',
    x:895/S,y:30/S,  w:340/S, h:36/S,  fill:'#d7ccc8',stroke:'#5d4037',sw:1.2},
   {id:'billot',      type:'equip', label:'Billot',
@@ -462,53 +402,51 @@ let elements = [
   {id:'caisse',      type:'equip', label:'CAISSE',       sublabel:'mobile',
    x:895/S,y:239/S, w:55/S,  h:81/S,  fill:'#c8e6c9',stroke:'#2e7d32',sw:2},
 
-  // ── VITRINE FROID tracée HACCP ──
+  // Vitrine froid (suivie)
   {id:'vitrine',     type:'vitrine', label:'VITRINE FROID',
    x:960/S, y:151/S,
    barLength:270/S, barThickness:0.8,
    armLength:78/S,  armThickness:0.8,
-   fill:'#7e57c2', stroke:'#4a148c', showDims:true,
-   haccpStatus:'pending'},
+   fill:'#7e57c2', stroke:'#4a148c',
+   tracked:true},
 
-  // ── PORTES ──
+  // Portes
   {id:'entree',    type:'door',label:'ENTRÉE',         x:1266/S,y:275/S,dw:45/S,rot:90, openDir:-1,fill:'#c0392b'},
   {id:'porte-pv',  type:'door',label:'Prépa→Vente',    x:889/S, y:130/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
   {id:'porte-cj',  type:'door',label:'Cuisine→Jardin', x:462/S, y:165/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
   {id:'porte-pc',  type:'door',label:'Prépa→Cuisine',  x:612/S, y:132/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
-
-  // ── SÉCURITÉ ──
-  {id:'ext-vente',     type:'safety',subtype:'extincteur',label:'Extincteur',x:1250/S,y:310/S},
-  {id:'ext-prepa',     type:'safety',subtype:'extincteur',label:'Extincteur',x:860/S, y:130/S},
-  {id:'sortie1',       type:'safety',subtype:'sortie',    label:'SORTIE①',  x:1274/S,y:310/S,w:40/S,h:13/S},
-  {id:'sortie2',       type:'safety',subtype:'sortie',    label:'SORTIE②',  x:462/S, y:205/S,w:40/S,h:13/S},
-  {id:'rassemblement', type:'safety',subtype:'rallypoint',label:'POINT DE RASSEMBLEMENT',x:1083/S,y:430/S},
-
-  // ── ANNOTATIONS ──
-  {id:'label-client',  type:'label',label:'ESPACE CLIENT', x:960/S,y:240/S,w:280/S,h:90/S,lc:'#e65100',fs:15},
 ];
 
 // ════════════════════════════════════════════════════════════
-// HACCP — Helpers
+// HACCP — Status helpers
 // ════════════════════════════════════════════════════════════
 const HACCP_STYLES = {
   pending:  {fill:'#ffebee', stroke:'#e53935', sw:2.5},
   progress: {fill:'#fff3e0', stroke:'#fb8c00', sw:2.5},
   clean:    {fill:'#e8f5e9', stroke:'#43a047', sw:2.5},
 };
-const HACCP_LABELS = {
-  pending:  '🔴 À nettoyer',
-  progress: '🟠 En cours',
-  clean:    '🟢 Nettoyé validé',
-};
-function haccpStyle(s){ return HACCP_STYLES[s] || HACCP_STYLES.pending; }
+
+function zoneProgress(zoneId){
+  const def = CHECKLIST.find(c => c.zoneId === zoneId);
+  if(!def) return {done:0, total:0, status:'pending'};
+  const total = def.tasks.length;
+  let done = 0;
+  for(let i=0; i<total; i++){
+    if(checkedTasks.has(taskId(zoneId, i))) done++;
+  }
+  let status = 'pending';
+  if(done === total && total > 0) status = 'clean';
+  else if(done > 0) status = 'progress';
+  return {done, total, status};
+}
+function getZoneStatus(zoneId){ return zoneProgress(zoneId).status; }
 
 // ════════════════════════════════════════════════════════════
-// UTILITIES
+// SVG UTILITIES
 // ════════════════════════════════════════════════════════════
 const svg = document.getElementById('fp');
 function px(m){ return m * S; }
 function getEl(id){ return elements.find(e => e.id === id); }
-function isMobile(){ return window.innerWidth < 900; }
 
 function showNotify(msg, ms=2200){
   const n = document.getElementById('notify');
@@ -516,7 +454,12 @@ function showNotify(msg, ms=2200){
   setTimeout(() => n.classList.remove('vis'), ms);
 }
 
-// Convert client coords → SVG world coords
+// ════════════════════════════════════════════════════════════
+// ZOOM / PAN / VIEW
+// ════════════════════════════════════════════════════════════
+function updateViewBox(){
+  svg.setAttribute('viewBox', `${panX} ${panY} ${CW/zoom} ${CH/zoom}`);
+}
 function svgPtFromClient(cx, cy){
   const rect = svg.getBoundingClientRect();
   const vw = CW/zoom, vh = CH/zoom;
@@ -528,14 +471,6 @@ function svgPtFromClient(cx, cy){
     y: panY + (cy - rect.top  - oy) / scale,
   };
 }
-function svgPt(e){ return svgPtFromClient(e.clientX, e.clientY); }
-
-// ════════════════════════════════════════════════════════════
-// ZOOM / PAN / VIEW
-// ════════════════════════════════════════════════════════════
-function updateViewBox(){
-  svg.setAttribute('viewBox', `${panX} ${panY} ${CW/zoom} ${CH/zoom}`);
-}
 function setZoom(z, cx, cy){
   z = Math.max(.1, Math.min(5, z));
   if(cx !== undefined && cy !== undefined){
@@ -544,10 +479,25 @@ function setZoom(z, cx, cy){
     panY = cy - (cy - panY)*ratio;
   }
   zoom = z;
-  document.getElementById('zoomSlider').value = Math.round(zoom*100);
-  document.getElementById('zoomLbl').textContent = Math.round(zoom*100)+'%';
   updateViewBox();
-  renderHandles();
+}
+function elBBox(el){
+  if(!el) return null;
+  if(el.type==='vitrine'){
+    const bx=px(el.x),by=px(el.y),bw=px(el.barLength),bh=px(el.barThickness);
+    const al=px(el.armLength),at=px(el.armThickness);
+    return{x:bx,y:by-al,w:bw,h:bh+2*al};
+  }
+  if(el.type==='door'){
+    const bx=px(el.x),by=px(el.y);
+    const dw=px(el.dw||.9),rot=(el.rot||0)*Math.PI/180,od=el.openDir||1;
+    const cos=Math.cos(rot),sin=Math.sin(rot);
+    const pts=[{x:0,y:0},{x:dw,y:0},{x:0,y:-dw*od}];
+    const xs=pts.map(p=>bx+p.x*cos-p.y*sin);
+    const ys=pts.map(p=>by+p.x*sin+p.y*cos);
+    return{x:Math.min(...xs)-8,y:Math.min(...ys)-8,w:Math.max(...xs)-Math.min(...xs)+16,h:Math.max(...ys)-Math.min(...ys)+16};
+  }
+  return{x:px(el.x),y:px(el.y),w:px(el.w||.5),h:px(el.h||.5)};
 }
 function fitView(){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
@@ -567,488 +517,282 @@ function fitView(){
 }
 
 // ════════════════════════════════════════════════════════════
-// ELEMENT BOUNDING BOX
+// SVG RENDER
 // ════════════════════════════════════════════════════════════
-function elBBox(el){
-  if(!el) return null;
-  if(el.type==='vitrine'){
-    const bx=px(el.x),by=px(el.y),bw=px(el.barLength),bh=px(el.barThickness);
-    const al=px(el.armLength),at=px(el.armThickness);
-    return{x:bx,y:by-al,w:bw,h:bh+2*al};
-  }
-  if(el.type==='door'){
-    const bx=px(el.x),by=px(el.y);
-    const dw=px(el.dw||.9),rot=(el.rot||0)*Math.PI/180,od=el.openDir||1;
-    const cos=Math.cos(rot),sin=Math.sin(rot);
-    const pts=[{x:0,y:0},{x:dw,y:0},{x:0,y:-dw*od}];
-    const xs=pts.map(p=>bx+p.x*cos-p.y*sin);
-    const ys=pts.map(p=>by+p.x*sin+p.y*cos);
-    const pad=8;
-    return{x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
-  }
-  if(el.type==='safety'){
-    if(el.subtype==='extincteur')return{x:px(el.x)-9,y:px(el.y)-9,w:18,h:18};
-    if(el.subtype==='sortie'||el.subtype==='rallypoint')return{x:px(el.x),y:px(el.y),w:px(el.w||1),h:px(el.h||.2)};
-    return{x:px(el.x)-8,y:px(el.y)-8,w:16,h:16};
-  }
-  if(el.type==='label')return{x:px(el.x),y:px(el.y),w:px(el.w||3),h:px(el.h||1)};
-  return{x:px(el.x),y:px(el.y),w:px(el.w||.5),h:px(el.h||.5)};
-}
-
-// ════════════════════════════════════════════════════════════
-// RENDER ENGINE
-// ════════════════════════════════════════════════════════════
-const PROD_COLORS=['#ce93d8','#80cbc4','#ffcc80','#ef9a9a','#aed581','#80deea','#ffab40','#bcaaa4'];
-
-function render(){
-  const order={zone:0,equip:1,vitrine:2,door:3,safety:4,label:5};
+function renderPlan(){
+  const order={zone:0,equip:1,vitrine:2,door:3};
   const sorted=[...elements].sort((a,b)=>(order[a.type]||0)-(order[b.type]||0));
   document.getElementById('lElems').innerHTML = sorted.map(renderEl).join('');
-  renderHandles();
-  buildLegend();
-  updateDashboard();
 }
-
 function renderEl(el){
   switch(el.type){
     case 'zone':    return renderZone(el);
     case 'equip':   return renderEquip(el);
     case 'vitrine': return renderVitrine(el);
     case 'door':    return renderDoor(el);
-    case 'safety':  return renderSafety(el);
-    case 'label':   return renderLabel(el);
-    case 'dim':     return renderDim(el);
     default: return '';
   }
 }
-
 function renderZone(el){
   const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h);
-  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
+  const status = el.tracked ? getZoneStatus(el.id) : null;
+  const hs = status ? HACCP_STYLES[status] : null;
   const fillColor   = hs ? hs.fill   : (el.fill||'#fff');
   const strokeColor = hs ? hs.stroke : (el.stroke||'#1a1a1a');
   const strokeWidth = hs ? hs.sw     : (el.sw||2);
   const lc = hs ? strokeColor : (el.lc||'#1a1a1a');
   const dash = el.dash ? `stroke-dasharray="${el.dash}"` : '';
   const cx=x+w/2, cy=y+h/2;
-  const fsize = el.fs||(w<80||h<40?10:14);
-  const autoSub = el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '';
-  const sublabel = el.showSub===false ? '' : (el.sublabel||autoSub);
-  const elClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
-  return`<g class="${elClass}" data-id="${el.id}" data-type="zone">
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${dash} rx="0"/>
-    ${el.pattern==='hatch'?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#ha)" opacity=".18" pointer-events="none"/>`:''}
-    ${el.label?`<text x="${cx}" y="${cy-(sublabel?7:0)}" font-family="'DM Sans'" font-size="${fsize}" font-weight="700" fill="${lc}" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${el.label}</text>`:''}
-    ${sublabel?`<text x="${cx}" y="${cy+(el.label?8:0)}" font-family="'JetBrains Mono'" font-size="8" fill="#666" text-anchor="middle" pointer-events="none">${sublabel}</text>`:''}
-    ${el.icon?`<text x="${x+10}" y="${y+16}" font-size="12" pointer-events="none">${el.icon}</text>`:''}
-    ${el.badge?`<rect x="${x+w-30}" y="${y+4}" width="26" height="12" rx="3" fill="#e74c3c" pointer-events="none"/><text x="${x+w-17}" y="${y+13}" font-size="7" fill="white" text-anchor="middle" font-weight="700" pointer-events="none">${el.badge}</text>`:''}
-    ${renderDimsForEl(el)}
+  const fsize = w<80||h<40?10:14;
+  const labelTxt = el.displayLabel || el.label;
+  const sublabel = el.sublabel||'';
+  return`<g class="plan-el" data-id="${el.id}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${dash}/>
+    ${el.pattern==='hatch'?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#ha)" opacity=".18"/>`:''}
+    ${labelTxt?`<text x="${cx}" y="${cy-(sublabel?7:0)}" font-family="'DM Sans'" font-size="${fsize}" font-weight="700" fill="${lc}" text-anchor="middle" dominant-baseline="middle">${labelTxt}</text>`:''}
+    ${sublabel?`<text x="${cx}" y="${cy+(labelTxt?8:0)}" font-family="'JetBrains Mono'" font-size="8" fill="#666" text-anchor="middle">${sublabel}</text>`:''}
+    ${el.icon?`<text x="${x+10}" y="${y+16}" font-size="12">${el.icon}</text>`:''}
   </g>`;
 }
-
 function renderEquip(el){
   const x=px(el.x),y=px(el.y),w=px(el.w||.5),h=px(el.h||.5);
-  const cx=x+w/2,cy=y+h/2,rot=el.rot||0;
-  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
-  const fill   = hs ? hs.fill   : (el.fill||'#f5f5f5');
-  const stroke = hs ? hs.stroke : (el.stroke||'#888');
-  const sw     = hs ? hs.sw     : (el.sw||1.2);
-  const fw = el.fw||600;
-  const fsize = el.fs || Math.min(9, w/Math.max(1,(el.label||'').length)*1.5);
-  const shape = el.shape||'rect';
-  let shapeEl;
-  if(shape==='circle')      shapeEl=`<ellipse cx="${cx}" cy="${cy}" rx="${w/2}" ry="${h/2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
-  else if(shape==='rounded')shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${Math.min(w,h)*.25}"/>`;
-  else                      shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>`;
-  const eqClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
-  return`<g class="${eqClass}" data-id="${el.id}" data-type="equip"${rot?` transform="rotate(${rot},${cx},${cy})"`:''}>
-    ${shapeEl}
-    ${el.label?`<text x="${cx}" y="${cy+1}" font-family="'DM Sans'" font-size="${fsize}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${fw}" pointer-events="none">${el.label}</text>`:''}
-    ${el.sublabel?`<text x="${cx}" y="${cy+12}" font-family="'JetBrains Mono'" font-size="7" fill="#888" text-anchor="middle" pointer-events="none">${el.sublabel}</text>`:''}
-    ${renderDimsForEl(el)}
+  const cx=x+w/2,cy=y+h/2;
+  const fill = el.fill||'#f5f5f5', stroke = el.stroke||'#888', sw = el.sw||1.2;
+  const fsize = Math.min(9, w/Math.max(1,(el.label||'').length)*1.5);
+  return`<g class="plan-el" data-id="${el.id}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>
+    ${el.label?`<text x="${cx}" y="${cy+1}" font-family="'DM Sans'" font-size="${fsize}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="600">${el.label}</text>`:''}
+    ${el.sublabel?`<text x="${cx}" y="${cy+12}" font-family="'JetBrains Mono'" font-size="7" fill="#888" text-anchor="middle">${el.sublabel}</text>`:''}
   </g>`;
 }
-
 function renderVitrine(el){
   const bx=px(el.x),by=px(el.y),bw=px(el.barLength),bh=px(el.barThickness);
   const al=px(el.armLength||0),at=px(el.armThickness||0.8);
   const f=el.fill||'#7e57c2',s=el.stroke||'#4a148c';
-  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
-  const overlay = hs ? `<rect x="${bx-4}" y="${by-al-4}" width="${bw+8}" height="${bh+2*al+8}" fill="${hs.fill}" opacity=".3" stroke="${hs.stroke}" stroke-width="3" rx="4" pointer-events="none"/>` : '';
-  const dimBar = el.showDims ? `<text x="${bx+bw/2}" y="${by+bh/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".9">${(el.barLength||0).toFixed(2)} m</text>` : '';
-  return`<g class="plan-el" data-id="${el.id}" data-type="vitrine">
+  const status = el.tracked ? getZoneStatus(el.id) : null;
+  const hs = status ? HACCP_STYLES[status] : null;
+  const overlay = hs ? `<rect x="${bx-4}" y="${by-al-4}" width="${bw+8}" height="${bh+2*al+8}" fill="${hs.fill}" opacity=".35" stroke="${hs.stroke}" stroke-width="3" rx="4"/>` : '';
+  return`<g class="plan-el" data-id="${el.id}">
     ${overlay}
     <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
-    <line x1="${bx}" y1="${by+bh}" x2="${bx+bw}" y2="${by+bh}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
+    <line x1="${bx}" y1="${by+bh}" x2="${bx+bw}" y2="${by+bh}" stroke="${s}" stroke-width="3" stroke-linecap="square"/>
     <rect x="${bx+bw-at}" y="${by-al}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
-    <line x1="${bx+bw-at}" y1="${by-al}" x2="${bx+bw-at}" y2="${by}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
     <rect x="${bx}" y="${by+bh}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
-    <line x1="${bx+at}" y1="${by+bh}" x2="${bx+at}" y2="${by+bh+al}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
-    ${dimBar}
-    <text x="${bx+bw/2}" y="${by-al-6}" font-family="'DM Sans'" font-size="10" fill="${s}" text-anchor="middle" font-weight="700" pointer-events="none">${el.label||'VITRINE FROID'}</text>
-    <rect x="${bx}" y="${by-al}" width="${bw}" height="${bh+2*al}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
+    <text x="${bx+bw/2}" y="${by-al-6}" font-family="'DM Sans'" font-size="10" fill="${s}" text-anchor="middle" font-weight="700">${el.label||'VITRINE FROID'}</text>
   </g>`;
 }
-
 function renderDoor(el){
   const bx=px(el.x),by=px(el.y),dw=px(el.dw||.9);
   const rot=el.rot||0,od=el.openDir||1,col=el.fill||'#2e7d32';
   const leafY=-dw*od,sweepFlag=od===1?1:0;
-  return`<g data-id="${el.id}" data-type="door" transform="translate(${bx},${by}) rotate(${rot},0,0)">
-    <line x1="-2" y1="0" x2="${dw+2}" y2="0" stroke="#333" stroke-width="2.5" stroke-linecap="square"/>
+  return`<g data-id="${el.id}" transform="translate(${bx},${by}) rotate(${rot},0,0)">
+    <line x1="-2" y1="0" x2="${dw+2}" y2="0" stroke="#333" stroke-width="2.5"/>
     <line x1="0" y1="-4" x2="0" y2="4" stroke="#333" stroke-width="1.5"/>
     <line x1="${dw}" y1="-4" x2="${dw}" y2="4" stroke="#333" stroke-width="1.5"/>
-    <line x1="0" y1="0" x2="0" y2="${leafY}" stroke="${col}" stroke-width="1.5"/>
     <path d="M 0 ${leafY} A ${dw} ${dw} 0 0 ${sweepFlag} ${dw} 0" stroke="${col}" stroke-width="0.8" fill="${col}15"/>
-    ${el.label?`<text x="${dw/2}" y="${leafY/2-5}" font-size="7" fill="${col}" text-anchor="middle" font-family="'DM Sans'" font-weight="700" pointer-events="none" transform="rotate(${-rot},${dw/2},${leafY/2})">${el.label}</text>`:''}
-    <rect x="-4" y="${Math.min(0,leafY)-4}" width="${dw+8}" height="${Math.abs(leafY)+8}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
-  </g>`;
-}
-
-function renderDimsForEl(el){
-  if(!el.showDims||!el.w||!el.h||el.w<.01||el.h<.01)return'';
-  const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h),mg=20,col='#666';
-  return`
-    <line x1="${x}" y1="${y+h+mg}" x2="${x+w}" y2="${y+h+mg}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
-    <text x="${x+w/2}" y="${y+h+mg+11}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600">${el.w.toFixed(2)} m</text>
-    <line x1="${x+w+mg}" y1="${y}" x2="${x+w+mg}" y2="${y+h}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
-    <text x="${x+w+mg+11}" y="${y+h/2}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600" transform="rotate(90 ${x+w+mg+11} ${y+h/2})">${el.h.toFixed(2)} m</text>`;
-}
-
-function renderDim(el){
-  const x1=px(el.x),y1=px(el.y),x2=px(el.x2??el.x+2),y2=px(el.y2??el.y);
-  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
-  if(len<2)return`<g data-id="${el.id}"></g>`;
-  const dist=len/S,mx=(x1+x2)/2,my=(y1+y2)/2;
-  const ang=Math.atan2(dy,dx)*180/Math.PI;
-  const ta=(ang>90||ang<-90)?ang+180:ang;
-  return`<g data-id="${el.id}" data-type="dim">
-    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#555" stroke-width="0.9" marker-start="url(#da1)" marker-end="url(#da2)"/>
-    <g transform="rotate(${ta} ${mx} ${my}) translate(0,-6)">
-      <rect x="${mx-20}" y="${my-9}" width="40" height="11" rx="2" fill="white" opacity=".85" pointer-events="none"/>
-      <text x="${mx}" y="${my}" font-family="'JetBrains Mono'" font-size="9" fill="#333" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${dist.toFixed(2)} m</text>
-    </g>
-  </g>`;
-}
-
-function renderSafety(el){
-  const x=px(el.x),y=px(el.y);
-  if(el.subtype==='extincteur') return`<g data-id="${el.id}">
-    <circle cx="${x}" cy="${y}" r="9" fill="#c0392b"/>
-    <text x="${x}" y="${y+3}" font-size="9" fill="white" text-anchor="middle" font-weight="700" pointer-events="none">E</text>
-    <text x="${x}" y="${y+20}" font-size="7" fill="#c0392b" text-anchor="middle" pointer-events="none">${el.label||''}</text>
-  </g>`;
-  if(el.subtype==='sortie'){const w=px(el.w||.6),h=px(el.h||.2);return`<g data-id="${el.id}">
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#2e7d32"/>
-    <text x="${x+w/2}" y="${y+h/2+1}" font-size="7" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">${el.label||'SORTIE'}</text>
-  </g>`;}
-  if(el.subtype==='rallypoint') return`<g data-id="${el.id}">
-    <rect x="${x-70}" y="${y-12}" width="140" height="24" rx="4" fill="#2e7d32"/>
-    <text x="${x}" y="${y+1}" font-size="8" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">📍 ${el.label||''}</text>
-  </g>`;
-  return '';
-}
-
-function renderLabel(el){
-  const x=px(el.x),y=px(el.y),w=px(el.w||3),h=px(el.h||1);
-  return`<g data-id="${el.id}">
-    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="rgba(0,0,0,0.001)" stroke="none"/>
-    <text x="${x+w/2}" y="${y+h/2}" font-family="'DM Sans'" font-size="${el.fs||12}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${el.fw||700}" pointer-events="none">${el.label}</text>
   </g>`;
 }
 
 // ════════════════════════════════════════════════════════════
-// SELECTION HANDLES
+// CHECKLIST RENDER
 // ════════════════════════════════════════════════════════════
-function renderHandles(){
-  const hl = document.getElementById('lHandles');
-  if(!selectedId){ hl.innerHTML=''; return; }
-  const el = getEl(selectedId); if(!el){ hl.innerHTML=''; return; }
-  const bb = elBBox(el); if(!bb){ hl.innerHTML=''; return; }
-  const {x,y,w,h} = bb;
-  hl.innerHTML=`<rect x="${x-4}" y="${y-4}" width="${w+8}" height="${h+8}" fill="rgba(0,112,243,0.06)" stroke="#0070f3" stroke-width="1.5" stroke-dasharray="5 3" pointer-events="none" rx="3"/>`;
-}
-
-// ════════════════════════════════════════════════════════════
-// HACCP — Panel HTML builder
-// ════════════════════════════════════════════════════════════
-function buildHaccpHtml(el){
-  if(!el || el.haccpStatus === undefined){
-    return `<div class="props-empty">${el?`<b>${el.haccpLabel||el.label||el.id}</b><br><br>`:''}Cet élément n'est<br>pas suivi en HACCP.</div>`;
-  }
-  const status = el.haccpStatus || 'pending';
-  const name   = el.haccpLabel || el.label || el.id;
-  const sub    = el.sublabel || (el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '');
-  return `
-    <div class="ps">
-      <div class="ps-title">Zone sélectionnée</div>
-      <div class="haccp-zone-name">${name}</div>
-      ${sub ? `<div class="haccp-zone-sub">${sub}</div>` : '<div style="margin-bottom:10px"></div>'}
-      <div class="haccp-current">
-        <span class="haccp-badge ${status}">Statut actuel : ${HACCP_LABELS[status]}</span>
+function renderChecklist(){
+  const root = document.getElementById('checklistRoot');
+  root.innerHTML = CHECKLIST.map(zone => {
+    const {done, total, status} = zoneProgress(zone.zoneId);
+    const collapsed = collapsedZones.has(zone.zoneId) ? 'is-collapsed' : '';
+    const tasksHtml = zone.tasks.map((label, i) => {
+      const tid = taskId(zone.zoneId, i);
+      const done = checkedTasks.has(tid) ? 'is-done' : '';
+      return `<div class="cl-task ${done}" data-task="${tid}" role="checkbox" aria-checked="${done?'true':'false'}">
+        <div class="cl-check">✓</div>
+        <div class="cl-label">${label}</div>
+      </div>`;
+    }).join('');
+    return `<div class="cl-zone zs-${status} ${collapsed}" data-zone="${zone.zoneId}">
+      <div class="cl-zone-header" data-zone-toggle="${zone.zoneId}">
+        <span class="cl-zone-name">${zone.label}</span>
+        <span class="cl-zone-count">${done} / ${total}</span>
+        <span class="cl-zone-chevron">▼</span>
       </div>
-    </div>
-    <div class="ps">
-      <div class="ps-title">Changer le statut</div>
-      <button class="haccp-btn pending${status==='pending'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','pending')">🔴 À nettoyer</button>
-      <button class="haccp-btn progress${status==='progress'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','progress')">🟠 En cours</button>
-      <button class="haccp-btn clean${status==='clean'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','clean')">🟢 Nettoyé validé</button>
+      <div class="cl-tasks">${tasksHtml}</div>
     </div>`;
+  }).join('');
 }
 
-function pushHaccpHtml(el){
-  const html = buildHaccpHtml(el);
-  document.getElementById('propsPanel').innerHTML = html;
-  if(isMobile() && selectedId){
-    document.getElementById('sheetTitle').textContent = el ? (el.haccpLabel||el.label||el.id) : 'Nettoyage';
-    document.getElementById('sheetBody').innerHTML = html;
+function updateGlobalProgress(){
+  let done = 0, total = 0;
+  CHECKLIST.forEach(z => {
+    total += z.tasks.length;
+    z.tasks.forEach((_, i) => { if(checkedTasks.has(taskId(z.zoneId, i))) done++; });
+  });
+  const pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('globalPct').textContent = pct + '%';
+  const bar = document.getElementById('globalBar');
+  bar.style.width = pct + '%';
+  bar.style.background = pct === 100 ? '#2e7d32' : (pct > 0 ? '#43a047' : '#bdbdbd');
+  document.getElementById('globalLbl').textContent = `${done} / ${total} tâches effectuées`;
+
+  const btn = document.getElementById('validateBtn');
+  btn.disabled = (done === 0);
+  btn.textContent = pct === 100 ? '✓ Valider — 100% terminé' : `✓ Valider le nettoyage du jour (${pct}%)`;
+}
+
+// ════════════════════════════════════════════════════════════
+// CHECKLIST — Actions
+// ════════════════════════════════════════════════════════════
+function toggleTask(tid){
+  if(checkedTasks.has(tid)) checkedTasks.delete(tid);
+  else checkedTasks.add(tid);
+  saveState();
+  renderPlan();
+  renderChecklist();
+  updateGlobalProgress();
+}
+function toggleZone(zoneId){
+  if(collapsedZones.has(zoneId)) collapsedZones.delete(zoneId);
+  else collapsedZones.add(zoneId);
+  renderChecklist();
+}
+function resetAll(){
+  if(checkedTasks.size === 0){
+    showNotify('Aucune tâche cochée');
+    return;
   }
+  if(!confirm('Réinitialiser toutes les cases ?\nCela démarre une nouvelle session.')) return;
+  checkedTasks.clear();
+  saveState();
+  renderPlan();
+  renderChecklist();
+  updateGlobalProgress();
+  showNotify('↺ Nouvelle session');
 }
 
-// ════════════════════════════════════════════════════════════
-// SELECTION
-// ════════════════════════════════════════════════════════════
-function select(id){
-  selectedId = id;
-  const el = getEl(id);
-  renderHandles();
-  if(el) document.getElementById('stMid').textContent = el.haccpLabel||el.label||el.id;
-  pushHaccpHtml(el);
-  if(isMobile() && el?.haccpStatus !== undefined) openBottomSheet();
-}
-
-function deselect(){
-  selectedId = null;
-  renderHandles();
-  document.getElementById('stMid').textContent = '—';
-  const empty = '<div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule · 65 px = 1 m</small></div>';
-  document.getElementById('propsPanel').innerHTML = empty;
-  closeBottomSheet();
-}
-
-// ════════════════════════════════════════════════════════════
-// HACCP — Actions
-// ════════════════════════════════════════════════════════════
-function setHaccpStatus(id, status){
-  const el = getEl(id); if(!el) return;
-  el.haccpStatus = status;
-  render();
-  selectedId = id;
-  renderHandles();
-  pushHaccpHtml(el);
-  showNotify(`${el.haccpLabel||el.label||id} → ${HACCP_LABELS[status]}`);
-}
-
-function updateDashboard(){
-  const tracked  = elements.filter(e => e.haccpStatus !== undefined);
-  const pending  = tracked.filter(e => e.haccpStatus==='pending').length;
-  const progress = tracked.filter(e => e.haccpStatus==='progress').length;
-  const clean    = tracked.filter(e => e.haccpStatus==='clean').length;
-  const total    = tracked.length;
-  const pct      = total>0 ? Math.round(clean/total*100) : 0;
-
-  // Desktop panel
-  document.getElementById('cntPending').textContent  = pending;
-  document.getElementById('cntProgress').textContent = progress;
-  document.getElementById('cntClean').textContent    = clean;
-  const bar = document.getElementById('progressBar');
-  bar.style.width = pct+'%';
-  bar.style.background = pct===100 ? '#2e7d32' : '#43a047';
-  document.getElementById('progressLbl').textContent = `${clean} / ${total} zones nettoyées (${pct}%)`;
-
-  // Mobile stats strip
-  document.getElementById('stripPending').textContent  = pending;
-  document.getElementById('stripProgress').textContent = progress;
-  document.getElementById('stripClean').textContent    = clean;
-}
-
-function resetAllPending(){
-  if(!confirm('Remettre toutes les zones en "À nettoyer" ?\nCela démarre une nouvelle session.')) return;
-  elements.forEach(el => { if(el.haccpStatus !== undefined) el.haccpStatus = 'pending'; });
-  render();
-  deselect();
-  showNotify('↺ Nouvelle session — toutes les zones à nettoyer');
-}
-
-// ════════════════════════════════════════════════════════════
-// BOTTOM SHEET
-// ════════════════════════════════════════════════════════════
-function openBottomSheet(){
-  document.getElementById('sheet').classList.add('open');
-  document.getElementById('sheetOverlay').classList.add('open');
-}
-function closeBottomSheet(){
-  document.getElementById('sheet').classList.remove('open');
-  document.getElementById('sheetOverlay').classList.remove('open');
-}
-
-// ════════════════════════════════════════════════════════════
-// MOUSE EVENTS
-// ════════════════════════════════════════════════════════════
-svg.addEventListener('mousedown', onMouseDown);
-svg.addEventListener('mousemove', onMouseMove);
-svg.addEventListener('mouseup',   onMouseUp);
-svg.addEventListener('mouseleave',onMouseLeave);
-svg.addEventListener('wheel',     onWheel, {passive:false});
-
-function onMouseDown(e){
-  if(e.button===1||e.button===2){ e.preventDefault(); _mouseButtonDown=true; _panRawStart={x:e.clientX,y:e.clientY}; _panStart={x:panX,y:panY}; return; }
-  _mouseButtonDown=true;
-  isPanning=false;
-  _panRawStart={x:e.clientX,y:e.clientY};
-  _panStart={x:panX,y:panY};
-}
-
-function onMouseMove(e){
-  const pt=svgPt(e);
-  document.getElementById('chX').textContent=(pt.x/S).toFixed(2)+' m';
-  document.getElementById('chY').textContent=(pt.y/S).toFixed(2)+' m';
-  const elG=e.target.closest('[data-id]');
-  document.getElementById('chEl').textContent=elG?getEl(elG.dataset.id)?.label||elG.dataset.id:'—';
-  if(!_mouseButtonDown)return;
-  const dx=e.clientX-_panRawStart.x, dy=e.clientY-_panRawStart.y;
-  if(!isPanning&&(Math.abs(dx)>4||Math.abs(dy)>4)) isPanning=true;
-  if(isPanning){ panX=_panStart.x-dx/zoom; panY=_panStart.y-dy/zoom; updateViewBox(); }
-}
-
-function onMouseUp(e){
-  _mouseButtonDown=false;
-  const wasPanning=isPanning;
-  isPanning=false;
-  svg.classList.remove('panning');
-  if(!wasPanning){
-    const elG=e.target.closest('[data-id]');
-    if(elG&&elG.dataset.id){
-      const id=elG.dataset.id;
-      const el=getEl(id);
-      if(el&&el.haccpStatus!==undefined){ if(selectedId===id)deselect(); else select(id); }
-      else deselect();
-    } else { deselect(); }
+function validateDay(){
+  const operator = document.getElementById('operatorInput').value.trim();
+  if(!operator){
+    showNotify('⚠ Saisir le nom de l\'opérateur');
+    document.getElementById('operatorInput').focus();
+    return;
   }
+  let done = 0, total = 0;
+  CHECKLIST.forEach(z => {
+    total += z.tasks.length;
+    z.tasks.forEach((_, i) => { if(checkedTasks.has(taskId(z.zoneId, i))) done++; });
+  });
+  if(done === 0){ showNotify('Aucune tâche cochée'); return; }
+  const pct = Math.round(done/total*100);
+  const ok = confirm(`Valider le nettoyage du jour ?\n\nOpérateur : ${operator}\nProgression : ${done} / ${total} (${pct}%)\n\nCette action enregistre la session.`);
+  if(!ok) return;
+  showNotify(`✓ Session validée par ${operator} — ${pct}%`, 3500);
+  // TODO : envoi API plus tard
 }
-function onMouseLeave(){ _mouseButtonDown=false; isPanning=false; svg.classList.remove('panning'); document.getElementById('coordHud').classList.remove('vis'); }
-function onWheel(e){ e.preventDefault(); const pt=svgPt(e); setZoom(zoom*(e.deltaY<0?1.12:.88),pt.x,pt.y); }
-
-svg.addEventListener('mouseenter',()=>document.getElementById('coordHud').classList.add('vis'));
 
 // ════════════════════════════════════════════════════════════
-// TOUCH EVENTS — pan (1 doigt) + pinch zoom (2 doigts)
+// PERSISTANCE — localStorage (jour courant)
 // ════════════════════════════════════════════════════════════
-svg.addEventListener('touchstart', onTouchStart, {passive:false});
-svg.addEventListener('touchmove',  onTouchMove,  {passive:false});
-svg.addEventListener('touchend',   onTouchEnd,   {passive:false});
+function saveState(){
+  try{
+    const today = new Date().toISOString().slice(0,10);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      date: today,
+      checked: [...checkedTasks],
+    }));
+  }catch(e){}
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    const today = new Date().toISOString().slice(0,10);
+    if(data.date === today && Array.isArray(data.checked)){
+      checkedTasks = new Set(data.checked);
+    }
+  }catch(e){}
+}
+
+// ════════════════════════════════════════════════════════════
+// EVENT DELEGATION — Checklist
+// ════════════════════════════════════════════════════════════
+document.getElementById('checklistRoot').addEventListener('click', (e) => {
+  const taskEl = e.target.closest('[data-task]');
+  if(taskEl){ toggleTask(taskEl.dataset.task); return; }
+  const headerEl = e.target.closest('[data-zone-toggle]');
+  if(headerEl){ toggleZone(headerEl.dataset.zoneToggle); return; }
+});
+
+// ════════════════════════════════════════════════════════════
+// PLAN — Pan & zoom (touch + mouse), pas de sélection
+// ════════════════════════════════════════════════════════════
+svg.addEventListener('mousedown', (e) => {
+  _mouseButtonDown = true; isPanning = false;
+  _panRawStart = {x:e.clientX, y:e.clientY};
+  _panStart = {x:panX, y:panY};
+});
+svg.addEventListener('mousemove', (e) => {
+  if(!_mouseButtonDown) return;
+  const dx = e.clientX - _panRawStart.x, dy = e.clientY - _panRawStart.y;
+  if(!isPanning && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) isPanning = true;
+  if(isPanning){ panX = _panStart.x - dx/zoom; panY = _panStart.y - dy/zoom; updateViewBox(); }
+});
+svg.addEventListener('mouseup',   () => { _mouseButtonDown = false; isPanning = false; });
+svg.addEventListener('mouseleave',() => { _mouseButtonDown = false; isPanning = false; });
+svg.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const pt = svgPtFromClient(e.clientX, e.clientY);
+  setZoom(zoom * (e.deltaY < 0 ? 1.12 : .88), pt.x, pt.y);
+}, {passive:false});
 
 function touchDist(t1,t2){ return Math.hypot(t2.clientX-t1.clientX, t2.clientY-t1.clientY); }
 function touchMid(t1,t2){ return {x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
 
-function onTouchStart(e){
+svg.addEventListener('touchstart', (e) => {
   e.preventDefault();
-  if(e.touches.length===1){
-    const t=e.touches[0];
-    _mouseButtonDown=true;
-    isPanning=false;
-    _panRawStart={x:t.clientX,y:t.clientY};
-    _panStart={x:panX,y:panY};
-  } else if(e.touches.length===2){
-    _mouseButtonDown=false;
-    isPanning=false;
-    _touchStartDist=touchDist(e.touches[0],e.touches[1]);
-    _touchStartZoom=zoom;
+  if(e.touches.length === 1){
+    _mouseButtonDown = true; isPanning = false;
+    _panRawStart = {x:e.touches[0].clientX, y:e.touches[0].clientY};
+    _panStart = {x:panX, y:panY};
+  } else if(e.touches.length === 2){
+    _mouseButtonDown = false;
+    _touchStartDist = touchDist(e.touches[0], e.touches[1]);
+    _touchStartZoom = zoom;
   }
-}
+}, {passive:false});
 
-function onTouchMove(e){
+svg.addEventListener('touchmove', (e) => {
   e.preventDefault();
-  if(e.touches.length===1&&_mouseButtonDown){
-    const t=e.touches[0];
-    const dx=t.clientX-_panRawStart.x, dy=t.clientY-_panRawStart.y;
-    if(!isPanning&&(Math.abs(dx)>10||Math.abs(dy)>10)) isPanning=true;
-    if(isPanning){ panX=_panStart.x-dx/zoom; panY=_panStart.y-dy/zoom; updateViewBox(); }
-  } else if(e.touches.length===2){
-    const dist=touchDist(e.touches[0],e.touches[1]);
-    const scale=dist/_touchStartDist;
-    const newZoom=Math.max(.15,Math.min(5,_touchStartZoom*scale));
-    const mid=touchMid(e.touches[0],e.touches[1]);
-    const pt=svgPtFromClient(mid.x,mid.y);
-    setZoom(newZoom,pt.x,pt.y);
+  if(e.touches.length === 1 && _mouseButtonDown){
+    const t = e.touches[0];
+    const dx = t.clientX - _panRawStart.x, dy = t.clientY - _panRawStart.y;
+    if(!isPanning && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) isPanning = true;
+    if(isPanning){ panX = _panStart.x - dx/zoom; panY = _panStart.y - dy/zoom; updateViewBox(); }
+  } else if(e.touches.length === 2){
+    const dist = touchDist(e.touches[0], e.touches[1]);
+    const scale = dist / _touchStartDist;
+    const newZoom = Math.max(.15, Math.min(5, _touchStartZoom * scale));
+    const mid = touchMid(e.touches[0], e.touches[1]);
+    const pt = svgPtFromClient(mid.x, mid.y);
+    setZoom(newZoom, pt.x, pt.y);
   }
-}
+}, {passive:false});
 
-function onTouchEnd(e){
-  if(e.touches.length===0){
-    _mouseButtonDown=false;
-    const wasPanning=isPanning;
-    isPanning=false;
-    if(!wasPanning&&e.changedTouches.length>0){
-      const t=e.changedTouches[0];
-      const target=document.elementFromPoint(t.clientX,t.clientY);
-      const elG=target?.closest('[data-id]');
-      if(elG&&elG.dataset.id){
-        const id=elG.dataset.id;
-        const el=getEl(id);
-        if(el&&el.haccpStatus!==undefined){ if(selectedId===id)deselect(); else select(id); }
-      }
-    }
-  }
-}
-
-// ════════════════════════════════════════════════════════════
-// LEGEND
-// ════════════════════════════════════════════════════════════
-function buildLegend(){
-  const el=document.getElementById('legend-items'); if(!el)return;
-  const tracked=elements.filter(e=>e.haccpStatus!==undefined);
-  if(!tracked.length){el.innerHTML='';return;}
-  const n=(s)=>tracked.filter(e=>e.haccpStatus===s).length;
-  el.innerHTML=`
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px"><div style="width:14px;height:9px;background:#ffebee;border:1.5px solid #e53935;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">À nettoyer</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('pending')}</span></div>
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px"><div style="width:14px;height:9px;background:#fff3e0;border:1.5px solid #fb8c00;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">En cours</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('progress')}</span></div>
-    <div style="display:flex;align-items:center;gap:5px"><div style="width:14px;height:9px;background:#e8f5e9;border:1.5px solid #43a047;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">Nettoyé</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('clean')}</span></div>`;
-}
-
-// ════════════════════════════════════════════════════════════
-// KEYBOARD SHORTCUTS (desktop)
-// ════════════════════════════════════════════════════════════
-document.addEventListener('keydown',e=>{
-  const tag=e.target.tagName.toLowerCase();
-  if(tag==='input'||tag==='textarea')return;
-  if(e.key==='Escape'){deselect();return;}
-  if(e.key==='f'){fitView();return;}
-  if(e.key==='+'||e.key==='='){setZoom(zoom*1.15);return;}
-  if(e.key==='-'){setZoom(zoom*.85);return;}
-  if(selectedId){
-    if(e.key==='1'){setHaccpStatus(selectedId,'pending'); return;}
-    if(e.key==='2'){setHaccpStatus(selectedId,'progress');return;}
-    if(e.key==='3'){setHaccpStatus(selectedId,'clean');   return;}
-  }
-});
-
-// ════════════════════════════════════════════════════════════
-// PANEL RESIZE (desktop)
-// ════════════════════════════════════════════════════════════
-(function(){
-  const handle=document.getElementById('panelResizeHandle');
-  const panel=document.getElementById('panelRight');
-  let r=false,sx=0,sw=0;
-  handle.addEventListener('mousedown',e=>{r=true;sx=e.clientX;sw=panel.offsetWidth;handle.classList.add('dragging');document.body.style.userSelect='none';e.preventDefault();});
-  document.addEventListener('mousemove',e=>{if(!r)return;panel.style.width=Math.max(220,Math.min(520,sw-(e.clientX-sx)))+'px';});
-  document.addEventListener('mouseup',()=>{if(r){r=false;handle.classList.remove('dragging');document.body.style.userSelect='';}});
-})();
+svg.addEventListener('touchend', () => { _mouseButtonDown = false; isPanning = false; }, {passive:false});
 
 // ════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════
 function init(){
-  const d=new Date();
-  document.getElementById('dateHdr').textContent=d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  const d = new Date();
+  document.getElementById('dateHdr').textContent = d.toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+  loadState();
   updateViewBox();
-  render();
-  requestAnimationFrame(()=>fitView());
+  renderPlan();
+  renderChecklist();
+  updateGlobalProgress();
+  requestAnimationFrame(() => fitView());
+  window.addEventListener('resize', () => requestAnimationFrame(fitView));
 }
-
 init();
 </script>
 </body>
