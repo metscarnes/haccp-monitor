@@ -3,21 +3,20 @@
    taches.js — Écran Tâches HACCP du jour
    Au Comptoir des Lilas — Mets Carnés Holding
 
-   Responsabilités :
-   - Horloge / date temps réel
-   - Sélecteur opérateur (personnel)
-   - Chargement et affichage des 3 colonnes (retard / à faire / fait)
-   - Modal de validation avec formulaire spécifique par tâche
-   - Soumission POST /api/taches/valider
-   - Rafraîchissement automatique toutes les 60 s
+   Tâches affichées :
+     - Nettoyage et désinfection  (nettoyage_desinfection)
+     - Nettoyage pièges oiseaux   (nettoyage_pieges_oiseaux)
    ============================================================ */
 
 const REFRESH_MS = 60_000;
 
+// Seuls ces deux codes de tâche sont affichés et traités
+const CODES_ACTIFS = new Set(['nettoyage_desinfection', 'nettoyage_pieges_oiseaux']);
+
 // ── État ──────────────────────────────────────────────────────
-let operateur    = null;   // prénom sélectionné
-let tacheCourante = null;  // tache ouverte dans le modal
-let pieges       = [];     // liste des pièges (pour formulaires)
+let operateur     = null;   // prénom sélectionné
+let tacheCourante = null;   // tâche ouverte dans le modal
+let pieges        = [];     // liste des pièges oiseaux
 
 // ── Références DOM ────────────────────────────────────────────
 const elDate         = document.getElementById('taches-date');
@@ -89,12 +88,12 @@ function afficherPersonnel(personnes) {
     btn.className = 'operateur-btn';
     btn.textContent = p.prenom;
     btn.dataset.prenom = p.prenom;
-    btn.addEventListener('click', () => selectionnerOperateur(p.prenom, btn));
+    btn.addEventListener('click', () => selectionnerOperateur(p.prenom));
     elOperateurBtns.appendChild(btn);
   });
 }
 
-function selectionnerOperateur(prenom, btnEl) {
+function selectionnerOperateur(prenom) {
   operateur = prenom;
   elOperateurBar.classList.remove('operateur-bar--vide');
   elOperateurBar.classList.add('operateur-bar--actif');
@@ -103,7 +102,7 @@ function selectionnerOperateur(prenom, btnEl) {
   });
 }
 
-// ── Pièges ────────────────────────────────────────────────────
+// ── Pièges oiseaux ────────────────────────────────────────────
 async function chargerPieges() {
   try {
     pieges = await apiFetch('/api/admin/pieges');
@@ -117,7 +116,7 @@ async function chargerTaches() {
   try {
     const data = await apiFetch('/api/taches/today');
     afficherColonnes(data);
-  } catch (err) {
+  } catch {
     [elColRetard, elColAfaire, elColFait].forEach(el => {
       el.innerHTML = '<div class="taches-vide taches-vide--erreur">⚠ Connexion perdue</div>';
     });
@@ -125,9 +124,10 @@ async function chargerTaches() {
 }
 
 function afficherColonnes(data) {
-  const retard = data.en_retard ?? [];
-  const afaire = data.a_faire  ?? [];
-  const fait   = data.fait     ?? [];
+  // On n'affiche que les deux tâches nettoyage conservées
+  const retard = (data.en_retard ?? []).filter(t => CODES_ACTIFS.has(t.code));
+  const afaire = (data.a_faire  ?? []).filter(t => CODES_ACTIFS.has(t.code));
+  const fait   = (data.fait     ?? []).filter(t => CODES_ACTIFS.has(t.code));
 
   elNbRetard.textContent = retard.length || '';
   elNbAfaire.textContent = afaire.length || '';
@@ -184,19 +184,8 @@ function carteHtml(tache, etat) {
 
 function iconeParCode(code) {
   const ICONES = {
-    releve_temp_enceintes_matin: '🌡',
-    releve_temp_enceintes_soir:  '🌡',
-    temp_lave_vaisselle:         '🍽',
-    suivi_temp_production:       '🥩',
-    nettoyage_desinfection:      '🧹',
-    pieges_rongeurs:             '🪤',
-    nettoyage_pieges_oiseaux:    '🪤',
-    controle_huile_friture:      '🍳',
-    suivi_decongélation:         '❄',
-    suivi_congelation:           '🧊',
-    action_corrective_temp:      '⚠',
-    etalonnage_thermometres:     '📐',
-    tiac:                        '🚨',
+    nettoyage_desinfection:   '🧹',
+    nettoyage_pieges_oiseaux: '🪤',
   };
   return ICONES[code] ?? '📋';
 }
@@ -212,7 +201,6 @@ function escHtml(str) {
 // ── Modal ─────────────────────────────────────────────────────
 function ouvrirModal(tache) {
   if (!operateur) {
-    // Flash la barre opérateur
     elOperateurBar.classList.add('operateur-bar--flash');
     setTimeout(() => elOperateurBar.classList.remove('operateur-bar--flash'), 800);
     return;
@@ -225,19 +213,16 @@ function ouvrirModal(tache) {
     : 'Tâche événementielle';
   elModalIcone.textContent = iconeParCode(tache.code);
 
-  // Réinitialiser
   elModalForm.reset();
   elModalErreur.hidden = true;
   elModalValider.disabled = false;
   elModalValiderTexte.textContent = 'Valider ✓';
 
-  // Champs spécifiques
   elModalChamps.innerHTML = construireChamps(tache.code);
 
   elOverlay.hidden = false;
   document.body.style.overflow = 'hidden';
 
-  // Focus premier input
   const premierInput = elModalChamps.querySelector('input, select, textarea');
   if (premierInput) premierInput.focus();
 }
@@ -251,43 +236,6 @@ function fermerModal() {
 /** Retourne le HTML des champs spécifiques selon le code de la tâche */
 function construireChamps(code) {
   switch (code) {
-
-    case 'releve_temp_enceintes_matin':
-    case 'releve_temp_enceintes_soir':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Températures relevées (°C)</legend>
-          <div class="modal-grille-2">
-            ${champTemp('cf1', 'Chambre froide 1', 0, 4)}
-            ${champTemp('cf2', 'Chambre froide 2', 0, 4)}
-            ${champTemp('vitrine', 'Vitrine', 0, 4)}
-            ${champTemp('labo', 'Laboratoire', 10, 15)}
-          </div>
-        </fieldset>`;
-
-    case 'temp_lave_vaisselle':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Températures lave-vaisselle (°C)</legend>
-          <div class="modal-grille-2">
-            ${champTemp('lavage', 'Cycle lavage', 55, 65, '55–65 °C')}
-            ${champTemp('rincage', 'Cycle rinçage', 82, 90, '82–90 °C')}
-          </div>
-        </fieldset>`;
-
-    case 'suivi_temp_production':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Production / service</legend>
-          <div class="modal-grille-2">
-            ${champTemp('temperature', 'Température mesurée', -5, 10)}
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_produit">Produit / zone <span class="requis">*</span></label>
-              <input id="ds_produit" name="ds_produit" class="modal-input" type="text"
-                     placeholder="Ex : viande hachée, vitrine..." required>
-            </div>
-          </div>
-        </fieldset>`;
 
     case 'nettoyage_desinfection':
       return `
@@ -306,26 +254,6 @@ function construireChamps(code) {
             </div>
           </div>
         </fieldset>`;
-
-    case 'pieges_rongeurs': {
-      const rongeurs = pieges.filter(p => p.type === 'rongeur');
-      if (rongeurs.length === 0) {
-        return `<p class="modal-info">Aucun piège rongeur configuré — <a href="/admin.html">configurer</a></p>`;
-      }
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">État des pièges rongeurs</legend>
-          ${rongeurs.map(p => `
-            <label class="modal-checkbox-ligne">
-              <input type="checkbox" name="piege_${p.id}" id="piege_${p.id}">
-              <span>
-                <strong>${escHtml(p.identifiant)}</strong>
-                ${p.localisation ? ` — ${escHtml(p.localisation)}` : ''}
-                &ensp;— Rongeur présent
-              </span>
-            </label>`).join('')}
-        </fieldset>`;
-    }
 
     case 'nettoyage_pieges_oiseaux': {
       const oiseaux = pieges.filter(p => p.type === 'oiseau');
@@ -347,70 +275,9 @@ function construireChamps(code) {
         </fieldset>`;
     }
 
-    case 'controle_huile_friture':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Contrôle huile de friture</legend>
-          <div class="modal-grille-2">
-            ${champTemp('temperature', 'Température huile (°C)', 150, 180, '≤ 180 °C')}
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_aspect">Aspect visuel</label>
-              <select id="ds_aspect" name="ds_aspect" class="modal-input">
-                <option value="">— Sélectionner —</option>
-                <option value="bon">Bon — huile claire</option>
-                <option value="moyen">Moyen — légèrement foncée</option>
-                <option value="mauvais">Mauvais — à changer</option>
-              </select>
-            </div>
-          </div>
-        </fieldset>`;
-
-    case 'suivi_decongélation':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Suivi décongélation</legend>
-          <div class="modal-grille-2">
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_produit_dec">Produit</label>
-              <input id="ds_produit_dec" name="ds_produit_dec" class="modal-input" type="text"
-                     placeholder="Ex : rôti de bœuf, pièce entière...">
-            </div>
-            ${champTemp('temperature', 'Température (°C)', -5, 4)}
-          </div>
-        </fieldset>`;
-
-    case 'suivi_congelation':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Suivi congélation</legend>
-          <div class="modal-grille-2">
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_produit_cong">Produit</label>
-              <input id="ds_produit_cong" name="ds_produit_cong" class="modal-input" type="text"
-                     placeholder="Ex : bavette, côte d'agneau...">
-            </div>
-            ${champTemp('temperature', 'Température congélateur (°C)', -25, -18, '≤ −18 °C')}
-          </div>
-        </fieldset>`;
-
     default:
-      return '';  // Juste conformité + commentaire
+      return '';
   }
-}
-
-/** Génère un champ température avec indication du seuil */
-function champTemp(name, label, min, max, aide) {
-  const aideHtml = aide
-    ? `<span class="modal-champ-aide">${aide}</span>`
-    : `<span class="modal-champ-aide">Seuil : ${min} à ${max} °C</span>`;
-  return `
-    <div class="modal-champ">
-      <label class="modal-champ-label" for="ds_${name}">${escHtml(label)}</label>
-      <input id="ds_${name}" name="ds_${name}" class="modal-input modal-input--temp"
-             type="number" step="0.1" inputmode="decimal"
-             placeholder="0.0">
-      ${aideHtml}
-    </div>`;
 }
 
 /** Collecte les valeurs des champs spécifiques du formulaire courant */
@@ -422,48 +289,12 @@ function collecterDonneesSpecifiques(code) {
     const el = form.querySelector(`[name="${id}"]`);
     return el ? el.value.trim() : undefined;
   }
-  function num(id) {
-    const v = val(id);
-    return v !== '' && v !== undefined ? parseFloat(v) : null;
-  }
 
   switch (code) {
-    case 'releve_temp_enceintes_matin':
-    case 'releve_temp_enceintes_soir':
-      ds.temperatures = {
-        cf1:     num('ds_cf1'),
-        cf2:     num('ds_cf2'),
-        vitrine: num('ds_vitrine'),
-        labo:    num('ds_labo'),
-      };
-      break;
-
-    case 'temp_lave_vaisselle':
-      ds.temperatures = {
-        lavage:  num('ds_lavage'),
-        rincage: num('ds_rincage'),
-      };
-      break;
-
-    case 'suivi_temp_production':
-      ds.temperature = num('ds_temperature');
-      ds.produit     = val('ds_produit');
-      break;
-
     case 'nettoyage_desinfection':
       ds.produit_nettoyage = val('ds_produit_nett');
       ds.dilution          = val('ds_dilution');
       break;
-
-    case 'pieges_rongeurs': {
-      const etat = {};
-      pieges.filter(p => p.type === 'rongeur').forEach(p => {
-        const cb = form.querySelector(`[name="piege_${p.id}"]`);
-        etat[p.identifiant] = cb ? cb.checked : false;
-      });
-      ds.pieges_rongeurs = etat;
-      break;
-    }
 
     case 'nettoyage_pieges_oiseaux': {
       const etat = {};
@@ -474,21 +305,6 @@ function collecterDonneesSpecifiques(code) {
       ds.pieges_oiseaux = etat;
       break;
     }
-
-    case 'controle_huile_friture':
-      ds.temperature = num('ds_temperature');
-      ds.aspect      = val('ds_aspect');
-      break;
-
-    case 'suivi_decongélation':
-      ds.produit     = val('ds_produit_dec');
-      ds.temperature = num('ds_temperature');
-      break;
-
-    case 'suivi_congelation':
-      ds.produit     = val('ds_produit_cong');
-      ds.temperature = num('ds_temperature');
-      break;
   }
 
   return Object.keys(ds).length > 0 ? ds : null;
@@ -510,17 +326,17 @@ elModalForm.addEventListener('submit', async (e) => {
   const today       = new Date().toISOString().slice(0, 10);
 
   const payload = {
-    tache_type_id:      tacheCourante.id,
-    operateur:          operateur,
-    date_tache:         today,
-    conforme:           conformeRadio.value === 'oui',
-    commentaire:        commentaire || null,
+    tache_type_id:       tacheCourante.id,
+    operateur:           operateur,
+    date_tache:          today,
+    conforme:            conformeRadio.value === 'oui',
+    commentaire:         commentaire || null,
     donnees_specifiques: ds,
   };
 
-  elModalValider.disabled     = true;
-  elModalValiderTexte.textContent = 'Envoi…';
-  elModalErreur.hidden        = true;
+  elModalValider.disabled          = true;
+  elModalValiderTexte.textContent  = 'Envoi…';
+  elModalErreur.hidden             = true;
 
   try {
     await apiFetch('/api/taches/valider', {
@@ -532,7 +348,7 @@ elModalForm.addEventListener('submit', async (e) => {
     await chargerTaches();
   } catch (err) {
     afficherErreurModal(`Erreur : ${err.message}`);
-    elModalValider.disabled     = false;
+    elModalValider.disabled         = false;
     elModalValiderTexte.textContent = 'Valider ✓';
   }
 });
