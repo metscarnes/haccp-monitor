@@ -866,11 +866,12 @@ elBtnGenerer.addEventListener('click', async () => {
   const lotsUtilises = Object.values(lotsParRiId);
 
   const payload = {
-    recette_id:   state.recetteId,
-    personnel_id: Number(personnelId),
-    date:         new Date().toLocaleDateString('en-CA'),
-    lots:         lotsUtilises,
-    dlc_finale:   state.dlcFinale ?? null,
+    recette_id:     state.recetteId,
+    personnel_id:   Number(personnelId),
+    date:           new Date().toLocaleDateString('en-CA'),
+    lots:           lotsUtilises,
+    dlc_finale:     state.dlcFinale ?? null,
+    poids_fabrique: state.productionCiblee > 0 ? state.productionCiblee : null,
   };
 
   elBtnGenerer.disabled    = true;
