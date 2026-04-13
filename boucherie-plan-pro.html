@@ -2,7 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Dashboard HACCP — Au Comptoir des Lilas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -21,42 +23,66 @@ html,body{height:100%;overflow:hidden}
 body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:13px}
 
 /* ── LAYOUT ── */
-.app{display:flex;flex-direction:column;height:100vh}
-.app-header{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:44px;background:var(--dark);color:#fff;flex-shrink:0;z-index:100}
-.app-header h1{font-size:14px;font-weight:700;letter-spacing:.5px}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.app-body{display:flex;flex:1;overflow:hidden;min-height:0}
+
+/* ── HEADER ── */
+.app-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;height:48px;background:var(--dark);color:#fff;
+  flex-shrink:0;z-index:100;
+}
+.app-header h1{font-size:14px;font-weight:700;letter-spacing:.5px;white-space:nowrap}
 .app-header .sub{font-size:9px;opacity:.6;font-family:var(--mono)}
-.app-header .badge{background:var(--accent);padding:3px 9px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:3px}
+.badge{background:var(--accent);padding:3px 9px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:3px;white-space:nowrap}
 
 /* ── TOOLBAR ── */
-.app-toolbar{display:flex;align-items:center;gap:3px;padding:5px 10px;background:#fff;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;min-height:42px}
-.tb-sep{width:1px;height:22px;background:var(--border);margin:0 3px}
-.tb-label{font-size:9px;color:var(--light);font-family:var(--mono);margin:0 2px}
-button.tb{font-family:var(--font);font-size:11px;font-weight:600;padding:4px 10px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;background:#fff;color:var(--dark);transition:all .1s;display:flex;align-items:center;gap:4px;white-space:nowrap;line-height:1.2}
+.app-toolbar{
+  display:flex;align-items:center;gap:4px;padding:5px 10px;
+  background:#fff;border-bottom:1px solid var(--border);
+  flex-shrink:0;flex-wrap:nowrap;min-height:46px;overflow:hidden;
+}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 2px;flex-shrink:0}
+.tb-label{font-size:9px;color:var(--light);font-family:var(--mono);flex-shrink:0}
+button.tb{
+  font-family:var(--font);font-size:11px;font-weight:600;
+  padding:6px 11px;border:1.5px solid var(--border);border-radius:6px;
+  cursor:pointer;background:#fff;color:var(--dark);
+  transition:all .1s;display:flex;align-items:center;gap:4px;
+  white-space:nowrap;line-height:1.2;flex-shrink:0;
+  min-height:34px;touch-action:manipulation;
+}
 button.tb:hover{border-color:#999;background:#f5f5f0}
-.zoom-wrap{display:flex;align-items:center;gap:5px}
+button.tb:active{background:#eee}
+.zoom-wrap{display:flex;align-items:center;gap:5px;flex-shrink:0}
 .zoom-wrap input[type="range"]{width:80px;accent-color:var(--dark);cursor:pointer}
-.zoom-lbl{font-family:var(--mono);font-size:10px;color:var(--mid);min-width:38px;text-align:center}
-
-/* ── BODY ── */
-.app-body{display:flex;flex:1;overflow:hidden}
+.zoom-lbl{font-family:var(--mono);font-size:10px;color:var(--mid);min-width:40px;text-align:center}
+.tb-legend{display:flex;align-items:center;gap:10px;font-size:10px;color:var(--mid);flex-shrink:0}
+.tb-legend span{display:flex;align-items:center;gap:4px}
+.leg-dot{width:13px;height:13px;border-radius:2px;flex-shrink:0;display:inline-block}
 
 /* ── CANVAS ── */
-.canvas-area{flex:1;overflow:hidden;position:relative;background:#c0bfb8}
+.canvas-area{flex:1;overflow:hidden;position:relative;background:#c0bfb8;min-width:0}
 .canvas-scroll{position:absolute;inset:0;overflow:hidden}
-#fp{width:100%;height:100%;display:block;cursor:default}
+#fp{width:100%;height:100%;display:block;cursor:default;touch-action:none}
 #fp.panning{cursor:grabbing}
 
-/* ── RIGHT PANEL ── */
-.panel-right{width:270px;min-width:220px;max-width:520px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;position:relative}
+/* ── RIGHT PANEL (desktop) ── */
+.panel-right{
+  width:270px;min-width:220px;max-width:520px;
+  flex-shrink:0;background:var(--panel);
+  border-left:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column;position:relative;
+}
 .panel-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:ew-resize;z-index:10;background:transparent;transition:background .15s}
 .panel-resize-handle:hover,.panel-resize-handle.dragging{background:rgba(0,112,243,0.25)}
 .panel-right::-webkit-scrollbar{width:4px}
 .panel-right::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.props-empty{padding:24px 14px;text-align:center;color:var(--light);font-size:10px;line-height:2}
+.props-empty{padding:24px 14px;text-align:center;color:var(--light);font-size:11px;line-height:2}
 .p-title{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--light);padding:8px 12px 6px;border-bottom:1px solid var(--border);background:#fff;position:sticky;top:0;z-index:1}
-.ps{padding:10px 12px;border-bottom:1px solid var(--border)}
+.ps{padding:12px 14px;border-bottom:1px solid var(--border)}
 .ps:last-child{border-bottom:none}
-.ps-title{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--light);letter-spacing:.7px;margin-bottom:7px}
+.ps-title{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--light);letter-spacing:.7px;margin-bottom:8px}
 
 /* ── HACCP STATUS SYSTEM ── */
 .haccp-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:4px}
@@ -70,39 +96,153 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
 .haccp-badge.pending {background:var(--pending-fill);color:#b71c1c;border:1.5px solid var(--pending-stroke)}
 .haccp-badge.progress{background:var(--progress-fill);color:#bf360c;border:1.5px solid var(--progress-stroke)}
 .haccp-badge.clean   {background:var(--clean-fill);  color:#1b5e20;border:1.5px solid var(--clean-stroke)}
-.haccp-btn{width:100%;padding:13px 10px;font-family:var(--font);font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;margin-bottom:8px;border:2.5px solid transparent;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.2px}
+.haccp-btn{
+  width:100%;padding:13px 10px;font-family:var(--font);font-size:12px;font-weight:700;
+  border-radius:8px;cursor:pointer;margin-bottom:8px;border:2.5px solid transparent;
+  transition:all .15s;display:flex;align-items:center;justify-content:center;
+  gap:8px;letter-spacing:.2px;touch-action:manipulation;
+}
 .haccp-btn:last-child{margin-bottom:0}
 .haccp-btn.pending {background:var(--pending-fill);color:#b71c1c;border-color:var(--pending-stroke)}
 .haccp-btn.progress{background:var(--progress-fill);color:#bf360c;border-color:var(--progress-stroke)}
 .haccp-btn.clean   {background:var(--clean-fill);  color:#1b5e20;border-color:var(--clean-stroke)}
 .haccp-btn:hover{filter:brightness(.95)}
+.haccp-btn:active{filter:brightness(.88)}
 .haccp-btn.is-active{box-shadow:inset 0 0 0 2px rgba(0,0,0,.18),0 3px 10px rgba(0,0,0,.15);transform:scale(1.02)}
 .haccp-progress-bar{height:8px;border-radius:4px;background:#e0e0e0;overflow:hidden;margin-top:6px}
-.haccp-progress-fill{height:100%;border-radius:4px;transition:width .3s ease;background:var(--clean-stroke)}
+.haccp-progress-fill{height:100%;border-radius:4px;transition:width .3s ease}
 
 /* ── SVG STYLES ── */
 .plan-el{cursor:pointer}
 .plan-el.no-haccp{cursor:default;pointer-events:none}
 
-/* ── STATUS BAR ── */
+/* ── STATUS BAR (desktop only) ── */
 .app-status{height:24px;flex-shrink:0;background:var(--dark);color:#888;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-family:var(--mono);font-size:9px}
+
+/* ── STATS STRIP (mobile only) ── */
+.stats-strip{
+  display:none;/* hidden on desktop, shown via media query */
+  flex-shrink:0;background:var(--dark);color:#fff;
+  height:54px;align-items:stretch;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+.ss-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:4px 2px;
+  border-right:1px solid rgba(255,255,255,.1);
+}
+.ss-item:last-of-type{border-right:none}
+.ss-val{font-size:20px;font-weight:700;line-height:1.1}
+.ss-lbl{font-size:8px;opacity:.55;font-family:var(--mono);margin-top:1px;letter-spacing:.2px;text-align:center}
+.ss-pending  .ss-val{color:#ef9a9a}
+.ss-progress .ss-val{color:#ffcc80}
+.ss-clean    .ss-val{color:#a5d6a7}
+.ss-reset{
+  width:52px;flex-shrink:0;background:none;border:none;
+  color:rgba(255,255,255,.45);font-size:20px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  border-left:1px solid rgba(255,255,255,.1);
+  touch-action:manipulation;
+}
+.ss-reset:active{color:#fff;background:rgba(255,255,255,.07)}
 
 /* ── COORD HUD ── */
 .coord-hud{position:fixed;bottom:28px;left:10px;background:rgba(26,26,26,.88);color:#fff;font-family:var(--mono);font-size:9px;padding:5px 10px;border-radius:4px;pointer-events:none;z-index:200;line-height:1.9;display:none}
 .coord-hud.vis{display:block}
-.ch-k{color:#f39c12}
-.ch-v{color:#81c784}
+.ch-k{color:#f39c12}.ch-v{color:#81c784}
 
 /* ── LEGEND OVERLAY ── */
 #lLegend{display:none}
 
 /* ── NOTIFY ── */
-.notify{position:fixed;top:54px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.88);color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;border-radius:4px;pointer-events:none;z-index:3000;opacity:0;transition:opacity .3s}
+.notify{position:fixed;top:58px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.9);color:#fff;font-family:var(--mono);font-size:11px;padding:6px 16px;border-radius:6px;pointer-events:none;z-index:3000;opacity:0;transition:opacity .3s;white-space:nowrap}
 .notify.vis{opacity:1}
+
+/* ══════════════════════════════════════════════════════════
+   BOTTOM SHEET (mobile / tablet)
+══════════════════════════════════════════════════════════ */
+.sheet-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.45);z-index:400;
+}
+.sheet-overlay.open{display:block}
+.sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--panel);
+  border-radius:20px 20px 0 0;
+  z-index:401;
+  transform:translateY(100%);
+  transition:transform .32s cubic-bezier(.32,.72,0,1);
+  max-height:78vh;
+  display:flex;flex-direction:column;
+  box-shadow:0 -8px 32px rgba(0,0,0,.28);
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+.sheet.open{transform:translateY(0)}
+.sheet-drag-handle{width:40px;height:5px;background:var(--border);border-radius:3px;margin:10px auto 0;flex-shrink:0}
+.sheet-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px 8px;border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.sheet-title{font-size:14px;font-weight:700;color:var(--dark)}
+.sheet-close{
+  width:30px;height:30px;border-radius:50%;background:var(--panel2);
+  border:1px solid var(--border);cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;color:var(--mid);
+  touch-action:manipulation;
+}
+.sheet-close:active{background:var(--border)}
+.sheet-body{overflow-y:auto;flex:1}
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE OVERRIDES
+══════════════════════════════════════════════════════════ */
+@media (max-width:899px){
+  /* Header compact */
+  .app-header{height:44px;padding:0 12px}
+  .app-header h1{font-size:12px}
+  .app-header .sub{display:none}
+
+  /* Toolbar compact — only zoom buttons */
+  .app-toolbar{padding:4px 8px;min-height:48px;gap:3px}
+  .tb-label{display:none}
+  .tb-sep{display:none}
+  .tb-legend{display:none}
+  .zoom-slider{display:none}
+  .tb-reset{display:none} /* moved to stats strip */
+  button.tb{padding:10px 14px;font-size:13px;min-height:40px;border-radius:8px}
+  .zoom-lbl{font-size:12px;min-width:46px}
+
+  /* Hide desktop-only elements */
+  .panel-right{display:none}
+  .app-status{display:none}
+  .coord-hud{display:none!important}
+  #legend{display:none!important}
+
+  /* Stats strip visible */
+  .stats-strip{display:flex}
+
+  /* Bigger HACCP buttons in sheet */
+  .haccp-btn{padding:18px 14px;font-size:15px;border-radius:12px;margin-bottom:10px;border-width:3px}
+  .haccp-btn:last-child{margin-bottom:4px}
+  .haccp-zone-name{font-size:18px;padding:16px 14px 4px}
+  .haccp-zone-sub{font-size:10px;margin-bottom:12px}
+  .haccp-badge{font-size:11px;padding:5px 14px}
+  .ps{padding:14px 16px}
+  .haccp-stat-val{font-size:26px}
+}
+
+/* Desktop: hide mobile-only elements */
+@media (min-width:900px){
+  .stats-strip{display:none!important}
+  .sheet{display:none!important}
+  .sheet-overlay{display:none!important}
+}
 
 /* ── PRINT ── */
 @media print{
-  .app-header,.app-toolbar,.panel-right,.app-status,.coord-hud,.notify{display:none!important}
+  .app-header,.app-toolbar,.panel-right,.app-status,.stats-strip,
+  .coord-hud,.notify,.sheet,.sheet-overlay{display:none!important}
   .app-body{display:block}
   .canvas-area{width:100%;height:auto;overflow:visible;background:#fff;position:relative}
   .canvas-scroll{position:relative!important;inset:auto!important;overflow:visible!important}
@@ -120,38 +260,30 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
       <h1>DASHBOARD HACCP — NETTOYAGE</h1>
       <div class="sub">Au Comptoir des Lilas · 122 rue de Paris · 93260 Les Lilas</div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span id="dateHdr" style="font-size:9px;opacity:.5;font-family:var(--mono)"></span>
-      <div class="badge">Plan Boucherie</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="dateHdr" style="font-size:9px;opacity:.45;font-family:var(--mono)"></span>
+      <div class="badge">HACCP</div>
     </div>
   </div>
 
   <!-- ── TOOLBAR ── -->
   <div class="app-toolbar">
-    <!-- Zoom -->
     <span class="tb-label">Zoom</span>
     <div class="zoom-wrap">
-      <button class="tb" onclick="setZoom(zoom-0.15)" style="padding:3px 8px">−</button>
-      <input type="range" id="zoomSlider" min="15" max="400" value="100" oninput="setZoom(this.value/100)">
-      <button class="tb" onclick="setZoom(zoom+0.15)" style="padding:3px 8px">+</button>
+      <button class="tb" onclick="setZoom(zoom-0.15)" style="padding:6px 10px" aria-label="Zoom arrière">−</button>
+      <input type="range" class="zoom-slider" id="zoomSlider" min="15" max="400" value="100" oninput="setZoom(this.value/100)">
+      <button class="tb" onclick="setZoom(zoom+0.15)" style="padding:6px 10px" aria-label="Zoom avant">+</button>
       <span class="zoom-lbl" id="zoomLbl">100%</span>
-      <button class="tb" onclick="fitView()" style="padding:3px 7px" title="Ajuster la vue (F)">⊡</button>
+      <button class="tb" onclick="fitView()" title="Ajuster la vue (F)" aria-label="Ajuster vue">⊡</button>
     </div>
     <div class="tb-sep"></div>
-    <!-- Légende couleurs statuts -->
-    <span style="display:flex;align-items:center;gap:10px;font-size:10px;color:var(--mid)">
-      <span style="display:flex;align-items:center;gap:4px">
-        <span style="width:13px;height:13px;background:#ffebee;border:2px solid #e53935;border-radius:2px;flex-shrink:0;display:inline-block"></span>À nettoyer
-      </span>
-      <span style="display:flex;align-items:center;gap:4px">
-        <span style="width:13px;height:13px;background:#fff3e0;border:2px solid #fb8c00;border-radius:2px;flex-shrink:0;display:inline-block"></span>En cours
-      </span>
-      <span style="display:flex;align-items:center;gap:4px">
-        <span style="width:13px;height:13px;background:#e8f5e9;border:2px solid #43a047;border-radius:2px;flex-shrink:0;display:inline-block"></span>Nettoyé
-      </span>
-    </span>
-    <div style="margin-left:auto">
-      <button class="tb" onclick="resetAllPending()" title="Remettre toutes les zones en 'À nettoyer'">↺ Nouvelle session</button>
+    <div class="tb-legend">
+      <span><span class="leg-dot" style="background:#ffebee;border:2px solid #e53935"></span>À nettoyer</span>
+      <span><span class="leg-dot" style="background:#fff3e0;border:2px solid #fb8c00"></span>En cours</span>
+      <span><span class="leg-dot" style="background:#e8f5e9;border:2px solid #43a047"></span>Nettoyé</span>
+    </div>
+    <div class="tb-reset" style="margin-left:auto">
+      <button class="tb" onclick="resetAllPending()">↺ Nouvelle session</button>
     </div>
   </div>
 
@@ -161,7 +293,7 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
     <!-- ── CANVAS ── -->
     <div class="canvas-area" id="canvasArea">
       <div id="legend" style="position:absolute;bottom:30px;left:10px;background:rgba(255,255,255,0.94);border:1px solid #d0cfc8;border-radius:6px;padding:8px 12px;font-size:9px;z-index:50;min-width:150px;box-shadow:0 2px 8px rgba(0,0,0,.12)">
-        <div style="font-weight:700;font-size:8px;letter-spacing:.7px;text-transform:uppercase;color:#888;margin-bottom:6px;font-family:'DM Sans',sans-serif">Légende</div>
+        <div style="font-weight:700;font-size:8px;letter-spacing:.7px;text-transform:uppercase;color:#888;margin-bottom:6px">Légende</div>
         <div id="legend-items"></div>
       </div>
       <div class="canvas-scroll">
@@ -179,11 +311,10 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
       </div>
     </div>
 
-    <!-- ── RIGHT PANEL — CONTRÔLE HACCP ── -->
+    <!-- ── RIGHT PANEL (desktop) ── -->
     <div class="panel-right" id="panelRight">
-      <div class="panel-resize-handle" id="panelResizeHandle" title="Glisser pour redimensionner"></div>
+      <div class="panel-resize-handle" id="panelResizeHandle"></div>
       <div class="p-title">Contrôle HACCP</div>
-
       <!-- Dashboard (toujours visible) -->
       <div class="ps" id="haccpDashboard">
         <div class="ps-title">État du nettoyage</div>
@@ -206,36 +337,61 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
         </div>
         <div id="progressLbl" style="font-size:8px;color:var(--light);text-align:center;margin-top:4px;font-family:var(--mono)">0 / 0 zones nettoyées</div>
       </div>
-
       <!-- Fiche de nettoyage (zone sélectionnée) -->
       <div id="propsPanel">
-        <div class="props-empty">
-          Cliquez sur une zone<br>pour gérer son nettoyage
-          <br><br>
-          <small style="color:#bbb">Plan en lecture seule<br>65 px = 1 m</small>
-        </div>
+        <div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule · 65 px = 1 m</small></div>
       </div>
     </div>
 
   </div><!-- end app-body -->
 
-  <!-- ── STATUS ── -->
+  <!-- ── STATS STRIP (mobile/tablet uniquement) ── -->
+  <div class="stats-strip" id="statsStrip">
+    <div class="ss-item ss-pending">
+      <span class="ss-val" id="stripPending">—</span>
+      <span class="ss-lbl">À nettoyer</span>
+    </div>
+    <div class="ss-item ss-progress">
+      <span class="ss-val" id="stripProgress">—</span>
+      <span class="ss-lbl">En cours</span>
+    </div>
+    <div class="ss-item ss-clean">
+      <span class="ss-val" id="stripClean">—</span>
+      <span class="ss-lbl">Nettoyés</span>
+    </div>
+    <button class="ss-reset" onclick="resetAllPending()" title="Nouvelle session" aria-label="Nouvelle session">↺</button>
+  </div>
+
+  <!-- ── STATUS BAR (desktop) ── -->
   <div class="app-status">
-    <span id="stLeft">Mode : Viewer HACCP — lecture seule</span>
+    <span id="stLeft">Mode : Viewer HACCP</span>
     <span id="stMid">—</span>
-    <span id="stRight">Échelle : 65 px/m · HACCP v1</span>
+    <span id="stRight">1=À nettoyer · 2=En cours · 3=Nettoyé · F=Vue</span>
   </div>
 
 </div><!-- end app -->
 
-<!-- Coord HUD -->
+<!-- ── BOTTOM SHEET (mobile/tablet) ── -->
+<div class="sheet-overlay" id="sheetOverlay" onclick="closeBottomSheet()"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-drag-handle"></div>
+  <div class="sheet-header">
+    <span class="sheet-title" id="sheetTitle">Fiche de nettoyage</span>
+    <button class="sheet-close" onclick="closeBottomSheet()" aria-label="Fermer">✕</button>
+  </div>
+  <div class="sheet-body" id="sheetBody">
+    <div class="props-empty">Touchez une zone pour gérer son nettoyage</div>
+  </div>
+</div>
+
+<!-- ── COORD HUD (desktop) ── -->
 <div class="coord-hud" id="coordHud">
   <span class="ch-k">X :</span> <span class="ch-v" id="chX">—</span> &nbsp;
   <span class="ch-k">Y :</span> <span class="ch-v" id="chY">—</span><br>
   <span class="ch-k">Zone :</span> <span class="ch-v" id="chEl">—</span>
 </div>
 
-<!-- Notify -->
+<!-- ── NOTIFY ── -->
 <div class="notify" id="notify"></div>
 
 <script>
@@ -253,11 +409,16 @@ const CH = 700;
 let zoom = 1.0;
 let panX = 0, panY = 0;
 let selectedId = null;
+
+// Mouse state
 let isPanning = false;
-let _mouseButtonDown = false;       // true uniquement quand un bouton est tenu
+let _mouseButtonDown = false;
 let _panRawStart = {x:0,y:0};
-let _panStart = {x:0,y:0};
-let _mouseDownPt = null; // to distinguish click vs drag
+let _panStart    = {x:0,y:0};
+
+// Touch state
+let _touchStartDist = 0;
+let _touchStartZoom = 1;
 
 // ════════════════════════════════════════════════════════════
 // DATA MODEL — Plan boucherie + statuts HACCP
@@ -276,14 +437,14 @@ let elements = [
   {id:'frigo1',      type:'zone', label:'FRIGO 1',         sublabel:'4 m × 1,155 m',
    x:620/S,y:30/S,  w:260/S, h:75/S,  fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',badge:'HS',
    haccpStatus:'pending'},
-  {id:'prepa',       type:'zone', label:'ESPACE PRÉPA',    sublabel:'4 m × 1,66 m · h:2,40m',
+  {id:'prepa',       type:'zone', label:'ESPACE PRÉPA',    sublabel:'4 m × 1,66 m',
    x:620/S,y:112/S, w:260/S, h:108/S, fill:'#fce4ec',stroke:'#1a1a1a',sw:2.2,
    haccpStatus:'pending'},
   {id:'vente',       type:'zone', label:'',                sublabel:'',
    x:895/S,y:30/S,  w:377/S, h:290/S, fill:'#fff8e1',stroke:'#1a1a1a',sw:3,
    haccpStatus:'pending', haccpLabel:'Espace client'},
 
-  // ── ZONES non suivies (décor uniquement, non cliquables) ──
+  // ── ZONES non suivies (décor) ──
   {id:'jardinet',    type:'zone', label:'JARDINET',        sublabel:'8,26 m × 3,27 m',
    x:40/S, y:152/S, w:537/S, h:213/S, fill:'#e8f5e9',stroke:'#1a1a1a',sw:1.8,dash:'7 4',pattern:'hatch',lc:'#2e7d32'},
   {id:'zone-boucher',type:'zone', label:'Zone boucher',    sublabel:'4,35 m × 1,30 m',
@@ -291,18 +452,18 @@ let elements = [
   {id:'espace-arriere',type:'zone',label:'Espace arrière', sublabel:'',
    x:895/S,y:151/S, w:55/S,  h:88/S,  fill:'#f5f5f0',stroke:'#999',sw:1,dash:'4 3',lc:'#999'},
 
-  // ── ÉQUIPEMENTS non suivis (décor uniquement) ──
-  {id:'meuble-bas',  type:'equip',_cat:'Mobilier vente', label:'MEUBLE BAS',   sublabel:'55 cm prof.',
+  // ── ÉQUIPEMENTS non suivis ──
+  {id:'meuble-bas',  type:'equip', label:'MEUBLE BAS',   sublabel:'55 cm prof.',
    x:895/S,y:30/S,  w:340/S, h:36/S,  fill:'#d7ccc8',stroke:'#5d4037',sw:1.2},
-  {id:'billot',      type:'equip',_cat:'Préparation',    label:'Billot',       sublabel:'',
+  {id:'billot',      type:'equip', label:'Billot',
    x:700/S,y:186/S, w:48/S,  h:22/S,  fill:'#ffccbc',stroke:'#bf360c',sw:1.2},
-  {id:'plonge',      type:'equip',_cat:'Préparation',    label:'Plonge',       sublabel:'',
+  {id:'plonge',      type:'equip', label:'Plonge',
    x:640/S,y:186/S, w:42/S,  h:22/S,  fill:'#bbdefb',stroke:'#1565c0',sw:1.2},
-  {id:'caisse',      type:'equip',_cat:'Mobilier vente', label:'CAISSE',       sublabel:'mobile · 0,82m',
+  {id:'caisse',      type:'equip', label:'CAISSE',       sublabel:'mobile',
    x:895/S,y:239/S, w:55/S,  h:81/S,  fill:'#c8e6c9',stroke:'#2e7d32',sw:2},
 
-  // ── VITRINE FROID (tracée HACCP) ──
-  {id:'vitrine',     type:'vitrine',_cat:'Réfrigération',label:'VITRINE FROID',
+  // ── VITRINE FROID tracée HACCP ──
+  {id:'vitrine',     type:'vitrine', label:'VITRINE FROID',
    x:960/S, y:151/S,
    barLength:270/S, barThickness:0.8,
    armLength:78/S,  armThickness:0.8,
@@ -316,11 +477,11 @@ let elements = [
   {id:'porte-pc',  type:'door',label:'Prépa→Cuisine',  x:612/S, y:132/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
 
   // ── SÉCURITÉ ──
-  {id:'ext-vente',     type:'safety',_cat:'Sécurité',subtype:'extincteur',label:'Extincteur',x:1250/S,y:310/S},
-  {id:'ext-prepa',     type:'safety',_cat:'Sécurité',subtype:'extincteur',label:'Extincteur',x:860/S, y:130/S},
-  {id:'sortie1',       type:'safety',_cat:'Sécurité',subtype:'sortie',    label:'SORTIE①',  x:1274/S,y:310/S,w:40/S,h:13/S},
-  {id:'sortie2',       type:'safety',_cat:'Sécurité',subtype:'sortie',    label:'SORTIE②',  x:462/S, y:205/S,w:40/S,h:13/S},
-  {id:'rassemblement', type:'safety',_cat:'Sécurité',subtype:'rallypoint',label:'POINT DE RASSEMBLEMENT',x:1083/S,y:430/S},
+  {id:'ext-vente',     type:'safety',subtype:'extincteur',label:'Extincteur',x:1250/S,y:310/S},
+  {id:'ext-prepa',     type:'safety',subtype:'extincteur',label:'Extincteur',x:860/S, y:130/S},
+  {id:'sortie1',       type:'safety',subtype:'sortie',    label:'SORTIE①',  x:1274/S,y:310/S,w:40/S,h:13/S},
+  {id:'sortie2',       type:'safety',subtype:'sortie',    label:'SORTIE②',  x:462/S, y:205/S,w:40/S,h:13/S},
+  {id:'rassemblement', type:'safety',subtype:'rallypoint',label:'POINT DE RASSEMBLEMENT',x:1083/S,y:430/S},
 
   // ── ANNOTATIONS ──
   {id:'label-client',  type:'label',label:'ESPACE CLIENT', x:960/S,y:240/S,w:280/S,h:90/S,lc:'#e65100',fs:15},
@@ -330,16 +491,16 @@ let elements = [
 // HACCP — Helpers
 // ════════════════════════════════════════════════════════════
 const HACCP_STYLES = {
-  pending:  { fill:'#ffebee', stroke:'#e53935', sw:2.5 },
-  progress: { fill:'#fff3e0', stroke:'#fb8c00', sw:2.5 },
-  clean:    { fill:'#e8f5e9', stroke:'#43a047', sw:2.5 },
+  pending:  {fill:'#ffebee', stroke:'#e53935', sw:2.5},
+  progress: {fill:'#fff3e0', stroke:'#fb8c00', sw:2.5},
+  clean:    {fill:'#e8f5e9', stroke:'#43a047', sw:2.5},
 };
 const HACCP_LABELS = {
   pending:  '🔴 À nettoyer',
   progress: '🟠 En cours',
   clean:    '🟢 Nettoyé validé',
 };
-function haccpStyle(status){ return HACCP_STYLES[status] || HACCP_STYLES.pending; }
+function haccpStyle(s){ return HACCP_STYLES[s] || HACCP_STYLES.pending; }
 
 // ════════════════════════════════════════════════════════════
 // UTILITIES
@@ -347,29 +508,33 @@ function haccpStyle(status){ return HACCP_STYLES[status] || HACCP_STYLES.pending
 const svg = document.getElementById('fp');
 function px(m){ return m * S; }
 function getEl(id){ return elements.find(e => e.id === id); }
-function showNotify(msg, ms=2000){
+function isMobile(){ return window.innerWidth < 900; }
+
+function showNotify(msg, ms=2200){
   const n = document.getElementById('notify');
   n.textContent = msg; n.classList.add('vis');
   setTimeout(() => n.classList.remove('vis'), ms);
 }
-function svgPt(e){
+
+// Convert client coords → SVG world coords
+function svgPtFromClient(cx, cy){
   const rect = svg.getBoundingClientRect();
   const vw = CW/zoom, vh = CH/zoom;
   const scale = Math.min(rect.width/vw, rect.height/vh);
   const ox = (rect.width  - vw*scale) / 2;
   const oy = (rect.height - vh*scale) / 2;
   return {
-    x: panX + (e.clientX - rect.left - ox) / scale,
-    y: panY + (e.clientY - rect.top  - oy) / scale,
+    x: panX + (cx - rect.left - ox) / scale,
+    y: panY + (cy - rect.top  - oy) / scale,
   };
 }
+function svgPt(e){ return svgPtFromClient(e.clientX, e.clientY); }
 
 // ════════════════════════════════════════════════════════════
 // ZOOM / PAN / VIEW
 // ════════════════════════════════════════════════════════════
 function updateViewBox(){
-  const vw = CW/zoom, vh = CH/zoom;
-  svg.setAttribute('viewBox', `${panX} ${panY} ${vw} ${vh}`);
+  svg.setAttribute('viewBox', `${panX} ${panY} ${CW/zoom} ${CH/zoom}`);
 }
 function setZoom(z, cx, cy){
   z = Math.max(.1, Math.min(5, z));
@@ -387,20 +552,18 @@ function setZoom(z, cx, cy){
 function fitView(){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   elements.forEach(el => {
-    const bb = elBBox(el);
-    if(!bb) return;
+    const bb = elBBox(el); if(!bb) return;
     minX=Math.min(minX,bb.x); minY=Math.min(minY,bb.y);
     maxX=Math.max(maxX,bb.x+bb.w); maxY=Math.max(maxY,bb.y+bb.h);
   });
   if(minX===Infinity){ panX=0; panY=0; setZoom(1); return; }
-  const margin=30;
-  const ww=svg.clientWidth, wh=svg.clientHeight;
-  const zx=(ww-margin*2)/(maxX-minX+0.001);
-  const zy=(wh-margin*2)/(maxY-minY+0.001);
-  const zz=Math.min(zx,zy,3);
-  panX=minX-margin/zz;
-  panY=minY-margin/zz;
-  setZoom(zz);
+  const margin = 30;
+  const ww = svg.clientWidth, wh = svg.clientHeight;
+  const zx = (ww-margin*2)/(maxX-minX+0.001);
+  const zy = (wh-margin*2)/(maxY-minY+0.001);
+  panX = minX - margin/Math.min(zx,zy,3);
+  panY = minY - margin/Math.min(zx,zy,3);
+  setZoom(Math.min(zx,zy,3));
 }
 
 // ════════════════════════════════════════════════════════════
@@ -409,16 +572,13 @@ function fitView(){
 function elBBox(el){
   if(!el) return null;
   if(el.type==='vitrine'){
-    const bx=px(el.x),by=px(el.y);
-    const bw=px(el.barLength),bh=px(el.barThickness);
+    const bx=px(el.x),by=px(el.y),bw=px(el.barLength),bh=px(el.barThickness);
     const al=px(el.armLength),at=px(el.armThickness);
-    return{x:bx, y:by-al, w:bw, h:bh+2*al};
+    return{x:bx,y:by-al,w:bw,h:bh+2*al};
   }
   if(el.type==='door'){
     const bx=px(el.x),by=px(el.y);
-    const dw=px(el.dw||Math.max(el.w||0,el.h||0)||0.9);
-    const rot=(el.rot||0)*Math.PI/180;
-    const od=el.openDir||1;
+    const dw=px(el.dw||.9),rot=(el.rot||0)*Math.PI/180,od=el.openDir||1;
     const cos=Math.cos(rot),sin=Math.sin(rot);
     const pts=[{x:0,y:0},{x:dw,y:0},{x:0,y:-dw*od}];
     const xs=pts.map(p=>bx+p.x*cos-p.y*sin);
@@ -427,11 +587,11 @@ function elBBox(el){
     return{x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
   }
   if(el.type==='safety'){
-    if(el.subtype==='extincteur') return{x:px(el.x)-9,y:px(el.y)-9,w:18,h:18};
-    if(el.subtype==='sortie'||el.subtype==='rallypoint') return{x:px(el.x),y:px(el.y),w:px(el.w||1),h:px(el.h||.2)};
+    if(el.subtype==='extincteur')return{x:px(el.x)-9,y:px(el.y)-9,w:18,h:18};
+    if(el.subtype==='sortie'||el.subtype==='rallypoint')return{x:px(el.x),y:px(el.y),w:px(el.w||1),h:px(el.h||.2)};
     return{x:px(el.x)-8,y:px(el.y)-8,w:16,h:16};
   }
-  if(el.type==='label') return{x:px(el.x),y:px(el.y),w:px(el.w||3),h:px(el.h||1)};
+  if(el.type==='label')return{x:px(el.x),y:px(el.y),w:px(el.w||3),h:px(el.h||1)};
   return{x:px(el.x),y:px(el.y),w:px(el.w||.5),h:px(el.h||.5)};
 }
 
@@ -443,7 +603,7 @@ const PROD_COLORS=['#ce93d8','#80cbc4','#ffcc80','#ef9a9a','#aed581','#80deea','
 function render(){
   const order={zone:0,equip:1,vitrine:2,door:3,safety:4,label:5};
   const sorted=[...elements].sort((a,b)=>(order[a.type]||0)-(order[b.type]||0));
-  document.getElementById('lElems').innerHTML=sorted.map(renderEl).join('');
+  document.getElementById('lElems').innerHTML = sorted.map(renderEl).join('');
   renderHandles();
   buildLegend();
   updateDashboard();
@@ -464,17 +624,16 @@ function renderEl(el){
 
 function renderZone(el){
   const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h);
-  // HACCP override
   const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
-  const fillColor  = hs ? hs.fill   : (el.fill||'#fff');
-  const strokeColor= hs ? hs.stroke : (el.stroke||'#1a1a1a');
-  const strokeWidth= hs ? hs.sw     : (el.sw||2);
+  const fillColor   = hs ? hs.fill   : (el.fill||'#fff');
+  const strokeColor = hs ? hs.stroke : (el.stroke||'#1a1a1a');
+  const strokeWidth = hs ? hs.sw     : (el.sw||2);
   const lc = hs ? strokeColor : (el.lc||'#1a1a1a');
   const dash = el.dash ? `stroke-dasharray="${el.dash}"` : '';
   const cx=x+w/2, cy=y+h/2;
-  const fsize=el.fs||(w<80||h<40?10:14);
-  const autoSub=el.w&&el.h?`${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m`:'';
-  const sublabel=el.showSub===false?'':(el.sublabel||autoSub);
+  const fsize = el.fs||(w<80||h<40?10:14);
+  const autoSub = el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '';
+  const sublabel = el.showSub===false ? '' : (el.sublabel||autoSub);
   const elClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
   return`<g class="${elClass}" data-id="${el.id}" data-type="zone">
     <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${dash} rx="0"/>
@@ -482,38 +641,28 @@ function renderZone(el){
     ${el.label?`<text x="${cx}" y="${cy-(sublabel?7:0)}" font-family="'DM Sans'" font-size="${fsize}" font-weight="700" fill="${lc}" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${el.label}</text>`:''}
     ${sublabel?`<text x="${cx}" y="${cy+(el.label?8:0)}" font-family="'JetBrains Mono'" font-size="8" fill="#666" text-anchor="middle" pointer-events="none">${sublabel}</text>`:''}
     ${el.icon?`<text x="${x+10}" y="${y+16}" font-size="12" pointer-events="none">${el.icon}</text>`:''}
-    ${el.badge?`<rect x="${x+w-30}" y="${y+4}" width="26" height="12" rx="3" fill="#e74c3c" pointer-events="none"/><text x="${x+w-17}" y="${y+13}" font-size="7" fill="white" text-anchor="middle" font-weight="700" font-family="'DM Sans'" pointer-events="none">${el.badge}</text>`:''}
+    ${el.badge?`<rect x="${x+w-30}" y="${y+4}" width="26" height="12" rx="3" fill="#e74c3c" pointer-events="none"/><text x="${x+w-17}" y="${y+13}" font-size="7" fill="white" text-anchor="middle" font-weight="700" pointer-events="none">${el.badge}</text>`:''}
     ${renderDimsForEl(el)}
   </g>`;
 }
 
 function renderEquip(el){
   const x=px(el.x),y=px(el.y),w=px(el.w||.5),h=px(el.h||.5);
-  const cx=x+w/2,cy=y+h/2;
-  const rot=el.rot||0;
-  // HACCP override for tracked equip
+  const cx=x+w/2,cy=y+h/2,rot=el.rot||0;
   const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
-  const fill  = hs ? hs.fill   : (el.fill||'#f5f5f5');
-  const stroke= hs ? hs.stroke : (el.stroke||'#888');
-  const sw    = hs ? hs.sw     : (el.sw||1.2);
-  const fw=el.fw||600;
-  const autoFs=el.label?Math.min(9,w/Math.max(1,el.label.length)*1.5):9;
-  const fsize=el.fs||autoFs;
-  const shape=el.shape||'rect';
+  const fill   = hs ? hs.fill   : (el.fill||'#f5f5f5');
+  const stroke = hs ? hs.stroke : (el.stroke||'#888');
+  const sw     = hs ? hs.sw     : (el.sw||1.2);
+  const fw = el.fw||600;
+  const fsize = el.fs || Math.min(9, w/Math.max(1,(el.label||'').length)*1.5);
+  const shape = el.shape||'rect';
   let shapeEl;
-  if(shape==='circle'){
-    shapeEl=`<ellipse cx="${cx}" cy="${cy}" rx="${w/2}" ry="${h/2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
-  } else if(shape==='rounded'){
-    shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${Math.min(w,h)*0.25}"/>`;
-  } else if(shape==='diamond'){
-    shapeEl=`<polygon points="${cx},${y} ${x+w},${cy} ${cx},${y+h} ${x},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
-  } else {
-    shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>`;
-  }
+  if(shape==='circle')      shapeEl=`<ellipse cx="${cx}" cy="${cy}" rx="${w/2}" ry="${h/2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  else if(shape==='rounded')shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${Math.min(w,h)*.25}"/>`;
+  else                      shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>`;
   const eqClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
   return`<g class="${eqClass}" data-id="${el.id}" data-type="equip"${rot?` transform="rotate(${rot},${cx},${cy})"`:''}>
     ${shapeEl}
-    ${el.icon?`<text x="${x+8}" y="${y+14}" font-size="10" pointer-events="none">${el.icon}</text>`:''}
     ${el.label?`<text x="${cx}" y="${cy+1}" font-family="'DM Sans'" font-size="${fsize}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${fw}" pointer-events="none">${el.label}</text>`:''}
     ${el.sublabel?`<text x="${cx}" y="${cy+12}" font-family="'JetBrains Mono'" font-size="7" fill="#888" text-anchor="middle" pointer-events="none">${el.sublabel}</text>`:''}
     ${renderDimsForEl(el)}
@@ -521,145 +670,142 @@ function renderEquip(el){
 }
 
 function renderVitrine(el){
-  const isZ=!el.subtype||el.subtype==='z';
-  const bx=px(el.x),by=px(el.y);
-  const bw=px(el.barLength),bh=px(el.barThickness);
-  const al=isZ?px(el.armLength||0):0;
-  const at=isZ?px(el.armThickness||0.8):0;
-  const f=el.fill||'#7e57c2';
-  const s=el.stroke||'#4a148c';
-  const prods=el.products||[];
-  // HACCP status overlay color
+  const bx=px(el.x),by=px(el.y),bw=px(el.barLength),bh=px(el.barThickness);
+  const al=px(el.armLength||0),at=px(el.armThickness||0.8);
+  const f=el.fill||'#7e57c2',s=el.stroke||'#4a148c';
   const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
-  const overlayStroke = hs ? hs.stroke : null;
-
-  const showD=el.showDims!==false;
-  const dimBar=showD?`
-    <text x="${bx+bw/2}" y="${by+bh/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".95">${(el.barLength||0).toFixed(2)} m</text>
-    ${isZ&&al>0?`<text x="${bx+bw-at/2}" y="${by-al/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".95" transform="rotate(-90,${bx+bw-at/2},${by-al/2})">${(el.armLength||0).toFixed(2)} m</text>`:''}`:
-  '';
-  // HACCP outline overlay
-  const haccpOverlay = hs ? `<rect x="${bx-4}" y="${by-al-4}" width="${bw+8}" height="${bh+2*al+8}" fill="${hs.fill}" opacity=".35" stroke="${overlayStroke}" stroke-width="3" rx="4" pointer-events="none"/>` : '';
-
+  const overlay = hs ? `<rect x="${bx-4}" y="${by-al-4}" width="${bw+8}" height="${bh+2*al+8}" fill="${hs.fill}" opacity=".3" stroke="${hs.stroke}" stroke-width="3" rx="4" pointer-events="none"/>` : '';
+  const dimBar = el.showDims ? `<text x="${bx+bw/2}" y="${by+bh/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".9">${(el.barLength||0).toFixed(2)} m</text>` : '';
   return`<g class="plan-el" data-id="${el.id}" data-type="vitrine">
-    ${haccpOverlay}
+    ${overlay}
     <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
     <line x1="${bx}" y1="${by+bh}" x2="${bx+bw}" y2="${by+bh}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
-    ${isZ&&al>0?`<rect x="${bx+bw-at}" y="${by-al}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
+    <rect x="${bx+bw-at}" y="${by-al}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
     <line x1="${bx+bw-at}" y1="${by-al}" x2="${bx+bw-at}" y2="${by}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
     <rect x="${bx}" y="${by+bh}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
-    <line x1="${bx+at}" y1="${by+bh}" x2="${bx+at}" y2="${by+bh+al}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>`:``}
+    <line x1="${bx+at}" y1="${by+bh}" x2="${bx+at}" y2="${by+bh+al}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
     ${dimBar}
-    <text x="${bx+bw/2}" y="${by-al-6}" font-family="'DM Sans'" font-size="${el.fs||10}" fill="${s}" text-anchor="middle" font-weight="700" pointer-events="none">${el.label||'VITRINE FROID'}</text>
+    <text x="${bx+bw/2}" y="${by-al-6}" font-family="'DM Sans'" font-size="10" fill="${s}" text-anchor="middle" font-weight="700" pointer-events="none">${el.label||'VITRINE FROID'}</text>
     <rect x="${bx}" y="${by-al}" width="${bw}" height="${bh+2*al}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
   </g>`;
 }
 
 function renderDoor(el){
-  const bx=px(el.x), by=px(el.y);
-  const dw=px(el.dw || Math.max(el.w||0,el.h||0) || 0.9);
-  const rot=el.rot||0;
-  const od=el.openDir||1;
-  const col=el.fill||'#2e7d32';
-  const leafY=-dw*od;
-  const sweepFlag=od===1?1:0;
-  return`<g data-id="${el.id}" data-type="door"
-    transform="translate(${bx},${by}) rotate(${rot},0,0)">
+  const bx=px(el.x),by=px(el.y),dw=px(el.dw||.9);
+  const rot=el.rot||0,od=el.openDir||1,col=el.fill||'#2e7d32';
+  const leafY=-dw*od,sweepFlag=od===1?1:0;
+  return`<g data-id="${el.id}" data-type="door" transform="translate(${bx},${by}) rotate(${rot},0,0)">
     <line x1="-2" y1="0" x2="${dw+2}" y2="0" stroke="#333" stroke-width="2.5" stroke-linecap="square"/>
     <line x1="0" y1="-4" x2="0" y2="4" stroke="#333" stroke-width="1.5"/>
     <line x1="${dw}" y1="-4" x2="${dw}" y2="4" stroke="#333" stroke-width="1.5"/>
     <line x1="0" y1="0" x2="0" y2="${leafY}" stroke="${col}" stroke-width="1.5"/>
     <path d="M 0 ${leafY} A ${dw} ${dw} 0 0 ${sweepFlag} ${dw} 0" stroke="${col}" stroke-width="0.8" fill="${col}15"/>
-    ${el.label?`<text x="${dw/2}" y="${(leafY/2)-5}" font-size="7" fill="${col}" text-anchor="middle" font-family="'DM Sans'" font-weight="700" pointer-events="none" transform="rotate(${-rot},${dw/2},${leafY/2})">${el.label}</text>`:''}
+    ${el.label?`<text x="${dw/2}" y="${leafY/2-5}" font-size="7" fill="${col}" text-anchor="middle" font-family="'DM Sans'" font-weight="700" pointer-events="none" transform="rotate(${-rot},${dw/2},${leafY/2})">${el.label}</text>`:''}
     <rect x="-4" y="${Math.min(0,leafY)-4}" width="${dw+8}" height="${Math.abs(leafY)+8}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
   </g>`;
 }
 
 function renderDimsForEl(el){
-  if(!el.showDims) return '';
-  if(!el.w||!el.h||el.w<0.01||el.h<0.01) return '';
-  const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h);
-  const mg=20, col='#666';
+  if(!el.showDims||!el.w||!el.h||el.w<.01||el.h<.01)return'';
+  const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h),mg=20,col='#666';
   return`
     <line x1="${x}" y1="${y+h+mg}" x2="${x+w}" y2="${y+h+mg}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
-    <line x1="${x}" y1="${y+h}" x2="${x}" y2="${y+h+mg}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
-    <line x1="${x+w}" y1="${y+h}" x2="${x+w}" y2="${y+h+mg}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
     <text x="${x+w/2}" y="${y+h+mg+11}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600">${el.w.toFixed(2)} m</text>
     <line x1="${x+w+mg}" y1="${y}" x2="${x+w+mg}" y2="${y+h}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
-    <line x1="${x+w}" y1="${y}" x2="${x+w+mg}" y2="${y}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
-    <line x1="${x+w}" y1="${y+h}" x2="${x+w+mg}" y2="${y+h}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
     <text x="${x+w+mg+11}" y="${y+h/2}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600" transform="rotate(90 ${x+w+mg+11} ${y+h/2})">${el.h.toFixed(2)} m</text>`;
 }
 
 function renderDim(el){
-  const x1=px(el.x),y1=px(el.y);
-  const x2=px(el.x2!=null?el.x2:el.x+2),y2=px(el.y2!=null?el.y2:el.y);
-  const dx=x2-x1,dy=y2-y1;
-  const len=Math.sqrt(dx*dx+dy*dy);
-  if(len<2) return `<g data-id="${el.id}" data-type="dim"><circle cx="${x1}" cy="${y1}" r="4" fill="none" stroke="#aaa" stroke-width="1"/></g>`;
-  const dist=len/S;
-  const label=el.label&&el.label.trim()?el.label:dist.toFixed(2)+' m';
-  const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const x1=px(el.x),y1=px(el.y),x2=px(el.x2??el.x+2),y2=px(el.y2??el.y);
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
+  if(len<2)return`<g data-id="${el.id}"></g>`;
+  const dist=len/S,mx=(x1+x2)/2,my=(y1+y2)/2;
   const ang=Math.atan2(dy,dx)*180/Math.PI;
-  const textAng=(ang>90||ang<-90)?ang+180:ang;
-  const px2=-dy/len*5, py2=dx/len*5;
+  const ta=(ang>90||ang<-90)?ang+180:ang;
   return`<g data-id="${el.id}" data-type="dim">
     <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#555" stroke-width="0.9" marker-start="url(#da1)" marker-end="url(#da2)"/>
-    <line x1="${x1+px2}" y1="${y1+py2}" x2="${x1-px2}" y2="${y1-py2}" stroke="#555" stroke-width="0.9" pointer-events="none"/>
-    <line x1="${x2+px2}" y1="${y2+py2}" x2="${x2-px2}" y2="${y2-py2}" stroke="#555" stroke-width="0.9" pointer-events="none"/>
-    <g transform="rotate(${textAng} ${mx} ${my}) translate(0,-6)">
-      <rect x="${mx-dist.toFixed(2).length*3-8}" y="${my-9}" width="${dist.toFixed(2).length*6+16}" height="11" rx="2" fill="white" opacity=".85" pointer-events="none"/>
-      <text x="${mx}" y="${my}" font-family="'JetBrains Mono'" font-size="9" fill="#333" text-anchor="middle" dominant-baseline="middle" pointer-events="none" font-weight="600">${label}</text>
+    <g transform="rotate(${ta} ${mx} ${my}) translate(0,-6)">
+      <rect x="${mx-20}" y="${my-9}" width="40" height="11" rx="2" fill="white" opacity=".85" pointer-events="none"/>
+      <text x="${mx}" y="${my}" font-family="'JetBrains Mono'" font-size="9" fill="#333" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${dist.toFixed(2)} m</text>
     </g>
-    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(0,0,0,0.001)" stroke-width="14" pointer-events="stroke"/>
   </g>`;
 }
 
 function renderSafety(el){
   const x=px(el.x),y=px(el.y);
-  if(el.subtype==='extincteur'){
-    return`<g data-id="${el.id}" data-type="safety">
-      <circle cx="${x}" cy="${y}" r="9" fill="#c0392b"/>
-      <text x="${x}" y="${y+3}" font-size="9" fill="white" text-anchor="middle" font-weight="700" font-family="'DM Sans'" pointer-events="none">E</text>
-      <text x="${x}" y="${y+20}" font-family="'JetBrains Mono'" font-size="7" fill="#c0392b" text-anchor="middle" pointer-events="none">${el.label||''}</text>
-    </g>`;
-  }
-  if(el.subtype==='sortie'){
-    const w=px(el.w||.6),h=px(el.h||.2);
-    return`<g data-id="${el.id}" data-type="safety">
-      <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#2e7d32"/>
-      <text x="${x+w/2}" y="${y+h/2+1}" font-family="'DM Sans'" font-size="7" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">${el.label||'SORTIE'}</text>
-    </g>`;
-  }
-  if(el.subtype==='rallypoint'){
-    return`<g data-id="${el.id}" data-type="safety">
-      <rect x="${x-70}" y="${y-12}" width="140" height="24" rx="4" fill="#2e7d32"/>
-      <text x="${x}" y="${y+1}" font-family="'DM Sans'" font-size="8" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">📍 ${el.label||'POINT DE RASSEMBLEMENT'}</text>
-    </g>`;
-  }
+  if(el.subtype==='extincteur') return`<g data-id="${el.id}">
+    <circle cx="${x}" cy="${y}" r="9" fill="#c0392b"/>
+    <text x="${x}" y="${y+3}" font-size="9" fill="white" text-anchor="middle" font-weight="700" pointer-events="none">E</text>
+    <text x="${x}" y="${y+20}" font-size="7" fill="#c0392b" text-anchor="middle" pointer-events="none">${el.label||''}</text>
+  </g>`;
+  if(el.subtype==='sortie'){const w=px(el.w||.6),h=px(el.h||.2);return`<g data-id="${el.id}">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#2e7d32"/>
+    <text x="${x+w/2}" y="${y+h/2+1}" font-size="7" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">${el.label||'SORTIE'}</text>
+  </g>`;}
+  if(el.subtype==='rallypoint') return`<g data-id="${el.id}">
+    <rect x="${x-70}" y="${y-12}" width="140" height="24" rx="4" fill="#2e7d32"/>
+    <text x="${x}" y="${y+1}" font-size="8" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">📍 ${el.label||''}</text>
+  </g>`;
   return '';
 }
 
 function renderLabel(el){
   const x=px(el.x),y=px(el.y),w=px(el.w||3),h=px(el.h||1);
-  return`<g data-id="${el.id}" data-type="label">
+  return`<g data-id="${el.id}">
     <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="rgba(0,0,0,0.001)" stroke="none"/>
     <text x="${x+w/2}" y="${y+h/2}" font-family="'DM Sans'" font-size="${el.fs||12}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${el.fw||700}" pointer-events="none">${el.label}</text>
   </g>`;
 }
 
 // ════════════════════════════════════════════════════════════
-// SELECTION HANDLES (highlight only, no resize)
+// SELECTION HANDLES
 // ════════════════════════════════════════════════════════════
 function renderHandles(){
   const hl = document.getElementById('lHandles');
   if(!selectedId){ hl.innerHTML=''; return; }
-  const el = getEl(selectedId);
-  if(!el){ hl.innerHTML=''; return; }
-  const bb = elBBox(el);
-  if(!bb){ hl.innerHTML=''; return; }
+  const el = getEl(selectedId); if(!el){ hl.innerHTML=''; return; }
+  const bb = elBBox(el); if(!bb){ hl.innerHTML=''; return; }
   const {x,y,w,h} = bb;
   hl.innerHTML=`<rect x="${x-4}" y="${y-4}" width="${w+8}" height="${h+8}" fill="rgba(0,112,243,0.06)" stroke="#0070f3" stroke-width="1.5" stroke-dasharray="5 3" pointer-events="none" rx="3"/>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// HACCP — Panel HTML builder
+// ════════════════════════════════════════════════════════════
+function buildHaccpHtml(el){
+  if(!el || el.haccpStatus === undefined){
+    return `<div class="props-empty">${el?`<b>${el.haccpLabel||el.label||el.id}</b><br><br>`:''}Cet élément n'est<br>pas suivi en HACCP.</div>`;
+  }
+  const status = el.haccpStatus || 'pending';
+  const name   = el.haccpLabel || el.label || el.id;
+  const sub    = el.sublabel || (el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '');
+  return `
+    <div class="ps">
+      <div class="ps-title">Zone sélectionnée</div>
+      <div class="haccp-zone-name">${name}</div>
+      ${sub ? `<div class="haccp-zone-sub">${sub}</div>` : '<div style="margin-bottom:10px"></div>'}
+      <div class="haccp-current">
+        <span class="haccp-badge ${status}">Statut actuel : ${HACCP_LABELS[status]}</span>
+      </div>
+    </div>
+    <div class="ps">
+      <div class="ps-title">Changer le statut</div>
+      <button class="haccp-btn pending${status==='pending'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','pending')">🔴 À nettoyer</button>
+      <button class="haccp-btn progress${status==='progress'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','progress')">🟠 En cours</button>
+      <button class="haccp-btn clean${status==='clean'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','clean')">🟢 Nettoyé validé</button>
+    </div>`;
+}
+
+function pushHaccpHtml(el){
+  const html = buildHaccpHtml(el);
+  document.getElementById('propsPanel').innerHTML = html;
+  if(isMobile() && selectedId){
+    document.getElementById('sheetTitle').textContent = el ? (el.haccpLabel||el.label||el.id) : 'Nettoyage';
+    document.getElementById('sheetBody').innerHTML = html;
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -669,88 +815,58 @@ function select(id){
   selectedId = id;
   const el = getEl(id);
   renderHandles();
-  if(el) document.getElementById('stMid').textContent = el.haccpLabel || el.label || el.id;
-  showHaccpPanel(el);
+  if(el) document.getElementById('stMid').textContent = el.haccpLabel||el.label||el.id;
+  pushHaccpHtml(el);
+  if(isMobile() && el?.haccpStatus !== undefined) openBottomSheet();
 }
+
 function deselect(){
   selectedId = null;
   renderHandles();
   document.getElementById('stMid').textContent = '—';
-  document.getElementById('propsPanel').innerHTML =
-    '<div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule<br>65 px = 1 m</small></div>';
+  const empty = '<div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule · 65 px = 1 m</small></div>';
+  document.getElementById('propsPanel').innerHTML = empty;
+  closeBottomSheet();
 }
 
 // ════════════════════════════════════════════════════════════
-// HACCP — Fiche de nettoyage
+// HACCP — Actions
 // ════════════════════════════════════════════════════════════
-function showHaccpPanel(el){
-  const panel = document.getElementById('propsPanel');
-  if(!el || el.haccpStatus === undefined){
-    panel.innerHTML = `<div class="props-empty">${el ? `<strong>${el.label||el.id}</strong><br><br>` : ''}Cet élément n'est pas<br>suivi dans le plan HACCP.</div>`;
-    return;
-  }
-  const status = el.haccpStatus || 'pending';
-  const statusLabel = HACCP_LABELS[status];
-  const sublabel = el.sublabel || (el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '');
-
-  panel.innerHTML = `
-    <div class="ps">
-      <div class="ps-title">Zone sélectionnée</div>
-      <div class="haccp-zone-name">${el.haccpLabel || el.label || el.id}</div>
-      ${sublabel ? `<div class="haccp-zone-sub">${sublabel}</div>` : '<div style="margin-bottom:10px"></div>'}
-      <div class="haccp-current">
-        <span class="haccp-badge ${status}">Statut actuel : ${statusLabel}</span>
-      </div>
-    </div>
-    <div class="ps">
-      <div class="ps-title">Changer le statut</div>
-      <button class="haccp-btn pending${status==='pending'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','pending')">
-        🔴 À nettoyer
-      </button>
-      <button class="haccp-btn progress${status==='progress'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','progress')">
-        🟠 En cours
-      </button>
-      <button class="haccp-btn clean${status==='clean'?' is-active':''}"
-              onclick="setHaccpStatus('${el.id}','clean')">
-        🟢 Nettoyé validé
-      </button>
-    </div>`;
-}
-
 function setHaccpStatus(id, status){
-  const el = getEl(id);
-  if(!el) return;
+  const el = getEl(id); if(!el) return;
   el.haccpStatus = status;
   render();
-  showHaccpPanel(el);
-  // Re-select for highlight
   selectedId = id;
   renderHandles();
-  showNotify(`${el.label||id} → ${HACCP_LABELS[status]}`);
+  pushHaccpHtml(el);
+  showNotify(`${el.haccpLabel||el.label||id} → ${HACCP_LABELS[status]}`);
 }
 
-// ════════════════════════════════════════════════════════════
-// HACCP — Dashboard counters
-// ════════════════════════════════════════════════════════════
 function updateDashboard(){
-  const tracked = elements.filter(e => e.haccpStatus !== undefined);
-  const pending  = tracked.filter(e => e.haccpStatus === 'pending').length;
-  const progress = tracked.filter(e => e.haccpStatus === 'progress').length;
-  const clean    = tracked.filter(e => e.haccpStatus === 'clean').length;
+  const tracked  = elements.filter(e => e.haccpStatus !== undefined);
+  const pending  = tracked.filter(e => e.haccpStatus==='pending').length;
+  const progress = tracked.filter(e => e.haccpStatus==='progress').length;
+  const clean    = tracked.filter(e => e.haccpStatus==='clean').length;
   const total    = tracked.length;
+  const pct      = total>0 ? Math.round(clean/total*100) : 0;
+
+  // Desktop panel
   document.getElementById('cntPending').textContent  = pending;
   document.getElementById('cntProgress').textContent = progress;
   document.getElementById('cntClean').textContent    = clean;
-  const pct = total > 0 ? Math.round(clean/total*100) : 0;
-  document.getElementById('progressBar').style.width = pct+'%';
-  document.getElementById('progressBar').style.background = pct===100 ? '#2e7d32' : pct>50 ? '#66bb6a' : '#43a047';
+  const bar = document.getElementById('progressBar');
+  bar.style.width = pct+'%';
+  bar.style.background = pct===100 ? '#2e7d32' : '#43a047';
   document.getElementById('progressLbl').textContent = `${clean} / ${total} zones nettoyées (${pct}%)`;
+
+  // Mobile stats strip
+  document.getElementById('stripPending').textContent  = pending;
+  document.getElementById('stripProgress').textContent = progress;
+  document.getElementById('stripClean').textContent    = clean;
 }
 
 function resetAllPending(){
-  if(!confirm('Remettre toutes les zones en "À nettoyer" ?\nCela démarre une nouvelle session de nettoyage.')) return;
+  if(!confirm('Remettre toutes les zones en "À nettoyer" ?\nCela démarre une nouvelle session.')) return;
   elements.forEach(el => { if(el.haccpStatus !== undefined) el.haccpStatus = 'pending'; });
   render();
   deselect();
@@ -758,172 +874,179 @@ function resetAllPending(){
 }
 
 // ════════════════════════════════════════════════════════════
-// MOUSE EVENTS — click for HACCP, drag for pan
+// BOTTOM SHEET
+// ════════════════════════════════════════════════════════════
+function openBottomSheet(){
+  document.getElementById('sheet').classList.add('open');
+  document.getElementById('sheetOverlay').classList.add('open');
+}
+function closeBottomSheet(){
+  document.getElementById('sheet').classList.remove('open');
+  document.getElementById('sheetOverlay').classList.remove('open');
+}
+
+// ════════════════════════════════════════════════════════════
+// MOUSE EVENTS
 // ════════════════════════════════════════════════════════════
 svg.addEventListener('mousedown', onMouseDown);
 svg.addEventListener('mousemove', onMouseMove);
 svg.addEventListener('mouseup',   onMouseUp);
-svg.addEventListener('mouseleave',onMouseUp);
+svg.addEventListener('mouseleave',onMouseLeave);
 svg.addEventListener('wheel',     onWheel, {passive:false});
 
 function onMouseDown(e){
-  if(e.button===1||e.button===2){ e.preventDefault(); _mouseButtonDown = true; startPan(e); return; }
-  _mouseButtonDown = true;
-  _mouseDownPt = svgPt(e);
-  startPan(e);
-}
-
-function startPan(e){
-  isPanning = false;
-  _panRawStart = {x:e.clientX, y:e.clientY};
-  _panStart    = {x:panX, y:panY};
+  if(e.button===1||e.button===2){ e.preventDefault(); _mouseButtonDown=true; _panRawStart={x:e.clientX,y:e.clientY}; _panStart={x:panX,y:panY}; return; }
+  _mouseButtonDown=true;
+  isPanning=false;
+  _panRawStart={x:e.clientX,y:e.clientY};
+  _panStart={x:panX,y:panY};
 }
 
 function onMouseMove(e){
-  const pt = svgPt(e);
-  document.getElementById('chX').textContent = (pt.x/S).toFixed(2)+' m';
-  document.getElementById('chY').textContent = (pt.y/S).toFixed(2)+' m';
-  const elG = e.target.closest('[data-id]');
-  document.getElementById('chEl').textContent = elG ? getEl(elG.dataset.id)?.label || elG.dataset.id : '—';
-
-  // Ne pan que si un bouton est physiquement tenu
-  if(!_mouseButtonDown) return;
-
-  const dx = e.clientX - _panRawStart.x;
-  const dy = e.clientY - _panRawStart.y;
-  if(!isPanning && (Math.abs(dx)>4 || Math.abs(dy)>4)){
-    isPanning = true;
-    svg.classList.add('panning');
-  }
-  if(isPanning){
-    panX = _panStart.x - dx/zoom;
-    panY = _panStart.y - dy/zoom;
-    updateViewBox();
-  }
+  const pt=svgPt(e);
+  document.getElementById('chX').textContent=(pt.x/S).toFixed(2)+' m';
+  document.getElementById('chY').textContent=(pt.y/S).toFixed(2)+' m';
+  const elG=e.target.closest('[data-id]');
+  document.getElementById('chEl').textContent=elG?getEl(elG.dataset.id)?.label||elG.dataset.id:'—';
+  if(!_mouseButtonDown)return;
+  const dx=e.clientX-_panRawStart.x, dy=e.clientY-_panRawStart.y;
+  if(!isPanning&&(Math.abs(dx)>4||Math.abs(dy)>4)) isPanning=true;
+  if(isPanning){ panX=_panStart.x-dx/zoom; panY=_panStart.y-dy/zoom; updateViewBox(); }
 }
 
 function onMouseUp(e){
-  _mouseButtonDown = false;
-  const wasPanning = isPanning;
-  isPanning = false;
+  _mouseButtonDown=false;
+  const wasPanning=isPanning;
+  isPanning=false;
   svg.classList.remove('panning');
-
-  if(!wasPanning && e.type !== 'mouseleave'){
-    // It was a click — on ne sélectionne que les éléments suivis HACCP
-    const elG = e.target.closest('[data-id]');
-    if(elG && elG.dataset.id){
-      const id = elG.dataset.id;
-      const el = getEl(id);
-      if(el && el.haccpStatus !== undefined){
-        if(selectedId === id) deselect();
-        else select(id);
-      } else {
-        deselect();
-      }
-    } else {
-      deselect();
-    }
+  if(!wasPanning){
+    const elG=e.target.closest('[data-id]');
+    if(elG&&elG.dataset.id){
+      const id=elG.dataset.id;
+      const el=getEl(id);
+      if(el&&el.haccpStatus!==undefined){ if(selectedId===id)deselect(); else select(id); }
+      else deselect();
+    } else { deselect(); }
   }
-  _mouseDownPt = null;
+}
+function onMouseLeave(){ _mouseButtonDown=false; isPanning=false; svg.classList.remove('panning'); document.getElementById('coordHud').classList.remove('vis'); }
+function onWheel(e){ e.preventDefault(); const pt=svgPt(e); setZoom(zoom*(e.deltaY<0?1.12:.88),pt.x,pt.y); }
+
+svg.addEventListener('mouseenter',()=>document.getElementById('coordHud').classList.add('vis'));
+
+// ════════════════════════════════════════════════════════════
+// TOUCH EVENTS — pan (1 doigt) + pinch zoom (2 doigts)
+// ════════════════════════════════════════════════════════════
+svg.addEventListener('touchstart', onTouchStart, {passive:false});
+svg.addEventListener('touchmove',  onTouchMove,  {passive:false});
+svg.addEventListener('touchend',   onTouchEnd,   {passive:false});
+
+function touchDist(t1,t2){ return Math.hypot(t2.clientX-t1.clientX, t2.clientY-t1.clientY); }
+function touchMid(t1,t2){ return {x:(t1.clientX+t2.clientX)/2, y:(t1.clientY+t2.clientY)/2}; }
+
+function onTouchStart(e){
+  e.preventDefault();
+  if(e.touches.length===1){
+    const t=e.touches[0];
+    _mouseButtonDown=true;
+    isPanning=false;
+    _panRawStart={x:t.clientX,y:t.clientY};
+    _panStart={x:panX,y:panY};
+  } else if(e.touches.length===2){
+    _mouseButtonDown=false;
+    isPanning=false;
+    _touchStartDist=touchDist(e.touches[0],e.touches[1]);
+    _touchStartZoom=zoom;
+  }
 }
 
-function onWheel(e){
+function onTouchMove(e){
   e.preventDefault();
-  const pt = svgPt(e);
-  const factor = e.deltaY < 0 ? 1.12 : .88;
-  setZoom(zoom*factor, pt.x, pt.y);
+  if(e.touches.length===1&&_mouseButtonDown){
+    const t=e.touches[0];
+    const dx=t.clientX-_panRawStart.x, dy=t.clientY-_panRawStart.y;
+    if(!isPanning&&(Math.abs(dx)>10||Math.abs(dy)>10)) isPanning=true;
+    if(isPanning){ panX=_panStart.x-dx/zoom; panY=_panStart.y-dy/zoom; updateViewBox(); }
+  } else if(e.touches.length===2){
+    const dist=touchDist(e.touches[0],e.touches[1]);
+    const scale=dist/_touchStartDist;
+    const newZoom=Math.max(.15,Math.min(5,_touchStartZoom*scale));
+    const mid=touchMid(e.touches[0],e.touches[1]);
+    const pt=svgPtFromClient(mid.x,mid.y);
+    setZoom(newZoom,pt.x,pt.y);
+  }
+}
+
+function onTouchEnd(e){
+  if(e.touches.length===0){
+    _mouseButtonDown=false;
+    const wasPanning=isPanning;
+    isPanning=false;
+    if(!wasPanning&&e.changedTouches.length>0){
+      const t=e.changedTouches[0];
+      const target=document.elementFromPoint(t.clientX,t.clientY);
+      const elG=target?.closest('[data-id]');
+      if(elG&&elG.dataset.id){
+        const id=elG.dataset.id;
+        const el=getEl(id);
+        if(el&&el.haccpStatus!==undefined){ if(selectedId===id)deselect(); else select(id); }
+      }
+    }
+  }
 }
 
 // ════════════════════════════════════════════════════════════
 // LEGEND
 // ════════════════════════════════════════════════════════════
 function buildLegend(){
-  const legendEl = document.getElementById('legend-items');
-  if(!legendEl) return;
-  const tracked = elements.filter(e => e.haccpStatus !== undefined);
-  if(!tracked.length){ legendEl.innerHTML=''; return; }
-  const pending  = tracked.filter(e => e.haccpStatus==='pending').length;
-  const progress = tracked.filter(e => e.haccpStatus==='progress').length;
-  const clean    = tracked.filter(e => e.haccpStatus==='clean').length;
-  legendEl.innerHTML = `
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
-      <div style="width:14px;height:9px;background:#ffebee;border:1.5px solid #e53935;border-radius:1px;flex-shrink:0"></div>
-      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">À nettoyer</span>
-      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${pending}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
-      <div style="width:14px;height:9px;background:#fff3e0;border:1.5px solid #fb8c00;border-radius:1px;flex-shrink:0"></div>
-      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">En cours</span>
-      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${progress}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:5px">
-      <div style="width:14px;height:9px;background:#e8f5e9;border:1.5px solid #43a047;border-radius:1px;flex-shrink:0"></div>
-      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">Nettoyé</span>
-      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${clean}</span>
-    </div>`;
+  const el=document.getElementById('legend-items'); if(!el)return;
+  const tracked=elements.filter(e=>e.haccpStatus!==undefined);
+  if(!tracked.length){el.innerHTML='';return;}
+  const n=(s)=>tracked.filter(e=>e.haccpStatus===s).length;
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px"><div style="width:14px;height:9px;background:#ffebee;border:1.5px solid #e53935;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">À nettoyer</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('pending')}</span></div>
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px"><div style="width:14px;height:9px;background:#fff3e0;border:1.5px solid #fb8c00;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">En cours</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('progress')}</span></div>
+    <div style="display:flex;align-items:center;gap:5px"><div style="width:14px;height:9px;background:#e8f5e9;border:1.5px solid #43a047;border-radius:1px"></div><span style="font-family:'DM Sans',sans-serif;font-size:9px;color:#333">Nettoyé</span><span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:#888;margin-left:auto">×${n('clean')}</span></div>`;
 }
 
 // ════════════════════════════════════════════════════════════
-// KEYBOARD SHORTCUTS
+// KEYBOARD SHORTCUTS (desktop)
 // ════════════════════════════════════════════════════════════
-document.addEventListener('keydown', e => {
-  const tag = e.target.tagName.toLowerCase();
-  if(tag==='input'||tag==='textarea') return;
-  if(e.key==='Escape'){ deselect(); return; }
-  if(e.key==='f'){ fitView(); return; }
-  if(e.key==='+'||e.key==='='){ setZoom(zoom*1.15); return; }
-  if(e.key==='-'){ setZoom(zoom*.85); return; }
-  // Quick-set HACCP status on selected element
+document.addEventListener('keydown',e=>{
+  const tag=e.target.tagName.toLowerCase();
+  if(tag==='input'||tag==='textarea')return;
+  if(e.key==='Escape'){deselect();return;}
+  if(e.key==='f'){fitView();return;}
+  if(e.key==='+'||e.key==='='){setZoom(zoom*1.15);return;}
+  if(e.key==='-'){setZoom(zoom*.85);return;}
   if(selectedId){
-    if(e.key==='1'){ setHaccpStatus(selectedId,'pending');  return; }
-    if(e.key==='2'){ setHaccpStatus(selectedId,'progress'); return; }
-    if(e.key==='3'){ setHaccpStatus(selectedId,'clean');    return; }
+    if(e.key==='1'){setHaccpStatus(selectedId,'pending'); return;}
+    if(e.key==='2'){setHaccpStatus(selectedId,'progress');return;}
+    if(e.key==='3'){setHaccpStatus(selectedId,'clean');   return;}
   }
 });
 
 // ════════════════════════════════════════════════════════════
-// COORD HUD
-// ════════════════════════════════════════════════════════════
-svg.addEventListener('mouseenter', () => document.getElementById('coordHud').classList.add('vis'));
-svg.addEventListener('mouseleave', () => document.getElementById('coordHud').classList.remove('vis'));
-
-// ════════════════════════════════════════════════════════════
-// PANEL RESIZE
+// PANEL RESIZE (desktop)
 // ════════════════════════════════════════════════════════════
 (function(){
-  const handle = document.getElementById('panelResizeHandle');
-  const panel  = document.getElementById('panelRight');
-  let resizing=false, startX=0, startW=0;
-  handle.addEventListener('mousedown', e => {
-    resizing=true; startX=e.clientX; startW=panel.offsetWidth;
-    handle.classList.add('dragging');
-    document.body.style.userSelect='none';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if(!resizing) return;
-    panel.style.width = Math.max(220, Math.min(520, startW-(e.clientX-startX)))+'px';
-  });
-  document.addEventListener('mouseup', () => {
-    if(resizing){ resizing=false; handle.classList.remove('dragging'); document.body.style.userSelect=''; }
-  });
+  const handle=document.getElementById('panelResizeHandle');
+  const panel=document.getElementById('panelRight');
+  let r=false,sx=0,sw=0;
+  handle.addEventListener('mousedown',e=>{r=true;sx=e.clientX;sw=panel.offsetWidth;handle.classList.add('dragging');document.body.style.userSelect='none';e.preventDefault();});
+  document.addEventListener('mousemove',e=>{if(!r)return;panel.style.width=Math.max(220,Math.min(520,sw-(e.clientX-sx)))+'px';});
+  document.addEventListener('mouseup',()=>{if(r){r=false;handle.classList.remove('dragging');document.body.style.userSelect='';}});
 })();
 
 // ════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════
 function init(){
-  // Date header
-  const d = new Date();
-  document.getElementById('dateHdr').textContent =
-    d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  // Keyboard hint in status
-  document.getElementById('stRight').textContent = '1=À nettoyer · 2=En cours · 3=Nettoyé · F=Ajuster vue';
-  // Render
+  const d=new Date();
+  document.getElementById('dateHdr').textContent=d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
   updateViewBox();
   render();
-  // Fit after layout
-  requestAnimationFrame(() => fitView());
+  requestAnimationFrame(()=>fitView());
 }
 
 init();
