@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard HACCP — Au Comptoir des Lilas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#e8e7e2;--panel:#fafaf8;--panel2:#f2f1ec;--border:#d0cfc8;
+  --accent:#c0392b;--green:#2e7d32;
+  --dark:#1a1a1a;--mid:#555;--light:#888;
+  --font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace;
+  --pending-fill:#ffebee;--pending-stroke:#e53935;
+  --progress-fill:#fff3e0;--progress-stroke:#fb8c00;
+  --clean-fill:#e8f5e9;--clean-stroke:#43a047;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--dark);font-size:13px}
+
+/* ── LAYOUT ── */
+.app{display:flex;flex-direction:column;height:100vh}
+.app-header{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:44px;background:var(--dark);color:#fff;flex-shrink:0;z-index:100}
+.app-header h1{font-size:14px;font-weight:700;letter-spacing:.5px}
+.app-header .sub{font-size:9px;opacity:.6;font-family:var(--mono)}
+.app-header .badge{background:var(--accent);padding:3px 9px;font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;border-radius:3px}
+
+/* ── TOOLBAR ── */
+.app-toolbar{display:flex;align-items:center;gap:3px;padding:5px 10px;background:#fff;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;min-height:42px}
+.tb-sep{width:1px;height:22px;background:var(--border);margin:0 3px}
+.tb-label{font-size:9px;color:var(--light);font-family:var(--mono);margin:0 2px}
+button.tb{font-family:var(--font);font-size:11px;font-weight:600;padding:4px 10px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;background:#fff;color:var(--dark);transition:all .1s;display:flex;align-items:center;gap:4px;white-space:nowrap;line-height:1.2}
+button.tb:hover{border-color:#999;background:#f5f5f0}
+.zoom-wrap{display:flex;align-items:center;gap:5px}
+.zoom-wrap input[type="range"]{width:80px;accent-color:var(--dark);cursor:pointer}
+.zoom-lbl{font-family:var(--mono);font-size:10px;color:var(--mid);min-width:38px;text-align:center}
+
+/* ── BODY ── */
+.app-body{display:flex;flex:1;overflow:hidden}
+
+/* ── CANVAS ── */
+.canvas-area{flex:1;overflow:hidden;position:relative;background:#c0bfb8}
+.canvas-scroll{position:absolute;inset:0;overflow:hidden}
+#fp{width:100%;height:100%;display:block;cursor:default}
+#fp.panning{cursor:grabbing}
+
+/* ── RIGHT PANEL ── */
+.panel-right{width:270px;min-width:220px;max-width:520px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;position:relative}
+.panel-resize-handle{position:absolute;left:0;top:0;bottom:0;width:5px;cursor:ew-resize;z-index:10;background:transparent;transition:background .15s}
+.panel-resize-handle:hover,.panel-resize-handle.dragging{background:rgba(0,112,243,0.25)}
+.panel-right::-webkit-scrollbar{width:4px}
+.panel-right::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.props-empty{padding:24px 14px;text-align:center;color:var(--light);font-size:10px;line-height:2}
+.p-title{font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--light);padding:8px 12px 6px;border-bottom:1px solid var(--border);background:#fff;position:sticky;top:0;z-index:1}
+.ps{padding:10px 12px;border-bottom:1px solid var(--border)}
+.ps:last-child{border-bottom:none}
+.ps-title{font-size:8px;font-weight:700;text-transform:uppercase;color:var(--light);letter-spacing:.7px;margin-bottom:7px}
+
+/* ── HACCP STATUS SYSTEM ── */
+.haccp-summary{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:4px}
+.haccp-stat{text-align:center;padding:8px 4px;border-radius:6px;background:var(--panel2);border:1px solid var(--border)}
+.haccp-stat-val{font-size:22px;font-weight:700;line-height:1.2}
+.haccp-stat-lbl{font-size:7px;color:var(--light);margin-top:2px;font-family:var(--mono);letter-spacing:.3px}
+.haccp-zone-name{font-size:15px;font-weight:700;color:var(--dark);text-align:center;padding:12px 8px 2px;line-height:1.3}
+.haccp-zone-sub{font-size:9px;color:var(--light);text-align:center;margin-bottom:10px;font-family:var(--mono)}
+.haccp-current{text-align:center;margin-bottom:10px}
+.haccp-badge{display:inline-block;padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700}
+.haccp-badge.pending {background:var(--pending-fill);color:#b71c1c;border:1.5px solid var(--pending-stroke)}
+.haccp-badge.progress{background:var(--progress-fill);color:#bf360c;border:1.5px solid var(--progress-stroke)}
+.haccp-badge.clean   {background:var(--clean-fill);  color:#1b5e20;border:1.5px solid var(--clean-stroke)}
+.haccp-btn{width:100%;padding:13px 10px;font-family:var(--font);font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;margin-bottom:8px;border:2.5px solid transparent;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;letter-spacing:.2px}
+.haccp-btn:last-child{margin-bottom:0}
+.haccp-btn.pending {background:var(--pending-fill);color:#b71c1c;border-color:var(--pending-stroke)}
+.haccp-btn.progress{background:var(--progress-fill);color:#bf360c;border-color:var(--progress-stroke)}
+.haccp-btn.clean   {background:var(--clean-fill);  color:#1b5e20;border-color:var(--clean-stroke)}
+.haccp-btn:hover{filter:brightness(.95)}
+.haccp-btn.is-active{box-shadow:inset 0 0 0 2px rgba(0,0,0,.18),0 3px 10px rgba(0,0,0,.15);transform:scale(1.02)}
+.haccp-progress-bar{height:8px;border-radius:4px;background:#e0e0e0;overflow:hidden;margin-top:6px}
+.haccp-progress-fill{height:100%;border-radius:4px;transition:width .3s ease;background:var(--clean-stroke)}
+
+/* ── SVG STYLES ── */
+.plan-el{cursor:pointer}
+
+/* ── STATUS BAR ── */
+.app-status{height:24px;flex-shrink:0;background:var(--dark);color:#888;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-family:var(--mono);font-size:9px}
+
+/* ── COORD HUD ── */
+.coord-hud{position:fixed;bottom:28px;left:10px;background:rgba(26,26,26,.88);color:#fff;font-family:var(--mono);font-size:9px;padding:5px 10px;border-radius:4px;pointer-events:none;z-index:200;line-height:1.9;display:none}
+.coord-hud.vis{display:block}
+.ch-k{color:#f39c12}
+.ch-v{color:#81c784}
+
+/* ── LEGEND OVERLAY ── */
+#lLegend{display:none}
+
+/* ── NOTIFY ── */
+.notify{position:fixed;top:54px;left:50%;transform:translateX(-50%);background:rgba(26,26,26,.88);color:#fff;font-family:var(--mono);font-size:10px;padding:5px 14px;border-radius:4px;pointer-events:none;z-index:3000;opacity:0;transition:opacity .3s}
+.notify.vis{opacity:1}
+
+/* ── PRINT ── */
+@media print{
+  .app-header,.app-toolbar,.panel-right,.app-status,.coord-hud,.notify{display:none!important}
+  .app-body{display:block}
+  .canvas-area{width:100%;height:auto;overflow:visible;background:#fff;position:relative}
+  .canvas-scroll{position:relative!important;inset:auto!important;overflow:visible!important}
+  #fp{width:100%!important;height:auto!important}
+  #lLegend{display:block}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ── HEADER ── -->
+  <div class="app-header">
+    <div>
+      <h1>DASHBOARD HACCP — NETTOYAGE</h1>
+      <div class="sub">Au Comptoir des Lilas · 122 rue de Paris · 93260 Les Lilas</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="dateHdr" style="font-size:9px;opacity:.5;font-family:var(--mono)"></span>
+      <div class="badge">Plan Boucherie</div>
+    </div>
+  </div>
+
+  <!-- ── TOOLBAR ── -->
+  <div class="app-toolbar">
+    <!-- Zoom -->
+    <span class="tb-label">Zoom</span>
+    <div class="zoom-wrap">
+      <button class="tb" onclick="setZoom(zoom-0.15)" style="padding:3px 8px">−</button>
+      <input type="range" id="zoomSlider" min="15" max="400" value="100" oninput="setZoom(this.value/100)">
+      <button class="tb" onclick="setZoom(zoom+0.15)" style="padding:3px 8px">+</button>
+      <span class="zoom-lbl" id="zoomLbl">100%</span>
+      <button class="tb" onclick="fitView()" style="padding:3px 7px" title="Ajuster la vue (F)">⊡</button>
+    </div>
+    <div class="tb-sep"></div>
+    <!-- Légende couleurs statuts -->
+    <span style="display:flex;align-items:center;gap:10px;font-size:10px;color:var(--mid)">
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:13px;height:13px;background:#ffebee;border:2px solid #e53935;border-radius:2px;flex-shrink:0;display:inline-block"></span>À nettoyer
+      </span>
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:13px;height:13px;background:#fff3e0;border:2px solid #fb8c00;border-radius:2px;flex-shrink:0;display:inline-block"></span>En cours
+      </span>
+      <span style="display:flex;align-items:center;gap:4px">
+        <span style="width:13px;height:13px;background:#e8f5e9;border:2px solid #43a047;border-radius:2px;flex-shrink:0;display:inline-block"></span>Nettoyé
+      </span>
+    </span>
+    <div style="margin-left:auto">
+      <button class="tb" onclick="resetAllPending()" title="Remettre toutes les zones en 'À nettoyer'">↺ Nouvelle session</button>
+    </div>
+  </div>
+
+  <!-- ── BODY ── -->
+  <div class="app-body">
+
+    <!-- ── CANVAS ── -->
+    <div class="canvas-area" id="canvasArea">
+      <div id="legend" style="position:absolute;bottom:30px;left:10px;background:rgba(255,255,255,0.94);border:1px solid #d0cfc8;border-radius:6px;padding:8px 12px;font-size:9px;z-index:50;min-width:150px;box-shadow:0 2px 8px rgba(0,0,0,.12)">
+        <div style="font-weight:700;font-size:8px;letter-spacing:.7px;text-transform:uppercase;color:#888;margin-bottom:6px;font-family:'DM Sans',sans-serif">Légende</div>
+        <div id="legend-items"></div>
+      </div>
+      <div class="canvas-scroll">
+        <svg id="fp" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="da1" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto"><path d="M5,0 L0,2.5 L5,5Z" fill="#555"/></marker>
+            <marker id="da2" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5Z" fill="#555"/></marker>
+            <pattern id="ha" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#888" stroke-width=".7"/></pattern>
+          </defs>
+          <g id="lGrid"></g>
+          <g id="lElems"></g>
+          <g id="lLegend"></g>
+          <g id="lHandles"></g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ── RIGHT PANEL — CONTRÔLE HACCP ── -->
+    <div class="panel-right" id="panelRight">
+      <div class="panel-resize-handle" id="panelResizeHandle" title="Glisser pour redimensionner"></div>
+      <div class="p-title">Contrôle HACCP</div>
+
+      <!-- Dashboard (toujours visible) -->
+      <div class="ps" id="haccpDashboard">
+        <div class="ps-title">État du nettoyage</div>
+        <div class="haccp-summary">
+          <div class="haccp-stat">
+            <div class="haccp-stat-val" id="cntPending" style="color:#c62828">—</div>
+            <div class="haccp-stat-lbl">À nettoyer</div>
+          </div>
+          <div class="haccp-stat">
+            <div class="haccp-stat-val" id="cntProgress" style="color:#e65100">—</div>
+            <div class="haccp-stat-lbl">En cours</div>
+          </div>
+          <div class="haccp-stat">
+            <div class="haccp-stat-val" id="cntClean" style="color:#2e7d32">—</div>
+            <div class="haccp-stat-lbl">Nettoyés</div>
+          </div>
+        </div>
+        <div class="haccp-progress-bar" style="margin-top:8px">
+          <div class="haccp-progress-fill" id="progressBar" style="width:0%"></div>
+        </div>
+        <div id="progressLbl" style="font-size:8px;color:var(--light);text-align:center;margin-top:4px;font-family:var(--mono)">0 / 0 zones nettoyées</div>
+      </div>
+
+      <!-- Fiche de nettoyage (zone sélectionnée) -->
+      <div id="propsPanel">
+        <div class="props-empty">
+          Cliquez sur une zone<br>pour gérer son nettoyage
+          <br><br>
+          <small style="color:#bbb">Plan en lecture seule<br>65 px = 1 m</small>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end app-body -->
+
+  <!-- ── STATUS ── -->
+  <div class="app-status">
+    <span id="stLeft">Mode : Viewer HACCP — lecture seule</span>
+    <span id="stMid">—</span>
+    <span id="stRight">Échelle : 65 px/m · HACCP v1</span>
+  </div>
+
+</div><!-- end app -->
+
+<!-- Coord HUD -->
+<div class="coord-hud" id="coordHud">
+  <span class="ch-k">X :</span> <span class="ch-v" id="chX">—</span> &nbsp;
+  <span class="ch-k">Y :</span> <span class="ch-v" id="chY">—</span><br>
+  <span class="ch-k">Zone :</span> <span class="ch-v" id="chEl">—</span>
+</div>
+
+<!-- Notify -->
+<div class="notify" id="notify"></div>
+
+<script>
+'use strict';
+// ════════════════════════════════════════════════════════════
+// CONSTANTS
+// ════════════════════════════════════════════════════════════
+const S = 65;
+const CW = 1800;
+const CH = 700;
+
+// ════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════
+let zoom = 1.0;
+let panX = 0, panY = 0;
+let selectedId = null;
+let isPanning = false;
+let _panRawStart = {x:0,y:0};
+let _panStart = {x:0,y:0};
+let _mouseDownPt = null; // to distinguish click vs drag
+
+// ════════════════════════════════════════════════════════════
+// DATA MODEL — Plan boucherie + statuts HACCP
+// ════════════════════════════════════════════════════════════
+let elements = [
+  // ── ZONES (toutes tracées HACCP) ──
+  {id:'jardinet',    type:'zone', label:'JARDINET',        sublabel:'8,26 m × 3,27 m',
+   x:40/S, y:152/S, w:537/S, h:213/S, fill:'#e8f5e9',stroke:'#1a1a1a',sw:1.8,dash:'7 4',pattern:'hatch',lc:'#2e7d32',
+   haccpStatus:'pending'},
+  {id:'frigo2',      type:'zone', label:'FRIGO 2',         sublabel:'4 m × 1,55 m',
+   x:40/S, y:30/S,  w:260/S, h:101/S, fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',
+   haccpStatus:'pending'},
+  {id:'wc',          type:'zone', label:'WC',              sublabel:'2 m × 0,94 m',
+   x:315/S,y:30/S,  w:130/S, h:61/S,  fill:'#efebe9',stroke:'#1a1a1a',sw:2.2,
+   haccpStatus:'pending'},
+  {id:'cuisine',     type:'zone', label:'CUISINE',         sublabel:'2,21 × 2,71 m',
+   x:462/S,y:30/S,  w:143/S, h:176/S, fill:'#f3e5f5',stroke:'#1a1a1a',sw:2.2,
+   haccpStatus:'pending'},
+  {id:'frigo1',      type:'zone', label:'FRIGO 1',         sublabel:'4 m × 1,155 m',
+   x:620/S,y:30/S,  w:260/S, h:75/S,  fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',badge:'HS',
+   haccpStatus:'pending'},
+  {id:'prepa',       type:'zone', label:'ESPACE PRÉPA',    sublabel:'4 m × 1,66 m · h:2,40m',
+   x:620/S,y:112/S, w:260/S, h:108/S, fill:'#fce4ec',stroke:'#1a1a1a',sw:2.2,
+   haccpStatus:'pending'},
+  {id:'vente',       type:'zone', label:'',                sublabel:'',
+   x:895/S,y:30/S,  w:377/S, h:290/S, fill:'#fff8e1',stroke:'#1a1a1a',sw:3,
+   haccpStatus:'pending'},
+  {id:'zone-boucher',type:'zone', label:'Zone boucher',    sublabel:'4,35 m × 1,30 m',
+   x:895/S,y:66/S,  w:377/S, h:85/S,  fill:'#fff3e0',stroke:'#8d6e63',sw:.6,dash:'5 3',lc:'#8d6e63',
+   haccpStatus:'pending'},
+  {id:'espace-arriere',type:'zone',label:'Espace arrière', sublabel:'',
+   x:895/S,y:151/S, w:55/S,  h:88/S,  fill:'#f5f5f0',stroke:'#999',sw:1,dash:'4 3',lc:'#999',
+   haccpStatus:'pending'},
+
+  // ── ÉQUIPEMENTS (gros équipements tracés HACCP) ──
+  {id:'meuble-bas',  type:'equip',_cat:'Mobilier vente', label:'MEUBLE BAS',   sublabel:'55 cm prof.',
+   x:895/S,y:30/S,  w:340/S, h:36/S,  fill:'#d7ccc8',stroke:'#5d4037',sw:1.2},
+  {id:'billot',      type:'equip',_cat:'Préparation',    label:'Billot',       sublabel:'',
+   x:700/S,y:186/S, w:48/S,  h:22/S,  fill:'#ffccbc',stroke:'#bf360c',sw:1.2,
+   haccpStatus:'pending'},
+  {id:'plonge',      type:'equip',_cat:'Préparation',    label:'Plonge',       sublabel:'',
+   x:640/S,y:186/S, w:42/S,  h:22/S,  fill:'#bbdefb',stroke:'#1565c0',sw:1.2,
+   haccpStatus:'pending'},
+  {id:'caisse',      type:'equip',_cat:'Mobilier vente', label:'CAISSE',       sublabel:'mobile · 0,82m',
+   x:895/S,y:239/S, w:55/S,  h:81/S,  fill:'#c8e6c9',stroke:'#2e7d32',sw:2},
+
+  // ── VITRINE FROID (tracée HACCP) ──
+  {id:'vitrine',     type:'vitrine',_cat:'Réfrigération',label:'VITRINE FROID',
+   x:960/S, y:151/S,
+   barLength:270/S, barThickness:0.8,
+   armLength:78/S,  armThickness:0.8,
+   fill:'#7e57c2', stroke:'#4a148c', showDims:true,
+   haccpStatus:'pending'},
+
+  // ── PORTES ──
+  {id:'entree',    type:'door',label:'ENTRÉE',         x:1266/S,y:275/S,dw:45/S,rot:90, openDir:-1,fill:'#c0392b'},
+  {id:'porte-pv',  type:'door',label:'Prépa→Vente',    x:889/S, y:130/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
+  {id:'porte-cj',  type:'door',label:'Cuisine→Jardin', x:462/S, y:165/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
+  {id:'porte-pc',  type:'door',label:'Prépa→Cuisine',  x:612/S, y:132/S,dw:35/S,rot:90, openDir:1, fill:'#2e7d32'},
+
+  // ── SÉCURITÉ ──
+  {id:'ext-vente',     type:'safety',_cat:'Sécurité',subtype:'extincteur',label:'Extincteur',x:1250/S,y:310/S},
+  {id:'ext-prepa',     type:'safety',_cat:'Sécurité',subtype:'extincteur',label:'Extincteur',x:860/S, y:130/S},
+  {id:'sortie1',       type:'safety',_cat:'Sécurité',subtype:'sortie',    label:'SORTIE①',  x:1274/S,y:310/S,w:40/S,h:13/S},
+  {id:'sortie2',       type:'safety',_cat:'Sécurité',subtype:'sortie',    label:'SORTIE②',  x:462/S, y:205/S,w:40/S,h:13/S},
+  {id:'rassemblement', type:'safety',_cat:'Sécurité',subtype:'rallypoint',label:'POINT DE RASSEMBLEMENT',x:1083/S,y:430/S},
+
+  // ── ANNOTATIONS ──
+  {id:'label-client',  type:'label',label:'ESPACE CLIENT', x:960/S,y:240/S,w:280/S,h:90/S,lc:'#e65100',fs:15},
+];
+
+// ════════════════════════════════════════════════════════════
+// HACCP — Helpers
+// ════════════════════════════════════════════════════════════
+const HACCP_STYLES = {
+  pending:  { fill:'#ffebee', stroke:'#e53935', sw:2.5 },
+  progress: { fill:'#fff3e0', stroke:'#fb8c00', sw:2.5 },
+  clean:    { fill:'#e8f5e9', stroke:'#43a047', sw:2.5 },
+};
+const HACCP_LABELS = {
+  pending:  '🔴 À nettoyer',
+  progress: '🟠 En cours',
+  clean:    '🟢 Nettoyé validé',
+};
+function haccpStyle(status){ return HACCP_STYLES[status] || HACCP_STYLES.pending; }
+
+// ════════════════════════════════════════════════════════════
+// UTILITIES
+// ════════════════════════════════════════════════════════════
+const svg = document.getElementById('fp');
+function px(m){ return m * S; }
+function getEl(id){ return elements.find(e => e.id === id); }
+function showNotify(msg, ms=2000){
+  const n = document.getElementById('notify');
+  n.textContent = msg; n.classList.add('vis');
+  setTimeout(() => n.classList.remove('vis'), ms);
+}
+function svgPt(e){
+  const rect = svg.getBoundingClientRect();
+  const vw = CW/zoom, vh = CH/zoom;
+  const scale = Math.min(rect.width/vw, rect.height/vh);
+  const ox = (rect.width  - vw*scale) / 2;
+  const oy = (rect.height - vh*scale) / 2;
+  return {
+    x: panX + (e.clientX - rect.left - ox) / scale,
+    y: panY + (e.clientY - rect.top  - oy) / scale,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// ZOOM / PAN / VIEW
+// ════════════════════════════════════════════════════════════
+function updateViewBox(){
+  const vw = CW/zoom, vh = CH/zoom;
+  svg.setAttribute('viewBox', `${panX} ${panY} ${vw} ${vh}`);
+}
+function setZoom(z, cx, cy){
+  z = Math.max(.1, Math.min(5, z));
+  if(cx !== undefined && cy !== undefined){
+    const ratio = zoom/z;
+    panX = cx - (cx - panX)*ratio;
+    panY = cy - (cy - panY)*ratio;
+  }
+  zoom = z;
+  document.getElementById('zoomSlider').value = Math.round(zoom*100);
+  document.getElementById('zoomLbl').textContent = Math.round(zoom*100)+'%';
+  updateViewBox();
+  renderHandles();
+}
+function fitView(){
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  elements.forEach(el => {
+    const bb = elBBox(el);
+    if(!bb) return;
+    minX=Math.min(minX,bb.x); minY=Math.min(minY,bb.y);
+    maxX=Math.max(maxX,bb.x+bb.w); maxY=Math.max(maxY,bb.y+bb.h);
+  });
+  if(minX===Infinity){ panX=0; panY=0; setZoom(1); return; }
+  const margin=30;
+  const ww=svg.clientWidth, wh=svg.clientHeight;
+  const zx=(ww-margin*2)/(maxX-minX+0.001);
+  const zy=(wh-margin*2)/(maxY-minY+0.001);
+  const zz=Math.min(zx,zy,3);
+  panX=minX-margin/zz;
+  panY=minY-margin/zz;
+  setZoom(zz);
+}
+
+// ════════════════════════════════════════════════════════════
+// ELEMENT BOUNDING BOX
+// ════════════════════════════════════════════════════════════
+function elBBox(el){
+  if(!el) return null;
+  if(el.type==='vitrine'){
+    const bx=px(el.x),by=px(el.y);
+    const bw=px(el.barLength),bh=px(el.barThickness);
+    const al=px(el.armLength),at=px(el.armThickness);
+    return{x:bx, y:by-al, w:bw, h:bh+2*al};
+  }
+  if(el.type==='door'){
+    const bx=px(el.x),by=px(el.y);
+    const dw=px(el.dw||Math.max(el.w||0,el.h||0)||0.9);
+    const rot=(el.rot||0)*Math.PI/180;
+    const od=el.openDir||1;
+    const cos=Math.cos(rot),sin=Math.sin(rot);
+    const pts=[{x:0,y:0},{x:dw,y:0},{x:0,y:-dw*od}];
+    const xs=pts.map(p=>bx+p.x*cos-p.y*sin);
+    const ys=pts.map(p=>by+p.x*sin+p.y*cos);
+    const pad=8;
+    return{x:Math.min(...xs)-pad,y:Math.min(...ys)-pad,w:Math.max(...xs)-Math.min(...xs)+pad*2,h:Math.max(...ys)-Math.min(...ys)+pad*2};
+  }
+  if(el.type==='safety'){
+    if(el.subtype==='extincteur') return{x:px(el.x)-9,y:px(el.y)-9,w:18,h:18};
+    if(el.subtype==='sortie'||el.subtype==='rallypoint') return{x:px(el.x),y:px(el.y),w:px(el.w||1),h:px(el.h||.2)};
+    return{x:px(el.x)-8,y:px(el.y)-8,w:16,h:16};
+  }
+  if(el.type==='label') return{x:px(el.x),y:px(el.y),w:px(el.w||3),h:px(el.h||1)};
+  return{x:px(el.x),y:px(el.y),w:px(el.w||.5),h:px(el.h||.5)};
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER ENGINE
+// ════════════════════════════════════════════════════════════
+const PROD_COLORS=['#ce93d8','#80cbc4','#ffcc80','#ef9a9a','#aed581','#80deea','#ffab40','#bcaaa4'];
+
+function render(){
+  const order={zone:0,equip:1,vitrine:2,door:3,safety:4,label:5};
+  const sorted=[...elements].sort((a,b)=>(order[a.type]||0)-(order[b.type]||0));
+  document.getElementById('lElems').innerHTML=sorted.map(renderEl).join('');
+  renderHandles();
+  buildLegend();
+  updateDashboard();
+}
+
+function renderEl(el){
+  switch(el.type){
+    case 'zone':    return renderZone(el);
+    case 'equip':   return renderEquip(el);
+    case 'vitrine': return renderVitrine(el);
+    case 'door':    return renderDoor(el);
+    case 'safety':  return renderSafety(el);
+    case 'label':   return renderLabel(el);
+    case 'dim':     return renderDim(el);
+    default: return '';
+  }
+}
+
+function renderZone(el){
+  const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h);
+  // HACCP override
+  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
+  const fillColor  = hs ? hs.fill   : (el.fill||'#fff');
+  const strokeColor= hs ? hs.stroke : (el.stroke||'#1a1a1a');
+  const strokeWidth= hs ? hs.sw     : (el.sw||2);
+  const lc = hs ? strokeColor : (el.lc||'#1a1a1a');
+  const dash = el.dash ? `stroke-dasharray="${el.dash}"` : '';
+  const cx=x+w/2, cy=y+h/2;
+  const fsize=el.fs||(w<80||h<40?10:14);
+  const autoSub=el.w&&el.h?`${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m`:'';
+  const sublabel=el.showSub===false?'':(el.sublabel||autoSub);
+  const isSelected=selectedId===el.id;
+  const cursorClass=el.haccpStatus?'plan-el':'plan-el';
+  return`<g class="${cursorClass}" data-id="${el.id}" data-type="zone">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${dash} rx="0"/>
+    ${el.pattern==='hatch'?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#ha)" opacity=".18" pointer-events="none"/>`:''}
+    ${el.label?`<text x="${cx}" y="${cy-(sublabel?7:0)}" font-family="'DM Sans'" font-size="${fsize}" font-weight="700" fill="${lc}" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${el.label}</text>`:''}
+    ${sublabel?`<text x="${cx}" y="${cy+(el.label?8:0)}" font-family="'JetBrains Mono'" font-size="8" fill="#666" text-anchor="middle" pointer-events="none">${sublabel}</text>`:''}
+    ${el.icon?`<text x="${x+10}" y="${y+16}" font-size="12" pointer-events="none">${el.icon}</text>`:''}
+    ${el.badge?`<rect x="${x+w-30}" y="${y+4}" width="26" height="12" rx="3" fill="#e74c3c" pointer-events="none"/><text x="${x+w-17}" y="${y+13}" font-size="7" fill="white" text-anchor="middle" font-weight="700" font-family="'DM Sans'" pointer-events="none">${el.badge}</text>`:''}
+    ${renderDimsForEl(el)}
+  </g>`;
+}
+
+function renderEquip(el){
+  const x=px(el.x),y=px(el.y),w=px(el.w||.5),h=px(el.h||.5);
+  const cx=x+w/2,cy=y+h/2;
+  const rot=el.rot||0;
+  // HACCP override for tracked equip
+  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
+  const fill  = hs ? hs.fill   : (el.fill||'#f5f5f5');
+  const stroke= hs ? hs.stroke : (el.stroke||'#888');
+  const sw    = hs ? hs.sw     : (el.sw||1.2);
+  const fw=el.fw||600;
+  const autoFs=el.label?Math.min(9,w/Math.max(1,el.label.length)*1.5):9;
+  const fsize=el.fs||autoFs;
+  const shape=el.shape||'rect';
+  let shapeEl;
+  if(shape==='circle'){
+    shapeEl=`<ellipse cx="${cx}" cy="${cy}" rx="${w/2}" ry="${h/2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  } else if(shape==='rounded'){
+    shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="${Math.min(w,h)*0.25}"/>`;
+  } else if(shape==='diamond'){
+    shapeEl=`<polygon points="${cx},${y} ${x+w},${cy} ${cx},${y+h} ${x},${cy}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+  } else {
+    shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>`;
+  }
+  return`<g class="plan-el" data-id="${el.id}" data-type="equip"${rot?` transform="rotate(${rot},${cx},${cy})"`:''}>
+    ${shapeEl}
+    ${el.icon?`<text x="${x+8}" y="${y+14}" font-size="10" pointer-events="none">${el.icon}</text>`:''}
+    ${el.label?`<text x="${cx}" y="${cy+1}" font-family="'DM Sans'" font-size="${fsize}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${fw}" pointer-events="none">${el.label}</text>`:''}
+    ${el.sublabel?`<text x="${cx}" y="${cy+12}" font-family="'JetBrains Mono'" font-size="7" fill="#888" text-anchor="middle" pointer-events="none">${el.sublabel}</text>`:''}
+    ${renderDimsForEl(el)}
+  </g>`;
+}
+
+function renderVitrine(el){
+  const isZ=!el.subtype||el.subtype==='z';
+  const bx=px(el.x),by=px(el.y);
+  const bw=px(el.barLength),bh=px(el.barThickness);
+  const al=isZ?px(el.armLength||0):0;
+  const at=isZ?px(el.armThickness||0.8):0;
+  const f=el.fill||'#7e57c2';
+  const s=el.stroke||'#4a148c';
+  const prods=el.products||[];
+  // HACCP status overlay color
+  const hs = el.haccpStatus ? haccpStyle(el.haccpStatus) : null;
+  const overlayStroke = hs ? hs.stroke : null;
+
+  const showD=el.showDims!==false;
+  const dimBar=showD?`
+    <text x="${bx+bw/2}" y="${by+bh/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".95">${(el.barLength||0).toFixed(2)} m</text>
+    ${isZ&&al>0?`<text x="${bx+bw-at/2}" y="${by-al/2}" font-family="'JetBrains Mono'" font-size="8" fill="${s}" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none" opacity=".95" transform="rotate(-90,${bx+bw-at/2},${by-al/2})">${(el.armLength||0).toFixed(2)} m</text>`:''}`:
+  '';
+  // HACCP outline overlay
+  const haccpOverlay = hs ? `<rect x="${bx-4}" y="${by-al-4}" width="${bw+8}" height="${bh+2*al+8}" fill="${hs.fill}" opacity=".35" stroke="${overlayStroke}" stroke-width="3" rx="4" pointer-events="none"/>` : '';
+
+  return`<g class="plan-el" data-id="${el.id}" data-type="vitrine">
+    ${haccpOverlay}
+    <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
+    <line x1="${bx}" y1="${by+bh}" x2="${bx+bw}" y2="${by+bh}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
+    ${isZ&&al>0?`<rect x="${bx+bw-at}" y="${by-al}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
+    <line x1="${bx+bw-at}" y1="${by-al}" x2="${bx+bw-at}" y2="${by}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>
+    <rect x="${bx}" y="${by+bh}" width="${at}" height="${al}" fill="${f}" stroke="${s}" stroke-width="1.5" rx="1"/>
+    <line x1="${bx+at}" y1="${by+bh}" x2="${bx+at}" y2="${by+bh+al}" stroke="${s}" stroke-width="3" stroke-linecap="square" pointer-events="none"/>`:``}
+    ${dimBar}
+    <text x="${bx+bw/2}" y="${by-al-6}" font-family="'DM Sans'" font-size="${el.fs||10}" fill="${s}" text-anchor="middle" font-weight="700" pointer-events="none">${el.label||'VITRINE FROID'}</text>
+    <rect x="${bx}" y="${by-al}" width="${bw}" height="${bh+2*al}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
+  </g>`;
+}
+
+function renderDoor(el){
+  const bx=px(el.x), by=px(el.y);
+  const dw=px(el.dw || Math.max(el.w||0,el.h||0) || 0.9);
+  const rot=el.rot||0;
+  const od=el.openDir||1;
+  const col=el.fill||'#2e7d32';
+  const leafY=-dw*od;
+  const sweepFlag=od===1?1:0;
+  return`<g data-id="${el.id}" data-type="door"
+    transform="translate(${bx},${by}) rotate(${rot},0,0)">
+    <line x1="-2" y1="0" x2="${dw+2}" y2="0" stroke="#333" stroke-width="2.5" stroke-linecap="square"/>
+    <line x1="0" y1="-4" x2="0" y2="4" stroke="#333" stroke-width="1.5"/>
+    <line x1="${dw}" y1="-4" x2="${dw}" y2="4" stroke="#333" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="0" y2="${leafY}" stroke="${col}" stroke-width="1.5"/>
+    <path d="M 0 ${leafY} A ${dw} ${dw} 0 0 ${sweepFlag} ${dw} 0" stroke="${col}" stroke-width="0.8" fill="${col}15"/>
+    ${el.label?`<text x="${dw/2}" y="${(leafY/2)-5}" font-size="7" fill="${col}" text-anchor="middle" font-family="'DM Sans'" font-weight="700" pointer-events="none" transform="rotate(${-rot},${dw/2},${leafY/2})">${el.label}</text>`:''}
+    <rect x="-4" y="${Math.min(0,leafY)-4}" width="${dw+8}" height="${Math.abs(leafY)+8}" fill="rgba(0,0,0,0.001)" stroke="none" pointer-events="all"/>
+  </g>`;
+}
+
+function renderDimsForEl(el){
+  if(!el.showDims) return '';
+  if(!el.w||!el.h||el.w<0.01||el.h<0.01) return '';
+  const x=px(el.x),y=px(el.y),w=px(el.w),h=px(el.h);
+  const mg=20, col='#666';
+  return`
+    <line x1="${x}" y1="${y+h+mg}" x2="${x+w}" y2="${y+h+mg}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
+    <line x1="${x}" y1="${y+h}" x2="${x}" y2="${y+h+mg}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
+    <line x1="${x+w}" y1="${y+h}" x2="${x+w}" y2="${y+h+mg}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
+    <text x="${x+w/2}" y="${y+h+mg+11}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600">${el.w.toFixed(2)} m</text>
+    <line x1="${x+w+mg}" y1="${y}" x2="${x+w+mg}" y2="${y+h}" stroke="${col}" stroke-width=".7" marker-start="url(#da1)" marker-end="url(#da2)" pointer-events="none"/>
+    <line x1="${x+w}" y1="${y}" x2="${x+w+mg}" y2="${y}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
+    <line x1="${x+w}" y1="${y+h}" x2="${x+w+mg}" y2="${y+h}" stroke="${col}" stroke-width=".5" stroke-dasharray="3 2" pointer-events="none"/>
+    <text x="${x+w+mg+11}" y="${y+h/2}" font-family="'JetBrains Mono'" font-size="8.5" fill="${col}" text-anchor="middle" pointer-events="none" font-weight="600" transform="rotate(90 ${x+w+mg+11} ${y+h/2})">${el.h.toFixed(2)} m</text>`;
+}
+
+function renderDim(el){
+  const x1=px(el.x),y1=px(el.y);
+  const x2=px(el.x2!=null?el.x2:el.x+2),y2=px(el.y2!=null?el.y2:el.y);
+  const dx=x2-x1,dy=y2-y1;
+  const len=Math.sqrt(dx*dx+dy*dy);
+  if(len<2) return `<g data-id="${el.id}" data-type="dim"><circle cx="${x1}" cy="${y1}" r="4" fill="none" stroke="#aaa" stroke-width="1"/></g>`;
+  const dist=len/S;
+  const label=el.label&&el.label.trim()?el.label:dist.toFixed(2)+' m';
+  const mx=(x1+x2)/2,my=(y1+y2)/2;
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  const textAng=(ang>90||ang<-90)?ang+180:ang;
+  const px2=-dy/len*5, py2=dx/len*5;
+  return`<g data-id="${el.id}" data-type="dim">
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#555" stroke-width="0.9" marker-start="url(#da1)" marker-end="url(#da2)"/>
+    <line x1="${x1+px2}" y1="${y1+py2}" x2="${x1-px2}" y2="${y1-py2}" stroke="#555" stroke-width="0.9" pointer-events="none"/>
+    <line x1="${x2+px2}" y1="${y2+py2}" x2="${x2-px2}" y2="${y2-py2}" stroke="#555" stroke-width="0.9" pointer-events="none"/>
+    <g transform="rotate(${textAng} ${mx} ${my}) translate(0,-6)">
+      <rect x="${mx-dist.toFixed(2).length*3-8}" y="${my-9}" width="${dist.toFixed(2).length*6+16}" height="11" rx="2" fill="white" opacity=".85" pointer-events="none"/>
+      <text x="${mx}" y="${my}" font-family="'JetBrains Mono'" font-size="9" fill="#333" text-anchor="middle" dominant-baseline="middle" pointer-events="none" font-weight="600">${label}</text>
+    </g>
+    <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(0,0,0,0.001)" stroke-width="14" pointer-events="stroke"/>
+  </g>`;
+}
+
+function renderSafety(el){
+  const x=px(el.x),y=px(el.y);
+  if(el.subtype==='extincteur'){
+    return`<g data-id="${el.id}" data-type="safety">
+      <circle cx="${x}" cy="${y}" r="9" fill="#c0392b"/>
+      <text x="${x}" y="${y+3}" font-size="9" fill="white" text-anchor="middle" font-weight="700" font-family="'DM Sans'" pointer-events="none">E</text>
+      <text x="${x}" y="${y+20}" font-family="'JetBrains Mono'" font-size="7" fill="#c0392b" text-anchor="middle" pointer-events="none">${el.label||''}</text>
+    </g>`;
+  }
+  if(el.subtype==='sortie'){
+    const w=px(el.w||.6),h=px(el.h||.2);
+    return`<g data-id="${el.id}" data-type="safety">
+      <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="#2e7d32"/>
+      <text x="${x+w/2}" y="${y+h/2+1}" font-family="'DM Sans'" font-size="7" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">${el.label||'SORTIE'}</text>
+    </g>`;
+  }
+  if(el.subtype==='rallypoint'){
+    return`<g data-id="${el.id}" data-type="safety">
+      <rect x="${x-70}" y="${y-12}" width="140" height="24" rx="4" fill="#2e7d32"/>
+      <text x="${x}" y="${y+1}" font-family="'DM Sans'" font-size="8" fill="white" text-anchor="middle" dominant-baseline="middle" font-weight="700" pointer-events="none">📍 ${el.label||'POINT DE RASSEMBLEMENT'}</text>
+    </g>`;
+  }
+  return '';
+}
+
+function renderLabel(el){
+  const x=px(el.x),y=px(el.y),w=px(el.w||3),h=px(el.h||1);
+  return`<g data-id="${el.id}" data-type="label">
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="rgba(0,0,0,0.001)" stroke="none"/>
+    <text x="${x+w/2}" y="${y+h/2}" font-family="'DM Sans'" font-size="${el.fs||12}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${el.fw||700}" pointer-events="none">${el.label}</text>
+  </g>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// SELECTION HANDLES (highlight only, no resize)
+// ════════════════════════════════════════════════════════════
+function renderHandles(){
+  const hl = document.getElementById('lHandles');
+  if(!selectedId){ hl.innerHTML=''; return; }
+  const el = getEl(selectedId);
+  if(!el){ hl.innerHTML=''; return; }
+  const bb = elBBox(el);
+  if(!bb){ hl.innerHTML=''; return; }
+  const {x,y,w,h} = bb;
+  hl.innerHTML=`<rect x="${x-4}" y="${y-4}" width="${w+8}" height="${h+8}" fill="rgba(0,112,243,0.06)" stroke="#0070f3" stroke-width="1.5" stroke-dasharray="5 3" pointer-events="none" rx="3"/>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// SELECTION
+// ════════════════════════════════════════════════════════════
+function select(id){
+  selectedId = id;
+  const el = getEl(id);
+  renderHandles();
+  if(el) document.getElementById('stMid').textContent = el.label || el.id;
+  showHaccpPanel(el);
+}
+function deselect(){
+  selectedId = null;
+  renderHandles();
+  document.getElementById('stMid').textContent = '—';
+  document.getElementById('propsPanel').innerHTML =
+    '<div class="props-empty">Cliquez sur une zone<br>pour gérer son nettoyage<br><br><small style="color:#bbb">Plan en lecture seule<br>65 px = 1 m</small></div>';
+}
+
+// ════════════════════════════════════════════════════════════
+// HACCP — Fiche de nettoyage
+// ════════════════════════════════════════════════════════════
+function showHaccpPanel(el){
+  const panel = document.getElementById('propsPanel');
+  if(!el || el.haccpStatus === undefined){
+    panel.innerHTML = `<div class="props-empty">${el ? `<strong>${el.label||el.id}</strong><br><br>` : ''}Cet élément n'est pas<br>suivi dans le plan HACCP.</div>`;
+    return;
+  }
+  const status = el.haccpStatus || 'pending';
+  const statusLabel = HACCP_LABELS[status];
+  const sublabel = el.sublabel || (el.w&&el.h ? `${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m` : '');
+
+  panel.innerHTML = `
+    <div class="ps">
+      <div class="ps-title">Zone sélectionnée</div>
+      <div class="haccp-zone-name">${el.label || el.id}</div>
+      ${sublabel ? `<div class="haccp-zone-sub">${sublabel}</div>` : '<div style="margin-bottom:10px"></div>'}
+      <div class="haccp-current">
+        <span class="haccp-badge ${status}">Statut actuel : ${statusLabel}</span>
+      </div>
+    </div>
+    <div class="ps">
+      <div class="ps-title">Changer le statut</div>
+      <button class="haccp-btn pending${status==='pending'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','pending')">
+        🔴 À nettoyer
+      </button>
+      <button class="haccp-btn progress${status==='progress'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','progress')">
+        🟠 En cours
+      </button>
+      <button class="haccp-btn clean${status==='clean'?' is-active':''}"
+              onclick="setHaccpStatus('${el.id}','clean')">
+        🟢 Nettoyé validé
+      </button>
+    </div>`;
+}
+
+function setHaccpStatus(id, status){
+  const el = getEl(id);
+  if(!el) return;
+  el.haccpStatus = status;
+  render();
+  showHaccpPanel(el);
+  // Re-select for highlight
+  selectedId = id;
+  renderHandles();
+  showNotify(`${el.label||id} → ${HACCP_LABELS[status]}`);
+}
+
+// ════════════════════════════════════════════════════════════
+// HACCP — Dashboard counters
+// ════════════════════════════════════════════════════════════
+function updateDashboard(){
+  const tracked = elements.filter(e => e.haccpStatus !== undefined);
+  const pending  = tracked.filter(e => e.haccpStatus === 'pending').length;
+  const progress = tracked.filter(e => e.haccpStatus === 'progress').length;
+  const clean    = tracked.filter(e => e.haccpStatus === 'clean').length;
+  const total    = tracked.length;
+  document.getElementById('cntPending').textContent  = pending;
+  document.getElementById('cntProgress').textContent = progress;
+  document.getElementById('cntClean').textContent    = clean;
+  const pct = total > 0 ? Math.round(clean/total*100) : 0;
+  document.getElementById('progressBar').style.width = pct+'%';
+  document.getElementById('progressBar').style.background = pct===100 ? '#2e7d32' : pct>50 ? '#66bb6a' : '#43a047';
+  document.getElementById('progressLbl').textContent = `${clean} / ${total} zones nettoyées (${pct}%)`;
+}
+
+function resetAllPending(){
+  if(!confirm('Remettre toutes les zones en "À nettoyer" ?\nCela démarre une nouvelle session de nettoyage.')) return;
+  elements.forEach(el => { if(el.haccpStatus !== undefined) el.haccpStatus = 'pending'; });
+  render();
+  deselect();
+  showNotify('↺ Nouvelle session — toutes les zones à nettoyer');
+}
+
+// ════════════════════════════════════════════════════════════
+// MOUSE EVENTS — click for HACCP, drag for pan
+// ════════════════════════════════════════════════════════════
+svg.addEventListener('mousedown', onMouseDown);
+svg.addEventListener('mousemove', onMouseMove);
+svg.addEventListener('mouseup',   onMouseUp);
+svg.addEventListener('mouseleave',onMouseUp);
+svg.addEventListener('wheel',     onWheel, {passive:false});
+
+function onMouseDown(e){
+  if(e.button===1||e.button===2){ e.preventDefault(); startPan(e); return; }
+  _mouseDownPt = svgPt(e);
+  startPan(e);
+}
+
+function startPan(e){
+  isPanning = false; // potential pan, not confirmed yet
+  _panRawStart = {x:e.clientX, y:e.clientY};
+  _panStart    = {x:panX, y:panY};
+}
+
+function onMouseMove(e){
+  const pt = svgPt(e);
+  document.getElementById('chX').textContent = (pt.x/S).toFixed(2)+' m';
+  document.getElementById('chY').textContent = (pt.y/S).toFixed(2)+' m';
+  const elG = e.target.closest('[data-id]');
+  document.getElementById('chEl').textContent = elG ? getEl(elG.dataset.id)?.label || elG.dataset.id : '—';
+
+  const dx = e.clientX - _panRawStart.x;
+  const dy = e.clientY - _panRawStart.y;
+  if(!isPanning && (Math.abs(dx)>4 || Math.abs(dy)>4)){
+    isPanning = true;
+    svg.classList.add('panning');
+  }
+  if(isPanning){
+    panX = _panStart.x - dx/zoom;
+    panY = _panStart.y - dy/zoom;
+    updateViewBox();
+  }
+}
+
+function onMouseUp(e){
+  const wasPanning = isPanning;
+  isPanning = false;
+  svg.classList.remove('panning');
+
+  if(!wasPanning && e.type !== 'mouseleave'){
+    // It was a click
+    const elG = e.target.closest('[data-id]');
+    if(elG && elG.dataset.id){
+      const id = elG.dataset.id;
+      if(selectedId === id){
+        deselect();
+      } else {
+        select(id);
+      }
+    } else {
+      deselect();
+    }
+  }
+  _mouseDownPt = null;
+}
+
+function onWheel(e){
+  e.preventDefault();
+  const pt = svgPt(e);
+  const factor = e.deltaY < 0 ? 1.12 : .88;
+  setZoom(zoom*factor, pt.x, pt.y);
+}
+
+// ════════════════════════════════════════════════════════════
+// LEGEND
+// ════════════════════════════════════════════════════════════
+function buildLegend(){
+  const legendEl = document.getElementById('legend-items');
+  if(!legendEl) return;
+  const tracked = elements.filter(e => e.haccpStatus !== undefined);
+  if(!tracked.length){ legendEl.innerHTML=''; return; }
+  const pending  = tracked.filter(e => e.haccpStatus==='pending').length;
+  const progress = tracked.filter(e => e.haccpStatus==='progress').length;
+  const clean    = tracked.filter(e => e.haccpStatus==='clean').length;
+  legendEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+      <div style="width:14px;height:9px;background:#ffebee;border:1.5px solid #e53935;border-radius:1px;flex-shrink:0"></div>
+      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">À nettoyer</span>
+      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${pending}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+      <div style="width:14px;height:9px;background:#fff3e0;border:1.5px solid #fb8c00;border-radius:1px;flex-shrink:0"></div>
+      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">En cours</span>
+      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${progress}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px">
+      <div style="width:14px;height:9px;background:#e8f5e9;border:1.5px solid #43a047;border-radius:1px;flex-shrink:0"></div>
+      <span style="color:#333;font-family:'DM Sans',sans-serif;font-size:9px">Nettoyé</span>
+      <span style="color:#888;font-family:'JetBrains Mono',monospace;font-size:8px;margin-left:auto">×${clean}</span>
+    </div>`;
+}
+
+// ════════════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ════════════════════════════════════════════════════════════
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName.toLowerCase();
+  if(tag==='input'||tag==='textarea') return;
+  if(e.key==='Escape'){ deselect(); return; }
+  if(e.key==='f'){ fitView(); return; }
+  if(e.key==='+'||e.key==='='){ setZoom(zoom*1.15); return; }
+  if(e.key==='-'){ setZoom(zoom*.85); return; }
+  // Quick-set HACCP status on selected element
+  if(selectedId){
+    if(e.key==='1'){ setHaccpStatus(selectedId,'pending');  return; }
+    if(e.key==='2'){ setHaccpStatus(selectedId,'progress'); return; }
+    if(e.key==='3'){ setHaccpStatus(selectedId,'clean');    return; }
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// COORD HUD
+// ════════════════════════════════════════════════════════════
+svg.addEventListener('mouseenter', () => document.getElementById('coordHud').classList.add('vis'));
+svg.addEventListener('mouseleave', () => document.getElementById('coordHud').classList.remove('vis'));
+
+// ════════════════════════════════════════════════════════════
+// PANEL RESIZE
+// ════════════════════════════════════════════════════════════
+(function(){
+  const handle = document.getElementById('panelResizeHandle');
+  const panel  = document.getElementById('panelRight');
+  let resizing=false, startX=0, startW=0;
+  handle.addEventListener('mousedown', e => {
+    resizing=true; startX=e.clientX; startW=panel.offsetWidth;
+    handle.classList.add('dragging');
+    document.body.style.userSelect='none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if(!resizing) return;
+    panel.style.width = Math.max(220, Math.min(520, startW-(e.clientX-startX)))+'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if(resizing){ resizing=false; handle.classList.remove('dragging'); document.body.style.userSelect=''; }
+  });
+})();
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+function init(){
+  // Date header
+  const d = new Date();
+  document.getElementById('dateHdr').textContent =
+    d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  // Keyboard hint in status
+  document.getElementById('stRight').textContent = '1=À nettoyer · 2=En cours · 3=Nettoyé · F=Ajuster vue';
+  // Render
+  updateViewBox();
+  render();
+  // Fit after layout
+  requestAnimationFrame(() => fitView());
+}
+
+init();
+</script>
+</body>
+</html>
