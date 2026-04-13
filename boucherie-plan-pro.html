@@ -82,6 +82,7 @@ button.tb:hover{border-color:#999;background:#f5f5f0}
 
 /* ── SVG STYLES ── */
 .plan-el{cursor:pointer}
+.plan-el.no-haccp{cursor:default;pointer-events:none}
 
 /* ── STATUS BAR ── */
 .app-status{height:24px;flex-shrink:0;background:var(--dark);color:#888;display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-family:var(--mono);font-size:9px}
@@ -262,10 +263,7 @@ let _mouseDownPt = null; // to distinguish click vs drag
 // DATA MODEL — Plan boucherie + statuts HACCP
 // ════════════════════════════════════════════════════════════
 let elements = [
-  // ── ZONES (toutes tracées HACCP) ──
-  {id:'jardinet',    type:'zone', label:'JARDINET',        sublabel:'8,26 m × 3,27 m',
-   x:40/S, y:152/S, w:537/S, h:213/S, fill:'#e8f5e9',stroke:'#1a1a1a',sw:1.8,dash:'7 4',pattern:'hatch',lc:'#2e7d32',
-   haccpStatus:'pending'},
+  // ── ZONES tracées HACCP ──
   {id:'frigo2',      type:'zone', label:'FRIGO 2',         sublabel:'4 m × 1,55 m',
    x:40/S, y:30/S,  w:260/S, h:101/S, fill:'#dceefb',stroke:'#1a1a1a',sw:2.2,icon:'❄️',
    haccpStatus:'pending'},
@@ -283,23 +281,23 @@ let elements = [
    haccpStatus:'pending'},
   {id:'vente',       type:'zone', label:'',                sublabel:'',
    x:895/S,y:30/S,  w:377/S, h:290/S, fill:'#fff8e1',stroke:'#1a1a1a',sw:3,
-   haccpStatus:'pending'},
-  {id:'zone-boucher',type:'zone', label:'Zone boucher',    sublabel:'4,35 m × 1,30 m',
-   x:895/S,y:66/S,  w:377/S, h:85/S,  fill:'#fff3e0',stroke:'#8d6e63',sw:.6,dash:'5 3',lc:'#8d6e63',
-   haccpStatus:'pending'},
-  {id:'espace-arriere',type:'zone',label:'Espace arrière', sublabel:'',
-   x:895/S,y:151/S, w:55/S,  h:88/S,  fill:'#f5f5f0',stroke:'#999',sw:1,dash:'4 3',lc:'#999',
-   haccpStatus:'pending'},
+   haccpStatus:'pending', haccpLabel:'Espace client'},
 
-  // ── ÉQUIPEMENTS (gros équipements tracés HACCP) ──
+  // ── ZONES non suivies (décor uniquement, non cliquables) ──
+  {id:'jardinet',    type:'zone', label:'JARDINET',        sublabel:'8,26 m × 3,27 m',
+   x:40/S, y:152/S, w:537/S, h:213/S, fill:'#e8f5e9',stroke:'#1a1a1a',sw:1.8,dash:'7 4',pattern:'hatch',lc:'#2e7d32'},
+  {id:'zone-boucher',type:'zone', label:'Zone boucher',    sublabel:'4,35 m × 1,30 m',
+   x:895/S,y:66/S,  w:377/S, h:85/S,  fill:'#fff3e0',stroke:'#8d6e63',sw:.6,dash:'5 3',lc:'#8d6e63'},
+  {id:'espace-arriere',type:'zone',label:'Espace arrière', sublabel:'',
+   x:895/S,y:151/S, w:55/S,  h:88/S,  fill:'#f5f5f0',stroke:'#999',sw:1,dash:'4 3',lc:'#999'},
+
+  // ── ÉQUIPEMENTS non suivis (décor uniquement) ──
   {id:'meuble-bas',  type:'equip',_cat:'Mobilier vente', label:'MEUBLE BAS',   sublabel:'55 cm prof.',
    x:895/S,y:30/S,  w:340/S, h:36/S,  fill:'#d7ccc8',stroke:'#5d4037',sw:1.2},
   {id:'billot',      type:'equip',_cat:'Préparation',    label:'Billot',       sublabel:'',
-   x:700/S,y:186/S, w:48/S,  h:22/S,  fill:'#ffccbc',stroke:'#bf360c',sw:1.2,
-   haccpStatus:'pending'},
+   x:700/S,y:186/S, w:48/S,  h:22/S,  fill:'#ffccbc',stroke:'#bf360c',sw:1.2},
   {id:'plonge',      type:'equip',_cat:'Préparation',    label:'Plonge',       sublabel:'',
-   x:640/S,y:186/S, w:42/S,  h:22/S,  fill:'#bbdefb',stroke:'#1565c0',sw:1.2,
-   haccpStatus:'pending'},
+   x:640/S,y:186/S, w:42/S,  h:22/S,  fill:'#bbdefb',stroke:'#1565c0',sw:1.2},
   {id:'caisse',      type:'equip',_cat:'Mobilier vente', label:'CAISSE',       sublabel:'mobile · 0,82m',
    x:895/S,y:239/S, w:55/S,  h:81/S,  fill:'#c8e6c9',stroke:'#2e7d32',sw:2},
 
@@ -477,9 +475,8 @@ function renderZone(el){
   const fsize=el.fs||(w<80||h<40?10:14);
   const autoSub=el.w&&el.h?`${el.w.toFixed(2)} m × ${el.h.toFixed(2)} m`:'';
   const sublabel=el.showSub===false?'':(el.sublabel||autoSub);
-  const isSelected=selectedId===el.id;
-  const cursorClass=el.haccpStatus?'plan-el':'plan-el';
-  return`<g class="${cursorClass}" data-id="${el.id}" data-type="zone">
+  const elClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
+  return`<g class="${elClass}" data-id="${el.id}" data-type="zone">
     <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}" ${dash} rx="0"/>
     ${el.pattern==='hatch'?`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#ha)" opacity=".18" pointer-events="none"/>`:''}
     ${el.label?`<text x="${cx}" y="${cy-(sublabel?7:0)}" font-family="'DM Sans'" font-size="${fsize}" font-weight="700" fill="${lc}" text-anchor="middle" dominant-baseline="middle" pointer-events="none">${el.label}</text>`:''}
@@ -513,7 +510,8 @@ function renderEquip(el){
   } else {
     shapeEl=`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" rx="2"/>`;
   }
-  return`<g class="plan-el" data-id="${el.id}" data-type="equip"${rot?` transform="rotate(${rot},${cx},${cy})"`:''}>
+  const eqClass = el.haccpStatus ? 'plan-el' : 'plan-el no-haccp';
+  return`<g class="${eqClass}" data-id="${el.id}" data-type="equip"${rot?` transform="rotate(${rot},${cx},${cy})"`:''}>
     ${shapeEl}
     ${el.icon?`<text x="${x+8}" y="${y+14}" font-size="10" pointer-events="none">${el.icon}</text>`:''}
     ${el.label?`<text x="${cx}" y="${cy+1}" font-family="'DM Sans'" font-size="${fsize}" fill="${el.lc||'#333'}" text-anchor="middle" dominant-baseline="middle" font-weight="${fw}" pointer-events="none">${el.label}</text>`:''}
@@ -671,7 +669,7 @@ function select(id){
   selectedId = id;
   const el = getEl(id);
   renderHandles();
-  if(el) document.getElementById('stMid').textContent = el.label || el.id;
+  if(el) document.getElementById('stMid').textContent = el.haccpLabel || el.label || el.id;
   showHaccpPanel(el);
 }
 function deselect(){
@@ -698,7 +696,7 @@ function showHaccpPanel(el){
   panel.innerHTML = `
     <div class="ps">
       <div class="ps-title">Zone sélectionnée</div>
-      <div class="haccp-zone-name">${el.label || el.id}</div>
+      <div class="haccp-zone-name">${el.haccpLabel || el.label || el.id}</div>
       ${sublabel ? `<div class="haccp-zone-sub">${sublabel}</div>` : '<div style="margin-bottom:10px"></div>'}
       <div class="haccp-current">
         <span class="haccp-badge ${status}">Statut actuel : ${statusLabel}</span>
@@ -811,14 +809,16 @@ function onMouseUp(e){
   svg.classList.remove('panning');
 
   if(!wasPanning && e.type !== 'mouseleave'){
-    // It was a click
+    // It was a click — on ne sélectionne que les éléments suivis HACCP
     const elG = e.target.closest('[data-id]');
     if(elG && elG.dataset.id){
       const id = elG.dataset.id;
-      if(selectedId === id){
-        deselect();
+      const el = getEl(id);
+      if(el && el.haccpStatus !== undefined){
+        if(selectedId === id) deselect();
+        else select(id);
       } else {
-        select(id);
+        deselect();
       }
     } else {
       deselect();
