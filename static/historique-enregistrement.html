@@ -749,22 +749,13 @@
         margin: 0mm;
       }
 
-      html, body {
-        height: auto;
-        overflow: hidden;
-      }
-
-      body * { visibility: hidden; }
-
-      #print-label, #print-label * {
-        visibility: visible;
+      body > *:not(#print-label) {
+        display: none !important;
       }
 
       #print-label {
-        display: block;
-        position: fixed;
-        left: 0;
-        top: 0;
+        display: block !important;
+        position: static;
         width: 100%;
         box-sizing: border-box;
         padding: 2mm;
