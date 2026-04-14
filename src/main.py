@@ -32,6 +32,7 @@ from src.api.routes_admin      import router as router_admin
 from src.api.routes_ouvertures    import router as router_ouvertures
 from src.api.routes_incidents     import router as router_incidents
 from src.api.routes_fabrication   import router as router_fabrication
+from src.api.routes_nettoyage    import router as router_nettoyage
 
 load_dotenv()
 
@@ -111,6 +112,9 @@ app.include_router(router_incidents)
 
 # Routes API — Phase 3
 app.include_router(router_fabrication)
+
+# Routes API — Nettoyage
+app.include_router(router_nettoyage)
 
 
 # ---------------------------------------------------------------------------

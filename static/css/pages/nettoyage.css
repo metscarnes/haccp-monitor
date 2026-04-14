@@ -1,0 +1,333 @@
+/* ============================================================
+   NETTOYAGE — Checklist plan de nettoyage & désinfection
+   Mobile-first / Tablette.
+   Design tokens from tokens.css.
+   ============================================================ */
+
+/* ---- Layout racine ---- */
+.nettoyage-body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ---- En-tête ---- */
+.nettoyage-header {
+  flex-shrink: 0;
+  background: var(--color-text);
+  color: var(--color-bg);
+  height: 60px;
+  padding: 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  z-index: var(--z-header);
+  position: sticky;
+  top: 0;
+}
+
+.nettoyage-btn-retour {
+  background: rgba(255,255,255,.12);
+  border: 1.5px solid rgba(255,255,255,.30);
+  color: var(--color-bg);
+  padding: .45rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  transition: background .15s;
+}
+.nettoyage-btn-retour:hover,
+.nettoyage-btn-retour:active { background: rgba(255,255,255,.22); }
+
+.nettoyage-header-centre {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.nettoyage-titre {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+.nettoyage-date {
+  font-size: var(--text-xs);
+  opacity: .75;
+  text-transform: capitalize;
+}
+
+/* ---- Compteur ---- */
+.nettoyage-compteur {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.nettoyage-compteur-nb {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-secondary);
+  transition: color .25s;
+}
+.nettoyage-compteur-nb--complet { color: #5CB85C; }
+.nettoyage-compteur-label {
+  font-size: 0.6rem;
+  opacity: .7;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+/* ---- Barre progression ---- */
+.nettoyage-progress-bar {
+  height: 4px;
+  background: rgba(61,32,8,.12);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.nettoyage-progress-fill {
+  height: 100%;
+  background: var(--color-ok);
+  transition: width .3s ease;
+  width: 0%;
+}
+
+/* ---- Contenu principal (scrollable) ---- */
+.nettoyage-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+  padding-bottom: 140px; /* espace pour la barre de validation */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- Carte zone ---- */
+.nettoyage-zone {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.nettoyage-zone-titre {
+  background: var(--color-accent);
+  color: var(--color-bg);
+  padding: .75rem 1rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nettoyage-zone-badge {
+  background: rgba(255,255,255,.18);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  padding: .15rem .55rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ---- Ligne de tâche (toggle) ---- */
+.nettoyage-tache {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: 1rem 1rem;
+  border-top: 1px solid rgba(61,32,8,.07);
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, color .15s;
+  min-height: var(--btn-min);
+}
+.nettoyage-tache:first-of-type { border-top: none; }
+
+.nettoyage-tache:hover,
+.nettoyage-tache:active { background: rgba(61,32,8,.04); }
+
+.nettoyage-tache--done {
+  background: #EBF7ED;
+  color: #2D6A3F;
+}
+.nettoyage-tache--done:hover,
+.nettoyage-tache--done:active { background: #DAEEE0; }
+
+/* Icône check */
+.nettoyage-tache-check {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(61,32,8,.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background .2s, border-color .2s;
+}
+.nettoyage-tache--done .nettoyage-tache-check {
+  background: var(--color-ok);
+  border-color: var(--color-ok);
+  color: #fff;
+}
+
+/* Textes tâche */
+.nettoyage-tache-infos { flex: 1; min-width: 0; }
+.nettoyage-tache-nom {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.nettoyage-tache-meta {
+  font-size: var(--text-xs);
+  opacity: .65;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nettoyage-tache--done .nettoyage-tache-meta { opacity: .5; }
+
+/* Badge fréquence */
+.nettoyage-badge-freq {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: .2rem .55rem;
+  border-radius: var(--radius-pill);
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+.nettoyage-badge-freq--quotidien {
+  background: rgba(107,58,31,.10);
+  color: var(--color-accent);
+}
+.nettoyage-badge-freq--hebdomadaire {
+  background: rgba(232,145,58,.15);
+  color: #9B5E0A;
+}
+
+/* ---- État de chargement / erreur ---- */
+.nettoyage-etat {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--color-offline);
+  font-size: var(--text-base);
+}
+
+/* ---- Barre de validation (sticky bottom) ---- */
+.nettoyage-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-card);
+  border-top: 2px solid rgba(61,32,8,.10);
+  padding: .75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  box-shadow: 0 -4px 16px rgba(61,32,8,.12);
+  z-index: var(--z-header);
+}
+
+.nettoyage-select-operateur {
+  flex: 1;
+  height: var(--tap-min);
+  border: 2px solid rgba(61,32,8,.20);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  padding: 0 .75rem;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.nettoyage-select-operateur:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.nettoyage-btn-valider {
+  flex-shrink: 0;
+  height: var(--tap-min);
+  padding: 0 1.25rem;
+  background: var(--color-ok);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+  white-space: nowrap;
+}
+.nettoyage-btn-valider:hover  { background: #25663B; }
+.nettoyage-btn-valider:active { transform: scale(.97); }
+.nettoyage-btn-valider:disabled {
+  background: var(--color-offline);
+  cursor: not-allowed;
+}
+
+/* ---- Toast de confirmation ---- */
+.nettoyage-toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  background: var(--color-ok);
+  color: #fff;
+  padding: .75rem 1.5rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: var(--text-base);
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  z-index: calc(var(--z-modal) + 1);
+  opacity: 0;
+  transition: opacity .25s, transform .25s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.nettoyage-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.nettoyage-toast--erreur { background: var(--color-alert); }
+
+/* ---- Responsive tablette ---- */
+@media (min-width: 600px) {
+  .nettoyage-main {
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+    padding: var(--space-6);
+    padding-bottom: 120px;
+  }
+  .nettoyage-footer {
+    max-width: 800px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+}
