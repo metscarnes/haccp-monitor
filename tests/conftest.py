@@ -69,7 +69,6 @@ async def db():
             "ouvertures",                          # → produits, personnel, reception_lignes
             "tache_validations",                   # → tache_types
             "tache_types",
-            "plan_nettoyage",
             "pieges",
             "non_conformites_fournisseur",         # → receptions, reception_lignes
             "reception_lignes",                    # → receptions, produits, fournisseurs

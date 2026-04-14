@@ -337,17 +337,6 @@ CREATE TABLE IF NOT EXISTS pieges (
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
-CREATE TABLE IF NOT EXISTS plan_nettoyage (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id       INTEGER NOT NULL,
-    local             TEXT    NOT NULL,
-    surface_equipement TEXT   NOT NULL,
-    frequence         TEXT    NOT NULL,
-    actif             BOOLEAN DEFAULT 1,
-    UNIQUE(boutique_id, local, surface_equipement, frequence),
-    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
-);
-
 -- ===========================================================================
 -- PHASE 2 — Module Ouvertures
 -- ===========================================================================
@@ -476,16 +465,6 @@ INSERT OR IGNORE INTO pieges (boutique_id, type, identifiant, localisation) VALU
 (1, 'rongeur', 'P2', 'Fond laboratoire'),
 (1, 'oiseau',  'P3', 'Entrée boutique');
 
--- Plan de nettoyage par défaut (boutique 1)
-INSERT OR IGNORE INTO plan_nettoyage (boutique_id, local, surface_equipement, frequence) VALUES
-(1, 'Laboratoire',  'Plan de travail inox',        'quotidien'),
-(1, 'Laboratoire',  'Sol laboratoire',              'quotidien'),
-(1, 'Boutique',     'Vitrine réfrigérée',           'quotidien'),
-(1, 'Boutique',     'Sol boutique',                 'quotidien'),
-(1, 'Laboratoire',  'Chambre froide 1',             'hebdomadaire'),
-(1, 'Laboratoire',  'Chambre froide 2',             'hebdomadaire'),
-(1, 'Laboratoire',  'Hotte aspiration',             'mensuel'),
-(1, 'Boutique',     'Trancheur',                    'quotidien');
 """
 
 # ---------------------------------------------------------------------------
@@ -2296,7 +2275,7 @@ async def get_taches_en_retard(
 
 
 # ===========================================================================
-# PHASE 2 — Admin : pièges + plan nettoyage
+# PHASE 2 — Admin : pièges
 # ===========================================================================
 
 async def get_pieges(db: aiosqlite.Connection, boutique_id: int) -> list[dict]:
@@ -2312,24 +2291,6 @@ async def create_piege(db: aiosqlite.Connection, data: dict) -> int:
     cursor = await db.execute(
         "INSERT INTO pieges (boutique_id, type, identifiant, localisation) VALUES (?, ?, ?, ?)",
         (data["boutique_id"], data["type"], data["identifiant"], data.get("localisation")),
-    )
-    await db.commit()
-    return cursor.lastrowid
-
-
-async def get_plan_nettoyage(db: aiosqlite.Connection, boutique_id: int) -> list[dict]:
-    cursor = await db.execute(
-        "SELECT * FROM plan_nettoyage WHERE boutique_id = ? AND actif = 1 ORDER BY local, frequence",
-        (boutique_id,),
-    )
-    rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
-
-
-async def create_plan_nettoyage_item(db: aiosqlite.Connection, data: dict) -> int:
-    cursor = await db.execute(
-        "INSERT INTO plan_nettoyage (boutique_id, local, surface_equipement, frequence) VALUES (?, ?, ?, ?)",
-        (data["boutique_id"], data["local"], data["surface_equipement"], data["frequence"]),
     )
     await db.commit()
     return cursor.lastrowid

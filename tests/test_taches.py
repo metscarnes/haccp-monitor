@@ -247,20 +247,6 @@ async def test_ajouter_piege(db):
 
 
 # ---------------------------------------------------------------------------
-# Tests unitaires — plan nettoyage
-# ---------------------------------------------------------------------------
-
-@pytest.mark.anyio
-async def test_plan_nettoyage_seed(db):
-    from src.database import get_plan_nettoyage
-    plan = await get_plan_nettoyage(db, 1)
-    assert len(plan) >= 5
-    frequences = {p["frequence"] for p in plan}
-    assert "quotidien" in frequences
-    assert "hebdomadaire" in frequences
-
-
-# ---------------------------------------------------------------------------
 # Tests API
 # ---------------------------------------------------------------------------
 
@@ -347,9 +333,3 @@ async def test_api_admin_pieges(app_client):
     assert r.status_code == 200
     assert len(r.json()) >= 3
 
-
-@pytest.mark.anyio
-async def test_api_admin_plan_nettoyage(app_client):
-    r = await app_client.get("/api/admin/plan-nettoyage")
-    assert r.status_code == 200
-    assert len(r.json()) >= 5

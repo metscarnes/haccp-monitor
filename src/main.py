@@ -173,14 +173,6 @@ if STATIC_DIR.exists():
     async def index():
         return FileResponse(str(STATIC_DIR / "index.html"))
 
-    @app.get("/haccp/plan", include_in_schema=False)
-    async def plan_haccp():
-        """Dashboard HACCP interactif — Plan de nettoyage des locaux."""
-        path = BASE_DIR / "boucherie-plan-pro.html"
-        if path.exists():
-            return FileResponse(str(path))
-        return RedirectResponse("/")
-
     @app.get("/{page}.html", include_in_schema=False)
     async def html_page(page: str):
         """Sert tout fichier .html de static/ à la racine de l'app.

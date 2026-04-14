@@ -1,13 +1,11 @@
 """
-routes_admin.py — Configuration admin (personnel, pièges, plan nettoyage)
+routes_admin.py — Configuration admin (personnel, pièges)
 
 GET    /api/admin/personnel             → liste du personnel
 POST   /api/admin/personnel             → ajouter un membre
 PUT    /api/admin/personnel/{id}        → modifier
 GET    /api/admin/pieges                → configuration des pièges
 POST   /api/admin/pieges                → ajouter un piège
-GET    /api/admin/plan-nettoyage        → plan de nettoyage
-POST   /api/admin/plan-nettoyage        → ajouter une surface
 """
 
 from typing import Optional
@@ -19,7 +17,6 @@ from src.database import (
     get_db,
     get_personnel, create_personnel, update_personnel,
     get_pieges, create_piege,
-    get_plan_nettoyage, create_plan_nettoyage_item,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -44,12 +41,6 @@ class PiegeCreate(BaseModel):
     type: str           # "rongeur" | "oiseau"
     identifiant: str    # "P1", "P2", ...
     localisation: Optional[str] = None
-
-
-class PlanNettoyageCreate(BaseModel):
-    local: str
-    surface_equipement: str
-    frequence: str      # "quotidien" | "hebdomadaire" | "mensuel"
 
 
 # ---------------------------------------------------------------------------
@@ -98,21 +89,3 @@ async def ajouter_piege(body: PiegeCreate):
         row = await cursor.fetchone()
     return dict(row) if row else {"id": pid}
 
-
-# ---------------------------------------------------------------------------
-# Plan de nettoyage
-# ---------------------------------------------------------------------------
-
-@router.get("/plan-nettoyage")
-async def lister_plan_nettoyage():
-    async with get_db() as db:
-        return await get_plan_nettoyage(db, BOUTIQUE_ID)
-
-
-@router.post("/plan-nettoyage", status_code=201)
-async def ajouter_surface(body: PlanNettoyageCreate):
-    async with get_db() as db:
-        sid = await create_plan_nettoyage_item(db, {"boutique_id": BOUTIQUE_ID, **body.model_dump()})
-        cursor = await db.execute("SELECT * FROM plan_nettoyage WHERE id = ?", (sid,))
-        row = await cursor.fetchone()
-    return dict(row) if row else {"id": sid}
