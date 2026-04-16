@@ -9,57 +9,48 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="stylesheet" href="/static/css/reset.css">
   <link rel="stylesheet" href="/static/css/tokens.css">
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/components.css">
-  <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/nettoyage.css">
 </head>
-<body class="nettoyage-body">
+<body class="nett-body">
 
-  <!-- ============================================================
-       EN-TÊTE
-  ============================================================= -->
-  <header class="nettoyage-header">
-    <a href="/hub.html" class="nettoyage-btn-retour" aria-label="Retour accueil">← Hub</a>
-    <div class="nettoyage-header-centre">
-      <div class="nettoyage-titre">NETTOYAGE</div>
-      <div id="nett-date" class="nettoyage-date" aria-live="polite"></div>
-    </div>
-    <div class="nettoyage-compteur" aria-live="polite" aria-label="Avancement">
-      <div class="nettoyage-compteur-nb" id="nett-compteur-nb">0</div>
-      <div class="nettoyage-compteur-label" id="nett-compteur-label">/ 0 fait</div>
+  <!-- ── BARRE DE CONTRÔLE (sticky) ── -->
+  <header class="nett-bar">
+    <a href="/hub.html" class="nett-retour">← Hub</a>
+    <div class="nett-bar-date" id="display-date"></div>
+    <div class="nett-bar-actions">
+      <select id="operator-select" class="nett-select">
+        <option value="">👤 Opérateur…</option>
+        <option value="Ulysse">Ulysse</option>
+        <option value="Campi">Campi</option>
+      </select>
+      <button id="btn-valider" class="nett-btn-valider">✅ VALIDER LE NETTOYAGE</button>
     </div>
   </header>
 
-  <!-- Barre de progression -->
-  <div class="nettoyage-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="nett-progress-bar">
-    <div class="nettoyage-progress-fill" id="nett-progress-fill"></div>
+  <!-- ── TABLEAU ── -->
+  <div class="nett-table-wrap">
+    <table class="nett-table" id="planning-table">
+      <thead>
+        <tr>
+          <th class="nett-th-secteur">Secteur</th>
+          <th class="nett-th-quoi">Quoi</th>
+          <th class="nett-th-quand">Quand</th>
+          <th class="nett-th-comment">Produit</th>
+          <th class="nett-th-day" data-day="1">Lun</th>
+          <th class="nett-th-day" data-day="2">Mar</th>
+          <th class="nett-th-day" data-day="3">Mer</th>
+          <th class="nett-th-day" data-day="4">Jeu</th>
+          <th class="nett-th-day" data-day="5">Ven</th>
+          <th class="nett-th-day" data-day="6">Sam</th>
+          <th class="nett-th-day" data-day="0">Dim</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
   </div>
 
-  <!-- ============================================================
-       CONTENU PRINCIPAL — zones injectées par JS
-  ============================================================= -->
-  <main class="nettoyage-main" id="nett-main" aria-label="Checklist de nettoyage">
-    <div class="nettoyage-etat" id="nett-etat">Chargement…</div>
-  </main>
-
-  <!-- ============================================================
-       PIED DE PAGE — Opérateur + bouton validation
-  ============================================================= -->
-  <footer class="nettoyage-footer">
-    <select id="nett-operateur" class="nettoyage-select-operateur" aria-label="Sélectionner l'opérateur">
-      <option value="">👤 Opérateur…</option>
-      <option value="Ulysse">Ulysse</option>
-      <option value="Mehdi">Mehdi</option>
-      <option value="Campi">Campi</option>
-    </select>
-    <button id="nett-btn-valider" class="nettoyage-btn-valider" disabled>
-      ✅ Valider la journée
-    </button>
-  </footer>
-
-  <!-- Toast de notification -->
-  <div id="nett-toast" class="nettoyage-toast" role="status" aria-live="polite"></div>
+  <!-- Toast -->
+  <div id="nett-toast" class="nett-toast" role="status" aria-live="polite"></div>
 
   <script src="/static/js/nettoyage.js"></script>
 </body>
