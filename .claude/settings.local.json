@@ -33,7 +33,11 @@
       "Bash(python -c \"import ast, sys; ast.parse\\(open\\('src/api/routes_nettoyage.py'\\).read\\(\\)\\); print\\('routes_nettoyage.py OK'\\)\")",
       "Bash(python -c ' *)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_nuisibles.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('src/main.py'\\).read\\(\\)\\); print\\('main.py OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/main.py'\\).read\\(\\)\\); print\\('main.py OK'\\)\")",
+      "Bash(ls -la \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/\"*.db*)",
+      "Bash(ls -la \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/\"*.db-wal)",
+      "Bash(ls -la \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/\"*.db-shm)",
+      "Bash(ls *.py)"
     ]
   }
 }
