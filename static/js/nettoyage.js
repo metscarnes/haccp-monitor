@@ -23,9 +23,29 @@ const elBtn      = document.getElementById('btn-valider');
 const elTbody    = document.getElementById('table-body');
 const elToast    = document.getElementById('nett-toast');
 
+// ── Chargement du personnel (même source que le reste de l'app) ──
+async function chargerPersonnel() {
+  try {
+    const res = await fetch('/api/admin/personnel');
+    if (!res.ok) throw new Error();
+    const personnes = await res.json();
+    personnes
+      .filter(p => p.actif !== false)
+      .forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.prenom;
+        opt.textContent = p.prenom;
+        elSelect.appendChild(opt);
+      });
+  } catch {
+    // Fallback silencieux : le select reste vide avec le placeholder
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   identifierJour();
+  chargerPersonnel();
   chargerTaches();
   elBtn.addEventListener('click', validerJournee);
 });
@@ -76,8 +96,8 @@ function genererTableau() {
         html += `<td class="nett-secteur-cell" rowspan="${zone.taches.length}">${zone.zone}</td>`;
       }
 
-      // Quoi
-      html += `<td class="nett-quoi-cell">${task.nom_tache}</td>`;
+      // Quoi (title = texte complet au survol si tronqué)
+      html += `<td class="nett-quoi-cell" title="${task.nom_tache}">${task.nom_tache}</td>`;
 
       // Quand
       const isHebdo = task.frequence.toLowerCase().includes('hebdo');
