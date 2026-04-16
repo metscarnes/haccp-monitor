@@ -156,7 +156,8 @@
 .nett-th-quoi    { width: 120px; max-width: 120px; }
 .nett-th-quand   { width: 48px; }
 .nett-th-comment { width: 72px; }
-.nett-th-day     { width: 38px; }
+.nett-th-day     { width: 38px; cursor: pointer; user-select: none; }
+.nett-th-day:hover { background-color: #c97a30 !important; }
 
 /* ── Cellule Secteur (verticale, fusionnée) ── */
 .nett-secteur-cell {

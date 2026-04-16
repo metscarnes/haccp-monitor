@@ -4,7 +4,8 @@
    Au Comptoir des Lilas — Mets Carnés Holding
 
    - Tableau Secteur / Quoi / Quand / Comment / Lun→Dim
-   - 1 clic "Valider" = coche la colonne du jour
+   - Clic sur colonne jour = sélectionne ce jour pour validation
+   - 1 clic "Valider" = coche la colonne du jour sélectionné
    - Hebdo = coché uniquement le Samedi (jour 6)
    ============================================================ */
 
@@ -12,18 +13,32 @@ const JOUR_HEBDO = 6; // Samedi = jour de grand nettoyage
 
 const JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
-let zonesData    = [];   // données API
-let todayIndex   = 0;    // 0=Dim, 1=Lun … 6=Sam
-let allTaskIds   = [];   // [{id, freq}] pour toutes les lignes
+let zonesData        = [];   // données API
+let todayIndex       = 0;    // 0=Dim, 1=Lun … 6=Sam (jour réel)
+let selectedDayIndex = 0;    // jour sélectionné pour validation (modifiable par clic)
+let allTaskIds       = [];   // [{id, freq}] pour toutes les lignes
 
 // ── DOM ──────────────────────────────────────────────────────
-const elDate     = document.getElementById('display-date');
-const elSelect   = document.getElementById('operator-select');
-const elBtn      = document.getElementById('btn-valider');
-const elTbody    = document.getElementById('table-body');
-const elToast    = document.getElementById('nett-toast');
+const elDate   = document.getElementById('display-date');
+const elSelect = document.getElementById('operator-select');
+const elBtn    = document.getElementById('btn-valider');
+const elTbody  = document.getElementById('table-body');
+const elToast  = document.getElementById('nett-toast');
 
-// ── Chargement du personnel (même source que le reste de l'app) ──
+// ── Date ISO locale pour un jour de la semaine en cours ──────
+// dayIndex : 0=Dim, 1=Lun … 6=Sam  →  retourne "YYYY-MM-DD" en heure locale
+function getDateForDay(dayIndex) {
+  const today = new Date();
+  const diff = dayIndex - today.getDay(); // négatif = jours passés, positif = futurs
+  const target = new Date(today);
+  target.setDate(today.getDate() + diff);
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, '0');
+  const d = String(target.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// ── Chargement du personnel ──────────────────────────────────
 async function chargerPersonnel() {
   try {
     const res = await fetch('/api/admin/personnel');
@@ -46,24 +61,21 @@ async function chargerPersonnel() {
 document.addEventListener('DOMContentLoaded', () => {
   identifierJour();
   chargerPersonnel();
-  chargerTaches(); // restaurerEtat() est appelé après la génération du tableau
+  chargerTaches();
   elBtn.addEventListener('click', validerJournee);
 });
 
 // ── Jour actuel ──────────────────────────────────────────────
 function identifierJour() {
   const d = new Date();
-  todayIndex = d.getDay(); // 0=Dim … 6=Sam
+  todayIndex       = d.getDay(); // 0=Dim … 6=Sam
+  selectedDayIndex = todayIndex;
 
   const opts = { weekday: 'long', day: 'numeric', month: 'long' };
   const txt  = d.toLocaleDateString('fr-FR', opts);
   elDate.textContent = 'Aujourd\'hui : ' + txt.charAt(0).toUpperCase() + txt.slice(1);
 
   elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
-
-  // Surligner les en-têtes du jour
-  document.querySelectorAll(`th[data-day="${todayIndex}"]`)
-    .forEach(th => th.classList.add('nett-today-col'));
 }
 
 // ── Charger depuis l'API ─────────────────────────────────────
@@ -73,34 +85,58 @@ async function chargerTaches() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     zonesData = await res.json();
     genererTableau();
-    await restaurerEtat(); // restaure l'état "Validé" si déjà fait aujourd'hui
+    attacherClicsJours();
+    await restaurerEtat(selectedDayIndex);
   } catch (err) {
     elTbody.innerHTML = `<tr><td colspan="11" style="padding:2rem;text-align:center;color:#888;">
       Erreur : ${err.message}</td></tr>`;
   }
 }
 
-// ── Restaurer l'état de validation au rechargement ───────────
-async function restaurerEtat() {
-  const today = new Date().toISOString().split('T')[0];
+// ── Clics sur les en-têtes de jour ───────────────────────────
+function attacherClicsJours() {
+  document.querySelectorAll('th[data-day]').forEach(th => {
+    th.addEventListener('click', async () => {
+      const day = parseInt(th.getAttribute('data-day'), 10);
+      if (day === selectedDayIndex) return;
+      selectedDayIndex = day;
+      mettreAJourJourSelectionne();
+      await restaurerEtat(selectedDayIndex);
+    });
+  });
+}
+
+// ── Mettre à jour la colonne surlignée + le bouton ───────────
+function mettreAJourJourSelectionne() {
+  document.querySelectorAll('.nett-today-col').forEach(el => el.classList.remove('nett-today-col'));
+  document.querySelectorAll(`[data-day="${selectedDayIndex}"]`)
+    .forEach(el => el.classList.add('nett-today-col'));
+
+  elBtn.disabled = false;
+  elBtn.classList.remove('nett-btn-valider--done');
+  elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[selectedDayIndex].toUpperCase()}`;
+  elSelect.disabled = false;
+}
+
+// ── Restaurer l'état de validation pour un jour donné ────────
+async function restaurerEtat(dayIndex) {
+  const dateStr = getDateForDay(dayIndex);
   try {
-    const res = await fetch(`/api/nettoyage/status?date=${today}`);
+    const res = await fetch(`/api/nettoyage/status?date=${dateStr}`);
     if (!res.ok) return;
     const data = await res.json();
     if (!data.valide) return;
 
-    // Remplir les cellules du jour validées
     const initiale = data.operateur ? data.operateur.charAt(0).toUpperCase() : '?';
     data.taches_ids.forEach(id => {
       const cell = document.querySelector(
-        `td.nett-day-cell[data-day="${todayIndex}"][data-id="${id}"]`
+        `td.nett-day-cell[data-day="${dayIndex}"][data-id="${id}"]`
       );
       if (cell) {
         cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
       }
     });
 
-    // Verrouiller le bouton et le select
     elBtn.disabled = true;
     elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
     elBtn.classList.add('nett-btn-valider--done');
@@ -123,31 +159,25 @@ function genererTableau() {
       const rowClass = even ? 'nett-row-even' : '';
       html += `<tr class="${rowClass}">`;
 
-      // Cellule secteur (fusionnée sur N lignes)
       if (taskIdx === 0) {
         html += `<td class="nett-secteur-cell" rowspan="${zone.taches.length}">${zone.zone}</td>`;
       }
 
-      // Quoi (title = texte complet au survol si tronqué)
       html += `<td class="nett-quoi-cell" title="${task.nom_tache}">${task.nom_tache}</td>`;
 
-      // Quand
       const isHebdo = task.frequence.toLowerCase().includes('hebdo');
       html += `<td class="nett-quand-cell ${isHebdo ? 'nett-quand-cell--hebdo' : ''}">${task.frequence}</td>`;
 
-      // Produit
       html += `<td class="nett-comment-cell">${task.methode_produit}</td>`;
 
-      // 7 colonnes jour (Lun=1, Mar=2 … Sam=6, Dim=0)
       const dayOrder = [1, 2, 3, 4, 5, 6, 0];
       dayOrder.forEach(day => {
-        const isToday = day === todayIndex;
-        const todayCls = isToday ? ' nett-today-col' : '';
-        html += `<td class="nett-day-cell${todayCls}" data-day="${day}" data-id="${task.id}" data-freq="${task.frequence}"></td>`;
+        const isSelected = day === selectedDayIndex;
+        const selectedCls = isSelected ? ' nett-today-col' : '';
+        html += `<td class="nett-day-cell${selectedCls}" data-day="${day}" data-id="${task.id}" data-freq="${task.frequence}"></td>`;
       });
 
       html += '</tr>';
-
       allTaskIds.push({ id: task.id, freq: task.frequence });
     });
   });
@@ -171,11 +201,11 @@ async function validerJournee() {
   );
   if (!ok) return;
 
-  const initiale = operateur.charAt(0).toUpperCase();
+  const initiale      = operateur.charAt(0).toUpperCase();
+  const dateAValider  = getDateForDay(selectedDayIndex);
 
-  // Collecter les IDs à valider + remplir les cellules
   const idsAValider = [];
-  const cellsDuJour = document.querySelectorAll(`td.nett-day-cell[data-day="${todayIndex}"]`);
+  const cellsDuJour = document.querySelectorAll(`td.nett-day-cell[data-day="${selectedDayIndex}"]`);
 
   cellsDuJour.forEach(cell => {
     const freq = cell.getAttribute('data-freq').toLowerCase();
@@ -184,23 +214,21 @@ async function validerJournee() {
     const isQuotidien = freq.includes('quotidien');
     const isHebdo     = freq.includes('hebdo');
 
-    if (isQuotidien || (isHebdo && todayIndex === JOUR_HEBDO)) {
+    if (isQuotidien || (isHebdo && selectedDayIndex === JOUR_HEBDO)) {
       cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
       idsAValider.push(id);
     }
   });
 
   if (idsAValider.length === 0) {
-    toast('Aucune tâche à valider pour aujourd\'hui.', true);
+    toast('Aucune tâche à valider pour ce jour.', true);
     return;
   }
 
-  // Verrouiller le bouton immédiatement (UI)
   elBtn.disabled = true;
   elBtn.textContent = '⏳ Envoi…';
   elSelect.disabled = true;
 
-  // Envoyer au backend
   try {
     const res = await fetch('/api/nettoyage/validation', {
       method: 'POST',
@@ -208,7 +236,8 @@ async function validerJournee() {
       body: JSON.stringify({
         operateur,
         taches_ids: idsAValider,
-        signature: 'OK',
+        date:       dateAValider,
+        signature:  'OK',
       }),
     });
 
@@ -224,9 +253,8 @@ async function validerJournee() {
 
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
-    // En cas d'erreur réseau, on re-déverrouille pour retenter
     elBtn.disabled = false;
-    elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
+    elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[selectedDayIndex].toUpperCase()}`;
     elSelect.disabled = false;
   }
 }

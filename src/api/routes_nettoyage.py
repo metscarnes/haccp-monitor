@@ -30,6 +30,7 @@ class ValidationNettoyage(BaseModel):
     operateur: str
     taches_ids: List[int]
     signature: str = "OK"
+    date: Optional[str] = None  # ISO "YYYY-MM-DD" ; si absent, on utilise la date du serveur
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ async def valider_nettoyage(body: ValidationNettoyage):
     if not body.taches_ids:
         raise HTTPException(400, "Aucune tâche sélectionnée")
 
-    aujourd_hui = date.today().isoformat()
+    aujourd_hui = body.date or _date.today().isoformat()
 
     async with get_db() as db:
         await db.execute("""
