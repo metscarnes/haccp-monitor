@@ -30,7 +30,8 @@
       "Bash(python diag_tracabilite.py)",
       "Bash(python diag_tracabilite.py --demo)",
       "Bash(python -m pytest tests/test_taches.py -q)",
-      "Bash(python -c \"import ast, sys; ast.parse\\(open\\('src/api/routes_nettoyage.py'\\).read\\(\\)\\); print\\('routes_nettoyage.py OK'\\)\")"
+      "Bash(python -c \"import ast, sys; ast.parse\\(open\\('src/api/routes_nettoyage.py'\\).read\\(\\)\\); print\\('routes_nettoyage.py OK'\\)\")",
+      "Bash(python -c ' *)"
     ]
   }
 }

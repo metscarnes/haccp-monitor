@@ -653,6 +653,45 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE receptions ADD COLUMN fournisseur_nom TEXT",
             # reception_lignes : fournisseur_nom pour saisies manuelles sans ID (v2.8)
             "ALTER TABLE reception_lignes ADD COLUMN fournisseur_nom TEXT",
+            # EET01 — Thermomètres de référence (v3.0)
+            """CREATE TABLE IF NOT EXISTS thermometres_ref (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id  INTEGER NOT NULL DEFAULT 1,
+                nom          TEXT    NOT NULL,
+                numero_serie TEXT,
+                actif        BOOLEAN DEFAULT 1,
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(boutique_id, nom)
+            )""",
+            # EET01 — Étalonnages (v3.0)
+            """CREATE TABLE IF NOT EXISTS etalonnages (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                reference           TEXT    NOT NULL DEFAULT 'EET01',
+                date_etalonnage     DATE    NOT NULL,
+                thermometre_ref_id  INTEGER NOT NULL,
+                temperature_mesuree REAL    NOT NULL,
+                conforme            INTEGER NOT NULL,
+                action_corrective   TEXT    NOT NULL,
+                operateur           TEXT    NOT NULL,
+                commentaire         TEXT,
+                created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (thermometre_ref_id) REFERENCES thermometres_ref(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_etalonnages_date ON etalonnages(date_etalonnage)",
+            # EET01 — Comparaisons sondes (v3.0)
+            """CREATE TABLE IF NOT EXISTS etalonnage_comparaisons (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                etalonnage_id   INTEGER NOT NULL,
+                enceinte_id     INTEGER NOT NULL,
+                enceinte_nom    TEXT    NOT NULL,
+                temp_zigbee     REAL    NOT NULL,
+                temp_reference  REAL    NOT NULL,
+                ecart           REAL    NOT NULL,
+                conforme        INTEGER NOT NULL,
+                created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (etalonnage_id) REFERENCES etalonnages(id),
+                FOREIGN KEY (enceinte_id)   REFERENCES enceintes(id)
+            )""",
         ]
         for sql in migrations:
             try:
