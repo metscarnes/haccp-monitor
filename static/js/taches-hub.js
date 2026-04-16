@@ -1,7 +1,7 @@
 'use strict';
 /* ============================================================
    taches-hub.js — Page intermédiaire Tâches HACCP
-   Affiche le statut de validation du nettoyage du jour.
+   Sous-modules : Nettoyage, Étalonnage thermomètres (EET01)
    ============================================================ */
 
 const REFRESH_MS = 60_000;
@@ -43,7 +43,7 @@ function setTuile(id, etat, html) {
 }
 
 // ── Tuile — Nettoyage ─────────────────────────────────────────
-async function charger() {
+async function chargerNettoyage() {
   try {
     const data = await apiFetch('/api/nettoyage/status');
     if (data.valide) {
@@ -59,6 +59,54 @@ async function charger() {
   } catch {
     setTuile('tuile-nettoyage', 'erreur', '⚠ Connexion perdue');
   }
+}
+
+// ── Tuile — Étalonnage thermomètres ───────────────────────────
+async function chargerEtalonnage() {
+  try {
+    const data = await apiFetch('/api/etalonnage/status');
+
+    if (data.jamais_fait) {
+      setTuile('tuile-etalonnage', 'alerte',
+        `${dot('alerte')} <strong>Jamais réalisé</strong><br><small>EET01 requis</small>`
+      );
+      return;
+    }
+
+    if (data.en_retard) {
+      const jours = Math.abs(data.jours_restants);
+      setTuile('tuile-etalonnage', 'alerte',
+        `${dot('alerte')} <strong>En retard de ${jours} j</strong>`
+        + `<br><small>Dernier : ${formatDate(data.dernier_date)}</small>`
+      );
+      return;
+    }
+
+    // À jour — afficher le prochain
+    const j = data.jours_restants;
+    const etat = j <= 14 ? 'attention' : 'ok';
+    const dotEtat = j <= 14 ? 'attention' : 'ok';
+    setTuile('tuile-etalonnage', etat,
+      `${dot(dotEtat)} Prochain dans ${j} j`
+      + `<br><small>Dernier : ${formatDate(data.dernier_date)}</small>`
+    );
+  } catch {
+    setTuile('tuile-etalonnage', 'erreur', '⚠ Connexion perdue');
+  }
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// ── Chargement ────────────────────────────────────────────────
+async function charger() {
+  await Promise.allSettled([
+    chargerNettoyage(),
+    chargerEtalonnage(),
+  ]);
 }
 
 charger();

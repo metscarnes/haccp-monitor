@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Étalonnage Thermomètres EET01 — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/pages/etalonnage.css">
+</head>
+<body class="etal-body">
+
+  <!-- ── EN-TÊTE ── -->
+  <header class="etal-header">
+    <a href="/taches-hub.html" class="etal-btn-retour" aria-label="Retour Tâches HACCP">← Tâches</a>
+    <div class="etal-header-centre">
+      <div class="etal-titre">ÉTALONNAGE THERMOMÈTRES</div>
+      <div class="etal-ref">Réf. EET01 — Trimestriel</div>
+    </div>
+    <div id="etal-horloge" class="etal-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="etal-main">
+
+    <!-- ── ENCART RÈGLE ── -->
+    <div class="etal-regle">
+      <strong>Règle de conformité :</strong> 0°C &plusmn; 0,5°C (de &minus;0,5°C à +0,5°C) —
+      Hors intervalle : remplacer le thermomètre.
+      Dans tous les cas : <strong>nettoyer la sonde et la ranger.</strong>
+    </div>
+
+    <!-- ── FORMULAIRE ── -->
+    <div class="etal-card">
+      <div class="etal-card-titre">📋 Nouvel enregistrement</div>
+
+      <form id="etal-form" novalidate>
+
+        <div class="etal-form-grille">
+
+          <!-- Date -->
+          <div class="etal-champ">
+            <label class="etal-label" for="etal-date">Date *</label>
+            <input id="etal-date" name="date_etalonnage" class="etal-input"
+                   type="date" required>
+          </div>
+
+          <!-- Opérateur -->
+          <div class="etal-champ">
+            <label class="etal-label" for="etal-operateur">Opérateur *</label>
+            <select id="etal-operateur" name="operateur" class="etal-select" required>
+              <option value="">Sélectionner…</option>
+            </select>
+          </div>
+
+          <!-- Thermomètre -->
+          <div class="etal-champ">
+            <label class="etal-label" for="etal-thermo">Identification thermomètre *</label>
+            <input id="etal-thermo" name="thermometre_id" class="etal-input"
+                   type="text" placeholder="Ex : Thermo-01, Sonde labo…" required>
+          </div>
+
+          <!-- Température -->
+          <div class="etal-champ">
+            <label class="etal-label" for="etal-temp">Température mesurée (°C) *</label>
+            <input id="etal-temp" name="temperature_mesuree" class="etal-input"
+                   type="number" step="0.1" placeholder="Ex : 0,2" required>
+          </div>
+
+          <!-- Badge conformité auto -->
+          <div class="etal-champ">
+            <label class="etal-label">Résultat</label>
+            <div id="etal-conformite-badge" class="etal-conformite-badge etal-conformite-badge--vide">
+              — Saisir une température
+            </div>
+          </div>
+
+          <!-- Actions correctives -->
+          <div class="etal-champ etal-champ--full">
+            <label class="etal-label">Action corrective *</label>
+            <div class="etal-actions-grille" id="etal-actions">
+
+              <label class="etal-action-label" id="lbl-conforme">
+                <input type="radio" name="action_corrective" value="conforme">
+                ✅ Conforme
+              </label>
+
+              <label class="etal-action-label" id="lbl-calibrage">
+                <input type="radio" name="action_corrective" value="calibrage">
+                🔧 Calibrage
+              </label>
+
+              <label class="etal-action-label" id="lbl-remplace">
+                <input type="radio" name="action_corrective" value="remplace">
+                🔄 Remplacé
+              </label>
+
+            </div>
+          </div>
+
+          <!-- Commentaire -->
+          <div class="etal-champ etal-champ--full">
+            <label class="etal-label" for="etal-commentaire">Commentaire <span style="font-weight:400;opacity:.6">(optionnel)</span></label>
+            <textarea id="etal-commentaire" name="commentaire" class="etal-textarea"
+                      placeholder="Observations, numéro de série, marque…"></textarea>
+          </div>
+
+        </div>
+
+        <div id="etal-msg" class="etal-msg" hidden></div>
+
+        <div style="margin-top:1rem">
+          <button type="submit" id="etal-submit" class="etal-btn-submit">
+            <span id="etal-submit-texte">Enregistrer ✓</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- ── HISTORIQUE ── -->
+    <div class="etal-card">
+      <div class="etal-historique-titre">📂 Historique des étalonnages</div>
+      <div class="etal-table-wrap">
+        <table class="etal-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Thermomètre</th>
+              <th>Température</th>
+              <th>Résultat</th>
+              <th>Action corrective</th>
+              <th>Opérateur</th>
+            </tr>
+          </thead>
+          <tbody id="etal-historique-body">
+            <tr><td colspan="6" class="etal-vide">Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script src="/static/js/etalonnage.js"></script>
+</body>
+</html>

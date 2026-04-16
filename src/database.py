@@ -404,6 +404,26 @@ CREATE INDEX IF NOT EXISTS idx_fabrications_date
 CREATE INDEX IF NOT EXISTS idx_fabrications_lot
     ON fabrications(lot_interne);
 
+-- ===========================================================================
+-- Module Étalonnage Thermomètres (EET01)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS etalonnages (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    reference           TEXT    NOT NULL DEFAULT 'EET01',
+    date_etalonnage     DATE    NOT NULL,
+    thermometre_id      TEXT    NOT NULL,
+    temperature_mesuree REAL    NOT NULL,
+    conforme            INTEGER NOT NULL,
+    action_corrective   TEXT    NOT NULL,
+    operateur           TEXT    NOT NULL,
+    commentaire         TEXT,
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_etalonnages_date
+    ON etalonnages(date_etalonnage);
+
 CREATE TABLE IF NOT EXISTS fabrication_lots (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     fabrication_id         INTEGER NOT NULL,
