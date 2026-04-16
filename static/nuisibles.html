@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Lutte contre Nuisibles — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/pages/nuisibles.css">
+</head>
+<body class="nu-body">
+
+  <!-- ── BARRE SUPÉRIEURE ── -->
+  <header class="nu-bar">
+    <a href="/taches-hub.html" class="nu-retour">← Tâches</a>
+    <div class="nu-bar-titre">🐛 Lutte contre Nuisibles</div>
+    <select id="nu-annee" class="nu-annee-select" aria-label="Année"></select>
+  </header>
+
+  <!-- ── ONGLETS ── -->
+  <nav class="nu-tabs" role="tablist">
+    <button class="nu-tab actif" data-type="1" role="tab" aria-selected="true">🐀 Rongeurs</button>
+    <button class="nu-tab" data-type="2" role="tab" aria-selected="false">🪰 Ins. Volants</button>
+    <button class="nu-tab" data-type="3" role="tab" aria-selected="false">🪳 Ins. Rampants</button>
+    <button class="nu-tab" data-type="4" role="tab" aria-selected="false">🐦 Oiseaux</button>
+  </nav>
+
+  <!-- ── FICHE INFO (collapsible) ── -->
+  <div class="nu-info-wrap" id="nu-info-wrap">
+    <button class="nu-info-toggle" id="nu-info-toggle" aria-expanded="false">
+      ℹ️ Méthodes & Fréquences
+      <span class="nu-info-chev">▼</span>
+    </button>
+    <div class="nu-info-corps" id="nu-info-corps">
+      <!-- Injecté par JS -->
+    </div>
+  </div>
+
+  <!-- ── TABLEAU 52 SEMAINES ── -->
+  <div class="nu-table-wrap">
+    <table class="nu-table" id="nu-table">
+      <thead>
+        <tr>
+          <th>Sem</th>
+          <th class="nu-th-piege">P1</th>
+          <th class="nu-th-piege">P2</th>
+          <th class="nu-th-piege">P3</th>
+          <th class="nu-th-piege">P4</th>
+          <th class="nu-th-piege">P5</th>
+          <th class="nu-th-piege">P6</th>
+          <th class="nu-th-piege">P7</th>
+          <th class="nu-th-piege">P8</th>
+          <th class="nu-th-piege">P9</th>
+          <th class="nu-th-piege">P10</th>
+          <th class="nu-th-piege">P11</th>
+          <th class="nu-th-piege">P12</th>
+          <th class="nu-th-piege">P13</th>
+          <th class="nu-th-piege">P14</th>
+          <th class="nu-th-piege">P15</th>
+          <th class="nu-th-visa">VISA</th>
+        </tr>
+      </thead>
+      <tbody id="nu-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── MODAL ÉDITION SEMAINE ── -->
+  <div id="nu-modal" class="nu-modal" hidden role="dialog" aria-modal="true">
+    <div class="nu-modal-panel">
+      <div class="nu-modal-entete">
+        <div class="nu-modal-titre" id="nu-modal-titre">Semaine —</div>
+        <button class="nu-modal-fermer" id="nu-modal-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <div class="nu-piege-grid" id="nu-piege-grid">
+        <!-- 15 boutons injectés par JS -->
+      </div>
+
+      <div class="nu-modal-visa">
+        <label for="nu-visa-select">Visa (opérateur)</label>
+        <select id="nu-visa-select" class="nu-visa-select">
+          <option value="">— Sélectionner —</option>
+        </select>
+      </div>
+
+      <div class="nu-modal-actions">
+        <button class="nu-btn-annuler" id="nu-btn-annuler">Annuler</button>
+        <button class="nu-btn-sauvegarder" id="nu-btn-sauvegarder">✅ Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="nu-toast" class="nu-toast" role="status" aria-live="polite"></div>
+
+  <script src="/static/js/nuisibles.js"></script>
+</body>
+</html>

@@ -1,0 +1,466 @@
+/* ============================================================
+   NUISIBLES — Lutte contre nuisibles (IPM)
+   Tablette-first, 4 onglets, tableau 52 semaines × 15 pièges
+   ============================================================ */
+
+.nu-body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─── BARRE SUPÉRIEURE ─── */
+.nu-bar {
+  flex-shrink: 0;
+  background: #3D2008;
+  color: #FFF;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem .9rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  z-index: 100;
+  position: sticky;
+  top: 0;
+}
+
+.nu-retour {
+  color: #FFF;
+  text-decoration: none;
+  font-size: .8rem;
+  font-weight: 700;
+  padding: .3rem .65rem;
+  border: 1.5px solid rgba(255,255,255,.45);
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.nu-retour:active { opacity: .75; }
+
+.nu-bar-titre {
+  flex: 1;
+  font-size: .95rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nu-annee-select {
+  background: rgba(255,255,255,.12);
+  border: 1.5px solid rgba(255,255,255,.4);
+  border-radius: 6px;
+  color: #FFF;
+  font-family: var(--font);
+  font-size: .85rem;
+  font-weight: 700;
+  height: 34px;
+  padding: 0 .5rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.nu-annee-select option { color: #3D2008; background: #FFF; }
+
+/* ─── ONGLETS ─── */
+.nu-tabs {
+  display: flex;
+  background: #6B3A1F;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nu-tabs::-webkit-scrollbar { display: none; }
+
+.nu-tab {
+  flex: 1;
+  min-width: 120px;
+  background: transparent;
+  border: none;
+  border-bottom: 4px solid transparent;
+  color: rgba(255,255,255,.65);
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .78rem;
+  font-weight: 700;
+  padding: .65rem .5rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.nu-tab:active { opacity: .75; }
+.nu-tab.actif {
+  color: #FFF;
+  border-bottom-color: #FFF;
+  background: rgba(255,255,255,.08);
+}
+
+/* ─── INFO CARD ─── */
+.nu-info-wrap {
+  flex-shrink: 0;
+  background: #FFF;
+  border-bottom: 2px solid #D4A574;
+}
+
+.nu-info-toggle {
+  background: none;
+  border: none;
+  color: #6B3A1F;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  padding: .6rem 1rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  width: 100%;
+  text-align: left;
+}
+.nu-info-toggle:active { opacity: .7; }
+
+.nu-info-chev {
+  margin-left: auto;
+  font-size: .75rem;
+  color: #D4A574;
+  transition: transform .2s;
+}
+.nu-info-wrap.ouvert .nu-info-chev { transform: rotate(180deg); }
+
+.nu-info-corps {
+  display: none;
+  padding: .75rem 1rem 1rem;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.nu-info-wrap.ouvert .nu-info-corps { display: flex; }
+
+.nu-info-bloc {
+  flex: 1;
+  min-width: 220px;
+  background: #F5ECD7;
+  border-radius: 8px;
+  border-left: 4px solid #6B3A1F;
+  padding: .6rem .8rem;
+}
+.nu-info-bloc-titre {
+  font-size: .7rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: .35rem;
+}
+.nu-info-bloc-texte {
+  font-size: .8rem;
+  line-height: 1.55;
+  color: #3D2008;
+  white-space: pre-line;
+}
+
+/* ─── TABLEAU ─── */
+.nu-table-wrap {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nu-table {
+  border-collapse: collapse;
+  font-size: .78rem;
+  min-width: 760px;
+  width: 100%;
+}
+
+.nu-table thead th {
+  background: #3D2008;
+  color: #FFF;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: .4rem .3rem;
+  text-align: center;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  border-right: 1px solid rgba(255,255,255,.15);
+}
+.nu-table thead th:first-child { width: 46px; }
+.nu-table thead th.nu-th-piege { width: 44px; min-width: 40px; }
+.nu-table thead th.nu-th-visa  { width: 90px; background: #5a2e14; }
+
+.nu-table tbody tr {
+  cursor: pointer;
+  transition: background .1s;
+}
+.nu-table tbody tr:nth-child(odd)  td { background: #FFF; }
+.nu-table tbody tr:nth-child(even) td { background: #FAF4EC; }
+.nu-table tbody tr:hover td { background: #F0E4D0 !important; }
+.nu-table tbody tr:active td { background: #E8D5BC !important; }
+
+/* Semaine en cours */
+.nu-tr--today td {
+  background: rgba(232,145,58,.18) !important;
+  border-top: 2px solid #E8913A;
+  border-bottom: 2px solid #E8913A;
+}
+
+.nu-td-sem {
+  text-align: center;
+  font-weight: 800;
+  font-size: .8rem;
+  color: #6B3A1F;
+  padding: .5rem .3rem;
+  border-right: 2px solid #D4A574;
+  white-space: nowrap;
+}
+.nu-tr--today .nu-td-sem {
+  color: #E8913A;
+}
+
+.nu-td-piege {
+  text-align: center;
+  padding: .4rem .2rem;
+  font-size: .82rem;
+  font-weight: 700;
+  border-right: 1px solid #EEE;
+}
+.nu-td-piege--O {
+  background: rgba(45,125,70,.18) !important;
+  color: #1a5c30;
+}
+.nu-td-piege--N {
+  background: rgba(201,48,48,.15) !important;
+  color: #a01a1a;
+}
+.nu-td-piege--vide { color: #CCC; }
+
+.nu-td-visa {
+  text-align: center;
+  padding: .4rem .3rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: #6B3A1F;
+  border-left: 2px solid #D4A574;
+  max-width: 90px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Badge résumé sur la ligne (affiché dans colonne VISA si aucune visa mais données existent) */
+.nu-badge-o {
+  background: rgba(45,125,70,.15);
+  color: #1a5c30;
+  border-radius: 10px;
+  font-size: .68rem;
+  padding: 1px 5px;
+}
+.nu-badge-n {
+  background: rgba(201,48,48,.15);
+  color: #a01a1a;
+  border-radius: 10px;
+  font-size: .68rem;
+  padding: 1px 5px;
+}
+
+/* ─── MODAL ÉDITION ─── */
+.nu-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 200;
+  padding: 0;
+}
+.nu-modal[hidden] { display: none; }
+
+.nu-modal-panel {
+  background: #FFF;
+  border-radius: 16px 16px 0 0;
+  width: 100%;
+  max-width: 600px;
+  padding: 1.25rem 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+
+.nu-modal-entete {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.nu-modal-titre {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #3D2008;
+  flex: 1;
+}
+
+.nu-modal-fermer {
+  background: none;
+  border: 1.5px solid #CCC;
+  border-radius: 8px;
+  color: #666;
+  cursor: pointer;
+  font-size: 1rem;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+}
+.nu-modal-fermer:active { opacity: .7; }
+
+/* Grille 5 × 3 pièges */
+.nu-piege-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: .5rem;
+}
+
+.nu-piege-btn {
+  background: #F0E8DC;
+  border: 2px solid #DDD;
+  border-radius: 8px;
+  color: #888;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .78rem;
+  font-weight: 700;
+  padding: .55rem .2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  transition: background .1s, border-color .1s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.nu-piege-btn:active { opacity: .8; transform: scale(.96); }
+
+.nu-piege-btn .nu-piege-num {
+  font-size: .72rem;
+  color: #999;
+  font-weight: 600;
+}
+.nu-piege-btn .nu-piege-etat {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.nu-piege-btn--O {
+  background: rgba(45,125,70,.15);
+  border-color: #2D7D46;
+  color: #2D7D46;
+}
+.nu-piege-btn--O .nu-piege-num { color: #2D7D46; }
+
+.nu-piege-btn--N {
+  background: rgba(201,48,48,.12);
+  border-color: #C93030;
+  color: #C93030;
+}
+.nu-piege-btn--N .nu-piege-num { color: #C93030; }
+
+/* VISA */
+.nu-modal-visa {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.nu-modal-visa label {
+  font-size: .8rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.nu-visa-select {
+  background: #FFF;
+  border: 2px solid #D4A574;
+  border-radius: 8px;
+  color: #3D2008;
+  font-family: var(--font);
+  font-size: .95rem;
+  height: 48px;
+  padding: 0 .75rem;
+  width: 100%;
+}
+.nu-visa-select:focus { outline: none; border-color: #6B3A1F; }
+
+/* Boutons d'action */
+.nu-modal-actions {
+  display: flex;
+  gap: .75rem;
+}
+
+.nu-btn-annuler {
+  flex: 1;
+  background: none;
+  border: 2px solid #D4A574;
+  border-radius: 10px;
+  color: #6B3A1F;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .9rem;
+  font-weight: 700;
+  height: 52px;
+}
+.nu-btn-annuler:active { opacity: .7; }
+
+.nu-btn-sauvegarder {
+  flex: 2;
+  background: #2D7D46;
+  border: none;
+  border-radius: 10px;
+  color: #FFF;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .95rem;
+  font-weight: 800;
+  height: 52px;
+  box-shadow: 0 2px 8px rgba(45,125,70,.35);
+  transition: background .15s;
+}
+.nu-btn-sauvegarder:active { background: #1f5c32; }
+.nu-btn-sauvegarder:disabled { background: #999; box-shadow: none; cursor: not-allowed; }
+
+/* Toast */
+.nu-toast {
+  background: #3D2008;
+  border-radius: 10px;
+  bottom: 1.5rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  color: #FFF;
+  font-size: .85rem;
+  font-weight: 600;
+  left: 50%;
+  max-width: 380px;
+  opacity: 0;
+  padding: .7rem 1.2rem;
+  pointer-events: none;
+  position: fixed;
+  transform: translateX(-50%) translateY(1rem);
+  transition: opacity .25s, transform .25s;
+  width: calc(100% - 3rem);
+  z-index: 300;
+}
+.nu-toast--visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.nu-toast--erreur { background: #C93030; }

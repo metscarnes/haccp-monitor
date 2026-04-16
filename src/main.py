@@ -33,6 +33,7 @@ from src.api.routes_ouvertures    import router as router_ouvertures
 from src.api.routes_incidents     import router as router_incidents
 from src.api.routes_fabrication   import router as router_fabrication
 from src.api.routes_nettoyage    import router as router_nettoyage
+from src.api.routes_nuisibles    import router as router_nuisibles
 from src.api.routes_etalonnage   import router as router_etalonnage
 
 load_dotenv()
@@ -114,8 +115,9 @@ app.include_router(router_incidents)
 # Routes API — Phase 3
 app.include_router(router_fabrication)
 
-# Routes API — Nettoyage
+# Routes API — Nettoyage & Nuisibles
 app.include_router(router_nettoyage)
+app.include_router(router_nuisibles)
 
 # Routes API — Étalonnage thermomètres
 app.include_router(router_etalonnage)
