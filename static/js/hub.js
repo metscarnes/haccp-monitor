@@ -72,20 +72,9 @@ function setTuile(idTuile, etat, html) {
   statut.innerHTML = html;
 }
 
-// ── Tuile — Étiquettes Fabrication ───────────────────────────
+// ── Tuile — Fabrication ───────────────────────────────────────
 function afficherEtiquettes(alertes) {
-  if (alertes.length === 0) {
-    setTuile('tuile-etiquettes', 'ok',
-      `${dot('ok')} Fabrication`
-    );
-  } else {
-    const nb = alertes.length;
-    const premier = alertes[0]?.produit_nom ?? '';
-    setTuile('tuile-etiquettes', 'attention',
-      `${dot('attention')} <strong>${nb} DLC &lt; 2&nbsp;jours</strong>`
-      + (premier ? `<br><small>${premier}${nb > 1 ? ` +${nb - 1}` : ''}</small>` : '')
-    );
-  }
+  setTuile('tuile-etiquettes', 'ok', '');
 }
 
 // ── Tuile — Réception ─────────────────────────────────────────
