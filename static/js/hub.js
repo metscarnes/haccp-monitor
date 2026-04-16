@@ -72,11 +72,11 @@ function setTuile(idTuile, etat, html) {
   statut.innerHTML = html;
 }
 
-// ── Tuile — Étiquettes DLC ────────────────────────────────────
+// ── Tuile — Étiquettes Fabrication ───────────────────────────
 function afficherEtiquettes(alertes) {
   if (alertes.length === 0) {
     setTuile('tuile-etiquettes', 'ok',
-      `${dot('ok')} Aucune DLC proche`
+      `${dot('ok')} Fabrication`
     );
   } else {
     const nb = alertes.length;
