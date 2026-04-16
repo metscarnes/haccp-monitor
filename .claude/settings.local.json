@@ -29,7 +29,8 @@
       "Bash(python -c \"import sqlite3; conn=sqlite3.connect\\('haccp.db'\\); c=conn.cursor\\(\\); c.execute\\(\\\\\"SELECT name FROM sqlite_master WHERE type='table'\\\\\"\\); print\\([r[0] for r in c.fetchall\\(\\)]\\)\")",
       "Bash(python diag_tracabilite.py)",
       "Bash(python diag_tracabilite.py --demo)",
-      "Bash(python -m pytest tests/test_taches.py -q)"
+      "Bash(python -m pytest tests/test_taches.py -q)",
+      "Bash(python -c \"import ast, sys; ast.parse\\(open\\('src/api/routes_nettoyage.py'\\).read\\(\\)\\); print\\('routes_nettoyage.py OK'\\)\")"
     ]
   }
 }

@@ -10,9 +10,11 @@ const elBtnRetour = document.getElementById('he-btn-retour');
 const elTabOuv = document.getElementById('he-tab-ouv');
 const elTabRec = document.getElementById('he-tab-rec');
 const elTabFab = document.getElementById('he-tab-fab');
+const elTabNett = document.getElementById('he-tab-nett');
 const elContentOuv = document.getElementById('he-content-ouv');
 const elContentRec = document.getElementById('he-content-rec');
 const elContentFab = document.getElementById('he-content-fab');
+const elContentNett = document.getElementById('he-content-nett');
 
 // ── Onglet Ouvertures ────────────────────────────────────────
 const ouvRefs = {
@@ -155,9 +157,10 @@ function initDates(refs) {
 }
 
 const TOUS_TABS = [
-  { btn: elTabOuv, content: elContentOuv },
-  { btn: elTabRec, content: elContentRec },
-  { btn: elTabFab, content: elContentFab },
+  { btn: elTabOuv,  content: elContentOuv  },
+  { btn: elTabRec,  content: elContentRec  },
+  { btn: elTabFab,  content: elContentFab  },
+  { btn: elTabNett, content: elContentNett },
 ];
 
 function basculerTab(tabNouveau, contentNouveau) {
@@ -174,6 +177,11 @@ elTabRec.addEventListener('click', () => basculerTab(elTabRec, elContentRec));
 elTabFab.addEventListener('click', () => {
   basculerTab(elTabFab, elContentFab);
   if (!fabState.charge) fabCharger();
+});
+
+elTabNett.addEventListener('click', () => {
+  basculerTab(elTabNett, elContentNett);
+  if (!nettState.charge) nettCharger();
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -1200,9 +1208,251 @@ fabRefs.plus.addEventListener('click', fabChargerSuite);
 // ── Bouton retour ────────────────────────────────────────────
 elBtnRetour.addEventListener('click', () => { window.location.href = '/hub.html'; });
 
+// ══════════════════════════════════════════════════════════════
+// ONGLET NETTOYAGE
+// ══════════════════════════════════════════════════════════════
+
+const nettState = { charge: false };
+const elHnMessage = document.getElementById('hn-message');
+const elHnMessageTexte = document.getElementById('hn-message-texte');
+const elHnArbre = document.getElementById('hn-arbre');
+
+async function nettCharger() {
+  nettState.charge = true;
+  elHnMessage.hidden = false;
+  elHnArbre.hidden = true;
+  elHnArbre.innerHTML = '';
+  elHnMessageTexte.textContent = 'Chargement…';
+
+  try {
+    const data = await apiFetch('/api/nettoyage/historique');
+    if (!data.length) {
+      elHnMessageTexte.textContent = 'Aucune validation enregistrée pour l\'instant.';
+      return;
+    }
+    elHnMessage.hidden = true;
+    elHnArbre.hidden = false;
+    nettRendreArbre(data);
+  } catch (err) {
+    elHnMessageTexte.textContent = `Erreur : ${err.message}`;
+  }
+}
+
+function nettRendreArbre(data) {
+  const anneeActuelle = new Date().getFullYear();
+  const moisActuel    = new Date().getMonth() + 1;
+
+  data.forEach(blocAnnee => {
+    const divAnnee = document.createElement('div');
+    divAnnee.className = 'hn-annee';
+    const ouvertAnnee = blocAnnee.annee === anneeActuelle;
+    if (ouvertAnnee) divAnnee.classList.add('ouvert');
+
+    const nbJours = blocAnnee.mois.reduce(
+      (s, m) => s + m.semaines.reduce((ss, sem) => ss + sem.jours.length, 0), 0
+    );
+
+    const btnAnnee = document.createElement('button');
+    btnAnnee.className = 'hn-annee-btn';
+    btnAnnee.innerHTML = `
+      📅 ${blocAnnee.annee}
+      <span style="font-size:13px;font-weight:400;opacity:.75;">${nbJours} jour(s)</span>
+      <span class="hn-annee-chev">▼</span>`;
+    btnAnnee.addEventListener('click', () => divAnnee.classList.toggle('ouvert'));
+
+    const corpsAnnee = document.createElement('div');
+    corpsAnnee.className = 'hn-annee-corps';
+
+    // ── Mois ────────────────────────────────────────────────
+    blocAnnee.mois.forEach(blocMois => {
+      const divMois = document.createElement('div');
+      divMois.className = 'hn-mois';
+      const ouvertMois = ouvertAnnee && blocMois.numero === moisActuel;
+      if (ouvertMois) divMois.classList.add('ouvert');
+
+      const nbJoursMois = blocMois.semaines.reduce((s, sem) => s + sem.jours.length, 0);
+
+      const btnMois = document.createElement('button');
+      btnMois.className = 'hn-mois-btn';
+      btnMois.innerHTML = `
+        🗓️ ${blocMois.nom}
+        <span class="hn-mois-badge">${nbJoursMois} jour(s)</span>
+        <span class="hn-mois-chev">▼</span>`;
+      btnMois.addEventListener('click', () => divMois.classList.toggle('ouvert'));
+
+      const corpsMois = document.createElement('div');
+      corpsMois.className = 'hn-mois-corps';
+
+      // ── Semaines ──────────────────────────────────────────
+      blocMois.semaines.forEach((blocSem, idx) => {
+        const divSem = document.createElement('div');
+        divSem.className = 'hn-sem';
+        const ouvertSem = ouvertMois && idx === 0;
+        if (ouvertSem) divSem.classList.add('ouvert');
+
+        const btnSem = document.createElement('button');
+        btnSem.className = 'hn-sem-btn';
+        btnSem.innerHTML = `
+          <span class="hn-sem-label">Semaine ${blocSem.numero}</span>
+          <span class="hn-sem-nb">${blocSem.jours.length} jour(s) validé(s)</span>
+          <span class="hn-sem-chev">▼</span>`;
+
+        const corpsSem = document.createElement('div');
+        corpsSem.className = 'hn-sem-corps';
+
+        let planningCharge = false;
+
+        btnSem.addEventListener('click', async () => {
+          const estOuvert = divSem.classList.toggle('ouvert');
+          if (estOuvert && !planningCharge) {
+            planningCharge = true;
+            corpsSem.innerHTML = '<div class="hn-sem-loading">⏳ Chargement du planning…</div>';
+            try {
+              const semData = await apiFetch(
+                `/api/nettoyage/historique/semaine?annee_iso=${blocSem.annee_iso}&semaine=${blocSem.numero}`
+              );
+              corpsSem.innerHTML = '';
+              corpsSem.appendChild(nettRendrePlanning(semData));
+            } catch (err) {
+              corpsSem.innerHTML = `<div class="hn-sem-loading" style="color:#C93030;">Erreur : ${err.message}</div>`;
+            }
+          }
+        });
+
+        // Si la semaine est déjà ouverte au rendu, charger le planning immédiatement
+        if (ouvertSem) {
+          planningCharge = true;
+          corpsSem.innerHTML = '<div class="hn-sem-loading">⏳ Chargement…</div>';
+          apiFetch(`/api/nettoyage/historique/semaine?annee_iso=${blocSem.annee_iso}&semaine=${blocSem.numero}`)
+            .then(semData => {
+              corpsSem.innerHTML = '';
+              corpsSem.appendChild(nettRendrePlanning(semData));
+            })
+            .catch(err => {
+              corpsSem.innerHTML = `<div class="hn-sem-loading" style="color:#C93030;">Erreur : ${err.message}</div>`;
+            });
+        }
+
+        divSem.appendChild(btnSem);
+        divSem.appendChild(corpsSem);
+        corpsMois.appendChild(divSem);
+      });
+
+      divMois.appendChild(btnMois);
+      divMois.appendChild(corpsMois);
+      corpsAnnee.appendChild(divMois);
+    });
+
+    divAnnee.appendChild(btnAnnee);
+    divAnnee.appendChild(corpsAnnee);
+    elHnArbre.appendChild(divAnnee);
+  });
+}
+
+function nettRendrePlanning(semData) {
+  const wrap = document.createElement('div');
+  wrap.className = 'hn-planning-wrap';
+
+  const table = document.createElement('table');
+  table.className = 'hn-planning-table';
+
+  // ── En-tête ───────────────────────────────────────────────
+  const thead = document.createElement('thead');
+  const trHead = document.createElement('tr');
+
+  [
+    { txt: 'Secteur',  cls: 'hn-th-zone' },
+    { txt: 'Tâche',    cls: 'hn-th-tache' },
+    { txt: 'Fréq.',    cls: 'hn-th-freq' },
+    { txt: 'Produit',  cls: 'hn-th-prod' },
+  ].forEach(({ txt, cls }) => {
+    const th = document.createElement('th');
+    th.className = cls;
+    th.textContent = txt;
+    trHead.appendChild(th);
+  });
+
+  semData.jours_noms.forEach((nom, i) => {
+    const date = semData.dates[i];
+    // Vérifier si au moins une tâche a été validée ce jour
+    const jouValide = semData.zones.some(z =>
+      z.taches.some(t => t.validations[date])
+    );
+    const th = document.createElement('th');
+    th.className = 'hn-th-day' + (jouValide ? ' hn-th-day--valide' : '');
+    th.textContent = nom;
+    trHead.appendChild(th);
+  });
+
+  thead.appendChild(trHead);
+  table.appendChild(thead);
+
+  // ── Corps ─────────────────────────────────────────────────
+  const tbody = document.createElement('tbody');
+
+  semData.zones.forEach(zone => {
+    zone.taches.forEach((tache, taskIdx) => {
+      const tr = document.createElement('tr');
+
+      // Cellule secteur (fusionnée)
+      if (taskIdx === 0) {
+        const tdZone = document.createElement('td');
+        tdZone.className = 'hn-td-zone';
+        tdZone.rowSpan = zone.taches.length;
+        tdZone.textContent = zone.zone;
+        tr.appendChild(tdZone);
+      }
+
+      const tdNom = document.createElement('td');
+      tdNom.className = 'hn-td-tache';
+      tdNom.title = tache.nom_tache;
+      tdNom.textContent = tache.nom_tache;
+      tr.appendChild(tdNom);
+
+      const tdFreq = document.createElement('td');
+      tdFreq.className = 'hn-td-freq';
+      tdFreq.textContent = tache.frequence;
+      tr.appendChild(tdFreq);
+
+      const tdProd = document.createElement('td');
+      tdProd.className = 'hn-td-prod';
+      tdProd.title = tache.methode_produit;
+      tdProd.textContent = tache.methode_produit;
+      tr.appendChild(tdProd);
+
+      // Colonnes jours
+      semData.dates.forEach(date => {
+        const initial = tache.validations[date];
+        const td = document.createElement('td');
+        td.className = 'hn-td-day' + (initial ? ' hn-td-day--ok' : ' hn-td-day--vide');
+        if (initial) {
+          td.innerHTML = `✅<span class="hn-td-initial">${initial}</span>`;
+        } else {
+          // Afficher — seulement si la fréquence rend la tâche applicable ce jour
+          td.textContent = '·';
+        }
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+  });
+
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
 // ── Init ─────────────────────────────────────────────────────
 initDates(ouvRefs);
 initDates(recRefs);
 initDates(fabRefs);
-ouvCharger();
-recCharger();
+
+// Ouvrir l'onglet demandé via l'ancre URL (#nettoyage, #fabrications, etc.)
+if (window.location.hash === '#nettoyage') {
+  basculerTab(elTabNett, elContentNett);
+  nettCharger();
+} else {
+  ouvCharger();
+  recCharger();
+}

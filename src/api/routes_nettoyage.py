@@ -150,16 +150,18 @@ async def statut_validation(date: Optional[str] = Query(default=None)):
         await db.commit()
 
         rows = await db.execute_fetchall(
-            "SELECT tache_id, operateur FROM registre_nettoyage WHERE date_val = ?",
+            "SELECT DISTINCT tache_id, operateur FROM registre_nettoyage WHERE date_val = ?",
             (target,),
         )
 
     if not rows:
         return {"valide": False, "date": target, "operateur": None, "nb_taches": 0, "taches_ids": []}
 
+    # Opérateur le plus fréquent
     ops = Counter(r[1] for r in rows)
     operateur_principal = ops.most_common(1)[0][0]
-    taches_ids = [r[0] for r in rows]
+    # IDs uniques des tâches validées
+    taches_ids = list({r[0] for r in rows})
 
     return {
         "valide":    True,
@@ -252,3 +254,78 @@ async def historique_nettoyage():
         result.append({"annee": annee, "mois": mois_list})
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# GET /api/nettoyage/historique/semaine
+# ---------------------------------------------------------------------------
+
+_JOURS_NOMS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+
+
+@router.get("/historique/semaine")
+async def historique_semaine(
+    annee_iso: int = Query(..., description="Année ISO de la semaine"),
+    semaine:   int = Query(..., description="Numéro de semaine ISO (1-53)"),
+):
+    """
+    Retourne le planning complet pour une semaine ISO donnée.
+    Pour chaque tâche, indique quels jours ont été validés et par qui.
+    """
+    from datetime import timedelta
+
+    # Calcul du lundi de la semaine ISO cible
+    # Le 4 janvier est toujours en semaine 1
+    jan4 = _date(annee_iso, 1, 4)
+    monday_sem1 = jan4 - timedelta(days=jan4.isoweekday() - 1)
+    monday = monday_sem1 + timedelta(weeks=semaine - 1)
+    dates_semaine = [monday + timedelta(days=i) for i in range(7)]
+    date_strs = [d.isoformat() for d in dates_semaine]
+
+    async with get_db() as db:
+        await db.execute(_ENSURE_REGISTRE)
+        await db.commit()
+
+        taches_rows = await db.execute_fetchall(
+            "SELECT id, zone, nom_tache, frequence, methode_produit "
+            "FROM taches_nettoyage ORDER BY zone, id"
+        )
+
+        placeholders = ",".join("?" * len(date_strs))
+        val_rows = await db.execute_fetchall(
+            f"SELECT date_val, tache_id, operateur FROM registre_nettoyage "
+            f"WHERE date_val IN ({placeholders})",
+            date_strs,
+        )
+
+    # Map validations : {date_str: {tache_id: "É."}}
+    validations: dict = {}
+    for vrow in val_rows:
+        dv, tid, op = vrow[0], vrow[1], vrow[2]
+        validations.setdefault(dv, {})
+        if tid not in validations[dv]:
+            validations[dv][tid] = (op[0].upper() + ".") if op else "?"
+
+    # Groupement par zone
+    zones: dict = {}
+    for row in taches_rows:
+        z = row[1]
+        zones.setdefault(z, [])
+        zones[z].append({
+            "id":              row[0],
+            "nom_tache":       row[2],
+            "frequence":       row[3],
+            "methode_produit": row[4],
+            "validations": {
+                ds: validations.get(ds, {}).get(row[0])
+                for ds in date_strs
+            },
+        })
+
+    return {
+        "semaine":    semaine,
+        "annee_iso":  annee_iso,
+        "dates":      date_strs,
+        "jours_noms": [f"{_JOURS_NOMS[i]} {dates_semaine[i].day}" for i in range(7)],
+        "zones":      [{"zone": z, "taches": t} for z, t in zones.items()],
+    }
