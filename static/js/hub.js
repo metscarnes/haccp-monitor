@@ -104,61 +104,21 @@ function afficherReception(receptions) {
   }
 }
 
-// ── Tuile — Températures ──────────────────────────────────────
-function afficherTemperatures(dash) {
-  if (!dash?.boutique) {
-    setTuile('tuile-temperatures', 'erreur', '⚠ Données indisponibles');
-    return;
-  }
-
-  const sg   = dash.boutique.statut;
-  const etat = sg === 'alerte' ? 'alerte' : sg === 'attention' ? 'attention' : 'ok';
-  const label = sg === 'alerte' ? 'ALERTE TEMPÉRATURE'
-              : sg === 'attention' ? 'Attention'
-              : 'Tout OK';
-
-  const mesures = (dash.enceintes ?? [])
-    .filter(e => e.temperature_actuelle !== null)
-    .slice(0, 3)
-    .map(e => {
-      const t   = Number(e.temperature_actuelle).toFixed(1);
-      const nom = e.nom
-        .replace('Chambre froide', 'CF')
-        .replace('chambre froide', 'CF');
-      const couleur = e.statut === 'alerte'
-        ? 'style="color:var(--alerte);font-weight:700"' : '';
-      return `<span ${couleur}>${nom}&nbsp;${t}°</span>`;
-    })
-    .join('&ensp;·&ensp;');
-
-  setTuile('tuile-temperatures', etat,
-    `${dot(etat)} ${label}`
-    + (mesures ? `<br><small>${mesures}</small>` : '')
-  );
-}
-
 // ── Chargement principal ──────────────────────────────────────
 async function charger() {
-  const [rDash, rDlc, rRecep] = await Promise.allSettled([
-    apiFetch('/api/boutiques/1/dashboard'),
+  const [rDlc, rRecep] = await Promise.allSettled([
     apiFetch('/api/etiquettes/alertes-dlc'),
     apiFetch('/api/receptions?limit=1'),
   ]);
 
-  const toutEchoue = [rDash, rDlc, rRecep]
+  const toutEchoue = [rDlc, rRecep]
     .every(r => r.status === 'rejected');
   elBandeauConnexion.hidden = !toutEchoue;
-
-  if (rDash.status === 'fulfilled') {
-    afficherTemperatures(rDash.value);
-  } else {
-    setTuile('tuile-temperatures', 'erreur', '⚠ Connexion perdue');
-  }
 
   if (rDlc.status === 'fulfilled') {
     afficherEtiquettes(rDlc.value);
   } else {
-    setTuile('tuile-etiquettes', 'erreur', '⚠ Connexion perdue');
+    document.getElementById('tuile-etiquettes').className = 'hub-tuile hub-tuile--erreur';
   }
 
   if (rRecep.status === 'fulfilled') {

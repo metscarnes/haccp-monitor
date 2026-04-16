@@ -101,11 +101,50 @@ function formatDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
+// ── Tuile — Températures ──────────────────────────────────────
+async function chargerTemperatures() {
+  try {
+    const dash = await apiFetch('/api/boutiques/1/dashboard');
+    if (!dash?.boutique) {
+      setTuile('tuile-temperatures', 'erreur', '⚠ Données indisponibles');
+      return;
+    }
+
+    const sg    = dash.boutique.statut;
+    const etat  = sg === 'alerte' ? 'alerte' : sg === 'attention' ? 'attention' : 'ok';
+    const label = sg === 'alerte' ? 'ALERTE TEMPÉRATURE'
+                : sg === 'attention' ? 'Attention'
+                : 'Tout OK';
+
+    const mesures = (dash.enceintes ?? [])
+      .filter(e => e.temperature_actuelle !== null)
+      .slice(0, 3)
+      .map(e => {
+        const t   = Number(e.temperature_actuelle).toFixed(1);
+        const nom = e.nom
+          .replace('Chambre froide', 'CF')
+          .replace('chambre froide', 'CF');
+        const couleur = e.statut === 'alerte'
+          ? 'style="color:var(--alerte);font-weight:700"' : '';
+        return `<span ${couleur}>${nom}&nbsp;${t}°</span>`;
+      })
+      .join('&ensp;·&ensp;');
+
+    setTuile('tuile-temperatures', etat,
+      `${dot(etat)} ${label}`
+      + (mesures ? `<br><small>${mesures}</small>` : '')
+    );
+  } catch {
+    setTuile('tuile-temperatures', 'erreur', '⚠ Connexion perdue');
+  }
+}
+
 // ── Chargement ────────────────────────────────────────────────
 async function charger() {
   await Promise.allSettled([
     chargerNettoyage(),
     chargerEtalonnage(),
+    chargerTemperatures(),
   ]);
 }
 
