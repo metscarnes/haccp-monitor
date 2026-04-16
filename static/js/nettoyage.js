@@ -7,7 +7,6 @@
    - Clic sur colonne jour = sélectionne ce jour pour validation
    - 1 clic "Valider" = coche la colonne du jour sélectionné
    - Hebdo = coché uniquement le Samedi (jour 6)
-   - Au chargement : restaure TOUS les jours de la semaine
    ============================================================ */
 
 const JOUR_HEBDO = 6; // Samedi = jour de grand nettoyage
@@ -30,7 +29,7 @@ const elToast  = document.getElementById('nett-toast');
 // dayIndex : 0=Dim, 1=Lun … 6=Sam  →  retourne "YYYY-MM-DD" en heure locale
 function getDateForDay(dayIndex) {
   const today = new Date();
-  const diff = dayIndex - today.getDay();
+  const diff = dayIndex - today.getDay(); // négatif = jours passés, positif = futurs
   const target = new Date(today);
   target.setDate(today.getDate() + diff);
   const y = target.getFullYear();
@@ -87,78 +86,11 @@ async function chargerTaches() {
     zonesData = await res.json();
     genererTableau();
     attacherClicsJours();
-    await chargerToutesValidations();
+    await restaurerEtat(selectedDayIndex);
   } catch (err) {
     elTbody.innerHTML = `<tr><td colspan="11" style="padding:2rem;text-align:center;color:#888;">
       Erreur : ${err.message}</td></tr>`;
   }
-}
-
-// ── Charger les validations de TOUS les jours de la semaine ──
-async function chargerToutesValidations() {
-  const dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Lun → Dim
-
-  const results = await Promise.allSettled(
-    dayOrder.map(async (dayIdx) => {
-      const dateStr = getDateForDay(dayIdx);
-      const res = await fetch(`/api/nettoyage/status?date=${dateStr}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      return { dayIdx, ...data };
-    })
-  );
-
-  for (const r of results) {
-    if (r.status !== 'fulfilled' || !r.value || !r.value.valide) continue;
-    const { dayIdx, operateur, nb_taches, taches_ids } = r.value;
-
-    const initiale = operateur ? operateur.charAt(0).toUpperCase() : '?';
-    taches_ids.forEach(id => {
-      const cell = document.querySelector(
-        `td.nett-day-cell[data-day="${dayIdx}"][data-id="${id}"]`
-      );
-      if (cell) {
-        cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
-      }
-    });
-
-    // Si c'est le jour sélectionné, verrouiller le bouton
-    if (dayIdx === selectedDayIndex) {
-      verrouillerBouton(operateur, nb_taches);
-    }
-  }
-}
-
-// ── Vérifier le statut d'un seul jour (clic sur colonne) ─────
-async function verifierStatutJour(dayIndex) {
-  const dateStr = getDateForDay(dayIndex);
-  try {
-    const res = await fetch(`/api/nettoyage/status?date=${dateStr}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data.valide) {
-      verrouillerBouton(data.operateur, data.nb_taches);
-    }
-  } catch {
-    // Silencieux
-  }
-}
-
-// ── Verrouiller le bouton ────────────────────────────────────
-function verrouillerBouton(operateur, nbTaches) {
-  elBtn.disabled = true;
-  elBtn.textContent = `✔️ VALIDÉ — ${nbTaches} tâche(s)`;
-  elBtn.classList.add('nett-btn-valider--done');
-  if (operateur) elSelect.value = operateur;
-  elSelect.disabled = true;
-}
-
-// ── Déverrouiller le bouton ──────────────────────────────────
-function deverrouillerBouton() {
-  elBtn.disabled = false;
-  elBtn.classList.remove('nett-btn-valider--done');
-  elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[selectedDayIndex].toUpperCase()}`;
-  elSelect.disabled = false;
 }
 
 // ── Clics sur les en-têtes de jour ───────────────────────────
@@ -169,7 +101,7 @@ function attacherClicsJours() {
       if (day === selectedDayIndex) return;
       selectedDayIndex = day;
       mettreAJourJourSelectionne();
-      await verifierStatutJour(selectedDayIndex);
+      await restaurerEtat(selectedDayIndex);
     });
   });
 }
@@ -180,7 +112,39 @@ function mettreAJourJourSelectionne() {
   document.querySelectorAll(`[data-day="${selectedDayIndex}"]`)
     .forEach(el => el.classList.add('nett-today-col'));
 
-  deverrouillerBouton();
+  elBtn.disabled = false;
+  elBtn.classList.remove('nett-btn-valider--done');
+  elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[selectedDayIndex].toUpperCase()}`;
+  elSelect.disabled = false;
+}
+
+// ── Restaurer l'état de validation pour un jour donné ────────
+async function restaurerEtat(dayIndex) {
+  const dateStr = getDateForDay(dayIndex);
+  try {
+    const res = await fetch(`/api/nettoyage/status?date=${dateStr}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.valide) return;
+
+    const initiale = data.operateur ? data.operateur.charAt(0).toUpperCase() : '?';
+    data.taches_ids.forEach(id => {
+      const cell = document.querySelector(
+        `td.nett-day-cell[data-day="${dayIndex}"][data-id="${id}"]`
+      );
+      if (cell) {
+        cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
+      }
+    });
+
+    elBtn.disabled = true;
+    elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
+    elBtn.classList.add('nett-btn-valider--done');
+    if (data.operateur) elSelect.value = data.operateur;
+    elSelect.disabled = true;
+  } catch {
+    // Silencieux — l'état par défaut (non validé) reste affiché
+  }
 }
 
 // ── Génération du tableau ────────────────────────────────────
@@ -233,12 +197,12 @@ async function validerJournee() {
 
   const ok = confirm(
     'En validant, je confirme sur l\'honneur avoir effectué l\'intégralité des tâches ' +
-    'de nettoyage et de désinfection listées pour ce jour, en respectant le Plan de Nettoyage.'
+    'de nettoyage et de désinfection listées pour aujourd\'hui, en respectant le Plan de Nettoyage.'
   );
   if (!ok) return;
 
-  const initiale     = operateur.charAt(0).toUpperCase();
-  const dateAValider = getDateForDay(selectedDayIndex);
+  const initiale      = operateur.charAt(0).toUpperCase();
+  const dateAValider  = getDateForDay(selectedDayIndex);
 
   const idsAValider = [];
   const cellsDuJour = document.querySelectorAll(`td.nett-day-cell[data-day="${selectedDayIndex}"]`);
@@ -283,12 +247,15 @@ async function validerJournee() {
     }
 
     const data = await res.json();
-    verrouillerBouton(operateur, data.nb_taches);
+    elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
+    elBtn.classList.add('nett-btn-valider--done');
     toast(`✅ ${data.nb_taches} tâche(s) validée(s) par ${operateur} !`);
 
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
-    deverrouillerBouton();
+    elBtn.disabled = false;
+    elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[selectedDayIndex].toUpperCase()}`;
+    elSelect.disabled = false;
   }
 }
 
