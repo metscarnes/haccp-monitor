@@ -839,6 +839,36 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
         except Exception as e:
             logger.warning("Erreur lors de l'application des tolérances: %s", e)
 
+        # Migration v3.0 : refonte table etalonnages
+        # (thermometre_id TEXT → thermometre_ref_id INTEGER FK vers thermometres_ref)
+        try:
+            cur_et = await db.execute("PRAGMA table_info(etalonnages)")
+            cols_et = {row[1] for row in await cur_et.fetchall()}
+            if "thermometre_id" in cols_et and "thermometre_ref_id" not in cols_et:
+                logger.info("Migration v3.0 : refonte table etalonnages")
+                await db.execute("DROP TABLE IF EXISTS etalonnages")
+                await db.execute("""
+                    CREATE TABLE etalonnages (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reference           TEXT    NOT NULL DEFAULT 'EET01',
+                        date_etalonnage     DATE    NOT NULL,
+                        thermometre_ref_id  INTEGER NOT NULL,
+                        temperature_mesuree REAL    NOT NULL,
+                        conforme            INTEGER NOT NULL,
+                        action_corrective   TEXT    NOT NULL,
+                        operateur           TEXT    NOT NULL,
+                        commentaire         TEXT,
+                        created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (thermometre_ref_id) REFERENCES thermometres_ref(id)
+                    )
+                """)
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_etalonnages_date ON etalonnages(date_etalonnage)"
+                )
+                logger.info("Migration v3.0 : table etalonnages recrée avec thermometre_ref_id")
+        except Exception as e:
+            logger.warning("Migration v3.0 etalonnages : %s", e)
+
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
 
