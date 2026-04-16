@@ -46,7 +46,7 @@ async function chargerPersonnel() {
 document.addEventListener('DOMContentLoaded', () => {
   identifierJour();
   chargerPersonnel();
-  chargerTaches();
+  chargerTaches(); // restaurerEtat() est appelé après la génération du tableau
   elBtn.addEventListener('click', validerJournee);
 });
 
@@ -73,9 +73,41 @@ async function chargerTaches() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     zonesData = await res.json();
     genererTableau();
+    await restaurerEtat(); // restaure l'état "Validé" si déjà fait aujourd'hui
   } catch (err) {
     elTbody.innerHTML = `<tr><td colspan="11" style="padding:2rem;text-align:center;color:#888;">
       Erreur : ${err.message}</td></tr>`;
+  }
+}
+
+// ── Restaurer l'état de validation au rechargement ───────────
+async function restaurerEtat() {
+  const today = new Date().toISOString().split('T')[0];
+  try {
+    const res = await fetch(`/api/nettoyage/status?date=${today}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.valide) return;
+
+    // Remplir les cellules du jour validées
+    const initiale = data.operateur ? data.operateur.charAt(0).toUpperCase() : '?';
+    data.taches_ids.forEach(id => {
+      const cell = document.querySelector(
+        `td.nett-day-cell[data-day="${todayIndex}"][data-id="${id}"]`
+      );
+      if (cell) {
+        cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
+      }
+    });
+
+    // Verrouiller le bouton et le select
+    elBtn.disabled = true;
+    elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
+    elBtn.classList.add('nett-btn-valider--done');
+    if (data.operateur) elSelect.value = data.operateur;
+    elSelect.disabled = true;
+  } catch {
+    // Silencieux — l'état par défaut (non validé) reste affiché
   }
 }
 

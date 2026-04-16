@@ -98,6 +98,24 @@
   background: #4caf50;
 }
 
+.nett-btn-historique {
+  height: 36px;
+  padding: 0 .9rem;
+  background: none;
+  border: 2px solid var(--color-accent);
+  border-radius: 6px;
+  color: var(--color-accent);
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+}
+.nett-btn-historique:active { background: rgba(107,58,31,.08); }
+
 /* ─── WRAPPER TABLEAU ─── */
 .nett-table-wrap {
   flex: 1;

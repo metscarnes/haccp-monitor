@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Historique Nettoyage — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 17px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    /* ── En-tête ── */
+    .hn-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .hn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 14px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .hn-retour:active { opacity: .7; }
+
+    .hn-titre {
+      font-size: 18px;
+      font-weight: 700;
+      flex: 1;
+    }
+
+    /* ── Zone de chargement / message vide ── */
+    .hn-message {
+      text-align: center;
+      padding: 64px 24px;
+      color: var(--accent);
+    }
+    .hn-message-icone { font-size: 56px; margin-bottom: 16px; }
+    .hn-message-texte { font-size: 18px; }
+
+    /* ── Contenu principal ── */
+    .hn-contenu {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    /* ── Bloc Année ── */
+    .hn-annee {
+      background: var(--accent);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .hn-annee-titre {
+      background: none;
+      border: none;
+      color: #FFF;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      padding: 16px 18px;
+      width: 100%;
+      text-align: left;
+    }
+    .hn-annee-titre:active { opacity: .8; }
+
+    .hn-annee-chevron {
+      margin-left: auto;
+      font-size: 18px;
+      transition: transform .2s;
+    }
+    .hn-annee.ouvert .hn-annee-chevron { transform: rotate(180deg); }
+
+    .hn-annee-corps {
+      display: none;
+      background: var(--fond);
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hn-annee:not(.ouvert) .hn-annee-corps { display: none; }
+    .hn-annee.ouvert .hn-annee-corps { display: flex; }
+
+    /* ── Bloc Mois ── */
+    .hn-mois {
+      background: #FFF;
+      border-radius: 10px;
+      border-left: 5px solid var(--secondaire);
+      overflow: hidden;
+    }
+
+    .hn-mois-titre {
+      background: none;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 17px;
+      font-weight: 700;
+      padding: 14px 16px;
+      width: 100%;
+      text-align: left;
+    }
+    .hn-mois-titre:active { background: rgba(0,0,0,.03); }
+
+    .hn-mois-badge {
+      background: var(--secondaire);
+      border-radius: 14px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 2px 10px;
+    }
+
+    .hn-mois-chevron {
+      margin-left: auto;
+      font-size: 16px;
+      color: var(--secondaire);
+      transition: transform .2s;
+    }
+    .hn-mois.ouvert .hn-mois-chevron { transform: rotate(180deg); }
+
+    .hn-mois-corps {
+      border-top: 1px solid #EEE;
+      padding: 10px 12px 12px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .hn-mois.ouvert .hn-mois-corps { display: flex; }
+
+    /* ── Bloc Semaine ── */
+    .hn-semaine {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .hn-semaine-titre {
+      background: none;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      width: 100%;
+      text-align: left;
+    }
+    .hn-semaine-titre:active { background: rgba(0,0,0,.03); }
+
+    .hn-semaine-label {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .hn-semaine-nb {
+      font-size: 13px;
+      color: #888;
+    }
+
+    .hn-semaine-chevron {
+      margin-left: auto;
+      font-size: 14px;
+      color: var(--secondaire);
+      transition: transform .2s;
+    }
+    .hn-semaine.ouvert .hn-semaine-chevron { transform: rotate(180deg); }
+
+    .hn-semaine-corps {
+      border-top: 1px solid #DDD;
+      padding: 8px 10px 10px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .hn-semaine.ouvert .hn-semaine-corps { display: flex; }
+
+    /* ── Carte Jour ── */
+    .hn-jour {
+      background: #FFF;
+      border-radius: 8px;
+      border: 1px solid #E8DDD0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+    }
+
+    .hn-jour-icone {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .hn-jour-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .hn-jour-date {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+
+    .hn-jour-ops {
+      font-size: 13px;
+      color: var(--accent);
+      margin-top: 2px;
+    }
+
+    .hn-jour-badge {
+      background: rgba(45,125,70,.12);
+      border-radius: 16px;
+      color: var(--ok);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── EN-TÊTE ── -->
+  <header class="hn-header">
+    <a href="/nettoyage.html" class="hn-retour">← Retour</a>
+    <div class="hn-titre">Historique Nettoyage</div>
+  </header>
+
+  <!-- ── CONTENU ── -->
+  <div id="hn-message" class="hn-message">
+    <div class="hn-message-icone">⏳</div>
+    <div class="hn-message-texte">Chargement…</div>
+  </div>
+
+  <div id="hn-contenu" class="hn-contenu" hidden></div>
+
+  <script src="/static/js/historique-nettoyage.js"></script>
+</body>
+</html>
