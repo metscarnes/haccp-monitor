@@ -72,32 +72,6 @@ function setTuile(idTuile, etat, html) {
   statut.innerHTML = html;
 }
 
-// ── Tuile — Tâches HACCP ──────────────────────────────────────
-function afficherTaches(data) {
-  const enRetard = data.en_retard?.length ?? 0;
-  const aFaire   = data.a_faire?.length   ?? 0;
-  const fait     = data.fait?.length      ?? 0;
-  const badge    = document.getElementById('badge-taches');
-
-  if (enRetard > 0) {
-    badge.textContent = enRetard;
-    badge.hidden = false;
-    setTuile('tuile-taches', 'alerte',
-      `${dot('alerte')} <strong>${enRetard} en retard</strong>&ensp;·&ensp;${aFaire} à faire`
-    );
-  } else if (aFaire > 0) {
-    badge.hidden = true;
-    setTuile('tuile-taches', 'attention',
-      `${dot('attention')} ${aFaire} à faire&ensp;·&ensp;${fait} fait${fait > 1 ? 'es' : 'e'}`
-    );
-  } else {
-    badge.hidden = true;
-    setTuile('tuile-taches', 'ok',
-      `${dot('ok')} Journée complète ✓`
-    );
-  }
-}
-
 // ── Tuile — Étiquettes DLC ────────────────────────────────────
 function afficherEtiquettes(alertes) {
   if (alertes.length === 0) {
@@ -176,22 +150,15 @@ function afficherTemperatures(dash) {
 
 // ── Chargement principal ──────────────────────────────────────
 async function charger() {
-  const [rTaches, rDash, rDlc, rRecep] = await Promise.allSettled([
-    apiFetch('/api/taches/today'),
+  const [rDash, rDlc, rRecep] = await Promise.allSettled([
     apiFetch('/api/boutiques/1/dashboard'),
     apiFetch('/api/etiquettes/alertes-dlc'),
     apiFetch('/api/receptions?limit=1'),
   ]);
 
-  const toutEchoue = [rTaches, rDash, rDlc, rRecep]
+  const toutEchoue = [rDash, rDlc, rRecep]
     .every(r => r.status === 'rejected');
   elBandeauConnexion.hidden = !toutEchoue;
-
-  if (rTaches.status === 'fulfilled') {
-    afficherTaches(rTaches.value);
-  } else {
-    setTuile('tuile-taches', 'erreur', '⚠ Connexion perdue');
-  }
 
   if (rDash.status === 'fulfilled') {
     afficherTemperatures(rDash.value);

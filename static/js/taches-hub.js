@@ -1,10 +1,10 @@
 'use strict';
 /* ============================================================
    taches-hub.js — Page intermédiaire Tâches HACCP
-   Affiche les sous-modules sous forme de tuiles avec statut.
+   Affiche le statut de validation du nettoyage du jour.
    ============================================================ */
 
-const REFRESH_MS = 30_000;
+const REFRESH_MS = 60_000;
 
 const elHorloge = document.getElementById('hub-horloge');
 
@@ -34,47 +34,30 @@ function dot(etat) {
   return `<span class="hub-dot hub-dot--${etat}" aria-hidden="true"></span>`;
 }
 
-function setTuile(idTuile, etat, html) {
-  const tuile  = document.getElementById(idTuile);
-  const statut = document.getElementById('statut-' + idTuile.replace('tuile-', ''));
+function setTuile(id, etat, html) {
+  const tuile  = document.getElementById(id);
+  const statut = document.getElementById('statut-' + id.replace('tuile-', ''));
   if (!tuile || !statut) return;
   tuile.className  = `hub-tuile hub-tuile--${etat}`;
   statut.innerHTML = html;
 }
 
-// ── Tuile — Contrôles journaliers ─────────────────────────────
-function afficherControles(data) {
-  const enRetard = data.en_retard?.length ?? 0;
-  const aFaire   = data.a_faire?.length   ?? 0;
-  const fait     = data.fait?.length      ?? 0;
-  const badge    = document.getElementById('badge-controles');
-
-  if (enRetard > 0) {
-    badge.textContent = enRetard;
-    badge.hidden = false;
-    setTuile('tuile-controles', 'alerte',
-      `${dot('alerte')} <strong>${enRetard} en retard</strong>&ensp;·&ensp;${aFaire} à faire`
-    );
-  } else if (aFaire > 0) {
-    badge.hidden = true;
-    setTuile('tuile-controles', 'attention',
-      `${dot('attention')} ${aFaire} à faire&ensp;·&ensp;${fait} fait${fait > 1 ? 'es' : 'e'}`
-    );
-  } else {
-    badge.hidden = true;
-    setTuile('tuile-controles', 'ok',
-      `${dot('ok')} Journée complète ✓`
-    );
-  }
-}
-
-// ── Chargement ────────────────────────────────────────────────
+// ── Tuile — Nettoyage ─────────────────────────────────────────
 async function charger() {
   try {
-    const data = await apiFetch('/api/taches/today');
-    afficherControles(data);
+    const data = await apiFetch('/api/nettoyage/status');
+    if (data.valide) {
+      const par = data.operateur ? ` — ${data.operateur}` : '';
+      setTuile('tuile-nettoyage', 'ok',
+        `${dot('ok')} Validé aujourd'hui${par}`
+      );
+    } else {
+      setTuile('tuile-nettoyage', 'alerte',
+        `${dot('alerte')} <strong>Non validé aujourd'hui</strong>`
+      );
+    }
   } catch {
-    setTuile('tuile-controles', 'erreur', '⚠ Connexion perdue');
+    setTuile('tuile-nettoyage', 'erreur', '⚠ Connexion perdue');
   }
 }
 
