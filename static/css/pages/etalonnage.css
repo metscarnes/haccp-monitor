@@ -338,7 +338,93 @@
   font-size: var(--text-sm);
 }
 
+/* ─── PHASE 1 CARD (Screen 2 — contexte) ─── */
+.etal-phase1-card {
+  border-left: 4px solid var(--color-ok);
+  background: rgba(45,125,70,.06);
+}
+
+.etal-phase1-titre {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-ok);
+  margin-bottom: .4rem;
+}
+
+.etal-phase1-detail {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  opacity: .85;
+}
+
+/* ─── GRILLE ENCEINTES (Screen 2) ─── */
+.etal-enceintes-grille {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.etal-comp-card {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  border: 2px solid var(--color-secondary);
+}
+
+.etal-comp-nom {
+  font-size: var(--text-base);
+  font-weight: 800;
+  letter-spacing: .03em;
+  color: var(--color-accent);
+}
+
+.etal-comp-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  align-items: end;
+}
+
+.etal-comp-col {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+
+.etal-comp-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.etal-comp-temp-zigbee {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  line-height: 1;
+  padding: .45rem 0;
+}
+
+.etal-comp-input {
+  font-size: var(--text-lg) !important;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* ─── RESPONSIVE ─── */
+@media (max-width: 600px) {
+  .etal-enceintes-grille {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 600px) {
   .etal-form-grille {
     grid-template-columns: 1fr;

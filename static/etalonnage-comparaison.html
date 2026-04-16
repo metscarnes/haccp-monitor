@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Comparaison Sondes EET01 — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/pages/etalonnage.css">
+</head>
+<body class="etal-body">
+
+  <!-- ── EN-TÊTE ── -->
+  <header class="etal-header">
+    <a href="/etalonnage.html" class="etal-btn-retour" aria-label="Retour Screen 1">← Étape 1</a>
+    <div class="etal-header-centre">
+      <div class="etal-titre">COMPARAISON DES SONDES</div>
+      <div class="etal-ref" id="etal-phase1-resume">Réf. EET01 — Étape 2 / 2</div>
+    </div>
+    <div id="etal-horloge" class="etal-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="etal-main">
+
+    <!-- ── CONTEXTE PHASE 1 ── -->
+    <div id="etal-phase1-card" class="etal-card etal-phase1-card">
+      <div class="etal-phase1-titre">✅ Étape 1 validée</div>
+      <div id="etal-phase1-detail" class="etal-phase1-detail">Chargement…</div>
+    </div>
+
+    <!-- ── INSTRUCTIONS ── -->
+    <div class="etal-regle">
+      Plongez le thermomètre de référence dans chaque enceinte et saisissez sa lecture.
+      La sonde connectée est relevée automatiquement.
+      <strong>Conformité : écart ≤ ±0,5°C.</strong>
+    </div>
+
+    <!-- ── CARTES ENCEINTES ── -->
+    <div id="etal-enceintes-grille" class="etal-enceintes-grille">
+      <div class="etal-vide">Chargement des enceintes…</div>
+    </div>
+
+    <!-- ── BOUTON ENREGISTRER ── -->
+    <div id="etal-msg-comp" class="etal-msg" hidden></div>
+
+    <div>
+      <button type="button" id="etal-submit-comp" class="etal-btn-submit" disabled>
+        <span id="etal-submit-comp-texte">Enregistrer les comparaisons ✓</span>
+      </button>
+    </div>
+
+  </main>
+
+  <script src="/static/js/etalonnage-comparaison.js"></script>
+</body>
+</html>

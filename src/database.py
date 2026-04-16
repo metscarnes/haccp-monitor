@@ -408,21 +408,46 @@ CREATE INDEX IF NOT EXISTS idx_fabrications_lot
 -- Module Étalonnage Thermomètres (EET01)
 -- ===========================================================================
 
+CREATE TABLE IF NOT EXISTS thermometres_ref (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    nom          TEXT    NOT NULL,
+    numero_serie TEXT,
+    actif        BOOLEAN DEFAULT 1,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(boutique_id, nom)
+);
+
 CREATE TABLE IF NOT EXISTS etalonnages (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     reference           TEXT    NOT NULL DEFAULT 'EET01',
     date_etalonnage     DATE    NOT NULL,
-    thermometre_id      TEXT    NOT NULL,
+    thermometre_ref_id  INTEGER NOT NULL,
     temperature_mesuree REAL    NOT NULL,
     conforme            INTEGER NOT NULL,
     action_corrective   TEXT    NOT NULL,
     operateur           TEXT    NOT NULL,
     commentaire         TEXT,
-    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (thermometre_ref_id) REFERENCES thermometres_ref(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_etalonnages_date
     ON etalonnages(date_etalonnage);
+
+CREATE TABLE IF NOT EXISTS etalonnage_comparaisons (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    etalonnage_id   INTEGER NOT NULL,
+    enceinte_id     INTEGER NOT NULL,
+    enceinte_nom    TEXT    NOT NULL,
+    temp_zigbee     REAL    NOT NULL,
+    temp_reference  REAL    NOT NULL,
+    ecart           REAL    NOT NULL,
+    conforme        INTEGER NOT NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (etalonnage_id) REFERENCES etalonnages(id),
+    FOREIGN KEY (enceinte_id)   REFERENCES enceintes(id)
+);
 
 CREATE TABLE IF NOT EXISTS fabrication_lots (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,

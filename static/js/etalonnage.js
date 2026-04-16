@@ -1,10 +1,12 @@
 'use strict';
 /* ============================================================
-   etalonnage.js — Étalonnage Thermomètres EET01
+   etalonnage.js — Screen 1 : Étalonnage du thermomètre de référence
    Au Comptoir des Lilas — Mets Carnés Holding
 
-   Règle : conforme si température ∈ [-0.5°C ; +0.5°C]
-   Fréquence : trimestrielle (tous les ~3 mois)
+   Règle : conforme si température ∈ [−0,5°C ; +0,5°C]
+   - Conforme     → uniquement action "Conforme"
+   - Non conforme → uniquement "Calibrage" ou "Remplacé"
+   Après soumission → redirect vers Screen 2 (comparaisons)
    ============================================================ */
 
 const TEMP_MIN = -0.5;
@@ -37,7 +39,6 @@ function majHorloge() {
 setInterval(majHorloge, 1000);
 majHorloge();
 
-// Date par défaut = aujourd'hui
 elDate.value = new Date().toISOString().slice(0, 10);
 
 // ── Fetch helper ──────────────────────────────────────────────
@@ -58,13 +59,33 @@ async function chargerPersonnel() {
     const data = await apiFetch('/api/admin/personnel');
     (data || []).forEach(p => {
       const opt = document.createElement('option');
-      opt.value       = p.prenom;
+      opt.value = p.prenom;
       opt.textContent = p.prenom;
       elOperateur.appendChild(opt);
     });
-  } catch {
-    // silencieux — le champ reste vide
-  }
+  } catch { /* silencieux */ }
+}
+
+// ── Thermomètres de référence ─────────────────────────────────
+async function chargerThermometres() {
+  try {
+    const data = await apiFetch('/api/admin/thermometres');
+    const actifs = (data || []).filter(t => t.actif);
+    if (actifs.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '⚠ Aucun thermomètre configuré';
+      opt.disabled = true;
+      elThermo.appendChild(opt);
+      return;
+    }
+    actifs.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.numero_serie ? `${t.nom} — ${t.numero_serie}` : t.nom;
+      elThermo.appendChild(opt);
+    });
+  } catch { /* silencieux */ }
 }
 
 // ── Badge conformité (temps réel) ────────────────────────────
@@ -73,7 +94,7 @@ function majBadgeConformite() {
   if (isNaN(val)) {
     elBadge.className = 'etal-conformite-badge etal-conformite-badge--vide';
     elBadge.textContent = '— Saisir une température';
-    updateActionsDisponibles(null);
+    setActionsDisponibles(null);
     return;
   }
 
@@ -85,106 +106,122 @@ function majBadgeConformite() {
     elBadge.className = 'etal-conformite-badge etal-conformite-badge--nok';
     elBadge.textContent = `❌ Non conforme — ${val.toFixed(1)}°C hors tolérance`;
   }
-  updateActionsDisponibles(ok);
+  setActionsDisponibles(ok);
 }
 
 /**
- * Active / désactive les boutons radio selon la conformité.
- * - Conforme  : disponible uniquement si temp OK
- * - Calibrage : disponible si non conforme
- * - Remplacé  : toujours disponible
+ * Règle stricte :
+ *  - Conforme     → uniquement "Conforme" disponible
+ *  - Non conforme → uniquement "Calibrage" et "Remplacé" disponibles
+ *  - null (rien saisi) → tout désactivé
  */
-function updateActionsDisponibles(conforme) {
-  const radios = elForm.querySelectorAll('[name="action_corrective"]');
-
-  if (conforme === null) {
-    // Rien saisi — tout désactivé
-    elLblConforme .classList.add('etal-action-label--disabled');
-    elLblCalibrage.classList.add('etal-action-label--disabled');
-    elLblRemplace .classList.add('etal-action-label--disabled');
-    radios.forEach(r => { r.checked = false; r.disabled = true; });
-    return;
-  }
-
-  // Conforme disponible seulement si temp OK
+function setActionsDisponibles(conforme) {
   const rConforme  = elLblConforme.querySelector('input');
   const rCalibrage = elLblCalibrage.querySelector('input');
   const rRemplace  = elLblRemplace.querySelector('input');
 
-  rConforme.disabled  = !conforme;
-  rCalibrage.disabled = conforme;   // Calibrage seulement si non conforme
-  rRemplace.disabled  = false;
+  if (conforme === null) {
+    [rConforme, rCalibrage, rRemplace].forEach(r => {
+      r.checked = false;
+      r.disabled = true;
+    });
+    [elLblConforme, elLblCalibrage, elLblRemplace].forEach(l =>
+      l.classList.add('etal-action-label--disabled')
+    );
+    return;
+  }
 
-  elLblConforme .classList.toggle('etal-action-label--disabled', !conforme);
-  elLblCalibrage.classList.toggle('etal-action-label--disabled',  conforme);
-  elLblRemplace .classList.remove('etal-action-label--disabled');
-
-  // Si l'action sélectionnée est devenue invalide, la décocher
-  if (rConforme.checked  && !conforme) rConforme.checked  = false;
-  if (rCalibrage.checked &&  conforme) rCalibrage.checked = false;
+  if (conforme) {
+    // Temp OK → seulement Conforme
+    rConforme.disabled  = false;
+    rCalibrage.disabled = true;
+    rRemplace.disabled  = true;
+    elLblConforme .classList.remove('etal-action-label--disabled');
+    elLblCalibrage.classList.add('etal-action-label--disabled');
+    elLblRemplace .classList.add('etal-action-label--disabled');
+    // Décocher les options devenues invalides
+    if (rCalibrage.checked) rCalibrage.checked = false;
+    if (rRemplace.checked)  rRemplace.checked  = false;
+    // Auto-sélectionner Conforme
+    rConforme.checked = true;
+  } else {
+    // Temp hors tolérance → Calibrage + Remplacé, pas Conforme
+    rConforme.disabled  = true;
+    rCalibrage.disabled = false;
+    rRemplace.disabled  = false;
+    elLblConforme .classList.add('etal-action-label--disabled');
+    elLblCalibrage.classList.remove('etal-action-label--disabled');
+    elLblRemplace .classList.remove('etal-action-label--disabled');
+    if (rConforme.checked) rConforme.checked = false;
+  }
 }
 
 elTemp.addEventListener('input', majBadgeConformite);
+setActionsDisponibles(null);
 
-// Init désactivé
-updateActionsDisponibles(null);
-
-// ── Affichage message ─────────────────────────────────────────
+// ── Messages ──────────────────────────────────────────────────
 function showMsg(texte, type) {
   elMsg.textContent = texte;
   elMsg.className   = `etal-msg etal-msg--${type}`;
   elMsg.hidden      = false;
 }
-
 function hideMsg() { elMsg.hidden = true; }
 
-// ── Soumission ────────────────────────────────────────────────
+// ── Soumission → redirect Screen 2 ───────────────────────────
 elForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   hideMsg();
 
-  const date     = elDate.value;
-  const operateur= elOperateur.value;
-  const thermo   = elThermo.value.trim();
-  const tempStr  = elTemp.value;
-  const actionEl = elForm.querySelector('[name="action_corrective"]:checked');
+  const date      = elDate.value;
+  const operateur = elOperateur.value;
+  const thermoId  = elThermo.value;
+  const tempStr   = elTemp.value;
+  const actionEl  = elForm.querySelector('[name="action_corrective"]:checked');
 
-  // Validation côté client
-  if (!date)     { showMsg('La date est obligatoire.',              'erreur'); return; }
-  if (!operateur){ showMsg("Sélectionnez un opérateur.",            'erreur'); return; }
-  if (!thermo)   { showMsg("L'identification du thermomètre est obligatoire.", 'erreur'); return; }
-  if (tempStr === '') { showMsg('La température est obligatoire.',  'erreur'); return; }
-  if (!actionEl) { showMsg('Sélectionnez une action corrective.',   'erreur'); return; }
+  if (!date)     { showMsg('La date est obligatoire.',                        'erreur'); return; }
+  if (!operateur){ showMsg('Sélectionnez un opérateur.',                      'erreur'); return; }
+  if (!thermoId) { showMsg('Sélectionnez un thermomètre de référence.',       'erreur'); return; }
+  if (tempStr === '') { showMsg('La température est obligatoire.',             'erreur'); return; }
+  if (!actionEl) { showMsg('Sélectionnez une action corrective.',             'erreur'); return; }
 
   const payload = {
     date_etalonnage:     date,
-    thermometre_id:      thermo,
+    thermometre_ref_id:  parseInt(thermoId),
     temperature_mesuree: parseFloat(tempStr),
     action_corrective:   actionEl.value,
-    operateur:           operateur,
-    commentaire:         document.getElementById('etal-commentaire').value.trim() || null,
+    operateur,
+    commentaire: document.getElementById('etal-commentaire').value.trim() || null,
   };
 
   elSubmit.disabled         = true;
   elSubmitTexte.textContent = 'Envoi…';
 
   try {
-    await apiFetch('/api/etalonnage', {
+    const result = await apiFetch('/api/etalonnage', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
 
-    showMsg('Étalonnage enregistré avec succès.', 'succes');
-    elForm.reset();
-    elDate.value = new Date().toISOString().slice(0, 10);
-    elBadge.className = 'etal-conformite-badge etal-conformite-badge--vide';
-    elBadge.textContent = '— Saisir une température';
-    updateActionsDisponibles(null);
-    await chargerHistorique();
+    // Si le thermo est validé (conforme ou remplacé) → Screen 2
+    if (result.action_corrective === 'calibrage') {
+      // Calibrage effectué mais pas encore remplacé → pas de comparaison possible
+      showMsg(
+        '🔧 Calibrage enregistré. Effectuez le calibrage puis créez un nouvel enregistrement pour passer aux comparaisons.',
+        'succes'
+      );
+      elForm.reset();
+      elDate.value = new Date().toISOString().slice(0, 10);
+      elBadge.className = 'etal-conformite-badge etal-conformite-badge--vide';
+      elBadge.textContent = '— Saisir une température';
+      setActionsDisponibles(null);
+      await chargerHistorique();
+    } else {
+      // Conforme ou Remplacé → on peut comparer les sondes
+      location.href = `/etalonnage-comparaison.html?id=${result.id}`;
+    }
   } catch (err) {
     showMsg(`Erreur : ${err.message}`, 'erreur');
-  } finally {
     elSubmit.disabled         = false;
     elSubmitTexte.textContent = 'Enregistrer ✓';
   }
@@ -192,12 +229,7 @@ elForm.addEventListener('submit', async (e) => {
 
 // ── Historique ────────────────────────────────────────────────
 function labelAction(code) {
-  switch (code) {
-    case 'conforme':  return '✅ Conforme';
-    case 'calibrage': return '🔧 Calibrage';
-    case 'remplace':  return '🔄 Remplacé';
-    default: return code;
-  }
+  return { conforme: '✅ Conforme', calibrage: '🔧 Calibrage', remplace: '🔄 Remplacé' }[code] ?? code;
 }
 
 function formatDate(iso) {
@@ -213,7 +245,6 @@ async function chargerHistorique() {
       elHistBody.innerHTML = '<tr><td colspan="6" class="etal-vide">Aucun étalonnage enregistré</td></tr>';
       return;
     }
-
     elHistBody.innerHTML = data.map(r => {
       const badgeClass = r.conforme ? 'etal-badge--ok' : 'etal-badge--nok';
       const badgeLabel = r.conforme ? '✅ Conforme' : '❌ Non conforme';
@@ -221,7 +252,7 @@ async function chargerHistorique() {
         ? r.temperature_mesuree.toFixed(1) + ' °C' : '—';
       return `<tr>
         <td>${formatDate(r.date_etalonnage)}</td>
-        <td>${esc(r.thermometre_id)}</td>
+        <td>${esc(r.thermometre_nom ?? '')}</td>
         <td>${temp}</td>
         <td><span class="etal-badge ${badgeClass}">${badgeLabel}</span></td>
         <td>${labelAction(r.action_corrective)}</td>
@@ -235,12 +266,11 @@ async function chargerHistorique() {
 
 function esc(str) {
   return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 // ── Init ──────────────────────────────────────────────────────
 chargerPersonnel();
+chargerThermometres();
 chargerHistorique();
