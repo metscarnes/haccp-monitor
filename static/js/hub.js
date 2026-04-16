@@ -16,7 +16,6 @@ const INACT_MS    = 5 * 60 * 1000;   // inactivité → reload
 
 // ── Références DOM ────────────────────────────────────────────
 const elHorloge          = document.getElementById('hub-horloge');
-const elBandeauRetard    = document.getElementById('hub-bandeau-retard');
 const elBandeauConnexion = document.getElementById('hub-bandeau-connexion');
 
 // ── Horloge ───────────────────────────────────────────────────
@@ -175,28 +174,6 @@ function afficherTemperatures(dash) {
   );
 }
 
-// ── Bandeau tâches en retard ──────────────────────────────────
-function majBandeauRetard(enRetard) {
-  if (!enRetard || enRetard.length === 0) {
-    elBandeauRetard.hidden = true;
-    return;
-  }
-
-  const nb    = enRetard.length;
-  const noms  = enRetard.slice(0, 2).map(t => t.libelle).join(' · ');
-  const suite = nb > 2 ? ` (+${nb - 2})` : '';
-
-  elBandeauRetard.innerHTML =
-    `⚠&nbsp;<strong>${nb} tâche${nb > 1 ? 's' : ''} en retard</strong>`
-    + `<span class="hub-bandeau-detail">${noms}${suite}</span>`;
-  elBandeauRetard.hidden = false;
-}
-
-// Clic bandeau → page tâches
-elBandeauRetard.addEventListener('click', () => {
-  location.href = '/taches.html';
-});
-
 // ── Chargement principal ──────────────────────────────────────
 async function charger() {
   const [rTaches, rDash, rDlc, rRecep] = await Promise.allSettled([
@@ -212,10 +189,8 @@ async function charger() {
 
   if (rTaches.status === 'fulfilled') {
     afficherTaches(rTaches.value);
-    majBandeauRetard(rTaches.value.en_retard ?? []);
   } else {
     setTuile('tuile-taches', 'erreur', '⚠ Connexion perdue');
-    elBandeauRetard.hidden = true;
   }
 
   if (rDash.status === 'fulfilled') {

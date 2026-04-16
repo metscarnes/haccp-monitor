@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Tâches HACCP — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <a href="/hub.html" class="hub-btn-admin" aria-label="Retour au hub">← Hub</a>
+    <div class="hub-titre">TÂCHES HACCP</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       GRILLE — Sous-modules Tâches HACCP
+  ========================================================= -->
+  <main class="hub-grille taches-hub-grille" role="main">
+
+    <!-- ── Nettoyage & Désinfection ── -->
+    <a class="hub-tuile" id="tuile-nettoyage"
+       href="/nettoyage.html" aria-label="Plan de nettoyage et désinfection">
+      <div class="hub-tuile-icone" aria-hidden="true">🧹</div>
+      <div class="hub-tuile-titre">NETTOYAGE</div>
+      <div class="hub-tuile-statut" id="statut-nettoyage">Plan & désinfection</div>
+    </a>
+
+    <!-- ── Contrôles journaliers ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-controles"
+       href="/taches.html" aria-label="Contrôles journaliers HACCP">
+      <span class="hub-tuile-badge" id="badge-controles" hidden aria-label="tâches en retard">0</span>
+      <div class="hub-tuile-icone" aria-hidden="true">✅</div>
+      <div class="hub-tuile-titre">CONTRÔLES</div>
+      <div class="hub-tuile-statut" id="statut-controles">Chargement…</div>
+    </a>
+
+  </main>
+
+  <script src="/static/js/taches-hub.js"></script>
+</body>
+</html>
