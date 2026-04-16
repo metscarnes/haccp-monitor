@@ -74,7 +74,7 @@ function setTuile(idTuile, etat, html) {
 
 // ── Tuile — Fabrication ───────────────────────────────────────
 function afficherEtiquettes(alertes) {
-  setTuile('tuile-etiquettes', 'ok', '');
+  document.getElementById('tuile-etiquettes').className = 'hub-tuile hub-tuile--ok';
 }
 
 // ── Tuile — Réception ─────────────────────────────────────────
