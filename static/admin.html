@@ -65,6 +65,35 @@
       </div>
     </section>
 
+    <!-- ── Thermomètres de référence ── -->
+    <section class="admin-section" id="section-thermometres">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🌡️ Thermomètres de référence <span class="admin-badge admin-badge--info">EET01</span></h2>
+      </div>
+      <div class="admin-section-body">
+        <div id="thermometres-loader" class="admin-loader">
+          <div class="spinner"></div>
+        </div>
+        <div id="thermometres-error" class="admin-error" hidden></div>
+        <div id="thermometres-content" hidden>
+          <ul class="admin-list" id="thermometres-list"></ul>
+          <form class="admin-form" id="thermometres-form">
+            <div class="admin-form-row">
+              <div class="admin-field">
+                <label for="thermo-nom">Nom *</label>
+                <input type="text" id="thermo-nom" name="nom" placeholder="Ex : Thermo-01" required>
+              </div>
+              <div class="admin-field">
+                <label for="thermo-serie">N° de série</label>
+                <input type="text" id="thermo-serie" name="numero_serie" placeholder="Ex : SN-2024-001">
+              </div>
+              <button type="submit" class="btn btn-primaire">Ajouter</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
     <!-- ── Enceintes / Sondes ── -->
     <section class="admin-section" id="section-enceintes">
       <div class="admin-section-header">
@@ -307,6 +336,84 @@
       }
     });
 
+    // ── Thermomètres de référence ───────────────────────────
+    async function loadThermometres() {
+      showLoader('thermometres');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/thermometres`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        renderThermometres(await res.json());
+        showContent('thermometres');
+      } catch (err) {
+        showError('thermometres', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    function renderThermometres(list) {
+      const ul = $('thermometres-list');
+      ul.innerHTML = '';
+      if (!list || list.length === 0) {
+        ul.innerHTML = '<li class="admin-list-vide">Aucun thermomètre configuré</li>';
+        return;
+      }
+      list.forEach(t => {
+        const li = document.createElement('li');
+        li.className = `admin-list-item${t.actif ? '' : ' admin-list-item--inactif'}`;
+        li.innerHTML = `
+          <span class="admin-list-nom">
+            ${escHtml(t.nom)}
+            ${t.numero_serie ? `<span class="admin-list-meta">${escHtml(t.numero_serie)}</span>` : ''}
+          </span>
+          <span class="badge ${t.actif ? 'badge-ok' : 'badge-hors-ligne'}">${t.actif ? 'Actif' : 'Inactif'}</span>
+          <button class="btn btn-sm ${t.actif ? 'btn-danger' : 'btn-secondaire'}"
+                  data-id="${t.id}" data-actif="${t.actif ? 1 : 0}"
+                  aria-label="${t.actif ? 'Désactiver' : 'Réactiver'} ${escHtml(t.nom)}">
+            ${t.actif ? 'Désactiver' : 'Réactiver'}
+          </button>
+        `;
+        ul.appendChild(li);
+      });
+      ul.querySelectorAll('[data-id]').forEach(btn => {
+        btn.addEventListener('click', () =>
+          toggleThermometre(parseInt(btn.dataset.id), parseInt(btn.dataset.actif) === 1)
+        );
+      });
+    }
+
+    async function toggleThermometre(id, estActif) {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/thermometres/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actif: !estActif }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        loadThermometres();
+      } catch (err) {
+        alert(`Erreur : ${err.message}`);
+      }
+    }
+
+    $('thermometres-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nom    = $('thermo-nom').value.trim();
+      const serie  = $('thermo-serie').value.trim();
+      if (!nom) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/thermometres`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nom, numero_serie: serie || null }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        $('thermo-nom').value = '';
+        $('thermo-serie').value = '';
+        loadThermometres();
+      } catch (err) {
+        alert(`Erreur ajout : ${err.message}`);
+      }
+    });
+
     // ── Enceintes ───────────────────────────────────────────
     async function loadEnceintes() {
       showLoader('enceintes');
@@ -499,6 +606,7 @@
 
     // ── Init ────────────────────────────────────────────────
     loadPersonnel();
+    loadThermometres();
     loadEnceintes();
     loadAlertes();
     loadServeurInfo();
