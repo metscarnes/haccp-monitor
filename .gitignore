@@ -7,3 +7,9 @@ __pycache__/
 node_modules/
 .env
 *.log
+haccp.db
+haccp.db-shm
+haccp.db-wal
+__pycache__/
+*.pyc
+*.pyo
