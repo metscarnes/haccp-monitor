@@ -178,16 +178,22 @@ async def valider_nettoyage(body: ValidationNettoyage):
                 signature   TEXT    NOT NULL DEFAULT 'OK'
             )
         """)
+        # Garantit l'unicité (tache_id, date_val) — tolère les tables existantes
+        await db.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_nett_tache_date
+            ON registre_nettoyage(tache_id, date_val)
+        """)
 
+        nb = 0
         for tid in body.taches_ids:
-            await db.execute(
-                "INSERT INTO registre_nettoyage (tache_id, operateur, date_val, signature) "
+            result = await db.execute(
+                "INSERT OR IGNORE INTO registre_nettoyage (tache_id, operateur, date_val, signature) "
                 "VALUES (?, ?, ?, ?)",
                 (tid, body.operateur.strip(), aujourd_hui, body.signature),
             )
+            nb += result.rowcount  # 1 si inséré, 0 si déjà présent
 
         await db.commit()
-        nb = len(body.taches_ids)
 
     logger.info("Nettoyage validé par %s — %d tâche(s) — %s", body.operateur, nb, aujourd_hui)
     return {

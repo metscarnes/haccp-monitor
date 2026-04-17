@@ -71,6 +71,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cell) toggleCell(cell);
   });
 
+  // Clic sur en-tête de colonne → cocher toute la colonne (sauf hebdo)
+  document.querySelector('#planning-table thead').addEventListener('click', e => {
+    const th = e.target.closest('th[data-day]');
+    if (th) validerColonne(parseInt(th.dataset.day, 10));
+  });
+
   // Modale gestion
   elBtnGerer.addEventListener('click', ouvrirModalGerer);
   elBtnClose.addEventListener('click', fermerModalGerer);
@@ -271,25 +277,27 @@ async function validerJournee() {
   const initiale  = operateur.charAt(0).toUpperCase();
   const today     = weekDates[todayIndex] || new Date().toISOString().split('T')[0];
 
-  // Collecter uniquement les cases NON déjà cochées
+  // Collecter TOUS les IDs applicables — le backend gère les doublons (INSERT OR IGNORE)
+  // Visuellement : ne cocher que les cases encore vides
   const idsAValider = [];
-  const cellules    = [];
+  const cellules    = [];   // pour rollback visuel en cas d'erreur
   const cellsDuJour = document.querySelectorAll(`td.nett-day-cell[data-day="${todayIndex}"]`);
 
   cellsDuJour.forEach(cell => {
     const freq = cell.dataset.freq.toLowerCase();
     const id   = parseInt(cell.dataset.id, 10);
     const applicable = freq.includes('quotidien') || (freq.includes('hebdo') && todayIndex === JOUR_HEBDO);
-    if (applicable && !cell.querySelector('.nett-check')) {
+    if (!applicable) return;
+
+    idsAValider.push(id); // toujours inclus → INSERT OR IGNORE côté backend
+    if (!cell.querySelector('.nett-check')) {
       cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
-      idsAValider.push(id);
-      cellules.push(cell);
+      cellules.push(cell); // seulement les nouvelles pour le rollback
     }
   });
 
   if (idsAValider.length === 0) {
-    toast('Toutes les tâches du jour sont déjà validées.', false);
-    mettreAJourBouton();
+    toast('Aucune tâche applicable aujourd\'hui.', false);
     return;
   }
 
@@ -319,6 +327,48 @@ async function validerJournee() {
   }
 
   mettreAJourBouton();
+}
+
+// ── Cocher toute une colonne jour (sauf hebdo) ───────────────
+async function validerColonne(dayIndex) {
+  const operateur = elSelect.value;
+  if (!operateur) {
+    toast('Sélectionnez votre nom avant de cocher.', true);
+    elSelect.focus();
+    return;
+  }
+
+  const date = weekDates[dayIndex] || '';
+  if (!date) return;
+
+  const initiale  = operateur.charAt(0).toUpperCase();
+  const ids       = [];
+  const nouvelles = [];
+
+  document.querySelectorAll(`td.nett-day-cell[data-day="${dayIndex}"]`).forEach(cell => {
+    if (cell.dataset.freq.toLowerCase().includes('hebdo')) return; // hebdo → ignoré
+    ids.push(parseInt(cell.dataset.id, 10));
+    if (!cell.querySelector('.nett-check')) {
+      cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
+      nouvelles.push(cell);
+    }
+  });
+
+  if (ids.length === 0) return;
+
+  try {
+    const res = await fetch('/api/nettoyage/validation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ operateur, taches_ids: ids, date }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (dayIndex === todayIndex) mettreAJourBouton();
+    toast(`✅ ${ids.length} tâche(s) cochées pour ce jour.`);
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+    nouvelles.forEach(c => { c.innerHTML = ''; });
+  }
 }
 
 // ── Toggle individuel d'une cellule ──────────────────────────
