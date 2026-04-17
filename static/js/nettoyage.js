@@ -73,10 +73,55 @@ async function chargerTaches() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     zonesData = await res.json();
     genererTableau();
+    await chargerHistoriqueSemaine(); // charge les validations passées de la semaine
     await restaurerEtat(); // restaure l'état "Validé" si déjà fait aujourd'hui
   } catch (err) {
     elTbody.innerHTML = `<tr><td colspan="11" style="padding:2rem;text-align:center;color:#888;">
       Erreur : ${err.message}</td></tr>`;
+  }
+}
+
+// ── Charger l'historique de la semaine complète ──────────────
+async function chargerHistoriqueSemaine() {
+  const today = new Date();
+  const iso = today.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+  // Récupérer le numéro de semaine ISO (1-53)
+  const jan4 = new Date(today.getFullYear(), 0, 4);
+  const msPerDay = 86400000;
+  const dayDiff = (today - jan4) / msPerDay;
+  const weekNum = Math.ceil((dayDiff + jan4.getDay()) / 7);
+  const isoYear = today.getFullYear();
+
+  try {
+    const res = await fetch(
+      `/api/nettoyage/historique/semaine?annee_iso=${isoYear}&semaine=${weekNum}`
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Pour chaque date de la semaine, remplir les cellules validées
+    data.zones.forEach(zone => {
+      zone.taches.forEach(task => {
+        // validations = { "2026-04-13": "É.", "2026-04-14": "A.", ... }
+        Object.entries(task.validations).forEach(([dateStr, signet]) => {
+          if (!signet) return; // Pas de validation ce jour-là
+
+          // Déterminer le dayIndex (0=Dim, 1=Lun, ..., 6=Sam)
+          const d = new Date(dateStr + 'T00:00:00');
+          const dayOfWeek = d.getDay(); // 0=Dim, 1=Lun, etc.
+
+          const cell = document.querySelector(
+            `td.nett-day-cell[data-day="${dayOfWeek}"][data-id="${task.id}"]`
+          );
+          if (cell) {
+            cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${signet}</span>`;
+          }
+        });
+      });
+    });
+  } catch {
+    // Silencieux en cas d'erreur
   }
 }
 
