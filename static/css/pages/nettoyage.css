@@ -261,9 +261,199 @@ th.nett-today-col {
 }
 .nett-toast--erreur { background: var(--color-alert); }
 
+/* ─── BOUTON GÉRER ─── */
+.nett-btn-gerer {
+  height: 36px;
+  padding: 0 .9rem;
+  background: none;
+  border: 2px solid var(--color-accent);
+  border-radius: 6px;
+  color: var(--color-accent);
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nett-btn-gerer:active { background: rgba(107,58,31,.08); }
+
+/* ─── MODALE OVERLAY ─── */
+.nett-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: .75rem;
+}
+.nett-modal-overlay[hidden] { display: none; }
+
+.nett-modal {
+  background: var(--color-card);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 780px;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,.35);
+  overflow: hidden;
+}
+
+.nett-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .75rem 1rem;
+  border-bottom: 2px solid var(--color-accent);
+  flex-shrink: 0;
+}
+.nett-modal-title {
+  font-size: .95rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  margin: 0;
+}
+.nett-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: .2rem .5rem;
+  border-radius: 4px;
+}
+.nett-modal-close:hover { background: rgba(0,0,0,.08); }
+
+/* ─── LISTE DES TÂCHES ─── */
+.nett-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: .5rem .75rem;
+}
+
+.nett-zone-groupe { margin-bottom: .75rem; }
+.nett-zone-titre {
+  font-size: .75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: #E8DCC8;
+  padding: .2rem .5rem;
+  border-radius: 4px;
+  margin-bottom: .25rem;
+}
+.nett-tache-row {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .3rem .4rem;
+  border-bottom: 1px solid rgba(61,32,8,.10);
+  font-size: .8rem;
+}
+.nett-tache-row:last-child { border-bottom: none; }
+.nett-tache-nom  { flex: 1; font-weight: 600; }
+.nett-tache-freq { width: 88px; font-size: .72rem; color: #888; text-align: center; }
+.nett-tache-produit { width: 110px; font-size: .72rem; color: var(--color-accent); font-weight: 600; }
+.nett-btn-edit {
+  padding: .18rem .5rem;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nett-btn-edit:active { opacity: .8; }
+.nett-btn-del {
+  padding: .18rem .5rem;
+  background: var(--color-alert);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: .72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.nett-btn-del:active { opacity: .8; }
+
+/* ─── FORMULAIRE ─── */
+.nett-modal-form {
+  border-top: 2px solid rgba(61,32,8,.15);
+  padding: .75rem 1rem;
+  flex-shrink: 0;
+  background: rgba(61,32,8,.03);
+}
+.nett-modal-form-title {
+  font-size: .8rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  margin: 0 0 .5rem;
+}
+.nett-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: .5rem;
+}
+.nett-form-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--color-text);
+  gap: .18rem;
+}
+.nett-form-input {
+  height: 32px;
+  border: 2px solid rgba(61,32,8,.20);
+  border-radius: 5px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  font-size: .78rem;
+  padding: 0 .4rem;
+}
+.nett-form-input:focus { outline: none; border-color: var(--color-accent); }
+.nett-form-actions {
+  display: flex;
+  gap: .5rem;
+  margin-top: .6rem;
+  justify-content: flex-end;
+}
+.nett-btn-sauver {
+  height: 32px;
+  padding: 0 1rem;
+  background: var(--color-ok);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.nett-btn-sauver:active { opacity: .85; }
+.nett-btn-annuler {
+  height: 32px;
+  padding: 0 .8rem;
+  background: none;
+  border: 2px solid rgba(61,32,8,.30);
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--color-text);
+}
+.nett-btn-annuler:active { background: rgba(0,0,0,.06); }
+
 /* ─── Responsive ─── */
 @media (max-width: 700px) {
   .nett-bar { flex-wrap: wrap; }
   .nett-bar-date { width: 100%; order: -1; text-align: center; font-size: .75rem; }
   .nett-bar-actions { width: 100%; justify-content: center; }
+  .nett-form-grid { grid-template-columns: 1fr 1fr; }
 }

@@ -18,6 +18,7 @@
     <a href="/taches-hub.html" class="nett-retour">← Tâches</a>
     <div class="nett-bar-date" id="display-date"></div>
     <div class="nett-bar-actions">
+      <button id="btn-gerer" class="nett-btn-gerer">⚙ Tâches</button>
       <a href="/historique-enregistrement.html#nettoyage" class="nett-btn-historique">📋 Historique</a>
       <select id="operator-select" class="nett-select">
         <option value="">👤 Opérateur…</option>
@@ -51,6 +52,46 @@
 
   <!-- Toast -->
   <div id="nett-toast" class="nett-toast" role="status" aria-live="polite"></div>
+
+  <!-- ── MODALE GESTION DES TÂCHES ── -->
+  <div id="modal-gerer" class="nett-modal-overlay" hidden>
+    <div class="nett-modal">
+      <div class="nett-modal-header">
+        <h2 class="nett-modal-title">⚙ Gérer les tâches de nettoyage</h2>
+        <button id="btn-modal-close" class="nett-modal-close">✕</button>
+      </div>
+
+      <!-- Liste des tâches existantes -->
+      <div class="nett-modal-body" id="modal-liste"></div>
+
+      <!-- Formulaire d'ajout / édition -->
+      <div class="nett-modal-form">
+        <h3 class="nett-modal-form-title" id="form-title">+ Ajouter une tâche</h3>
+        <input type="hidden" id="form-id">
+        <div class="nett-form-grid">
+          <label>Zone
+            <input type="text" id="form-zone" placeholder="ex : CUISINE" class="nett-form-input">
+          </label>
+          <label>Tâche
+            <input type="text" id="form-nom" placeholder="ex : SOL / SIPHON" class="nett-form-input">
+          </label>
+          <label>Fréquence
+            <select id="form-freq" class="nett-form-input">
+              <option value="Quotidien">Quotidien</option>
+              <option value="Hebdomadaire">Hebdomadaire</option>
+            </select>
+          </label>
+          <label>Produit
+            <input type="text" id="form-produit" placeholder="ex : KING FLASH GERM" class="nett-form-input">
+          </label>
+        </div>
+        <div class="nett-form-actions">
+          <button id="btn-form-cancel" class="nett-btn-annuler" hidden>Annuler</button>
+          <button id="btn-form-save" class="nett-btn-sauver">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/js/nettoyage.js"></script>
 </body>

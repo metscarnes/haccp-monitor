@@ -1,10 +1,13 @@
 """
 routes_nettoyage.py — Plan de nettoyage & désinfection
 
-GET  /api/nettoyage/taches      → liste des tâches groupées par zone
-POST /api/nettoyage/validation  → enregistre une session de validation
-GET  /api/nettoyage/status      → statut de validation pour une date (restauration UI)
-GET  /api/nettoyage/historique  → arborescence Année > Mois > Semaine > Jours
+GET    /api/nettoyage/taches        → liste des tâches groupées par zone
+POST   /api/nettoyage/taches        → créer une nouvelle tâche
+PUT    /api/nettoyage/taches/{id}   → modifier une tâche existante
+DELETE /api/nettoyage/taches/{id}   → supprimer une tâche
+POST   /api/nettoyage/validation    → enregistre une session de validation
+GET    /api/nettoyage/status        → statut de validation pour une date (restauration UI)
+GET    /api/nettoyage/historique    → arborescence Année > Mois > Semaine > Jours
 """
 
 import logging
@@ -30,6 +33,13 @@ class ValidationNettoyage(BaseModel):
     operateur: str
     taches_ids: List[int]
     signature: str = "OK"
+
+
+class TachePayload(BaseModel):
+    zone: str
+    nom_tache: str
+    frequence: str
+    methode_produit: str
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +84,70 @@ async def lister_taches():
         })
 
     return [{"zone": z, "taches": t} for z, t in zones.items()]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/nettoyage/taches  — créer une tâche
+# ---------------------------------------------------------------------------
+
+@router.post("/taches", status_code=201)
+async def creer_tache(body: TachePayload):
+    """Ajoute une nouvelle tâche au plan de nettoyage."""
+    if not body.zone.strip() or not body.nom_tache.strip():
+        raise HTTPException(400, "Zone et nom de tâche obligatoires")
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            "INSERT INTO taches_nettoyage (zone, nom_tache, frequence, methode_produit) VALUES (?, ?, ?, ?)",
+            (body.zone.strip(), body.nom_tache.strip(), body.frequence.strip(), body.methode_produit.strip()),
+        )
+        await db.commit()
+        new_id = cursor.lastrowid
+
+    return {"id": new_id, "zone": body.zone.strip(), "nom_tache": body.nom_tache.strip(),
+            "frequence": body.frequence.strip(), "methode_produit": body.methode_produit.strip()}
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/nettoyage/taches/{tache_id}  — modifier une tâche
+# ---------------------------------------------------------------------------
+
+@router.put("/taches/{tache_id}")
+async def modifier_tache(tache_id: int, body: TachePayload):
+    """Modifie une tâche existante."""
+    if not body.zone.strip() or not body.nom_tache.strip():
+        raise HTTPException(400, "Zone et nom de tâche obligatoires")
+
+    async with get_db() as db:
+        result = await db.execute(
+            "UPDATE taches_nettoyage SET zone=?, nom_tache=?, frequence=?, methode_produit=? WHERE id=?",
+            (body.zone.strip(), body.nom_tache.strip(), body.frequence.strip(), body.methode_produit.strip(), tache_id),
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(404, f"Tâche {tache_id} introuvable")
+
+    return {"id": tache_id, "zone": body.zone.strip(), "nom_tache": body.nom_tache.strip(),
+            "frequence": body.frequence.strip(), "methode_produit": body.methode_produit.strip()}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/nettoyage/taches/{tache_id}  — supprimer une tâche
+# ---------------------------------------------------------------------------
+
+@router.delete("/taches/{tache_id}", status_code=200)
+async def supprimer_tache(tache_id: int):
+    """Supprime une tâche du plan de nettoyage."""
+    async with get_db() as db:
+        result = await db.execute(
+            "DELETE FROM taches_nettoyage WHERE id=?",
+            (tache_id,),
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            raise HTTPException(404, f"Tâche {tache_id} introuvable")
+
+    return {"ok": True, "id": tache_id}
 
 
 # ---------------------------------------------------------------------------

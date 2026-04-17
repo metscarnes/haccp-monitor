@@ -23,6 +23,20 @@ const elBtn      = document.getElementById('btn-valider');
 const elTbody    = document.getElementById('table-body');
 const elToast    = document.getElementById('nett-toast');
 
+// Modale gestion tâches
+const elBtnGerer      = document.getElementById('btn-gerer');
+const elModal         = document.getElementById('modal-gerer');
+const elBtnClose      = document.getElementById('btn-modal-close');
+const elModalListe    = document.getElementById('modal-liste');
+const elFormTitle     = document.getElementById('form-title');
+const elFormId        = document.getElementById('form-id');
+const elFormZone      = document.getElementById('form-zone');
+const elFormNom       = document.getElementById('form-nom');
+const elFormFreq      = document.getElementById('form-freq');
+const elFormProduit   = document.getElementById('form-produit');
+const elBtnSave       = document.getElementById('btn-form-save');
+const elBtnCancel     = document.getElementById('btn-form-cancel');
+
 // ── Chargement du personnel (même source que le reste de l'app) ──
 async function chargerPersonnel() {
   try {
@@ -48,6 +62,13 @@ document.addEventListener('DOMContentLoaded', () => {
   chargerPersonnel();
   chargerTaches(); // restaurerEtat() est appelé après la génération du tableau
   elBtn.addEventListener('click', validerJournee);
+
+  // Modale gestion
+  elBtnGerer.addEventListener('click', ouvrirModalGerer);
+  elBtnClose.addEventListener('click', fermerModalGerer);
+  elModal.addEventListener('click', e => { if (e.target === elModal) fermerModalGerer(); });
+  elBtnSave.addEventListener('click', sauverTache);
+  elBtnCancel.addEventListener('click', reinitFormTache);
 });
 
 // ── Jour actuel ──────────────────────────────────────────────
@@ -284,6 +305,140 @@ async function validerJournee() {
     elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
     elSelect.disabled = false;
   }
+}
+
+// ── GESTION DES TÂCHES (modale) ──────────────────────────────
+
+async function ouvrirModalGerer() {
+  elModal.hidden = false;
+  await chargerListeModal();
+}
+
+function fermerModalGerer() {
+  elModal.hidden = true;
+  reinitFormTache();
+}
+
+async function chargerListeModal() {
+  elModalListe.innerHTML = '<p style="padding:.5rem;color:#888;font-size:.8rem;">Chargement…</p>';
+  try {
+    const res = await fetch('/api/nettoyage/taches');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const zones = await res.json();
+
+    if (!zones.length) {
+      elModalListe.innerHTML = '<p style="padding:.5rem;color:#888;font-size:.8rem;">Aucune tâche définie.</p>';
+      return;
+    }
+
+    let html = '';
+    zones.forEach(({ zone, taches }) => {
+      html += `<div class="nett-zone-groupe">
+        <div class="nett-zone-titre">${zone}</div>`;
+      taches.forEach(t => {
+        html += `<div class="nett-tache-row" data-id="${t.id}">
+          <span class="nett-tache-nom">${t.nom_tache}</span>
+          <span class="nett-tache-freq">${t.frequence}</span>
+          <span class="nett-tache-produit">${t.methode_produit}</span>
+          <button class="nett-btn-edit" data-action="edit"
+            data-id="${t.id}" data-zone="${zone}"
+            data-nom="${t.nom_tache}" data-freq="${t.frequence}"
+            data-produit="${t.methode_produit}">✏ Modifier</button>
+          <button class="nett-btn-del" data-action="del" data-id="${t.id}"
+            data-nom="${t.nom_tache}">🗑</button>
+        </div>`;
+      });
+      html += '</div>';
+    });
+    elModalListe.innerHTML = html;
+
+    elModalListe.addEventListener('click', onListeClick, { once: true });
+    // Ré-attacher à chaque rechargement
+    elModalListe.onclick = onListeClick;
+  } catch (err) {
+    elModalListe.innerHTML = `<p style="padding:.5rem;color:red;font-size:.8rem;">Erreur : ${err.message}</p>`;
+  }
+}
+
+function onListeClick(e) {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'edit') {
+    elFormId.value      = btn.dataset.id;
+    elFormZone.value    = btn.dataset.zone;
+    elFormNom.value     = btn.dataset.nom;
+    elFormFreq.value    = btn.dataset.freq;
+    elFormProduit.value = btn.dataset.produit;
+    elFormTitle.textContent = '✏ Modifier la tâche';
+    elBtnCancel.hidden  = false;
+    elBtnSave.textContent = 'Enregistrer les modifications';
+    elBtnSave.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else if (btn.dataset.action === 'del') {
+    supprimerTache(parseInt(btn.dataset.id, 10), btn.dataset.nom);
+  }
+}
+
+async function sauverTache() {
+  const id      = elFormId.value;
+  const payload = {
+    zone:            elFormZone.value.trim().toUpperCase(),
+    nom_tache:       elFormNom.value.trim().toUpperCase(),
+    frequence:       elFormFreq.value,
+    methode_produit: elFormProduit.value.trim().toUpperCase(),
+  };
+
+  if (!payload.zone || !payload.nom_tache) {
+    toast('Zone et nom de tâche obligatoires.', true);
+    return;
+  }
+
+  try {
+    const url    = id ? `/api/nettoyage/taches/${id}` : '/api/nettoyage/taches';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    toast(id ? '✅ Tâche modifiée.' : '✅ Tâche ajoutée.');
+    reinitFormTache();
+    await chargerListeModal();
+    // Recharger le tableau principal
+    await chargerTaches();
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+  }
+}
+
+async function supprimerTache(id, nom) {
+  if (!confirm(`Supprimer la tâche "${nom}" ?\nLes validations passées ne seront pas effacées.`)) return;
+  try {
+    const res = await fetch(`/api/nettoyage/taches/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    toast('🗑 Tâche supprimée.');
+    await chargerListeModal();
+    await chargerTaches();
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+  }
+}
+
+function reinitFormTache() {
+  elFormId.value        = '';
+  elFormZone.value      = '';
+  elFormNom.value       = '';
+  elFormFreq.value      = 'Quotidien';
+  elFormProduit.value   = '';
+  elFormTitle.textContent = '+ Ajouter une tâche';
+  elBtnCancel.hidden    = true;
+  elBtnSave.textContent = 'Enregistrer';
 }
 
 // ── Toast ────────────────────────────────────────────────────
