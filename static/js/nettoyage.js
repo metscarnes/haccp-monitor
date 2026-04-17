@@ -316,8 +316,8 @@ async function validerJournee() {
       throw new Error(d.detail || `HTTP ${res.status}`);
     }
 
-    const data = await res.json();
-    toast(`✅ ${data.nb_taches} tâche(s) validée(s) par ${operateur} !`);
+    await res.json();
+    toast(`✅ ${idsAValider.length} tâche(s) du jour validées par ${operateur} !`);
 
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
@@ -364,7 +364,7 @@ async function validerColonne(dayIndex) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (dayIndex === todayIndex) mettreAJourBouton();
-    toast(`✅ ${ids.length} tâche(s) cochées pour ce jour.`);
+    toast(`✅ ${ids.length} tâche(s) cochées.`);
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
     nouvelles.forEach(c => { c.innerHTML = ''; });

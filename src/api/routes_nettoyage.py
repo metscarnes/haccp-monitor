@@ -169,38 +169,22 @@ async def valider_nettoyage(body: ValidationNettoyage):
     aujourd_hui = body.date or _date.today().isoformat()
 
     async with get_db() as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS registre_nettoyage (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                tache_id    INTEGER NOT NULL,
-                operateur   TEXT    NOT NULL,
-                date_val    TEXT    NOT NULL,
-                signature   TEXT    NOT NULL DEFAULT 'OK'
-            )
-        """)
-        # Dédoublonne les enregistrements existants avant de créer l'index unique
-        await db.execute("""
-            DELETE FROM registre_nettoyage
-            WHERE rowid NOT IN (
-                SELECT MIN(rowid)
-                FROM registre_nettoyage
-                GROUP BY tache_id, date_val
-            )
-        """)
-        # Garantit l'unicité (tache_id, date_val) — sans risque maintenant
-        await db.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_nett_tache_date
-            ON registre_nettoyage(tache_id, date_val)
-        """)
+        await db.execute(_ENSURE_REGISTRE)
 
         nb = 0
         for tid in body.taches_ids:
-            result = await db.execute(
-                "INSERT OR IGNORE INTO registre_nettoyage (tache_id, operateur, date_val, signature) "
-                "VALUES (?, ?, ?, ?)",
-                (tid, body.operateur.strip(), aujourd_hui, body.signature),
+            # Vérifie l'existence avant d'insérer — évite tout doublon sans index UNIQUE
+            deja = await db.execute_fetchall(
+                "SELECT 1 FROM registre_nettoyage WHERE tache_id = ? AND date_val = ?",
+                (tid, aujourd_hui),
             )
-            nb += result.rowcount  # 1 si inséré, 0 si déjà présent
+            if not deja:
+                await db.execute(
+                    "INSERT INTO registre_nettoyage (tache_id, operateur, date_val, signature) "
+                    "VALUES (?, ?, ?, ?)",
+                    (tid, body.operateur.strip(), aujourd_hui, body.signature),
+                )
+                nb += 1
 
         await db.commit()
 
