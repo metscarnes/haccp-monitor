@@ -33,6 +33,7 @@ class ValidationNettoyage(BaseModel):
     operateur: str
     taches_ids: List[int]
     signature: str = "OK"
+    date: Optional[str] = None   # si absent → date du jour
 
 
 class TachePayload(BaseModel):
@@ -165,7 +166,7 @@ async def valider_nettoyage(body: ValidationNettoyage):
     if not body.taches_ids:
         raise HTTPException(400, "Aucune tâche sélectionnée")
 
-    aujourd_hui = date.today().isoformat()
+    aujourd_hui = body.date or _date.today().isoformat()
 
     async with get_db() as db:
         await db.execute("""
@@ -195,6 +196,30 @@ async def valider_nettoyage(body: ValidationNettoyage):
         "date":      aujourd_hui,
         "nb_taches": nb,
     }
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/nettoyage/validation  — décocher une tâche pour une date
+# ---------------------------------------------------------------------------
+
+@router.delete("/validation", status_code=200)
+async def supprimer_validation_tache(
+    tache_id: int = Query(..., description="ID de la tâche à décocher"),
+    date: str      = Query(..., description="Date ISO (YYYY-MM-DD)"),
+):
+    """Supprime toutes les validations d'une tâche pour une date donnée."""
+    async with get_db() as db:
+        await db.execute(_ENSURE_REGISTRE)
+        await db.commit()
+
+        await db.execute(
+            "DELETE FROM registre_nettoyage WHERE tache_id = ? AND date_val = ?",
+            (tache_id, date),
+        )
+        await db.commit()
+
+    logger.info("Validation supprimée — tache_id=%s, date=%s", tache_id, date)
+    return {"ok": True, "tache_id": tache_id, "date": date}
 
 
 # ---------------------------------------------------------------------------

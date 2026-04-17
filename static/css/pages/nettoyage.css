@@ -205,6 +205,15 @@
 /* ── Cellules jour ── */
 .nett-day-cell {
   font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: filter .1s;
+}
+.nett-day-cell:hover {
+  filter: brightness(.92);
+}
+.nett-day-cell:active {
+  filter: brightness(.80);
 }
 
 /* ── Colonne du jour surlignée ── */

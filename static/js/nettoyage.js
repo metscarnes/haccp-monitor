@@ -15,6 +15,7 @@ const JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'
 let zonesData    = [];   // données API
 let todayIndex   = 0;    // 0=Dim, 1=Lun … 6=Sam
 let allTaskIds   = [];   // [{id, freq}] pour toutes les lignes
+let weekDates    = {};   // {jsDay: "YYYY-MM-DD"} pour la semaine en cours
 
 // ── DOM ──────────────────────────────────────────────────────
 const elDate     = document.getElementById('display-date');
@@ -58,10 +59,17 @@ async function chargerPersonnel() {
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  computeWeekDates();
   identifierJour();
   chargerPersonnel();
   chargerTaches(); // restaurerEtat() est appelé après la génération du tableau
   elBtn.addEventListener('click', validerJournee);
+
+  // Toggle individuel par clic sur une cellule
+  elTbody.addEventListener('click', e => {
+    const cell = e.target.closest('td.nett-day-cell');
+    if (cell) toggleCell(cell);
+  });
 
   // Modale gestion
   elBtnGerer.addEventListener('click', ouvrirModalGerer);
@@ -70,6 +78,23 @@ document.addEventListener('DOMContentLoaded', () => {
   elBtnSave.addEventListener('click', sauverTache);
   elBtnCancel.addEventListener('click', reinitFormTache);
 });
+
+// ── Calcul des dates de la semaine courante ───────────────────
+function computeWeekDates() {
+  const today = new Date();
+  const dow = today.getDay(); // 0=Dim, 1=Lun…
+  // Lundi = premier jour de semaine
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysFromMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    weekDates[d.getDay()] = d.toISOString().split('T')[0];
+  }
+}
 
 // ── Jour actuel ──────────────────────────────────────────────
 function identifierJour() {
@@ -176,12 +201,8 @@ async function restaurerEtat() {
       }
     });
 
-    // Verrouiller le bouton et le select
-    elBtn.disabled = true;
-    elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
-    elBtn.classList.add('nett-btn-valider--done');
     if (data.operateur) elSelect.value = data.operateur;
-    elSelect.disabled = true;
+    mettreAJourBouton();
   } catch {
     // Silencieux — l'état par défaut (non validé) reste affiché
   }
@@ -219,7 +240,7 @@ function genererTableau() {
       dayOrder.forEach(day => {
         const isToday = day === todayIndex;
         const todayCls = isToday ? ' nett-today-col' : '';
-        html += `<td class="nett-day-cell${todayCls}" data-day="${day}" data-id="${task.id}" data-freq="${task.frequence}"></td>`;
+        html += `<td class="nett-day-cell${todayCls}" data-day="${day}" data-id="${task.id}" data-freq="${task.frequence}" data-date="${weekDates[day] || ''}"></td>`;
       });
 
       html += '</tr>';
@@ -231,7 +252,7 @@ function genererTableau() {
   elTbody.innerHTML = html;
 }
 
-// ── Validation ───────────────────────────────────────────────
+// ── Validation (tout le jour d'un coup) ──────────────────────
 async function validerJournee() {
   const operateur = elSelect.value;
 
@@ -247,45 +268,39 @@ async function validerJournee() {
   );
   if (!ok) return;
 
-  const initiale = operateur.charAt(0).toUpperCase();
+  const initiale  = operateur.charAt(0).toUpperCase();
+  const today     = weekDates[todayIndex] || new Date().toISOString().split('T')[0];
 
-  // Collecter les IDs à valider + remplir les cellules
+  // Collecter uniquement les cases NON déjà cochées
   const idsAValider = [];
+  const cellules    = [];
   const cellsDuJour = document.querySelectorAll(`td.nett-day-cell[data-day="${todayIndex}"]`);
 
   cellsDuJour.forEach(cell => {
-    const freq = cell.getAttribute('data-freq').toLowerCase();
-    const id   = parseInt(cell.getAttribute('data-id'), 10);
-
-    const isQuotidien = freq.includes('quotidien');
-    const isHebdo     = freq.includes('hebdo');
-
-    if (isQuotidien || (isHebdo && todayIndex === JOUR_HEBDO)) {
+    const freq = cell.dataset.freq.toLowerCase();
+    const id   = parseInt(cell.dataset.id, 10);
+    const applicable = freq.includes('quotidien') || (freq.includes('hebdo') && todayIndex === JOUR_HEBDO);
+    if (applicable && !cell.querySelector('.nett-check')) {
       cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
       idsAValider.push(id);
+      cellules.push(cell);
     }
   });
 
   if (idsAValider.length === 0) {
-    toast('Aucune tâche à valider pour aujourd\'hui.', true);
+    toast('Toutes les tâches du jour sont déjà validées.', false);
+    mettreAJourBouton();
     return;
   }
 
-  // Verrouiller le bouton immédiatement (UI)
-  elBtn.disabled = true;
+  const prevText = elBtn.textContent;
   elBtn.textContent = '⏳ Envoi…';
-  elSelect.disabled = true;
 
-  // Envoyer au backend
   try {
     const res = await fetch('/api/nettoyage/validation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        operateur,
-        taches_ids: idsAValider,
-        signature: 'OK',
-      }),
+      body: JSON.stringify({ operateur, taches_ids: idsAValider, signature: 'OK', date: today }),
     });
 
     if (!res.ok) {
@@ -294,16 +309,84 @@ async function validerJournee() {
     }
 
     const data = await res.json();
-    elBtn.textContent = `✔️ VALIDÉ — ${data.nb_taches} tâche(s)`;
-    elBtn.classList.add('nett-btn-valider--done');
     toast(`✅ ${data.nb_taches} tâche(s) validée(s) par ${operateur} !`);
 
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
-    // En cas d'erreur réseau, on re-déverrouille pour retenter
-    elBtn.disabled = false;
+    // Rollback visuel des cellules qu'on venait de cocher
+    cellules.forEach(c => { c.innerHTML = ''; });
+    elBtn.textContent = prevText;
+  }
+
+  mettreAJourBouton();
+}
+
+// ── Toggle individuel d'une cellule ──────────────────────────
+async function toggleCell(cell) {
+  const id      = parseInt(cell.dataset.id, 10);
+  const date    = cell.dataset.date;
+  if (!date) return;
+
+  const isChecked = !!cell.querySelector('.nett-check');
+
+  if (isChecked) {
+    // Décocher — pas besoin d'opérateur
+    try {
+      const res = await fetch(`/api/nettoyage/validation?tache_id=${id}&date=${date}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      cell.innerHTML = '';
+      mettreAJourBouton();
+    } catch (err) {
+      toast(`Erreur : ${err.message}`, true);
+    }
+  } else {
+    // Cocher — opérateur requis
+    const operateur = elSelect.value;
+    if (!operateur) {
+      toast('Sélectionnez votre nom avant de cocher.', true);
+      elSelect.focus();
+      return;
+    }
+    const initiale = operateur.charAt(0).toUpperCase();
+    try {
+      const res = await fetch('/api/nettoyage/validation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operateur, taches_ids: [id], date }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
+      mettreAJourBouton();
+    } catch (err) {
+      toast(`Erreur : ${err.message}`, true);
+    }
+  }
+}
+
+// ── Mise à jour dynamique du bouton VALIDER ───────────────────
+function mettreAJourBouton() {
+  const cells = document.querySelectorAll(`td.nett-day-cell[data-day="${todayIndex}"]`);
+  let total = 0, coches = 0;
+  cells.forEach(cell => {
+    const freq = cell.dataset.freq.toLowerCase();
+    const applicable = freq.includes('quotidien') || (freq.includes('hebdo') && todayIndex === JOUR_HEBDO);
+    if (applicable) {
+      total++;
+      if (cell.querySelector('.nett-check')) coches++;
+    }
+  });
+
+  if (total === 0) return;
+
+  if (coches === total) {
+    elBtn.textContent = `✔ VALIDÉ — ${total} tâche(s)`;
+    elBtn.classList.add('nett-btn-valider--done');
+  } else if (coches > 0) {
+    elBtn.textContent = `✅ VALIDER LE RESTE (${coches}/${total})`;
+    elBtn.classList.remove('nett-btn-valider--done');
+  } else {
     elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
-    elSelect.disabled = false;
+    elBtn.classList.remove('nett-btn-valider--done');
   }
 }
 
