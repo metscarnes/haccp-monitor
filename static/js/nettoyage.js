@@ -12,6 +12,11 @@ const JOUR_HEBDO = 6; // Samedi = jour de grand nettoyage
 
 const JOURS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 
+// ── Date locale ISO (évite le décalage UTC de toISOString) ───
+function toLocalDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 let zonesData    = [];   // données API
 let todayIndex   = 0;    // 0=Dim, 1=Lun … 6=Sam
 let allTaskIds   = [];   // [{id, freq}] pour toutes les lignes
@@ -98,7 +103,7 @@ function computeWeekDates() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
-    weekDates[d.getDay()] = d.toISOString().split('T')[0];
+    weekDates[d.getDay()] = toLocalDate(d); // toISOString() donne UTC → décalage en UTC+x
   }
 }
 
@@ -189,7 +194,7 @@ async function chargerHistoriqueSemaine() {
 
 // ── Restaurer l'état de validation au rechargement ───────────
 async function restaurerEtat() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalDate(new Date());
   try {
     const res = await fetch(`/api/nettoyage/status?date=${today}`);
     if (!res.ok) return;
@@ -275,7 +280,7 @@ async function validerJournee() {
   if (!ok) return;
 
   const initiale  = operateur.charAt(0).toUpperCase();
-  const today     = weekDates[todayIndex] || new Date().toISOString().split('T')[0];
+  const today     = weekDates[todayIndex] || toLocalDate(new Date());
 
   // Collecter TOUS les IDs applicables — le backend gère les doublons (INSERT OR IGNORE)
   // Visuellement : ne cocher que les cases encore vides
@@ -386,6 +391,7 @@ async function toggleCell(cell) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cell.innerHTML = '';
       mettreAJourBouton();
+      toast('Case décochée et enregistrée.');
     } catch (err) {
       toast(`Erreur : ${err.message}`, true);
     }
@@ -407,6 +413,7 @@ async function toggleCell(cell) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;
       mettreAJourBouton();
+      toast('Case cochée et enregistrée.');
     } catch (err) {
       toast(`Erreur : ${err.message}`, true);
     }
