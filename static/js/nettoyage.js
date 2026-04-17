@@ -84,44 +84,54 @@ async function chargerTaches() {
 // ── Charger l'historique de la semaine complète ──────────────
 async function chargerHistoriqueSemaine() {
   const today = new Date();
-  const iso = today.toLocaleDateString('fr-FR', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
-  // Récupérer le numéro de semaine ISO (1-53)
-  const jan4 = new Date(today.getFullYear(), 0, 4);
-  const msPerDay = 86400000;
-  const dayDiff = (today - jan4) / msPerDay;
-  const weekNum = Math.ceil((dayDiff + jan4.getDay()) / 7);
-  const isoYear = today.getFullYear();
+  // Calcul de semaine ISO 8601
+  const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  const dayNum = d.getUTCDay() || 7; // 1=lun, 7=dim
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // Aller au jeudi de la semaine
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  const isoYear = d.getUTCFullYear();
+
+  console.log('🔍 Date du jour:', today.toISOString().split('T')[0]);
+  console.log('🔍 Semaine ISO:', isoYear, 'Semaine:', weekNum);
 
   try {
-    const res = await fetch(
-      `/api/nettoyage/historique/semaine?annee_iso=${isoYear}&semaine=${weekNum}`
-    );
-    if (!res.ok) return;
+    const url = `/api/nettoyage/historique/semaine?annee_iso=${isoYear}&semaine=${weekNum}`;
+    console.log('🌐 Fetching:', url);
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn('API error:', res.status);
+      return;
+    }
     const data = await res.json();
+    console.log('📊 Données API reçues:', data);
 
     // Pour chaque date de la semaine, remplir les cellules validées
     data.zones.forEach(zone => {
       zone.taches.forEach(task => {
-        // validations = { "2026-04-13": "É.", "2026-04-14": "A.", ... }
         Object.entries(task.validations).forEach(([dateStr, signet]) => {
-          if (!signet) return; // Pas de validation ce jour-là
+          if (!signet) return;
 
-          // Déterminer le dayIndex (0=Dim, 1=Lun, ..., 6=Sam)
           const d = new Date(dateStr + 'T00:00:00');
-          const dayOfWeek = d.getDay(); // 0=Dim, 1=Lun, etc.
+          const dayOfWeek = d.getDay();
+
+          console.log(`Tâche ${task.id} - ${dateStr} (${dayOfWeek}): ${signet}`);
 
           const cell = document.querySelector(
             `td.nett-day-cell[data-day="${dayOfWeek}"][data-id="${task.id}"]`
           );
           if (cell) {
+            console.log(`✅ Cellule trouvée et remplie`);
             cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${signet}</span>`;
+          } else {
+            console.warn(`❌ Cellule introuvable pour jour=${dayOfWeek}, id=${task.id}`);
           }
         });
       });
     });
-  } catch {
-    // Silencieux en cas d'erreur
+  } catch (err) {
+    console.error('Erreur historique:', err);
   }
 }
 
