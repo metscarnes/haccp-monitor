@@ -178,7 +178,16 @@ async def valider_nettoyage(body: ValidationNettoyage):
                 signature   TEXT    NOT NULL DEFAULT 'OK'
             )
         """)
-        # Garantit l'unicité (tache_id, date_val) — tolère les tables existantes
+        # Dédoublonne les enregistrements existants avant de créer l'index unique
+        await db.execute("""
+            DELETE FROM registre_nettoyage
+            WHERE rowid NOT IN (
+                SELECT MIN(rowid)
+                FROM registre_nettoyage
+                GROUP BY tache_id, date_val
+            )
+        """)
+        # Garantit l'unicité (tache_id, date_val) — sans risque maintenant
         await db.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_nett_tache_date
             ON registre_nettoyage(tache_id, date_val)
