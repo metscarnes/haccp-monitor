@@ -2990,6 +2990,8 @@ async def get_dlc_calendrier(
                 fab.dlc_finale       AS dlc,
                 fab.lot_interne      AS numero_lot,
                 fab.poids_fabrique   AS quantite,
+                fab.poids_fabrique   AS poids_fabrique,
+                r.instructions       AS recette_instructions,
                 'kg'                 AS unite,
                 p.id                 AS produit_id,
                 p.nom                AS produit_nom,
@@ -3014,8 +3016,31 @@ async def get_dlc_calendrier(
             """,
             (date_debut, date_fin, boutique_id, *cat_params),
         )
-        for row in await cur.fetchall():
-            items.append(dict(row))
+        fab_rows = [dict(r) for r in await cur.fetchall()]
+
+        # Récupère les ingrédients de chaque fabrication (pour déroulé dans modal)
+        for fab in fab_rows:
+            cur2 = await db.execute(
+                """
+                SELECT
+                    p.nom           AS produit_nom,
+                    rl.numero_lot,
+                    rl.dlc,
+                    ri.quantite     AS quantite_base,
+                    ri.unite,
+                    rec.id          AS reception_id
+                FROM fabrication_lots fl
+                JOIN recette_ingredients ri ON ri.id  = fl.recette_ingredient_id
+                JOIN produits           p   ON p.id   = ri.produit_id
+                LEFT JOIN reception_lignes rl  ON rl.id  = fl.reception_ligne_id
+                LEFT JOIN receptions       rec ON rec.id = rl.reception_id
+                WHERE fl.fabrication_id = ?
+                ORDER BY p.nom
+                """,
+                (fab["source_id"],),
+            )
+            fab["ingredients"] = [dict(r) for r in await cur2.fetchall()]
+            items.append(fab)
 
     items.sort(key=lambda x: (x["dlc"], x["produit_nom"]))
     return items

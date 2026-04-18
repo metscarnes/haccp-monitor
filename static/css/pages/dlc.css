@@ -402,6 +402,90 @@
 }
 .dlc-item-btn-devenir:active { filter: brightness(.9); }
 
+/* Bouton déroulé ingrédients (fabrication) */
+.dlc-item-btn-ingredients {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: .55rem 1rem;
+  background: #f0e8dc;
+  color: var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  min-height: 40px;
+  cursor: pointer;
+}
+.dlc-item-btn-ingredients:hover { background: var(--color-accent); color: #fff; }
+.dlc-item-btn-ingredients:active { filter: brightness(.9); }
+
+/* Zone déroulée : liste d'ingrédients d'une fabrication */
+.dlc-item-ingredients {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #fbf6ee;
+  border: 1px solid #e5d9c3;
+  border-radius: var(--radius-sm);
+}
+.dlc-ing-poids {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-accent);
+  margin-bottom: 6px;
+}
+.dlc-ing-vide {
+  padding: 8px 4px;
+  color: #888;
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+.dlc-ing-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dlc-ing {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 1.4fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px dashed #e5d9c3;
+  font-size: var(--text-sm);
+}
+.dlc-ing:last-child { border-bottom: none; }
+.dlc-ing-nom { font-weight: 600; color: var(--color-text); }
+.dlc-ing-qte { color: #6B3A1F; font-variant-numeric: tabular-nums; }
+.dlc-ing-lot {
+  color: #555;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+  text-align: right;
+}
+.dlc-ing-dlc { color: #6B3A1F; }
+.dlc-ing-lien {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-size: var(--text-base);
+  margin-left: 4px;
+}
+.dlc-ing-lien:hover { text-decoration: underline; }
+
+@media (max-width: 560px) {
+  .dlc-ing {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dlc-ing-lot {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
 /* Modal devenir */
 .devenir-produit {
   font-size: var(--text-lg);

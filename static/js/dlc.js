@@ -431,18 +431,20 @@ function ouvrirModalJour(dateStr, items) {
          </button>`
       : '';
 
-    // Lien vers la fiche source (même onglet → bouton retour navigateur fonctionne)
-    let ficheHref = '';
+    // Action contextuelle :
+    //  - Réception  → lien direct vers la fiche réception
+    //  - Fabrication → déroulé des ingrédients (chacun pointe vers sa réception)
+    let actionPrimaireHtml = '';
     if (it.source_type === 'reception_ligne' && it.reception_id) {
-      ficheHref = `/reception-detail.html?id=${it.reception_id}&retour=dlc`;
-    } else if (it.source_type === 'fabrication' && it.date_origine) {
-      ficheHref = `/historique-enregistrement.html?tab=fabrications&fab_date=${it.date_origine}`;
-    }
-    const ficheHtml = ficheHref
-      ? `<a class="dlc-item-lien-fiche" href="${ficheHref}">
+      actionPrimaireHtml = `<a class="dlc-item-lien-fiche" href="/reception-detail.html?id=${it.reception_id}&retour=dlc">
            🔗 Voir la fiche
-         </a>`
-      : '';
+         </a>`;
+    } else if (it.source_type === 'fabrication') {
+      const nbIng = (it.ingredients || []).length;
+      actionPrimaireHtml = `<button class="dlc-item-btn-ingredients" type="button">
+           ▾ ${nbIng} ingrédient${nbIng > 1 ? 's' : ''}
+         </button>`;
+    }
 
     const el = document.createElement('div');
     el.className = `dlc-item dlc-item--${niveau}`;
@@ -454,10 +456,34 @@ function ouvrirModalJour(dateStr, items) {
       </div>
       ${devenirHtml}
       <div class="dlc-item-actions">
-        ${ficheHtml}
+        ${actionPrimaireHtml}
         ${btnHtml}
       </div>
+      ${it.source_type === 'fabrication' ? '<div class="dlc-item-ingredients" hidden></div>' : ''}
     `;
+
+    // Déroulé ingrédients (fabrication)
+    if (it.source_type === 'fabrication') {
+      const btnToggle = el.querySelector('.dlc-item-btn-ingredients');
+      const zone      = el.querySelector('.dlc-item-ingredients');
+      if (btnToggle && zone) {
+        btnToggle.addEventListener('click', () => {
+          const ouvert = !zone.hidden;
+          if (ouvert) {
+            zone.hidden = true;
+            btnToggle.textContent = btnToggle.textContent.replace('▴', '▾');
+          } else {
+            if (!zone.dataset.charge) {
+              zone.dataset.charge = '1';
+              remplirIngredientsDlc(zone, it.ingredients || [], it);
+            }
+            zone.hidden = false;
+            btnToggle.textContent = btnToggle.textContent.replace('▾', '▴');
+          }
+        });
+      }
+    }
+
     body.appendChild(el);
   });
 
@@ -475,6 +501,86 @@ function ouvrirModalJour(dateStr, items) {
 
 function statutLabel(s) {
   return { jete: 'Jeté', vendu: 'Vendu', consomme: 'Consommé', autre: 'Autre' }[s] || s;
+}
+
+// ── Ingrédients d'une fabrication (réutilise la présentation historique) ──
+function extraireBaseRecette(instructions) {
+  if (!instructions) return { base: null, unite: 'kg' };
+  const m = String(instructions).match(/base pour (\d+(?:[.,]\d+)?)\s*(kg|g|pièces?|pc|l)?/i);
+  if (!m) return { base: null, unite: 'kg' };
+  const base = parseFloat(m[1].replace(',', '.'));
+  if (isNaN(base) || base <= 0) return { base: null, unite: 'kg' };
+  return { base, unite: m[2] || 'kg' };
+}
+
+function remplirIngredientsDlc(el, ingredients, fab) {
+  const { base: baseKg, unite: uniteBase } = extraireBaseRecette(fab && fab.recette_instructions);
+  const poids = (fab && fab.poids_fabrique != null && fab.poids_fabrique > 0) ? fab.poids_fabrique : 0;
+  const mult = (baseKg && baseKg > 0 && poids > 0) ? (poids / baseKg) : null;
+
+  if (poids > 0) {
+    const p = document.createElement('div');
+    p.className = 'dlc-ing-poids';
+    p.textContent = `⚖️ ${poids} ${uniteBase} fabriqués`;
+    el.appendChild(p);
+  }
+
+  if (ingredients.length === 0) {
+    const vide = document.createElement('div');
+    vide.className = 'dlc-ing-vide';
+    vide.textContent = 'Aucun ingrédient enregistré.';
+    el.appendChild(vide);
+    return;
+  }
+
+  const liste = document.createElement('div');
+  liste.className = 'dlc-ing-liste';
+
+  ingredients.forEach(ing => {
+    const row = document.createElement('div');
+    row.className = 'dlc-ing';
+
+    const nom = document.createElement('div');
+    nom.className = 'dlc-ing-nom';
+    nom.textContent = ing.produit_nom || '—';
+    row.appendChild(nom);
+
+    const qte = document.createElement('div');
+    qte.className = 'dlc-ing-qte';
+    if (ing.quantite_base != null) {
+      const v = mult !== null ? ing.quantite_base * mult : ing.quantite_base;
+      qte.textContent = `${parseFloat(v.toFixed(3)).toString()} ${ing.unite || 'kg'}`;
+    } else {
+      qte.textContent = '—';
+    }
+    row.appendChild(qte);
+
+    const lot = document.createElement('div');
+    lot.className = 'dlc-ing-lot';
+    const lotTxt = document.createElement('span');
+    lotTxt.textContent = ing.numero_lot ? `Lot ${ing.numero_lot}` : '—';
+    lot.appendChild(lotTxt);
+    if (ing.dlc) {
+      const dlcTxt = document.createElement('span');
+      dlcTxt.className = 'dlc-ing-dlc';
+      dlcTxt.textContent = ` · DLC ${formatDateFr(ing.dlc)}`;
+      lot.appendChild(dlcTxt);
+    }
+    if (ing.reception_id) {
+      const lien = document.createElement('a');
+      lien.href = `/reception-detail.html?id=${ing.reception_id}&retour=dlc`;
+      lien.textContent = ' 🔗';
+      lien.title = 'Voir la réception';
+      lien.className = 'dlc-ing-lien';
+      lien.addEventListener('click', e => e.stopPropagation());
+      lot.appendChild(lien);
+    }
+    row.appendChild(lot);
+
+    liste.appendChild(row);
+  });
+
+  el.appendChild(liste);
 }
 
 function fermerModal() { $('dlc-modal').hidden = true; }
