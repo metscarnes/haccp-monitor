@@ -419,8 +419,8 @@ function ouvrirModalJour(dateStr, items) {
          </div>`
       : '';
 
-    // Bouton : "Actualiser" si déjà traité, "Indiquer devenir" si expiré non traité
-    const btnLabel = it.devenir_statut ? '✏️ Actualiser' : '📝 Indiquer devenir';
+    // Bouton devenir : "Actualiser" si déjà traité, "Correction" si expiré non traité
+    const btnLabel = it.devenir_statut ? '✏️ Actualiser' : '✏️ Correction';
     const btnHtml = (aTraiter || it.devenir_statut)
       ? `<button class="dlc-item-btn-devenir ${it.devenir_statut ? 'dlc-item-btn-devenir--update' : ''}"
                  data-src-type="${escHtml(it.source_type)}"
@@ -429,6 +429,19 @@ function ouvrirModalJour(dateStr, items) {
                  data-dlc="${escHtml(it.dlc)}">
            ${btnLabel}
          </button>`
+      : '';
+
+    // Lien vers la fiche source
+    let ficheHref = '';
+    if (it.source_type === 'reception_ligne' && it.reception_id) {
+      ficheHref = `/reception-detail.html?id=${it.reception_id}`;
+    } else if (it.source_type === 'fabrication' && it.date_origine) {
+      ficheHref = `/historique-enregistrement.html?fab_date=${it.date_origine}#fabrications`;
+    }
+    const ficheHtml = ficheHref
+      ? `<a class="dlc-item-lien-fiche" href="${ficheHref}" target="_blank" rel="noopener">
+           🔗 Voir la fiche
+         </a>`
       : '';
 
     const el = document.createElement('div');
@@ -440,7 +453,10 @@ function ouvrirModalJour(dateStr, items) {
         ${meta.map(m => `<span>${escHtml(m)}</span>`).join('')}
       </div>
       ${devenirHtml}
-      ${btnHtml}
+      <div class="dlc-item-actions">
+        ${ficheHtml}
+        ${btnHtml}
+      </div>
     `;
     body.appendChild(el);
   });

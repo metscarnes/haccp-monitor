@@ -367,9 +367,29 @@
   font-style: italic;
   color: #444;
 }
-.dlc-item-btn-devenir {
+.dlc-item-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
   margin-top: var(--space-2);
-  align-self: flex-start;
+  align-items: center;
+}
+.dlc-item-lien-fiche {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: .55rem 1rem;
+  background: #f0e8dc;
+  color: var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  min-height: 40px;
+}
+.dlc-item-lien-fiche:hover { background: var(--color-accent); color: #fff; }
+.dlc-item-btn-devenir {
   background: var(--color-alert);
   color: #fff;
   border: none;
@@ -378,6 +398,7 @@
   font-weight: 600;
   cursor: pointer;
   min-height: 40px;
+  font-size: var(--text-sm);
 }
 .dlc-item-btn-devenir:active { filter: brightness(.9); }
 

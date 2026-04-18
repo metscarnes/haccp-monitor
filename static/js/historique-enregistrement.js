@@ -1449,9 +1449,20 @@ initDates(recRefs);
 initDates(fabRefs);
 
 // Ouvrir l'onglet demandé via l'ancre URL (#nettoyage, #fabrications, etc.)
+// ?fab_date=YYYY-MM-DD pré-filtre l'onglet fabrications sur cette journée
+const _urlParams = new URLSearchParams(window.location.search);
+const _fabDate   = _urlParams.get('fab_date');
+
 if (window.location.hash === '#nettoyage') {
   basculerTab(elTabNett, elContentNett);
   nettCharger();
+} else if (window.location.hash === '#fabrications' || _fabDate) {
+  if (_fabDate) {
+    if (fabRefs.debut) fabRefs.debut.value = _fabDate;
+    if (fabRefs.fin)   fabRefs.fin.value   = _fabDate;
+  }
+  basculerTab(elTabFab, elContentFab);
+  fabCharger();
 } else {
   ouvCharger();
   recCharger();
