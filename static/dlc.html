@@ -23,15 +23,25 @@
     <div class="dlc-horloge" id="dlc-horloge" aria-live="polite"></div>
   </header>
 
-  <!-- Barre navigation mois + filtres -->
+  <!-- Toolbar : navigation + vues + filtres -->
   <div class="dlc-toolbar">
+
+    <!-- Sélecteur de vue -->
+    <div class="dlc-vue-selector">
+      <button class="dlc-btn-vue" data-vue="semaine">Semaine</button>
+      <button class="dlc-btn-vue actif" data-vue="mois">Mois</button>
+      <button class="dlc-btn-vue" data-vue="annuel">Annuel</button>
+    </div>
+
+    <!-- Navigation période -->
     <div class="dlc-nav-mois">
-      <button class="dlc-btn-nav" id="dlc-prev" aria-label="Mois précédent">‹</button>
+      <button class="dlc-btn-nav" id="dlc-prev" aria-label="Précédent">‹</button>
       <div class="dlc-mois-label" id="dlc-mois-label">—</div>
-      <button class="dlc-btn-nav" id="dlc-next" aria-label="Mois suivant">›</button>
+      <button class="dlc-btn-nav" id="dlc-next" aria-label="Suivant">›</button>
       <button class="dlc-btn-aujourdhui" id="dlc-aujourdhui">Aujourd'hui</button>
     </div>
 
+    <!-- Filtres -->
     <div class="dlc-filtres">
       <label class="dlc-filtre">
         <span>Source</span>
@@ -62,26 +72,14 @@
     <span class="dlc-chip dlc-chip--gris">Traité</span>
   </div>
 
-  <!-- Calendrier -->
+  <!-- Zone principale (remplie par JS) -->
   <main class="dlc-main" role="main">
-    <div class="dlc-calendrier" id="dlc-calendrier">
-      <div class="dlc-jour-entete">Lun</div>
-      <div class="dlc-jour-entete">Mar</div>
-      <div class="dlc-jour-entete">Mer</div>
-      <div class="dlc-jour-entete">Jeu</div>
-      <div class="dlc-jour-entete">Ven</div>
-      <div class="dlc-jour-entete">Sam</div>
-      <div class="dlc-jour-entete">Dim</div>
-      <!-- cases générées en JS -->
-      <div id="dlc-grille-body" class="dlc-grille-body"></div>
-    </div>
-    <div class="dlc-loader" id="dlc-loader" hidden>
-      <div class="spinner"></div>
-    </div>
+    <div id="dlc-vue-container"></div>
+    <div class="dlc-loader" id="dlc-loader" hidden><div class="spinner"></div></div>
     <div class="dlc-error" id="dlc-error" hidden></div>
   </main>
 
-  <!-- Modal liste du jour -->
+  <!-- Modal liste du jour / de la semaine -->
   <div class="dlc-modal" id="dlc-modal" hidden role="dialog" aria-modal="true">
     <div class="dlc-modal-backdrop" data-close></div>
     <div class="dlc-modal-panel">
@@ -121,7 +119,7 @@
                   rows="2" placeholder="Raison, quantité..."></textarea>
 
         <button class="btn btn-primaire devenir-valider" id="devenir-valider" disabled>
-          Enregistrer
+          Confirmer
         </button>
       </div>
     </div>
