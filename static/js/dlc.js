@@ -431,15 +431,15 @@ function ouvrirModalJour(dateStr, items) {
          </button>`
       : '';
 
-    // Lien vers la fiche source
+    // Lien vers la fiche source (même onglet → bouton retour navigateur fonctionne)
     let ficheHref = '';
     if (it.source_type === 'reception_ligne' && it.reception_id) {
-      ficheHref = `/reception-detail.html?id=${it.reception_id}`;
+      ficheHref = `/reception-detail.html?id=${it.reception_id}&retour=dlc`;
     } else if (it.source_type === 'fabrication' && it.date_origine) {
-      ficheHref = `/historique-enregistrement.html?fab_date=${it.date_origine}#fabrications`;
+      ficheHref = `/historique-enregistrement.html?tab=fabrications&fab_date=${it.date_origine}`;
     }
     const ficheHtml = ficheHref
-      ? `<a class="dlc-item-lien-fiche" href="${ficheHref}" target="_blank" rel="noopener">
+      ? `<a class="dlc-item-lien-fiche" href="${ficheHref}">
            🔗 Voir la fiche
          </a>`
       : '';
