@@ -35,6 +35,7 @@ from src.api.routes_fabrication   import router as router_fabrication
 from src.api.routes_nettoyage    import router as router_nettoyage
 from src.api.routes_nuisibles    import router as router_nuisibles
 from src.api.routes_etalonnage   import router as router_etalonnage
+from src.api.routes_dlc           import router as router_dlc
 
 load_dotenv()
 
@@ -121,6 +122,9 @@ app.include_router(router_nuisibles)
 
 # Routes API — Étalonnage thermomètres
 app.include_router(router_etalonnage)
+
+# Routes API — Calendrier DLC
+app.include_router(router_dlc)
 
 
 # ---------------------------------------------------------------------------

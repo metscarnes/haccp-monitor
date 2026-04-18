@@ -123,6 +123,41 @@
       </div>
     </section>
 
+    <!-- ── Alertes DLC (seuils configurables) ── -->
+    <section class="admin-section" id="section-dlc-seuils">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">📅 Alertes DLC</h2>
+        <span class="admin-badge admin-badge--info">Calendrier</span>
+      </div>
+      <div class="admin-section-body">
+        <div id="dlc-seuils-loader" class="admin-loader"><div class="spinner"></div></div>
+        <div id="dlc-seuils-error" class="admin-error" hidden></div>
+        <div id="dlc-seuils-content" hidden>
+          <p class="admin-info-text">
+            Définit le nombre de jours avant la DLC à partir duquel le produit passe en alerte rouge / orange / jaune dans le calendrier DLC.
+          </p>
+          <form class="admin-form" id="dlc-seuils-form">
+            <div class="admin-form-row">
+              <div class="admin-field">
+                <label for="dlc-rouge">🔴 Rouge — critique (jours)</label>
+                <input type="number" id="dlc-rouge" name="rouge_jours" min="0" max="30" required>
+              </div>
+              <div class="admin-field">
+                <label for="dlc-orange">🟠 Orange — urgent (jours)</label>
+                <input type="number" id="dlc-orange" name="orange_jours" min="0" max="60" required>
+              </div>
+              <div class="admin-field">
+                <label for="dlc-jaune">🟡 Jaune — attention (jours)</label>
+                <input type="number" id="dlc-jaune" name="jaune_jours" min="0" max="180" required>
+              </div>
+              <button type="submit" class="btn btn-primaire">Enregistrer</button>
+            </div>
+          </form>
+          <div id="dlc-seuils-msg" class="admin-depan-msg" hidden></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ── Alertes ── -->
     <section class="admin-section" id="section-alertes">
       <div class="admin-section-header">
@@ -604,12 +639,61 @@
         .replace(/"/g, '&quot;');
     }
 
+    // ── Seuils DLC ──────────────────────────────────────────
+    async function loadDlcSeuils() {
+      showLoader('dlc-seuils');
+      try {
+        const res = await fetch(`${API_BASE}/api/dlc/parametres`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        $('dlc-rouge').value  = data.rouge_jours;
+        $('dlc-orange').value = data.orange_jours;
+        $('dlc-jaune').value  = data.jaune_jours;
+        showContent('dlc-seuils');
+      } catch (err) {
+        showError('dlc-seuils', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    $('dlc-seuils-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const rouge  = parseInt($('dlc-rouge').value,  10);
+      const orange = parseInt($('dlc-orange').value, 10);
+      const jaune  = parseInt($('dlc-jaune').value,  10);
+      const msg = $('dlc-seuils-msg');
+      msg.hidden = false;
+      if (!(rouge <= orange && orange <= jaune)) {
+        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+        msg.textContent = 'Les seuils doivent être croissants : rouge ≤ orange ≤ jaune';
+        return;
+      }
+      msg.className = 'admin-depan-msg admin-depan-msg--info';
+      msg.textContent = 'Enregistrement…';
+      try {
+        const res = await fetch(`${API_BASE}/api/dlc/parametres`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rouge_jours: rouge, orange_jours: orange, jaune_jours: jaune }),
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error(`HTTP ${res.status} ${txt}`);
+        }
+        msg.className = 'admin-depan-msg admin-depan-msg--ok';
+        msg.textContent = '✓ Seuils enregistrés';
+      } catch (err) {
+        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
+        msg.textContent = `Erreur : ${err.message}`;
+      }
+    });
+
     // ── Init ────────────────────────────────────────────────
     loadPersonnel();
     loadThermometres();
     loadEnceintes();
     loadAlertes();
     loadServeurInfo();
+    loadDlcSeuils();
   </script>
 </body>
 </html>

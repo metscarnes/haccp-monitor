@@ -458,6 +458,38 @@ CREATE TABLE IF NOT EXISTS fabrication_lots (
     FOREIGN KEY (recette_ingredient_id) REFERENCES recette_ingredients(id),
     FOREIGN KEY (reception_ligne_id)    REFERENCES reception_lignes(id)
 );
+
+-- ===========================================================================
+-- Paramètres génériques (key/value par boutique)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS parametres (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id INTEGER NOT NULL,
+    cle         TEXT    NOT NULL,
+    valeur      TEXT    NOT NULL,
+    UNIQUE(boutique_id, cle),
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+-- ===========================================================================
+-- Module DLC — devenir des produits expirés
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS dlc_devenir (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_type  TEXT    NOT NULL,    -- 'reception_ligne' | 'fabrication'
+    source_id    INTEGER NOT NULL,
+    statut       TEXT    NOT NULL,    -- 'jete' | 'vendu' | 'consomme' | 'autre'
+    personnel_id INTEGER,
+    commentaire  TEXT,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_type, source_id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dlc_devenir_source
+    ON dlc_devenir(source_type, source_id);
 """
 
 SEED_SQL = """
@@ -509,6 +541,12 @@ INSERT OR IGNORE INTO pieges (boutique_id, type, identifiant, localisation) VALU
 (1, 'rongeur', 'P1', 'Entrée laboratoire'),
 (1, 'rongeur', 'P2', 'Fond laboratoire'),
 (1, 'oiseau',  'P3', 'Entrée boutique');
+
+-- Paramètres DLC par défaut (boutique 1) — seuils en jours
+INSERT OR IGNORE INTO parametres (boutique_id, cle, valeur) VALUES
+(1, 'dlc_alerte_rouge_jours',  '1'),
+(1, 'dlc_alerte_orange_jours', '3'),
+(1, 'dlc_alerte_jaune_jours',  '7');
 
 """
 
@@ -2843,3 +2881,165 @@ async def get_fabrications_historique(
         fab["ingredients"] = [dict(r) for r in ing_rows]
 
     return fabrications
+
+
+# ===========================================================================
+# Paramètres génériques (key/value)
+# ===========================================================================
+
+async def get_parametre(
+    db: aiosqlite.Connection, boutique_id: int, cle: str, defaut: Optional[str] = None
+) -> Optional[str]:
+    cur = await db.execute(
+        "SELECT valeur FROM parametres WHERE boutique_id = ? AND cle = ?",
+        (boutique_id, cle),
+    )
+    row = await cur.fetchone()
+    return row["valeur"] if row else defaut
+
+
+async def get_parametres_prefix(
+    db: aiosqlite.Connection, boutique_id: int, prefixe: str
+) -> dict:
+    cur = await db.execute(
+        "SELECT cle, valeur FROM parametres WHERE boutique_id = ? AND cle LIKE ?",
+        (boutique_id, f"{prefixe}%"),
+    )
+    rows = await cur.fetchall()
+    return {r["cle"]: r["valeur"] for r in rows}
+
+
+async def set_parametre(
+    db: aiosqlite.Connection, boutique_id: int, cle: str, valeur: str
+) -> None:
+    await db.execute(
+        """
+        INSERT INTO parametres (boutique_id, cle, valeur) VALUES (?, ?, ?)
+        ON CONFLICT(boutique_id, cle) DO UPDATE SET valeur = excluded.valeur
+        """,
+        (boutique_id, cle, valeur),
+    )
+    await db.commit()
+
+
+# ===========================================================================
+# DLC — Calendrier & devenir
+# ===========================================================================
+
+async def get_dlc_calendrier(
+    db: aiosqlite.Connection,
+    boutique_id: int,
+    date_debut: str,   # "YYYY-MM-DD"
+    date_fin: str,     # "YYYY-MM-DD"
+    source: Optional[str] = None,       # 'reception' | 'fabrication' | None
+    categorie: Optional[str] = None,    # filtre produit
+) -> list[dict]:
+    """
+    Retourne la liste des DLCs (receptions + fabrications) sur la période,
+    enrichie du statut devenir s'il est renseigné.
+    """
+    items: list[dict] = []
+
+    if source in (None, "reception"):
+        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_params = (categorie,) if categorie else ()
+        cur = await db.execute(
+            f"""
+            SELECT
+                rl.id                AS source_id,
+                'reception_ligne'    AS source_type,
+                rl.dlc               AS dlc,
+                rl.numero_lot        AS numero_lot,
+                rl.poids_kg          AS quantite,
+                'kg'                 AS unite,
+                p.id                 AS produit_id,
+                p.nom                AS produit_nom,
+                p.categorie          AS categorie,
+                f.nom                AS fournisseur_nom,
+                r.date_reception     AS date_origine,
+                r.id                 AS reception_id,
+                dd.statut            AS devenir_statut,
+                dd.commentaire       AS devenir_commentaire,
+                dd.created_at        AS devenir_at,
+                pers.prenom          AS devenir_prenom
+            FROM reception_lignes rl
+            JOIN receptions r       ON r.id  = rl.reception_id
+            JOIN produits   p       ON p.id  = rl.produit_id
+            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            LEFT JOIN dlc_devenir dd
+                   ON dd.source_type = 'reception_ligne' AND dd.source_id = rl.id
+            LEFT JOIN personnel pers ON pers.id = dd.personnel_id
+            WHERE rl.dlc IS NOT NULL
+              AND rl.dlc BETWEEN ? AND ?
+              AND p.boutique_id = ?
+              {cat_filter}
+            """,
+            (date_debut, date_fin, boutique_id, *cat_params),
+        )
+        for row in await cur.fetchall():
+            items.append(dict(row))
+
+    if source in (None, "fabrication"):
+        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_params = (categorie,) if categorie else ()
+        cur = await db.execute(
+            f"""
+            SELECT
+                fab.id               AS source_id,
+                'fabrication'        AS source_type,
+                fab.dlc_finale       AS dlc,
+                fab.lot_interne      AS numero_lot,
+                fab.poids_fabrique   AS quantite,
+                'kg'                 AS unite,
+                p.id                 AS produit_id,
+                p.nom                AS produit_nom,
+                p.categorie          AS categorie,
+                NULL                 AS fournisseur_nom,
+                fab.date             AS date_origine,
+                NULL                 AS reception_id,
+                dd.statut            AS devenir_statut,
+                dd.commentaire       AS devenir_commentaire,
+                dd.created_at        AS devenir_at,
+                pers.prenom          AS devenir_prenom
+            FROM fabrications fab
+            JOIN recettes   r ON r.id = fab.recette_id
+            JOIN produits   p ON p.id = r.produit_fini_id
+            LEFT JOIN dlc_devenir dd
+                   ON dd.source_type = 'fabrication' AND dd.source_id = fab.id
+            LEFT JOIN personnel pers ON pers.id = dd.personnel_id
+            WHERE fab.dlc_finale IS NOT NULL
+              AND fab.dlc_finale BETWEEN ? AND ?
+              AND p.boutique_id = ?
+              {cat_filter}
+            """,
+            (date_debut, date_fin, boutique_id, *cat_params),
+        )
+        for row in await cur.fetchall():
+            items.append(dict(row))
+
+    items.sort(key=lambda x: (x["dlc"], x["produit_nom"]))
+    return items
+
+
+async def create_dlc_devenir(
+    db: aiosqlite.Connection,
+    source_type: str,
+    source_id: int,
+    statut: str,
+    personnel_id: Optional[int] = None,
+    commentaire: Optional[str] = None,
+) -> int:
+    cur = await db.execute(
+        """
+        INSERT INTO dlc_devenir (source_type, source_id, statut, personnel_id, commentaire)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(source_type, source_id) DO UPDATE SET
+            statut       = excluded.statut,
+            personnel_id = excluded.personnel_id,
+            commentaire  = excluded.commentaire,
+            created_at   = CURRENT_TIMESTAMP
+        """,
+        (source_type, source_id, statut, personnel_id, commentaire),
+    )
+    await db.commit()
+    return cur.lastrowid or 0

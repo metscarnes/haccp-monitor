@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Calendrier DLC — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/dlc.css">
+</head>
+<body class="dlc-body">
+
+  <!-- En-tête -->
+  <header class="dlc-header">
+    <a href="/hub.html" class="dlc-btn-retour" aria-label="Retour au hub">← Hub</a>
+    <div class="dlc-titre">CALENDRIER DLC</div>
+    <div class="dlc-horloge" id="dlc-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- Barre navigation mois + filtres -->
+  <div class="dlc-toolbar">
+    <div class="dlc-nav-mois">
+      <button class="dlc-btn-nav" id="dlc-prev" aria-label="Mois précédent">‹</button>
+      <div class="dlc-mois-label" id="dlc-mois-label">—</div>
+      <button class="dlc-btn-nav" id="dlc-next" aria-label="Mois suivant">›</button>
+      <button class="dlc-btn-aujourdhui" id="dlc-aujourdhui">Aujourd'hui</button>
+    </div>
+
+    <div class="dlc-filtres">
+      <label class="dlc-filtre">
+        <span>Source</span>
+        <select id="dlc-filtre-source">
+          <option value="">Toutes</option>
+          <option value="reception">Réception</option>
+          <option value="fabrication">Fabrication</option>
+        </select>
+      </label>
+      <label class="dlc-filtre">
+        <span>Statut</span>
+        <select id="dlc-filtre-statut">
+          <option value="">Tous</option>
+          <option value="a_traiter">À traiter (expirés)</option>
+          <option value="traite">Traités</option>
+          <option value="actif">Actifs (non expirés)</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <!-- Légende -->
+  <div class="dlc-legende">
+    <span class="dlc-chip dlc-chip--rouge">Expiré / critique</span>
+    <span class="dlc-chip dlc-chip--orange">Urgent</span>
+    <span class="dlc-chip dlc-chip--jaune">Attention</span>
+    <span class="dlc-chip dlc-chip--vert">OK</span>
+    <span class="dlc-chip dlc-chip--gris">Traité</span>
+  </div>
+
+  <!-- Calendrier -->
+  <main class="dlc-main" role="main">
+    <div class="dlc-calendrier" id="dlc-calendrier">
+      <div class="dlc-jour-entete">Lun</div>
+      <div class="dlc-jour-entete">Mar</div>
+      <div class="dlc-jour-entete">Mer</div>
+      <div class="dlc-jour-entete">Jeu</div>
+      <div class="dlc-jour-entete">Ven</div>
+      <div class="dlc-jour-entete">Sam</div>
+      <div class="dlc-jour-entete">Dim</div>
+      <!-- cases générées en JS -->
+      <div id="dlc-grille-body" class="dlc-grille-body"></div>
+    </div>
+    <div class="dlc-loader" id="dlc-loader" hidden>
+      <div class="spinner"></div>
+    </div>
+    <div class="dlc-error" id="dlc-error" hidden></div>
+  </main>
+
+  <!-- Modal liste du jour -->
+  <div class="dlc-modal" id="dlc-modal" hidden role="dialog" aria-modal="true">
+    <div class="dlc-modal-backdrop" data-close></div>
+    <div class="dlc-modal-panel">
+      <header class="dlc-modal-header">
+        <h2 id="dlc-modal-titre">—</h2>
+        <button class="dlc-modal-close" data-close aria-label="Fermer">✕</button>
+      </header>
+      <div class="dlc-modal-body" id="dlc-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Modal devenir produit expiré -->
+  <div class="dlc-modal" id="devenir-modal" hidden role="dialog" aria-modal="true">
+    <div class="dlc-modal-backdrop" data-close-devenir></div>
+    <div class="dlc-modal-panel dlc-modal-panel--small">
+      <header class="dlc-modal-header">
+        <h2>Devenir du produit</h2>
+        <button class="dlc-modal-close" data-close-devenir aria-label="Fermer">✕</button>
+      </header>
+      <div class="dlc-modal-body">
+        <div class="devenir-produit" id="devenir-produit-nom">—</div>
+        <div class="devenir-info" id="devenir-produit-info"></div>
+
+        <label class="devenir-label">Prénom opérateur *</label>
+        <select id="devenir-personnel" class="devenir-select" required></select>
+
+        <label class="devenir-label">Que devient ce produit ? *</label>
+        <div class="devenir-statuts">
+          <button class="btn-statut" data-statut="jete">🗑️ Jeté</button>
+          <button class="btn-statut" data-statut="vendu">💰 Vendu</button>
+          <button class="btn-statut" data-statut="consomme">✅ Consommé</button>
+          <button class="btn-statut" data-statut="autre">❓ Autre</button>
+        </div>
+
+        <label class="devenir-label">Commentaire (optionnel)</label>
+        <textarea id="devenir-commentaire" class="devenir-textarea"
+                  rows="2" placeholder="Raison, quantité..."></textarea>
+
+        <button class="btn btn-primaire devenir-valider" id="devenir-valider" disabled>
+          Enregistrer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/dlc.js"></script>
+</body>
+</html>
