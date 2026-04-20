@@ -263,6 +263,10 @@ function initModalRapide() {
   elModalRapide.addEventListener('click', e => { if (e.target === elModalRapide) fermerModalRapide(); });
   elBtnRapideSave.addEventListener('click', sauvegarderTout);
 
+  // Navigation semaine
+  document.getElementById('nu-sem-prev').addEventListener('click', () => naviguerSemaine(-1));
+  document.getElementById('nu-sem-next').addEventListener('click', () => naviguerSemaine(+1));
+
   // Stepper − / +
   const elVal   = document.getElementById('nu-stepper-val');
   const elMoins = document.getElementById('nu-stepper-moins');
@@ -289,6 +293,33 @@ function initModalRapide() {
   document.getElementById('nu-global-n').addEventListener('click',    () => appliquerGlobal('N'));
   document.getElementById('nu-global-o').addEventListener('click',    () => appliquerGlobal('O'));
   document.getElementById('nu-global-vide').addEventListener('click', () => appliquerGlobal(null));
+}
+
+function naviguerSemaine(delta) {
+  const annee = new Date().getFullYear();
+  const nbSem = nombreSemainesAnnee(annee);
+  rapideSemaine = Math.min(Math.max(rapideSemaine + delta, 1), nbSem);
+
+  // Recharger les résultats depuis les données déjà en cache
+  TYPES.forEach(type => {
+    const semData = (rapideDonnees[type.id]?.[String(rapideSemaine)] || { resultats: {} });
+    for (let p = 1; p <= NB_PIEGES; p++) {
+      rapideResultats[type.id][`p${p}`] = semData.resultats[`p${p}`] || null;
+    }
+    const grid = document.getElementById(`nu-rapide-grid-${type.id}`);
+    if (grid) renderGridRapide(type.id, grid);
+  });
+
+  majSemaineNav();
+}
+
+function majSemaineNav() {
+  const annee   = new Date().getFullYear();
+  const nbSem   = nombreSemainesAnnee(annee);
+  const label   = `Semaine ${rapideSemaine} / ${annee}${rapideSemaine === currentSemaine ? ' ⚡' : ''}`;
+  document.getElementById('nu-sem-label').textContent = label;
+  document.getElementById('nu-sem-prev').disabled = rapideSemaine <= 1;
+  document.getElementById('nu-sem-next').disabled = rapideSemaine >= nbSem;
 }
 
 function appliquerGlobal(val) {
@@ -332,6 +363,9 @@ async function ouvrirModalRapide(semaine) {
   // Visa : premier trouvé parmi les types existants, sinon mémorisé
   const visaExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.visa).find(v => v);
   elVisaRapide.value = visaExistant || localStorage.getItem('nu-last-visa') || '';
+
+  // Afficher la semaine dans le navigateur
+  majSemaineNav();
 
   // Réinitialiser la portée globale
   globalNbPieges = NB_PIEGES;
