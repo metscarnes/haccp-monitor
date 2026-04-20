@@ -122,6 +122,30 @@
         </select>
       </div>
 
+      <!-- ── Action globale portée ── -->
+      <div class="nu-action-globale">
+        <div class="nu-ag-header">
+          <span class="nu-ag-label">Action sur</span>
+          <div class="nu-stepper">
+            <button type="button" id="nu-stepper-moins" class="nu-stepper-btn">−</button>
+            <span class="nu-stepper-label">P1 – P<span id="nu-stepper-val">15</span></span>
+            <button type="button" id="nu-stepper-plus"  class="nu-stepper-btn">+</button>
+          </div>
+          <div class="nu-ag-btns">
+            <button type="button" class="nu-btn-quick nu-btn-quick--n"    id="nu-global-n">✗ N</button>
+            <button type="button" class="nu-btn-quick nu-btn-quick--o"    id="nu-global-o">✓ O</button>
+            <button type="button" class="nu-btn-quick nu-btn-quick--vide" id="nu-global-vide">· Vider</button>
+          </div>
+        </div>
+        <div class="nu-ag-especes" id="nu-ag-especes">
+          <button type="button" class="nu-espece-btn actif" data-eid="all">Toutes</button>
+          <button type="button" class="nu-espece-btn" data-eid="1">🐀 Rongeurs</button>
+          <button type="button" class="nu-espece-btn" data-eid="2">🪰 Ins. Volants</button>
+          <button type="button" class="nu-espece-btn" data-eid="3">🪳 Ins. Rampants</button>
+          <button type="button" class="nu-espece-btn" data-eid="4">🐦 Oiseaux</button>
+        </div>
+      </div>
+
       <!-- Sections injectées par JS (une par espèce) -->
       <div id="nu-rapide-sections"></div>
 

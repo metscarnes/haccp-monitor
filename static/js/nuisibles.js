@@ -58,6 +58,10 @@ let rapideSemaine   = null;
 let rapideResultats = {};  // { typeId: { p1: val, ... }, ... }
 let rapideDonnees   = {};  // { typeId: allYearData }
 
+// Action globale portée
+let globalNbPieges = NB_PIEGES;
+let globalEspece   = 'all';  // 'all' | number (typeId)
+
 // ── Références DOM ────────────────────────────────────────────
 const elAnnee            = document.getElementById('nu-annee');
 const elInfoWrap         = document.getElementById('nu-info-wrap');
@@ -258,6 +262,44 @@ function initModalRapide() {
   document.getElementById('nu-btn-rapide-annuler').addEventListener('click', fermerModalRapide);
   elModalRapide.addEventListener('click', e => { if (e.target === elModalRapide) fermerModalRapide(); });
   elBtnRapideSave.addEventListener('click', sauvegarderTout);
+
+  // Stepper − / +
+  const elVal   = document.getElementById('nu-stepper-val');
+  const elMoins = document.getElementById('nu-stepper-moins');
+  const elPlus  = document.getElementById('nu-stepper-plus');
+
+  function majStepper() {
+    elVal.textContent    = globalNbPieges;
+    elMoins.disabled     = globalNbPieges <= 1;
+    elPlus.disabled      = globalNbPieges >= NB_PIEGES;
+  }
+  elMoins.addEventListener('click', () => { if (globalNbPieges > 1)        { globalNbPieges--; majStepper(); } });
+  elPlus.addEventListener('click',  () => { if (globalNbPieges < NB_PIEGES) { globalNbPieges++; majStepper(); } });
+
+  // Sélection espèce
+  document.getElementById('nu-ag-especes').addEventListener('click', e => {
+    const btn = e.target.closest('[data-eid]');
+    if (!btn) return;
+    document.getElementById('nu-ag-especes').querySelectorAll('[data-eid]').forEach(b => b.classList.remove('actif'));
+    btn.classList.add('actif');
+    globalEspece = btn.dataset.eid === 'all' ? 'all' : parseInt(btn.dataset.eid, 10);
+  });
+
+  // Boutons d'action globale
+  document.getElementById('nu-global-n').addEventListener('click',    () => appliquerGlobal('N'));
+  document.getElementById('nu-global-o').addEventListener('click',    () => appliquerGlobal('O'));
+  document.getElementById('nu-global-vide').addEventListener('click', () => appliquerGlobal(null));
+}
+
+function appliquerGlobal(val) {
+  const types = globalEspece === 'all' ? TYPES : TYPES.filter(t => t.id === globalEspece);
+  types.forEach(type => {
+    for (let p = 1; p <= globalNbPieges; p++) {
+      rapideResultats[type.id][`p${p}`] = val;
+    }
+    const grid = document.getElementById(`nu-rapide-grid-${type.id}`);
+    if (grid) renderGridRapide(type.id, grid);
+  });
 }
 
 async function ouvrirModalRapide(semaine) {
@@ -290,6 +332,16 @@ async function ouvrirModalRapide(semaine) {
   // Visa : premier trouvé parmi les types existants, sinon mémorisé
   const visaExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.visa).find(v => v);
   elVisaRapide.value = visaExistant || localStorage.getItem('nu-last-visa') || '';
+
+  // Réinitialiser la portée globale
+  globalNbPieges = NB_PIEGES;
+  globalEspece   = 'all';
+  document.getElementById('nu-stepper-val').textContent = NB_PIEGES;
+  document.getElementById('nu-stepper-moins').disabled  = false;
+  document.getElementById('nu-stepper-plus').disabled   = true;
+  document.getElementById('nu-ag-especes').querySelectorAll('[data-eid]').forEach(b => {
+    b.classList.toggle('actif', b.dataset.eid === 'all');
+  });
 
   renderSectionsRapide();
 }
