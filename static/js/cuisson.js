@@ -144,8 +144,31 @@ async function chargerPersonnel() {
 
 async function chargerProduits() {
   try {
-    // Catalogue complet — on pourra sélectionner n'importe quel produit
-    state.produits = await apiFetch('/api/produits');
+    // Catalogue matière première (brut) + info stock/FIFO pour marquer ⭐
+    const [brut, enStock] = await Promise.all([
+      apiFetch('/api/produits?type=brut'),
+      apiFetch('/api/produits?type=brut&en_stock=true').catch(() => []),
+    ]);
+
+    const stockMap = new Map();
+    (enStock ?? []).forEach(p => {
+      stockMap.set(p.id, {
+        numero_lot:         p.numero_lot ?? null,
+        dlc:                p.dlc ?? null,
+        reception_ligne_id: p.reception_ligne_id ?? null,
+      });
+    });
+
+    state.produits = (brut ?? []).map(p => {
+      const s = stockMap.get(p.id);
+      return {
+        ...p,
+        en_stock:           !!s,
+        numero_lot:         s?.numero_lot ?? null,
+        dlc:                s?.dlc ?? null,
+        reception_ligne_id: s?.reception_ligne_id ?? null,
+      };
+    });
   } catch (err) {
     state.produits = [];
     console.warn('[cuisson] Produits KO :', err);
@@ -155,10 +178,22 @@ async function chargerProduits() {
 // ── Recherche produit : suggestions live ─────────────────
 function filtrerProduits(q) {
   const needle = q.trim().toUpperCase();
-  if (!needle) return [];
-  return state.produits
-    .filter(p => (p.nom ?? '').toUpperCase().includes(needle))
-    .slice(0, 12);
+  const matchs = needle
+    ? state.produits.filter(p => (p.nom ?? '').toUpperCase().includes(needle))
+    : [];
+
+  // Tri : en stock (DLC la plus courte) d'abord, puis reste alphabétique
+  matchs.sort((a, b) => {
+    if (a.en_stock !== b.en_stock) return a.en_stock ? -1 : 1;
+    if (a.en_stock && b.en_stock) {
+      const da = a.dlc ? new Date(a.dlc).getTime() : Infinity;
+      const db = b.dlc ? new Date(b.dlc).getTime() : Infinity;
+      if (da !== db) return da - db;
+    }
+    return (a.nom ?? '').localeCompare(b.nom ?? '', 'fr');
+  });
+
+  return matchs.slice(0, 15);
 }
 
 function afficherSuggestions(liste) {
@@ -167,14 +202,24 @@ function afficherSuggestions(liste) {
     elProdSuggest.hidden = false;
     return;
   }
-  elProdSuggest.innerHTML = liste.map(p => `
-    <div class="cu-suggest-item"
-         data-id="${p.id}"
-         data-nom="${escHtml(p.nom)}"
-         role="option" tabindex="0">
-      ${escHtml(p.nom)}
-    </div>
-  `).join('');
+  elProdSuggest.innerHTML = liste.map(p => {
+    const etoile = p.en_stock
+      ? `<span class="cu-suggest-star" title="Réception disponible">⭐</span>`
+      : `<span class="cu-suggest-star cu-suggest-star--off"></span>`;
+    const dlcBadge = p.en_stock && p.dlc
+      ? `<span class="cu-suggest-dlc">DLC ${formatDate(p.dlc)}</span>`
+      : '';
+    return `
+      <div class="cu-suggest-item"
+           data-id="${p.id}"
+           data-nom="${escHtml(p.nom)}"
+           role="option" tabindex="0">
+        ${etoile}
+        <span class="cu-suggest-nom">${escHtml(p.nom)}</span>
+        ${dlcBadge}
+      </div>
+    `;
+  }).join('');
   elProdSuggest.hidden = false;
 }
 
@@ -283,6 +328,46 @@ elBtnHisto.addEventListener('click', async () => {
 elModalClose.addEventListener('click', () => { elModal.hidden = true; });
 elModal.addEventListener('click', e => {
   if (e.target === elModal) elModal.hidden = true;
+});
+
+// ── Heure fin — boutons rapides (+1h, +1h30…) ────────────
+const elQuickFin = $('cu-quick-fin');
+
+function ajouterMinutes(hhmm, minutes) {
+  const [h, m] = (hhmm || '').split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  const total = h * 60 + m + minutes;
+  const hh = Math.floor((total % (24 * 60)) / 60);
+  const mm = total % 60;
+  const p = n => String(n).padStart(2, '0');
+  return `${p(hh)}:${p(mm)}`;
+}
+
+elQuickFin.addEventListener('click', e => {
+  const btn = e.target.closest('.cu-quick-btn[data-minutes]');
+  if (!btn) return;
+  if (!elHeureDebut.value) {
+    afficherErreur('Renseignez d\u2019abord l\u2019heure de d\u00e9but.');
+    return;
+  }
+  const minutes = Number(btn.dataset.minutes);
+  const fin = ajouterMinutes(elHeureDebut.value, minutes);
+  if (fin) {
+    elHeureFin.value = fin;
+    elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+      b.classList.toggle('cu-quick-btn--actif', b === btn));
+    elErreur.hidden = true;
+  }
+});
+
+// Reset du bouton actif si l'utilisateur change manuellement
+elHeureFin.addEventListener('input', () => {
+  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.remove('cu-quick-btn--actif'));
+});
+elHeureDebut.addEventListener('input', () => {
+  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.remove('cu-quick-btn--actif'));
 });
 
 // ── Conformité température — live ────────────────────────
