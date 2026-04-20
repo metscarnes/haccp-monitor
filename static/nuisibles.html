@@ -69,7 +69,8 @@
 
   <!-- ── FAB SAISIE RAPIDE ── -->
   <button id="nu-fab-rapide" class="nu-fab" aria-label="Saisie rapide semaine en cours">
-    ⚡ Semaine en cours
+    <span>⚡ Saisie rapide</span>
+    <span id="nu-fab-sub" class="nu-fab-sub"></span>
   </button>
 
   <!-- ── MODAL ÉDITION SEMAINE ── -->
@@ -101,6 +102,32 @@
       <div class="nu-modal-actions">
         <button class="nu-btn-annuler" id="nu-btn-annuler">Annuler</button>
         <button class="nu-btn-sauvegarder" id="nu-btn-sauvegarder">✅ Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL SAISIE RAPIDE MULTI-ESPÈCE ── -->
+  <div id="nu-modal-rapide" class="nu-modal" hidden role="dialog" aria-modal="true">
+    <div class="nu-modal-panel nu-modal-rapide-panel">
+      <div class="nu-modal-entete">
+        <div class="nu-modal-titre" id="nu-modal-rapide-titre">⚡ Saisie rapide</div>
+        <button class="nu-modal-fermer" id="nu-modal-rapide-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <!-- Visa partagé toutes espèces -->
+      <div class="nu-modal-visa">
+        <label for="nu-visa-rapide">Visa (opérateur)</label>
+        <select id="nu-visa-rapide" class="nu-visa-select">
+          <option value="">— Sélectionner —</option>
+        </select>
+      </div>
+
+      <!-- Sections injectées par JS (une par espèce) -->
+      <div id="nu-rapide-sections"></div>
+
+      <div class="nu-modal-actions">
+        <button class="nu-btn-annuler" id="nu-btn-rapide-annuler">Annuler</button>
+        <button class="nu-btn-sauvegarder" id="nu-btn-rapide-save">✅ Enregistrer tout</button>
       </div>
     </div>
   </div>

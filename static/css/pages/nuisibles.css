@@ -455,19 +455,91 @@
   color: #FFF;
   cursor: pointer;
   font-family: var(--font);
-  font-size: .9rem;
-  font-weight: 800;
-  height: 52px;
-  padding: 0 1.4rem;
+  padding: .6rem 1.4rem;
   letter-spacing: .03em;
   transition: background .15s, transform .1s, box-shadow .15s;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.nu-fab > span:first-child {
+  font-size: .9rem;
+  font-weight: 800;
+}
+.nu-fab-sub {
+  font-size: .7rem;
+  font-weight: 600;
+  opacity: .88;
 }
 .nu-fab:active {
   background: #c97520;
   transform: scale(.96);
   box-shadow: 0 2px 8px rgba(232,145,58,.4);
+}
+
+/* ─── MODAL RAPIDE — panel plus large ─── */
+.nu-modal-rapide-panel {
+  max-width: 680px;
+}
+
+/* ─── SECTIONS MULTI-ESPÈCE ─── */
+.nu-rapide-section {
+  border: 2px solid #E8D5BC;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.nu-rapide-section-header {
+  background: #F5ECD7;
+  border-bottom: 1px solid #E8D5BC;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  flex-wrap: wrap;
+}
+
+.nu-rapide-section-nom {
+  font-size: .88rem;
+  font-weight: 800;
+  color: #3D2008;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.nu-rapide-nb {
+  font-size: .72rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  background: rgba(109,58,31,.1);
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.nu-rapide-qactions {
+  display: flex;
+  gap: .3rem;
+}
+
+.nu-rapide-section .nu-piege-grid {
+  padding: .6rem .75rem .75rem;
+}
+
+.nu-rapide-chargement {
+  padding: 2rem;
+  text-align: center;
+  color: #888;
+  font-size: .9rem;
+}
+
+#nu-rapide-sections {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
 }
 
 /* ─── ACTIONS RAPIDES (dans modal) ─── */
@@ -491,6 +563,14 @@
   -webkit-tap-highlight-color: transparent;
 }
 .nu-btn-quick:active { opacity: .75; transform: scale(.97); }
+
+/* Version compacte pour les en-têtes de section rapide */
+.nu-rapide-qactions .nu-btn-quick {
+  height: 30px;
+  font-size: .72rem;
+  padding: 0 .5rem;
+  flex: none;
+}
 
 .nu-btn-quick--n {
   border-color: #C93030;

@@ -49,25 +49,36 @@ let currentSemaine = getISOWeek(new Date());
 let donneesAnnee   = {};   // { "17": {resultats: {p1:"O",...}, visa:"Éric"}, ... }
 let personnel      = [];
 
-// Édition en cours
+// Édition simple (clic sur ligne tableau)
 let editSemaine   = null;
 let editResultats = {};    // {"p1": "O"/"N"/null, ...}
 
+// Saisie rapide multi-espèce
+let rapideSemaine   = null;
+let rapideResultats = {};  // { typeId: { p1: val, ... }, ... }
+let rapideDonnees   = {};  // { typeId: allYearData }
+
 // ── Références DOM ────────────────────────────────────────────
-const elAnnee       = document.getElementById('nu-annee');
-const elInfoWrap    = document.getElementById('nu-info-wrap');
-const elInfoToggle  = document.getElementById('nu-info-toggle');
-const elInfoCorps   = document.getElementById('nu-info-corps');
-const elTbody       = document.getElementById('nu-tbody');
-const elModal       = document.getElementById('nu-modal');
-const elModalTitre  = document.getElementById('nu-modal-titre');
-const elPiegeGrid   = document.getElementById('nu-piege-grid');
-const elVisaSelect  = document.getElementById('nu-visa-select');
-const elBtnAnnuler  = document.getElementById('nu-btn-annuler');
-const elBtnSave     = document.getElementById('nu-btn-sauvegarder');
-const elModalFermer = document.getElementById('nu-modal-fermer');
-const elToast       = document.getElementById('nu-toast');
-const elFab         = document.getElementById('nu-fab-rapide');
+const elAnnee            = document.getElementById('nu-annee');
+const elInfoWrap         = document.getElementById('nu-info-wrap');
+const elInfoToggle       = document.getElementById('nu-info-toggle');
+const elInfoCorps        = document.getElementById('nu-info-corps');
+const elTbody            = document.getElementById('nu-tbody');
+const elModal            = document.getElementById('nu-modal');
+const elModalTitre       = document.getElementById('nu-modal-titre');
+const elPiegeGrid        = document.getElementById('nu-piege-grid');
+const elVisaSelect       = document.getElementById('nu-visa-select');
+const elBtnAnnuler       = document.getElementById('nu-btn-annuler');
+const elBtnSave          = document.getElementById('nu-btn-sauvegarder');
+const elModalFermer      = document.getElementById('nu-modal-fermer');
+const elToast            = document.getElementById('nu-toast');
+const elFab              = document.getElementById('nu-fab-rapide');
+const elFabSub           = document.getElementById('nu-fab-sub');
+const elModalRapide      = document.getElementById('nu-modal-rapide');
+const elModalRapideTitre = document.getElementById('nu-modal-rapide-titre');
+const elVisaRapide       = document.getElementById('nu-visa-rapide');
+const elRapideSections   = document.getElementById('nu-rapide-sections');
+const elBtnRapideSave    = document.getElementById('nu-btn-rapide-save');
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -75,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initInfoToggle();
   initModal();
+  initModalRapide();
   initFab();
   chargerPersonnel();
   chargerDonnees();
@@ -145,11 +157,11 @@ async function chargerPersonnel() {
     if (!res.ok) return;
     personnel = (await res.json()).filter(p => p.actif !== false);
     remplirVisaSelect(elVisaSelect);
+    remplirVisaSelect(elVisaRapide);
   } catch { /* silencieux */ }
 }
 
 function remplirVisaSelect(sel) {
-  // Garde l'option vide
   sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
   personnel.forEach(p => {
     const opt = document.createElement('option');
@@ -192,7 +204,6 @@ function renderTableau() {
       html += `<td class="nu-td-piege ${cls}">${val || '·'}</td>`;
     }
 
-    // VISA
     const visa = data ? (data.visa || '') : '';
     html += `<td class="nu-td-visa">${visa || ''}</td>`;
     html += '</tr>';
@@ -200,12 +211,10 @@ function renderTableau() {
 
   elTbody.innerHTML = html;
 
-  // Clic sur une ligne → ouvrir modal
   elTbody.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => ouvrirModal(parseInt(tr.dataset.sem, 10)));
   });
 
-  // Scroll vers la semaine actuelle si on est dans l'année courante
   if (currentAnnee === new Date().getFullYear()) {
     const trToday = elTbody.querySelector('.nu-tr--today');
     if (trToday) trToday.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -231,20 +240,186 @@ function mettreAJourLigne(semaine) {
 
 // ── FAB saisie rapide ─────────────────────────────────────────
 function initFab() {
+  elFabSub.textContent = `S${currentSemaine} · ${TYPES.length} espèces · ${NB_PIEGES} pièges`;
+
   elFab.addEventListener('click', () => {
-    // Bascule sur l'année courante si nécessaire
     const anneeActuelle = new Date().getFullYear();
     if (currentAnnee !== anneeActuelle) {
       currentAnnee = anneeActuelle;
       elAnnee.value = anneeActuelle;
-      chargerDonnees().then(() => ouvrirModal(currentSemaine));
-    } else {
-      ouvrirModal(currentSemaine);
     }
+    ouvrirModalRapide(currentSemaine);
   });
 }
 
-// ── Modal édition ─────────────────────────────────────────────
+// ── Modal saisie rapide multi-espèce ──────────────────────────
+function initModalRapide() {
+  document.getElementById('nu-modal-rapide-fermer').addEventListener('click', fermerModalRapide);
+  document.getElementById('nu-btn-rapide-annuler').addEventListener('click', fermerModalRapide);
+  elModalRapide.addEventListener('click', e => { if (e.target === elModalRapide) fermerModalRapide(); });
+  elBtnRapideSave.addEventListener('click', sauvegarderTout);
+}
+
+async function ouvrirModalRapide(semaine) {
+  rapideSemaine = semaine;
+  elModalRapideTitre.textContent = `⚡ Saisie rapide — Semaine ${semaine} / ${new Date().getFullYear()}`;
+  elRapideSections.innerHTML = '<div class="nu-rapide-chargement">Chargement…</div>';
+  elModalRapide.hidden = false;
+  document.body.style.overflow = 'hidden';
+
+  // Charger les 4 types en parallèle
+  const annee = new Date().getFullYear();
+  const results = await Promise.allSettled(
+    TYPES.map(t =>
+      fetch(`/api/nuisibles/controles?type_id=${t.id}&annee=${annee}`).then(r => r.ok ? r.json() : {})
+    )
+  );
+
+  rapideDonnees  = {};
+  rapideResultats = {};
+  TYPES.forEach((type, i) => {
+    const data = results[i].status === 'fulfilled' ? results[i].value : {};
+    rapideDonnees[type.id] = data;
+    const semData = data[String(semaine)] || { resultats: {} };
+    rapideResultats[type.id] = {};
+    for (let p = 1; p <= NB_PIEGES; p++) {
+      rapideResultats[type.id][`p${p}`] = semData.resultats[`p${p}`] || null;
+    }
+  });
+
+  // Visa : premier trouvé parmi les types existants, sinon mémorisé
+  const visaExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.visa).find(v => v);
+  elVisaRapide.value = visaExistant || localStorage.getItem('nu-last-visa') || '';
+
+  renderSectionsRapide();
+}
+
+function renderSectionsRapide() {
+  elRapideSections.innerHTML = '';
+  TYPES.forEach(type => {
+    const section = document.createElement('div');
+    section.className = 'nu-rapide-section';
+
+    // En-tête de section
+    const header = document.createElement('div');
+    header.className = 'nu-rapide-section-header';
+    header.innerHTML = `
+      <span class="nu-rapide-section-nom">${type.emoji} ${type.nom}</span>
+      <span class="nu-rapide-nb">${NB_PIEGES} pièges</span>
+      <div class="nu-rapide-qactions">
+        <button class="nu-btn-quick nu-btn-quick--n"    data-tid="${type.id}" data-action="N">✗ N</button>
+        <button class="nu-btn-quick nu-btn-quick--o"    data-tid="${type.id}" data-action="O">✓ O</button>
+        <button class="nu-btn-quick nu-btn-quick--vide" data-tid="${type.id}" data-action="V">·</button>
+      </div>`;
+
+    // Grille pièges
+    const grid = document.createElement('div');
+    grid.className = 'nu-piege-grid';
+    grid.id = `nu-rapide-grid-${type.id}`;
+
+    section.appendChild(header);
+    section.appendChild(grid);
+    elRapideSections.appendChild(section);
+
+    renderGridRapide(type.id, grid);
+
+    header.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tid    = parseInt(btn.dataset.tid, 10);
+        const action = btn.dataset.action;
+        for (let p = 1; p <= NB_PIEGES; p++) {
+          rapideResultats[tid][`p${p}`] = action === 'V' ? null : action;
+        }
+        renderGridRapide(tid, document.getElementById(`nu-rapide-grid-${tid}`));
+      });
+    });
+  });
+}
+
+function renderGridRapide(typeId, gridEl) {
+  gridEl.innerHTML = '';
+  for (let p = 1; p <= NB_PIEGES; p++) {
+    const key = `p${p}`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nu-piege-btn';
+    btn.dataset.piege = key;
+    appliquerEtatPiege(btn, rapideResultats[typeId][key]);
+
+    btn.addEventListener('click', () => {
+      const cur = rapideResultats[typeId][key];
+      rapideResultats[typeId][key] = cur === null ? 'O' : cur === 'O' ? 'N' : null;
+      appliquerEtatPiege(btn, rapideResultats[typeId][key]);
+    });
+
+    gridEl.appendChild(btn);
+  }
+}
+
+async function sauvegarderTout() {
+  const visa = elVisaRapide.value;
+  elBtnRapideSave.disabled = true;
+  elBtnRapideSave.textContent = '⏳ Envoi…';
+
+  const typesASauver = TYPES.filter(t =>
+    Object.values(rapideResultats[t.id]).some(v => v !== null)
+  );
+
+  if (typesASauver.length === 0) {
+    toast('Aucune donnée à enregistrer', true);
+    elBtnRapideSave.disabled = false;
+    elBtnRapideSave.textContent = '✅ Enregistrer tout';
+    return;
+  }
+
+  try {
+    const annee = new Date().getFullYear();
+    await Promise.all(typesASauver.map(type =>
+      fetch('/api/nuisibles/controles', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type_id:   type.id,
+          annee,
+          semaine:   rapideSemaine,
+          resultats: rapideResultats[type.id],
+          visa,
+        }),
+      }).then(r => { if (!r.ok) throw new Error(`${type.nom}: HTTP ${r.status}`); })
+    ));
+
+    // Mettre à jour donneesAnnee si l'onglet actif est dans les types sauvegardés
+    typesASauver.forEach(type => {
+      if (type.id === currentTypeId && currentAnnee === new Date().getFullYear()) {
+        donneesAnnee[String(rapideSemaine)] = {
+          resultats:   { ...rapideResultats[type.id] },
+          visa,
+          date_saisie: new Date().toISOString().split('T')[0],
+        };
+        mettreAJourLigne(rapideSemaine);
+      }
+    });
+
+    if (visa) localStorage.setItem('nu-last-visa', visa);
+    fermerModalRapide();
+    const nb = typesASauver.length;
+    toast(`✅ Semaine ${rapideSemaine} — ${nb} espèce${nb > 1 ? 's' : ''} enregistrée${nb > 1 ? 's' : ''}`);
+
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+  } finally {
+    elBtnRapideSave.disabled = false;
+    elBtnRapideSave.textContent = '✅ Enregistrer tout';
+  }
+}
+
+function fermerModalRapide() {
+  elModalRapide.hidden = true;
+  document.body.style.overflow = '';
+  rapideSemaine = null;
+}
+
+// ── Modal édition simple (clic sur ligne) ─────────────────────
 function initModal() {
   elBtnAnnuler.addEventListener('click',  fermerModal);
   elModalFermer.addEventListener('click', fermerModal);
@@ -277,10 +452,8 @@ function ouvrirModal(semaine) {
   const isCurrent = (semaine === currentSemaine && currentAnnee === new Date().getFullYear());
   elModalTitre.textContent = `${type.emoji} ${type.nom} — Semaine ${semaine} / ${currentAnnee}${isCurrent ? ' ⚡' : ''}`;
 
-  // Construire les 15 boutons
   renderPiegeGrid();
 
-  // VISA : priorité à la donnée existante, sinon dernier visa mémorisé
   elVisaSelect.value = data.visa || localStorage.getItem('nu-last-visa') || '';
 
   elBtnSave.disabled = false;
@@ -305,7 +478,6 @@ function renderPiegeGrid() {
     appliquerEtatPiege(btn, editResultats[key]);
 
     btn.addEventListener('click', () => {
-      // Cycle : null → O → N → null
       const cur = editResultats[key];
       editResultats[key] = cur === null ? 'O' : cur === 'O' ? 'N' : null;
       appliquerEtatPiege(btn, editResultats[key]);
@@ -319,22 +491,22 @@ function appliquerEtatPiege(btn, val) {
   const num = btn.dataset.piege.replace('p', 'P');
   btn.classList.remove('nu-piege-btn--O', 'nu-piege-btn--N');
 
-  let etat, label;
+  let etat;
   if (val === 'O') {
     btn.classList.add('nu-piege-btn--O');
-    etat = 'O'; label = '✓';
+    etat = 'O';
   } else if (val === 'N') {
     btn.classList.add('nu-piege-btn--N');
-    etat = 'N'; label = '✗';
+    etat = 'N';
   } else {
-    etat = '·'; label = '';
+    etat = '·';
   }
 
   btn.innerHTML = `<span class="nu-piege-num">${num}</span>
                    <span class="nu-piege-etat">${etat}</span>`;
 }
 
-// ── Sauvegarde ────────────────────────────────────────────────
+// ── Sauvegarde simple ─────────────────────────────────────────
 async function sauvegarder() {
   elBtnSave.disabled = true;
   elBtnSave.textContent = '⏳ Envoi…';
@@ -359,7 +531,6 @@ async function sauvegarder() {
       throw new Error(d.detail || `HTTP ${res.status}`);
     }
 
-    // Mettre à jour les données locales
     donneesAnnee[String(editSemaine)] = {
       resultats:   { ...editResultats },
       visa,
@@ -381,7 +552,6 @@ async function sauvegarder() {
 
 // ── Helpers ───────────────────────────────────────────────────
 
-/** Numéro de semaine ISO pour une date donnée */
 function getISOWeek(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -392,7 +562,6 @@ function getISOWeek(date) {
   );
 }
 
-/** Nombre de semaines ISO dans une année (52 ou 53) — on lit la semaine du 28 décembre */
 function nombreSemainesAnnee(annee) {
   return getISOWeek(new Date(annee, 11, 28));
 }
