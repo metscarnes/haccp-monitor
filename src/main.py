@@ -36,6 +36,7 @@ from src.api.routes_nettoyage    import router as router_nettoyage
 from src.api.routes_nuisibles    import router as router_nuisibles
 from src.api.routes_etalonnage   import router as router_etalonnage
 from src.api.routes_dlc           import router as router_dlc
+from src.api.routes_cuisson       import router as router_cuisson
 
 load_dotenv()
 
@@ -125,6 +126,9 @@ app.include_router(router_etalonnage)
 
 # Routes API — Calendrier DLC
 app.include_router(router_dlc)
+
+# Routes API — Cuisson (Rôtissoire…)
+app.include_router(router_cuisson)
 
 
 # ---------------------------------------------------------------------------

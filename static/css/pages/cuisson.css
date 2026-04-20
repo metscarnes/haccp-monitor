@@ -1,0 +1,468 @@
+/* ============================================================
+   CUISSON — Rôtissoire, Four, etc.
+   Tablette-first. Formulaire HACCP cuisson (cible ≥ 63 °C).
+   ============================================================ */
+
+.cu-body {
+  background: var(--color-bg, #F5ECD7);
+  color: var(--color-text, #3D2008);
+  font-family: var(--font, system-ui, -apple-system, sans-serif);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Barre supérieure ──────────────────────────────── */
+.cu-bar {
+  flex-shrink: 0;
+  background: #3D2008;
+  color: #FFF;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .55rem .9rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.cu-retour {
+  color: #FFF;
+  text-decoration: none;
+  font-size: .82rem;
+  font-weight: 700;
+  padding: .35rem .7rem;
+  border: 1.5px solid rgba(255,255,255,.45);
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.cu-retour:active { opacity: .75; }
+.cu-bar-titre {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cu-horloge {
+  font-size: .85rem;
+  font-weight: 700;
+  opacity: .9;
+  flex-shrink: 0;
+}
+
+/* ── Onglets ──────────────────────────────────────── */
+.cu-tabs {
+  display: flex;
+  background: #6B3A1F;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cu-tabs::-webkit-scrollbar { display: none; }
+.cu-tab {
+  flex: 0 0 auto;
+  min-width: 160px;
+  background: transparent;
+  border: none;
+  border-bottom: 4px solid transparent;
+  color: rgba(255,255,255,.65);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .88rem;
+  font-weight: 700;
+  padding: .75rem 1rem;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.cu-tab.actif {
+  color: #FFF;
+  border-bottom-color: #F5ECD7;
+}
+.cu-tab:active { opacity: .8; }
+
+/* ── Main ─────────────────────────────────────────── */
+.cu-main {
+  flex: 1;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.cu-carte {
+  background: #FFFDF7;
+  border: 1.5px solid #e8d9c4;
+  border-radius: 14px;
+  box-shadow: 0 2px 10px rgba(61,32,8,.08);
+  padding: 1.1rem 1rem 1.2rem;
+}
+.cu-carte-titre {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #3D2008;
+  margin: 0 0 1rem;
+  letter-spacing: .02em;
+}
+
+/* ── Formulaire ──────────────────────────────────── */
+.cu-form { display: flex; flex-direction: column; gap: .9rem; }
+
+.cu-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .9rem;
+}
+@media (max-width: 600px) {
+  .cu-row { grid-template-columns: 1fr; }
+}
+
+.cu-champ {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  min-width: 0;
+}
+.cu-label {
+  font-size: .88rem;
+  font-weight: 700;
+  color: #3D2008;
+}
+.cu-label-hint {
+  font-weight: 500;
+  font-size: .78rem;
+  color: #7a5b3d;
+  margin-left: .3rem;
+}
+.cu-req { color: #C0392B; font-weight: 700; }
+
+.cu-input {
+  font-family: inherit;
+  font-size: 1rem;
+  color: #3D2008;
+  background: #fff;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 10px;
+  padding: .75rem .85rem;
+  min-height: 52px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+.cu-input:focus {
+  border-color: #6B3A1F;
+  box-shadow: 0 0 0 3px rgba(107,58,31,.15);
+}
+
+.cu-textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.cu-input-unite {
+  display: flex;
+  align-items: stretch;
+  gap: .5rem;
+}
+.cu-input-unite .cu-input { flex: 1; }
+.cu-input--unite { flex: 0 0 110px; }
+.cu-unite-fixe {
+  display: flex;
+  align-items: center;
+  padding: 0 .85rem;
+  background: #f5ede0;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 10px;
+  font-weight: 700;
+  color: #6B3A1F;
+  font-size: .95rem;
+  min-height: 52px;
+}
+
+.cu-cible {
+  font-size: .82rem;
+  color: #6B3A1F;
+  font-weight: 600;
+  margin-top: .2rem;
+}
+
+/* ── Produit — recherche / suggestions ─────────── */
+.cu-champ-produit { position: relative; }
+.cu-produit-wrap { position: relative; }
+.cu-produit-clear {
+  position: absolute;
+  right: .5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #6B3A1F;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: .35rem .5rem;
+  line-height: 1;
+}
+
+.cu-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  background: #fff;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 50;
+  box-shadow: 0 8px 20px rgba(0,0,0,.12);
+}
+.cu-suggest-item {
+  padding: .7rem .85rem;
+  cursor: pointer;
+  border-bottom: 1px solid #f0e8dc;
+  font-size: .95rem;
+  color: #3D2008;
+}
+.cu-suggest-item:last-child { border-bottom: none; }
+.cu-suggest-item:hover,
+.cu-suggest-item:focus {
+  background: #f5ede0;
+  outline: none;
+}
+.cu-suggest-vide {
+  padding: .85rem;
+  color: #888;
+  font-style: italic;
+  font-size: .9rem;
+  text-align: center;
+}
+
+.cu-produit-selected {
+  background: #f5ede0;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 10px;
+  padding: .75rem .9rem;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin-top: .4rem;
+}
+.cu-produit-selected-nom {
+  font-weight: 800;
+  color: #3D2008;
+}
+.cu-produit-selected-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .8rem;
+  font-size: .82rem;
+  color: #6B3A1F;
+}
+.cu-produit-selected-meta span:empty { display: none; }
+
+.cu-btn-secondaire {
+  align-self: flex-start;
+  background: #fff;
+  border: 1.5px solid #6B3A1F;
+  color: #6B3A1F;
+  font-weight: 700;
+  font-size: .85rem;
+  padding: .45rem .85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-top: .3rem;
+}
+.cu-btn-secondaire:active { background: #f5ede0; }
+
+/* ── Bandeau conformité ───────────────────────── */
+.cu-conformite {
+  border-radius: 10px;
+  padding: .65rem .85rem;
+  font-weight: 700;
+  font-size: .92rem;
+  text-align: center;
+}
+.cu-conformite--ok {
+  background: #E1F2DF;
+  color: #2D7D46;
+  border: 1.5px solid #2D7D46;
+}
+.cu-conformite--ko {
+  background: #FCE6E3;
+  color: #C0392B;
+  border: 1.5px solid #C0392B;
+}
+
+/* ── Erreur / actions ─────────────────────────── */
+.cu-erreur {
+  background: #FCE6E3;
+  color: #C0392B;
+  border: 1.5px solid #C0392B;
+  border-radius: 10px;
+  padding: .65rem .85rem;
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+.cu-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .75rem;
+  margin-top: .3rem;
+}
+
+.cu-btn-primaire {
+  background: #6B3A1F;
+  color: #FFF;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: .9rem 1.4rem;
+  min-height: 54px;
+  cursor: pointer;
+  letter-spacing: .02em;
+  transition: background .15s, transform .1s;
+}
+.cu-btn-primaire:hover  { background: #5a2f18; }
+.cu-btn-primaire:active { transform: scale(.98); }
+.cu-btn-primaire:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* ── Historique ───────────────────────────────── */
+.cu-histo { display: flex; flex-direction: column; gap: .55rem; }
+.cu-histo-vide {
+  text-align: center;
+  padding: 1.25rem 1rem;
+  color: #888;
+  font-style: italic;
+  font-size: .92rem;
+}
+
+.cu-histo-ligne {
+  background: #fff;
+  border: 1.5px solid #e8d9c4;
+  border-radius: 10px;
+  padding: .7rem .85rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: .7rem;
+  align-items: center;
+  font-size: .88rem;
+}
+.cu-histo-ligne--ko {
+  border-color: #C0392B;
+  background: #FFF6F4;
+}
+.cu-histo-date {
+  font-weight: 700;
+  color: #6B3A1F;
+  white-space: nowrap;
+}
+.cu-histo-info {
+  color: #3D2008;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cu-histo-info strong { font-weight: 800; }
+.cu-histo-temp {
+  font-weight: 800;
+  font-size: 1rem;
+  padding: .3rem .65rem;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.cu-histo-temp--ok { background: #E1F2DF; color: #2D7D46; }
+.cu-histo-temp--ko { background: #FCE6E3; color: #C0392B; }
+
+/* ── Toast ───────────────────────────────────── */
+.cu-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  background: #2D7D46;
+  color: #fff;
+  padding: .8rem 1.3rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: .95rem;
+  box-shadow: 0 6px 22px rgba(0,0,0,.25);
+  z-index: 300;
+  opacity: 0;
+  transition: opacity .25s;
+}
+.cu-toast--visible { opacity: 1; }
+.cu-toast--ko { background: #C0392B; }
+
+/* ── Modal historique produit ────────────────── */
+.cu-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 400;
+  padding: 1rem;
+}
+.cu-modal-panel {
+  background: #FFFDF7;
+  border-radius: 14px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+.cu-modal-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .85rem 1rem;
+  background: #6B3A1F;
+  color: #FFF;
+}
+.cu-modal-titre {
+  flex: 1;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.cu-modal-close {
+  background: none;
+  border: none;
+  color: #FFF;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: .2rem .5rem;
+  line-height: 1;
+}
+.cu-modal-corps {
+  padding: 1rem;
+  overflow-y: auto;
+  font-size: .92rem;
+  color: #3D2008;
+}
+.cu-modal-corps .cu-histo-ligne {
+  grid-template-columns: auto 1fr;
+}
