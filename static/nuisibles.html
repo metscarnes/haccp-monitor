@@ -67,12 +67,24 @@
     </table>
   </div>
 
+  <!-- ── FAB SAISIE RAPIDE ── -->
+  <button id="nu-fab-rapide" class="nu-fab" aria-label="Saisie rapide semaine en cours">
+    ⚡ Semaine en cours
+  </button>
+
   <!-- ── MODAL ÉDITION SEMAINE ── -->
   <div id="nu-modal" class="nu-modal" hidden role="dialog" aria-modal="true">
     <div class="nu-modal-panel">
       <div class="nu-modal-entete">
         <div class="nu-modal-titre" id="nu-modal-titre">Semaine —</div>
         <button class="nu-modal-fermer" id="nu-modal-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <!-- Actions rapides -->
+      <div class="nu-quick-actions">
+        <button class="nu-btn-quick nu-btn-quick--n" id="nu-btn-tout-n">✗ Tout N (RAS)</button>
+        <button class="nu-btn-quick nu-btn-quick--o" id="nu-btn-tout-o">✓ Tout O</button>
+        <button class="nu-btn-quick nu-btn-quick--vide" id="nu-btn-tout-vider">· Vider</button>
       </div>
 
       <div class="nu-piege-grid" id="nu-piege-grid">

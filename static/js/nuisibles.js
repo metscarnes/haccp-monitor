@@ -67,6 +67,7 @@ const elBtnAnnuler  = document.getElementById('nu-btn-annuler');
 const elBtnSave     = document.getElementById('nu-btn-sauvegarder');
 const elModalFermer = document.getElementById('nu-modal-fermer');
 const elToast       = document.getElementById('nu-toast');
+const elFab         = document.getElementById('nu-fab-rapide');
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initInfoToggle();
   initModal();
+  initFab();
   chargerPersonnel();
   chargerDonnees();
 });
@@ -227,12 +229,40 @@ function mettreAJourLigne(semaine) {
   tr.querySelector('.nu-td-visa').textContent = data ? (data.visa || '') : '';
 }
 
+// ── FAB saisie rapide ─────────────────────────────────────────
+function initFab() {
+  elFab.addEventListener('click', () => {
+    // Bascule sur l'année courante si nécessaire
+    const anneeActuelle = new Date().getFullYear();
+    if (currentAnnee !== anneeActuelle) {
+      currentAnnee = anneeActuelle;
+      elAnnee.value = anneeActuelle;
+      chargerDonnees().then(() => ouvrirModal(currentSemaine));
+    } else {
+      ouvrirModal(currentSemaine);
+    }
+  });
+}
+
 // ── Modal édition ─────────────────────────────────────────────
 function initModal() {
   elBtnAnnuler.addEventListener('click',  fermerModal);
   elModalFermer.addEventListener('click', fermerModal);
   elModal.addEventListener('click', e => { if (e.target === elModal) fermerModal(); });
   elBtnSave.addEventListener('click', sauvegarder);
+
+  document.getElementById('nu-btn-tout-n').addEventListener('click', () => {
+    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = 'N';
+    renderPiegeGrid();
+  });
+  document.getElementById('nu-btn-tout-o').addEventListener('click', () => {
+    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = 'O';
+    renderPiegeGrid();
+  });
+  document.getElementById('nu-btn-tout-vider').addEventListener('click', () => {
+    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = null;
+    renderPiegeGrid();
+  });
 }
 
 function ouvrirModal(semaine) {
@@ -244,13 +274,14 @@ function ouvrirModal(semaine) {
   }
 
   const type = TYPES.find(t => t.id === currentTypeId);
-  elModalTitre.textContent = `${type.emoji} ${type.nom} — Semaine ${semaine} / ${currentAnnee}`;
+  const isCurrent = (semaine === currentSemaine && currentAnnee === new Date().getFullYear());
+  elModalTitre.textContent = `${type.emoji} ${type.nom} — Semaine ${semaine} / ${currentAnnee}${isCurrent ? ' ⚡' : ''}`;
 
   // Construire les 15 boutons
   renderPiegeGrid();
 
-  // VISA
-  elVisaSelect.value = data.visa || '';
+  // VISA : priorité à la donnée existante, sinon dernier visa mémorisé
+  elVisaSelect.value = data.visa || localStorage.getItem('nu-last-visa') || '';
 
   elBtnSave.disabled = false;
   elModal.hidden = false;
@@ -335,6 +366,7 @@ async function sauvegarder() {
       date_saisie: new Date().toISOString().split('T')[0],
     };
 
+    if (visa) localStorage.setItem('nu-last-visa', visa);
     mettreAJourLigne(editSemaine);
     fermerModal();
     toast(`✅ Semaine ${editSemaine} enregistrée`);

@@ -442,6 +442,74 @@
 .nu-btn-sauvegarder:active { background: #1f5c32; }
 .nu-btn-sauvegarder:disabled { background: #999; box-shadow: none; cursor: not-allowed; }
 
+/* ─── FAB SAISIE RAPIDE ─── */
+.nu-fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.25rem;
+  z-index: 150;
+  background: #E8913A;
+  border: none;
+  border-radius: 28px;
+  box-shadow: 0 4px 16px rgba(232,145,58,.55);
+  color: #FFF;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .9rem;
+  font-weight: 800;
+  height: 52px;
+  padding: 0 1.4rem;
+  letter-spacing: .03em;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.nu-fab:active {
+  background: #c97520;
+  transform: scale(.96);
+  box-shadow: 0 2px 8px rgba(232,145,58,.4);
+}
+
+/* ─── ACTIONS RAPIDES (dans modal) ─── */
+.nu-quick-actions {
+  display: flex;
+  gap: .5rem;
+}
+
+.nu-btn-quick {
+  flex: 1;
+  background: none;
+  border: 2px solid;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 800;
+  height: 42px;
+  letter-spacing: .02em;
+  transition: background .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.nu-btn-quick:active { opacity: .75; transform: scale(.97); }
+
+.nu-btn-quick--n {
+  border-color: #C93030;
+  color: #C93030;
+}
+.nu-btn-quick--n:active { background: rgba(201,48,48,.1); }
+
+.nu-btn-quick--o {
+  border-color: #2D7D46;
+  color: #2D7D46;
+}
+.nu-btn-quick--o:active { background: rgba(45,125,70,.1); }
+
+.nu-btn-quick--vide {
+  border-color: #BBB;
+  color: #888;
+}
+.nu-btn-quick--vide:active { background: rgba(0,0,0,.05); }
+
 /* Toast */
 .nu-toast {
   background: #3D2008;
