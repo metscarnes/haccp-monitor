@@ -71,6 +71,16 @@
 
           <div id="cu-produit-selected" class="cu-produit-selected" hidden>
             <div class="cu-produit-selected-nom" id="cu-produit-selected-nom">—</div>
+
+            <!-- Sélecteur de lot (visible uniquement si ≥ 2 réceptions) -->
+            <div id="cu-lot-wrap" class="cu-lot-wrap" hidden>
+              <label class="cu-lot-label" for="cu-lot-select">
+                Lot utilisé <span class="cu-req">*</span>
+                <span class="cu-label-hint" id="cu-lot-compteur"></span>
+              </label>
+              <select id="cu-lot-select" class="cu-input"></select>
+            </div>
+
             <div class="cu-produit-selected-meta" id="cu-produit-selected-meta">
               <span id="cu-produit-lot"></span>
               <span id="cu-produit-dlc"></span>
@@ -87,10 +97,10 @@
         <!-- Quantité -->
         <div class="cu-row">
           <label class="cu-champ">
-            <span class="cu-label">Quantité</span>
+            <span class="cu-label">Quantité <span class="cu-req">*</span></span>
             <div class="cu-input-unite">
               <input type="number" id="cu-quantite" class="cu-input"
-                     step="0.01" min="0" placeholder="0" inputmode="decimal">
+                     step="0.01" min="0.01" placeholder="0" inputmode="decimal" required>
               <select id="cu-unite" class="cu-input cu-input--unite">
                 <option value="kg" selected>kg</option>
                 <option value="g">g</option>

@@ -331,6 +331,43 @@
 }
 .cu-produit-selected-meta span:empty { display: none; }
 
+.cu-lot-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  margin-top: .25rem;
+  padding: .65rem .8rem;
+  background: #fff;
+  border: 1.5px dashed #D4A574;
+  border-radius: 10px;
+}
+.cu-lot-label {
+  font-size: .82rem;
+  font-weight: 700;
+  color: #3D2008;
+  display: flex;
+  align-items: baseline;
+  gap: .4rem;
+}
+.cu-lot-wrap select {
+  min-height: 48px;
+  font-size: .92rem;
+  font-weight: 600;
+}
+
+.cu-fifo-badge {
+  display: inline-block;
+  background: #D97706;
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: .1rem .5rem;
+  border-radius: 10px;
+  margin-left: .3rem;
+  vertical-align: middle;
+}
+
 .cu-btn-secondaire {
   align-self: flex-start;
   background: #fff;

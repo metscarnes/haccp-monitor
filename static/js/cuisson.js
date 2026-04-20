@@ -69,6 +69,9 @@ const elProdDlc      = $('cu-produit-dlc');
 const elProdId       = $('cu-produit-id');
 const elRecLigneId   = $('cu-reception-ligne-id');
 const elBtnHisto     = $('cu-btn-historique');
+const elLotWrap      = $('cu-lot-wrap');
+const elLotSelect    = $('cu-lot-select');
+const elLotCompteur  = $('cu-lot-compteur');
 const elQuantite     = $('cu-quantite');
 const elUnite        = $('cu-unite');
 const elHeureDebut   = $('cu-heure-debut');
@@ -113,6 +116,8 @@ resetInactivite();
 const state = {
   produits:        [],    // cache catalogue complet
   produitChoisi:   null,  // {id, nom, numero_lot, dlc, reception_ligne_id}
+  lotsProduit:     [],    // toutes les réceptions du produit sélectionné
+  fifoLotId:       null,  // reception_ligne_id du lot FIFO (DLC la + courte)
 };
 
 // ── Init : date, personnel, catalogue, historique ─────────
@@ -260,28 +265,90 @@ async function selectionnerProduit(id, nom) {
   elProdClear.hidden = false;
 
   state.produitChoisi = { id, nom, numero_lot: null, dlc: null, reception_ligne_id: null };
+  state.lotsProduit = [];
   elProdId.value = id;
   elRecLigneId.value = '';
   elProdSelNom.textContent = nom;
   elProdLot.textContent = '';
   elProdDlc.textContent = '';
+  elLotWrap.hidden = true;
+  elLotSelect.innerHTML = '';
   elProdSelected.hidden = false;
   elBtnHisto.hidden = false;
 
-  // Essaie de récupérer le lot FIFO (peut ne pas exister → 404 toléré)
   try {
-    const lot = await apiFetch(`/api/fabrications/produit-fifo/${id}`);
-    state.produitChoisi.numero_lot         = lot.numero_lot ?? null;
-    state.produitChoisi.dlc                = lot.dlc ?? null;
-    state.produitChoisi.reception_ligne_id = lot.id ?? null;
-    elRecLigneId.value = lot.id ?? '';
-    elProdLot.textContent = lot.numero_lot ? `Lot : ${lot.numero_lot}` : '';
-    elProdDlc.textContent = lot.dlc ? `DLC : ${formatDate(lot.dlc)}` : '';
-  } catch {
+    const receptions = await apiFetch(`/api/cuisson/produits/${id}/receptions?limit=50`);
+    state.lotsProduit = receptions ?? [];
+
+    if (state.lotsProduit.length === 0) {
+      elProdLot.textContent = 'Aucune réception enregistrée pour ce produit';
+      elProdDlc.textContent = '';
+      return;
+    }
+
+    // Identifier le lot FIFO (DLC la plus courte, puis date réception la plus ancienne)
+    const lotsAvecIdx = state.lotsProduit.map((lot, idx) => ({ lot, idx }));
+    lotsAvecIdx.sort((a, b) => {
+      const da = a.lot.dlc ? new Date(a.lot.dlc).getTime() : Infinity;
+      const db = b.lot.dlc ? new Date(b.lot.dlc).getTime() : Infinity;
+      if (da !== db) return da - db;
+      const ra = a.lot.date_reception ? new Date(a.lot.date_reception).getTime() : Infinity;
+      const rb = b.lot.date_reception ? new Date(b.lot.date_reception).getTime() : Infinity;
+      return ra - rb;
+    });
+    const fifoId = lotsAvecIdx[0].lot.reception_ligne_id;
+    state.fifoLotId = fifoId;
+
+    if (state.lotsProduit.length === 1) {
+      // Un seul lot → sélection automatique, pas de dropdown
+      appliquerLotChoisi(state.lotsProduit[0]);
+    } else {
+      // Plusieurs lots → dropdown avec badge FIFO
+      elLotWrap.hidden = false;
+      elLotCompteur.textContent = `(${state.lotsProduit.length} réceptions)`;
+      elLotSelect.innerHTML = lotsAvecIdx.map(({ lot }) => {
+        const estFifo = lot.reception_ligne_id === fifoId;
+        const label = [
+          estFifo ? '⭐ FIFO —' : '',
+          `Lot ${lot.numero_lot ?? '—'}`,
+          `· DLC ${formatDate(lot.dlc)}`,
+          `· reçu ${formatDate(lot.date_reception)}`,
+          lot.fournisseur_nom ? `· ${lot.fournisseur_nom}` : '',
+        ].filter(Boolean).join(' ');
+        return `<option value="${lot.reception_ligne_id}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
+      }).join('');
+      const lotSelectionne = state.lotsProduit.find(l => l.reception_ligne_id === fifoId);
+      appliquerLotChoisi(lotSelectionne);
+    }
+  } catch (err) {
+    console.warn('[cuisson] Historique réceptions KO :', err);
     elProdLot.textContent = 'Aucune réception enregistrée pour ce produit';
     elProdDlc.textContent = '';
   }
 }
+
+function appliquerLotChoisi(lot) {
+  if (!lot) return;
+  state.produitChoisi.numero_lot         = lot.numero_lot ?? null;
+  state.produitChoisi.dlc                = lot.dlc ?? null;
+  state.produitChoisi.reception_ligne_id = lot.reception_ligne_id ?? null;
+  elRecLigneId.value = lot.reception_ligne_id ?? '';
+
+  const estFifo = lot.reception_ligne_id === state.fifoLotId;
+  const badgeFifo = estFifo && state.lotsProduit.length > 1
+    ? ' <span class="cu-fifo-badge">⭐ FIFO</span>'
+    : '';
+  elProdLot.innerHTML = lot.numero_lot
+    ? `Lot : ${escHtml(lot.numero_lot)}${badgeFifo}`
+    : '';
+  elProdDlc.textContent = lot.dlc ? `DLC : ${formatDate(lot.dlc)}` : '';
+}
+
+elLotSelect.addEventListener('change', () => {
+  const recId = Number(elLotSelect.value);
+  const lot = state.lotsProduit.find(l => l.reception_ligne_id === recId);
+  if (lot) appliquerLotChoisi(lot);
+});
 
 elProdClear.addEventListener('click', () => {
   elProdSearch.value = '';
@@ -289,7 +356,11 @@ elProdClear.addEventListener('click', () => {
   elProdSuggest.hidden = true;
   elProdSelected.hidden = true;
   elBtnHisto.hidden = true;
+  elLotWrap.hidden = true;
+  elLotSelect.innerHTML = '';
   state.produitChoisi = null;
+  state.lotsProduit = [];
+  state.fifoLotId = null;
   elProdId.value = '';
   elRecLigneId.value = '';
 });
@@ -400,6 +471,10 @@ elForm.addEventListener('submit', async e => {
   if (!elOperateur.value) {
     return afficherErreur('Veuillez sélectionner un opérateur.');
   }
+  const qte = parseFloat(elQuantite.value);
+  if (isNaN(qte) || qte <= 0) {
+    return afficherErreur('Quantité requise (> 0).');
+  }
   if (!elHeureDebut.value || !elHeureFin.value) {
     return afficherErreur('Heures de début et fin requises.');
   }
@@ -417,7 +492,7 @@ elForm.addEventListener('submit', async e => {
     personnel_id:       Number(elOperateur.value),
     produit_id:         Number(state.produitChoisi.id),
     reception_ligne_id: elRecLigneId.value ? Number(elRecLigneId.value) : null,
-    quantite:           elQuantite.value ? parseFloat(elQuantite.value) : null,
+    quantite:           qte,
     unite:              elUnite.value || 'kg',
     heure_debut:        elHeureDebut.value,
     heure_fin:          elHeureFin.value,
