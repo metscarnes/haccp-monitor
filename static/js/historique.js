@@ -171,18 +171,17 @@ const TAB_HOOKS = {
   'he-content-rec'   : () => recCharger(),
   'he-content-fab'   : () => { if (!fabState.charge) fabCharger(); },
   'he-content-nett'  : () => { if (!nettState.charge) nettCharger(); },
-  // Onglets non encore câblés — stubs (aucun chargement)
-  'he-content-relev' : () => {},
-  'he-content-cuis'  : () => {},
-  'he-content-refr'  : () => {},
-  'he-content-etal'  : () => {},
-  'he-content-etiq'  : () => {},
+  'he-content-relev' : () => relevCharger(),
+  'he-content-cuis'  : () => cuisCharger(),
+  'he-content-refr'  : () => refrCharger(),
+  'he-content-etal'  : () => etalCharger(),
+  'he-content-etiq'  : () => etiqCharger(),
   'he-content-dlcdev': () => {},
-  'he-content-nuis'  : () => {},
-  'he-content-incid' : () => {},
-  'he-content-ncf'   : () => {},
-  'he-content-alert' : () => {},
-  'he-content-rapp'  : () => {},
+  'he-content-nuis'  : () => nuisCharger(),
+  'he-content-incid' : () => incidCharger(),
+  'he-content-ncf'   : () => ncfCharger(),
+  'he-content-alert' : () => alertCharger(),
+  'he-content-rapp'  : () => rappCharger(),
 };
 const _tabCharge = new Set();
 
@@ -1485,6 +1484,449 @@ function nettRendrePlanning(semData) {
   table.appendChild(tbody);
   wrap.appendChild(table);
   return wrap;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   HELPERS GÉNÉRIQUES pour les 11 onglets simples
+   ══════════════════════════════════════════════════════════════ */
+
+function $(id) { return document.getElementById(id); }
+
+// Le script est chargé en fin de <body>, le DOM est déjà parsé → exécution immédiate
+function _onReady(fn) {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+  else fn();
+}
+
+function afficherMessage(key, icone, texte) {
+  const elMsg = $(`he-${key}-message`);
+  const elIc  = $(`he-${key}-icone`);
+  const elTxt = $(`he-${key}-texte`);
+  if (!elMsg) return;
+  if (elIc)  elIc.textContent  = icone;
+  if (elTxt) elTxt.textContent = texte;
+  elMsg.hidden = false;
+}
+function masquerMessage(key) {
+  const el = $(`he-${key}-message`);
+  if (el) el.hidden = true;
+}
+function majCompteur(key, n, singulier, pluriel) {
+  const el = $(`he-${key}-compteur`);
+  if (!el) return;
+  el.textContent = n === 0 ? '' : (n === 1 ? `1 ${singulier}` : `${n} ${pluriel}`);
+}
+
+function creerCarteSimple({ titre, sousTitre, meta, chips, badge, variant }) {
+  const d = document.createElement('div');
+  d.className = 'he-carte-simple' + (variant ? ` he-carte-simple--${variant}` : '');
+  d.setAttribute('role', 'listitem');
+
+  const entete = document.createElement('div');
+  entete.className = 'he-carte-simple-entete';
+  const t = document.createElement('div');
+  t.className = 'he-carte-simple-titre';
+  t.textContent = titre || '—';
+  entete.appendChild(t);
+  if (badge) {
+    const b = document.createElement('span');
+    b.className = `he-badge he-badge--${badge.variant || 'ok'}`;
+    b.textContent = badge.text;
+    entete.appendChild(b);
+  }
+  d.appendChild(entete);
+
+  if (sousTitre) {
+    const s = document.createElement('div');
+    s.className = 'he-carte-simple-sous';
+    s.textContent = sousTitre;
+    d.appendChild(s);
+  }
+  if (meta) {
+    const m = document.createElement('div');
+    m.className = 'he-carte-simple-meta';
+    m.textContent = meta;
+    d.appendChild(m);
+  }
+  if (chips && chips.length) {
+    const c = document.createElement('div');
+    c.className = 'he-carte-simple-chips';
+    chips.forEach(txt => {
+      const chip = document.createElement('span');
+      chip.className = 'he-carte-simple-chip';
+      chip.textContent = txt;
+      c.appendChild(chip);
+    });
+    d.appendChild(c);
+  }
+  return d;
+}
+
+/* ── Helper de chargement générique (liste simple) ─────────────── */
+async function chargerListe(key, url, render, { singulier = 'élément', pluriel = 'éléments' } = {}) {
+  const liste = $(`he-${key}-liste`);
+  if (!liste) return;
+  liste.innerHTML = '';
+  afficherMessage(key, '⏳', 'Chargement…');
+  try {
+    const rows = await apiFetch(url);
+    masquerMessage(key);
+    if (!rows || rows.length === 0) {
+      afficherMessage(key, '🔍', `Aucun ${singulier} trouvé.`);
+      majCompteur(key, 0, singulier, pluriel);
+      return;
+    }
+    rows.forEach(r => {
+      const carte = render(r);
+      if (carte) liste.appendChild(carte);
+    });
+    majCompteur(key, rows.length, singulier, pluriel);
+  } catch (err) {
+    afficherMessage(key, '⚠️', `Erreur : ${err.message}`);
+  }
+}
+
+function dateDefaut30j(refDebut, refFin) {
+  const auj = new Date();
+  const j30 = new Date(); j30.setDate(j30.getDate() - 30);
+  if (refDebut && !refDebut.value) refDebut.value = j30.toISOString().slice(0, 10);
+  if (refFin   && !refFin.value)   refFin.value   = auj.toISOString().slice(0, 10);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   🌡️ RELEVÉS (par enceinte)
+   ══════════════════════════════════════════════════════════════ */
+let relevEnceintesCharge = false;
+async function relevCharger() {
+  const sel = $('he-relev-enceinte');
+  const debut = $('he-relev-debut');
+  const fin   = $('he-relev-fin');
+  dateDefaut30j(debut, fin);
+
+  if (!relevEnceintesCharge) {
+    relevEnceintesCharge = true;
+    try {
+      const enceintes = await apiFetch('/api/enceintes');
+      sel.innerHTML = '';
+      enceintes.forEach(e => {
+        const o = document.createElement('option');
+        o.value = e.id; o.textContent = e.nom || `Enceinte ${e.id}`;
+        sel.appendChild(o);
+      });
+    } catch (err) {
+      afficherMessage('relev', '⚠️', `Erreur enceintes : ${err.message}`);
+      return;
+    }
+  }
+  relevLister();
+}
+async function relevLister() {
+  const sel = $('he-relev-enceinte');
+  const debut = $('he-relev-debut').value;
+  const fin   = $('he-relev-fin').value;
+  if (!sel.value) { afficherMessage('relev', '🔍', 'Sélectionnez une enceinte.'); return; }
+  const p = new URLSearchParams();
+  if (debut) p.set('date_debut', debut);
+  if (fin)   p.set('date_fin',   fin);
+  p.set('limit', '100');
+  await chargerListe('relev',
+    `/api/enceintes/${sel.value}/releves?${p.toString()}`,
+    r => creerCarteSimple({
+      titre: `${formatTemp(r.temperature)}`,
+      meta : formatDateHeureFR(r.timestamp || r.created_at),
+      sousTitre: r.type_source ? `Source : ${r.type_source}` : null,
+      variant: r.alerte ? 'nc' : 'ok',
+    }),
+    { singulier: 'relevé', pluriel: 'relevés' }
+  );
+}
+_onReady(() => {
+  $('he-relev-filtrer')?.addEventListener('click', relevLister);
+  $('he-relev-reset')  ?.addEventListener('click', () => {
+    $('he-relev-debut').value = ''; $('he-relev-fin').value = '';
+    dateDefaut30j($('he-relev-debut'), $('he-relev-fin'));
+    relevLister();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   🔥 CUISSONS
+   ══════════════════════════════════════════════════════════════ */
+async function cuisCharger() {
+  dateDefaut30j($('he-cuis-debut'), $('he-cuis-fin'));
+  cuisLister();
+}
+async function cuisLister() {
+  const type  = $('he-cuis-type').value;
+  const debut = $('he-cuis-debut').value;
+  const fin   = $('he-cuis-fin').value;
+  const p = new URLSearchParams({ type, limit: '100' });
+  if (debut) p.set('date_debut', debut);
+  if (fin)   p.set('date_fin',   fin);
+  await chargerListe('cuis',
+    `/api/cuisson/enregistrements?${p.toString()}`,
+    c => creerCarteSimple({
+      titre: c.produit_nom || '—',
+      meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_coeur)}`,
+      sousTitre: c.type_cuisson ? `Cuisson ${c.type_cuisson}` : null,
+      chips: [
+        c.duree_minutes ? `${c.duree_minutes} min` : null,
+        c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
+      ].filter(Boolean),
+      variant: (c.temperature_coeur >= 63) ? 'ok' : 'warn',
+    }),
+    { singulier: 'cuisson', pluriel: 'cuissons' }
+  );
+}
+_onReady(() => {
+  $('he-cuis-filtrer')?.addEventListener('click', cuisLister);
+  $('he-cuis-type')   ?.addEventListener('change', cuisLister);
+  $('he-cuis-reset')  ?.addEventListener('click', () => {
+    $('he-cuis-debut').value = ''; $('he-cuis-fin').value = '';
+    dateDefaut30j($('he-cuis-debut'), $('he-cuis-fin'));
+    cuisLister();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   ❄️ REFROIDISSEMENTS
+   ══════════════════════════════════════════════════════════════ */
+async function refrCharger() {
+  dateDefaut30j($('he-refr-debut'), $('he-refr-fin'));
+  refrLister();
+}
+async function refrLister() {
+  const debut = $('he-refr-debut').value;
+  const fin   = $('he-refr-fin').value;
+  const p = new URLSearchParams({ limit: '100' });
+  if (debut) p.set('date_debut', debut);
+  if (fin)   p.set('date_fin',   fin);
+  await chargerListe('refr',
+    `/api/refroidissement/enregistrements?${p.toString()}`,
+    r => creerCarteSimple({
+      titre: r.produit_nom || '—',
+      meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'}`,
+      sousTitre: `T° début ${formatTemp(r.temperature_debut)} → T° fin ${formatTemp(r.temperature_fin)}`,
+      chips: [
+        r.duree_minutes ? `${r.duree_minutes} min` : null,
+        r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
+      ].filter(Boolean),
+      variant: r.conforme === 0 ? 'nc' : 'ok',
+    }),
+    { singulier: 'refroidissement', pluriel: 'refroidissements' }
+  );
+}
+_onReady(() => {
+  $('he-refr-filtrer')?.addEventListener('click', refrLister);
+  $('he-refr-reset')  ?.addEventListener('click', () => {
+    $('he-refr-debut').value = ''; $('he-refr-fin').value = '';
+    dateDefaut30j($('he-refr-debut'), $('he-refr-fin'));
+    refrLister();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   📏 ÉTALONNAGES
+   ══════════════════════════════════════════════════════════════ */
+async function etalCharger() {
+  await chargerListe('etal',
+    '/api/etalonnage/historique?limit=100',
+    e => creerCarteSimple({
+      titre: e.thermometre_nom || `Thermomètre #${e.thermometre_ref_id}`,
+      meta : `${formatDateFR(e.date_etalonnage)} — ${e.operateur || '—'} — ${formatTemp(e.temperature_mesuree)}`,
+      sousTitre: e.reference ? `Réf : ${e.reference}` : null,
+      chips: [
+        e.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
+        e.action_corrective || null,
+      ].filter(Boolean),
+      variant: e.conforme === 0 ? 'nc' : 'ok',
+    }),
+    { singulier: 'étalonnage', pluriel: 'étalonnages' }
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   🏷️ ÉTIQUETTES DLC
+   ══════════════════════════════════════════════════════════════ */
+async function etiqCharger() { etiqLister(); }
+async function etiqLister() {
+  const jours = $('he-etiq-jours').value || '30';
+  await chargerListe('etiq',
+    `/api/etiquettes?jours=${jours}`,
+    e => creerCarteSimple({
+      titre: e.produit_nom || '—',
+      meta : `${formatDateHeureFR(e.created_at || e.date_generation)} — DLC : ${formatDateFR(e.dlc)}`,
+      sousTitre: e.numero_lot ? `Lot : ${e.numero_lot}` : null,
+      chips: [
+        e.poids ? `${e.poids}` : null,
+        e.statut_impression || null,
+      ].filter(Boolean),
+      variant: 'ok',
+    }),
+    { singulier: 'étiquette', pluriel: 'étiquettes' }
+  );
+}
+_onReady(() => {
+  $('he-etiq-filtrer')?.addEventListener('click', etiqLister);
+  $('he-etiq-jours')  ?.addEventListener('change', etiqLister);
+});
+
+/* ══════════════════════════════════════════════════════════════
+   🐀 NUISIBLES (grille par semaine)
+   ══════════════════════════════════════════════════════════════ */
+async function nuisCharger() {
+  const anneeInput = $('he-nuis-annee');
+  if (!anneeInput.value) anneeInput.value = String(new Date().getFullYear());
+  nuisLister();
+}
+async function nuisLister() {
+  const typeId = $('he-nuis-type').value;
+  const annee  = $('he-nuis-annee').value;
+  const liste  = $('he-nuis-liste');
+  liste.innerHTML = '';
+  afficherMessage('nuis', '⏳', 'Chargement…');
+  try {
+    const data = await apiFetch(`/api/nuisibles/controles?type_id=${typeId}&annee=${annee}`);
+    masquerMessage('nuis');
+    const entries = Object.entries(data).sort((a, b) => +a[0] - +b[0]);
+    if (!entries.length) {
+      afficherMessage('nuis', '🔍', `Aucun contrôle enregistré pour ${annee}.`);
+      majCompteur('nuis', 0, 'semaine', 'semaines');
+      return;
+    }
+    const grille = document.createElement('div');
+    grille.className = 'he-nuis-grille';
+    entries.forEach(([sem, info]) => {
+      const vals = Object.values(info.resultats || {});
+      const nbO = vals.filter(v => v === 'O').length;
+      const nbN = vals.filter(v => v === 'N').length;
+      const variant = nbO > 0 ? 'nc' : (nbN > 0 ? 'ok' : 'vide');
+      const case_ = document.createElement('div');
+      case_.className = `he-nuis-case he-nuis-case--${variant}`;
+      case_.innerHTML = `
+        <div class="he-nuis-sem">S${sem}</div>
+        <div class="he-nuis-val">${nbO ? `⚠ ${nbO}` : (nbN ? '✓' : '—')}</div>
+        <div class="he-nuis-visa">${info.visa || ''}</div>
+      `;
+      grille.appendChild(case_);
+    });
+    liste.appendChild(grille);
+    majCompteur('nuis', entries.length, 'semaine', 'semaines');
+  } catch (err) {
+    afficherMessage('nuis', '⚠️', `Erreur : ${err.message}`);
+  }
+}
+_onReady(() => {
+  $('he-nuis-filtrer')?.addEventListener('click', nuisLister);
+  $('he-nuis-type')   ?.addEventListener('change', nuisLister);
+  $('he-nuis-annee')  ?.addEventListener('change', nuisLister);
+});
+
+/* ══════════════════════════════════════════════════════════════
+   📋 INCIDENTS
+   ══════════════════════════════════════════════════════════════ */
+async function incidCharger() {
+  dateDefaut30j($('he-incid-debut'), $('he-incid-fin'));
+  incidLister();
+}
+async function incidLister() {
+  const debut  = $('he-incid-debut').value;
+  const fin    = $('he-incid-fin').value;
+  const statut = $('he-incid-statut').value;
+  const p = new URLSearchParams({ limit: '100' });
+  if (debut)  p.set('date_debut', debut);
+  if (fin)    p.set('date_fin', fin);
+  if (statut) p.set('statut', statut);
+  await chargerListe('incid',
+    `/api/fiches-incident?${p.toString()}`,
+    i => creerCarteSimple({
+      titre: i.produit_nom || i.type_incident || `Incident #${i.id}`,
+      meta : `${formatDateFR(i.date_incident)}${i.heure_incident ? ` à ${i.heure_incident}` : ''} — ${i.fournisseur_nom || '—'}`,
+      sousTitre: i.description || null,
+      chips: [
+        i.statut ? i.statut.replace('_', ' ') : null,
+        i.action_corrective ? '✓ Action' : null,
+      ].filter(Boolean),
+      variant: i.statut === 'clos' ? 'ok' : (i.statut === 'en_cours' ? 'warn' : 'nc'),
+    }),
+    { singulier: 'incident', pluriel: 'incidents' }
+  );
+}
+_onReady(() => {
+  $('he-incid-filtrer')?.addEventListener('click', incidLister);
+  $('he-incid-statut') ?.addEventListener('change', incidLister);
+  $('he-incid-reset')  ?.addEventListener('click', () => {
+    $('he-incid-debut').value = ''; $('he-incid-fin').value = '';
+    $('he-incid-statut').value = '';
+    dateDefaut30j($('he-incid-debut'), $('he-incid-fin'));
+    incidLister();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   🚫 NON-CONFORMITÉS FOURNISSEURS
+   ══════════════════════════════════════════════════════════════ */
+async function ncfCharger() {
+  await chargerListe('ncf',
+    '/api/non-conformites?limit=100',
+    n => creerCarteSimple({
+      titre: n.produit_nom || n.fournisseur_nom || `NC #${n.id}`,
+      meta : `${formatDateFR(n.date_nc || n.created_at)} — ${n.fournisseur_nom || '—'}`,
+      sousTitre: n.description || n.motif || null,
+      chips: [
+        n.numero_lot ? `Lot ${n.numero_lot}` : null,
+        n.action_corrective ? '✓ Action' : null,
+      ].filter(Boolean),
+      variant: 'nc',
+    }),
+    { singulier: 'non-conformité', pluriel: 'non-conformités' }
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   🔔 ALERTES (en cours — historique indisponible côté API)
+   ══════════════════════════════════════════════════════════════ */
+async function alertCharger() {
+  await chargerListe('alert',
+    '/api/alertes/en-cours',
+    a => creerCarteSimple({
+      titre: a.enceinte_nom || `Enceinte #${a.enceinte_id}`,
+      meta : `${formatDateHeureFR(a.timestamp_debut || a.created_at)} — ${formatTemp(a.temperature)}`,
+      sousTitre: a.type_alerte || 'Alerte température',
+      chips: [ a.statut || 'active' ],
+      variant: 'nc',
+    }),
+    { singulier: 'alerte active', pluriel: 'alertes actives' }
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   📄 RAPPORTS GÉNÉRÉS
+   ══════════════════════════════════════════════════════════════ */
+async function rappCharger() {
+  await chargerListe('rapp',
+    '/api/rapports',
+    r => {
+      const carte = creerCarteSimple({
+        titre: r.type ? `Rapport ${r.type}` : 'Rapport',
+        meta : `${formatDateFR(r.periode || r.created_at)} — ${r.statut || ''}`,
+        sousTitre: r.boutique_nom || null,
+        chips: [ r.format || 'PDF' ],
+        variant: 'ok',
+      });
+      if (r.id) {
+        const lien = document.createElement('a');
+        lien.href = `/api/rapports/${r.id}/pdf`;
+        lien.target = '_blank';
+        lien.rel = 'noopener';
+        lien.textContent = '📥 Télécharger';
+        lien.style.cssText = 'color:var(--accent);font-weight:600;font-size:14px;margin-top:4px;text-decoration:none;';
+        carte.appendChild(lien);
+      }
+      return carte;
+    },
+    { singulier: 'rapport', pluriel: 'rapports' }
+  );
 }
 
 // ── Init ─────────────────────────────────────────────────────

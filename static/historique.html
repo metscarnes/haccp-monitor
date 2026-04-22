@@ -149,6 +149,50 @@
       border-bottom-color: #FFF;
     }
 
+    /* ── Carte générique (onglets câblés simples) ────────────── */
+    .he-carte-simple {
+      background: #FFF;
+      border-radius: 10px;
+      border-left: 5px solid var(--secondaire);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .he-carte-simple--ok    { border-left-color: var(--ok); }
+    .he-carte-simple--warn  { border-left-color: var(--attention); }
+    .he-carte-simple--nc    { border-left-color: var(--alerte); }
+
+    .he-carte-simple-entete {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
+    }
+    .he-carte-simple-titre { font-size: 17px; font-weight: 700; color: var(--texte); }
+    .he-carte-simple-sous  { font-size: 14px; color: #777; }
+    .he-carte-simple-meta  { font-size: 14px; color: var(--accent); }
+    .he-carte-simple-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .he-carte-simple-chip  {
+      background: var(--fond); border: 1px solid var(--secondaire); border-radius: 14px;
+      font-size: 12px; padding: 2px 9px; color: var(--texte);
+    }
+
+    /* ── Grille nuisibles (semaines) ──────────────────────────── */
+    .he-nuis-grille {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+      gap: 6px;
+    }
+    .he-nuis-case {
+      background: #FFF; border: 1px solid var(--secondaire); border-radius: 6px;
+      padding: 6px 4px; text-align: center; font-size: 12px;
+    }
+    .he-nuis-case--ok  { background: rgba(45,125,70,.12); border-color: var(--ok); }
+    .he-nuis-case--nc  { background: rgba(201,48,48,.12); border-color: var(--alerte); }
+    .he-nuis-case--vide { opacity: .4; }
+    .he-nuis-sem { font-weight: 700; color: var(--accent); }
+    .he-nuis-val { font-size: 16px; margin: 2px 0; }
+    .he-nuis-visa { font-size: 11px; color: #666; }
+
     /* ── Placeholder onglets non câblés ──────────────────────── */
     .he-placeholder {
       text-align: center;
@@ -1128,103 +1172,183 @@
        NOUVEAUX ONGLETS — placeholders (câblage à venir)
   ══════════════════════════════════════════════════════════ -->
 
+  <!-- ══════════════════════════════════════════════════════════
+       Gabarit commun : filtres date + liste + pagination
+       ══════════════════════════════════════════════════════════ -->
+
   <!-- 🌡️ Relevés températures enceintes -->
   <div id="he-content-relev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-relev">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🌡️</div>
-      <div>Historique des relevés de température</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/releves</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-relev-enceinte">Enceinte</label>
+        <select id="he-relev-enceinte" class="he-filtre-input"></select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-relev-debut">Du</label>
+        <input type="date" id="he-relev-debut" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-relev-fin">Au</label>
+        <input type="date" id="he-relev-fin" class="he-filtre-input">
+      </div>
+      <button class="he-btn-filtrer" id="he-relev-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-relev-reset">✕ Reset</button>
     </div>
+    <div class="he-compteur" id="he-relev-compteur"></div>
+    <div class="he-liste"    id="he-relev-liste"></div>
+    <div class="he-message"  id="he-relev-message" hidden><div class="he-message-icone" id="he-relev-icone">⏳</div><div id="he-relev-texte">Chargement…</div></div>
   </div>
 
   <!-- 🔥 Cuissons -->
   <div id="he-content-cuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-cuis">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🔥</div>
-      <div>Historique des cuissons</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/cuissons</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-cuis-type">Type</label>
+        <select id="he-cuis-type" class="he-filtre-input">
+          <option value="rotissoire">Rôtissoire</option>
+          <option value="four">Four</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-cuis-debut">Du</label>
+        <input type="date" id="he-cuis-debut" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-cuis-fin">Au</label>
+        <input type="date" id="he-cuis-fin" class="he-filtre-input">
+      </div>
+      <button class="he-btn-filtrer" id="he-cuis-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-cuis-reset">✕ Reset</button>
     </div>
+    <div class="he-compteur" id="he-cuis-compteur"></div>
+    <div class="he-liste"    id="he-cuis-liste"></div>
+    <div class="he-message"  id="he-cuis-message" hidden><div class="he-message-icone" id="he-cuis-icone">⏳</div><div id="he-cuis-texte">Chargement…</div></div>
   </div>
 
   <!-- ❄️ Refroidissements -->
   <div id="he-content-refr" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-refr">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">❄️</div>
-      <div>Historique des refroidissements</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/refroidissements</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-refr-debut">Du</label>
+        <input type="date" id="he-refr-debut" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-refr-fin">Au</label>
+        <input type="date" id="he-refr-fin" class="he-filtre-input">
+      </div>
+      <button class="he-btn-filtrer" id="he-refr-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-refr-reset">✕ Reset</button>
     </div>
+    <div class="he-compteur" id="he-refr-compteur"></div>
+    <div class="he-liste"    id="he-refr-liste"></div>
+    <div class="he-message"  id="he-refr-message" hidden><div class="he-message-icone" id="he-refr-icone">⏳</div><div id="he-refr-texte">Chargement…</div></div>
   </div>
 
   <!-- 📏 Étalonnages -->
   <div id="he-content-etal" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-etal">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">📏</div>
-      <div>Historique des étalonnages</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/etalonnages</code></div>
-    </div>
+    <div class="he-compteur" id="he-etal-compteur"></div>
+    <div class="he-liste"    id="he-etal-liste"></div>
+    <div class="he-message"  id="he-etal-message" hidden><div class="he-message-icone" id="he-etal-icone">⏳</div><div id="he-etal-texte">Chargement…</div></div>
   </div>
 
   <!-- 🏷️ Étiquettes DLC -->
   <div id="he-content-etiq" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-etiq">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🏷️</div>
-      <div>Historique des étiquettes DLC générées</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/etiquettes</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-etiq-jours">Derniers</label>
+        <select id="he-etiq-jours" class="he-filtre-input">
+          <option value="7">7 jours</option>
+          <option value="30" selected>30 jours</option>
+          <option value="90">90 jours</option>
+          <option value="365">1 an</option>
+        </select>
+      </div>
+      <button class="he-btn-filtrer" id="he-etiq-filtrer">🔍 Actualiser</button>
     </div>
+    <div class="he-compteur" id="he-etiq-compteur"></div>
+    <div class="he-liste"    id="he-etiq-liste"></div>
+    <div class="he-message"  id="he-etiq-message" hidden><div class="he-message-icone" id="he-etiq-icone">⏳</div><div id="he-etiq-texte">Chargement…</div></div>
   </div>
 
-  <!-- 🗑️ Devenir DLC -->
+  <!-- 🗑️ Devenir DLC (pas d'endpoint GET dédié) -->
   <div id="he-content-dlcdev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-dlcdev">
     <div class="he-placeholder">
       <div class="he-placeholder-icone">🗑️</div>
       <div>Suivi du devenir des produits DLC (jetés / vendus)</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/dlc/devenir</code></div>
+      <div class="he-placeholder-note">L'historique détaillé nécessite un nouvel endpoint côté API.<br>En attendant : <a href="/dlc.html" style="color:var(--accent);font-weight:600;">Ouvrir le calendrier DLC →</a></div>
     </div>
   </div>
 
   <!-- 🐀 Nuisibles -->
   <div id="he-content-nuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-nuis">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🐀</div>
-      <div>Historique des contrôles nuisibles</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/nuisibles/controles</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-nuis-type">Type</label>
+        <select id="he-nuis-type" class="he-filtre-input">
+          <option value="1">Rongeurs</option>
+          <option value="2">Insectes volants</option>
+          <option value="3">Insectes rampants</option>
+          <option value="4">Oiseaux</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-nuis-annee">Année</label>
+        <input type="number" id="he-nuis-annee" class="he-filtre-input" min="2024" max="2099">
+      </div>
+      <button class="he-btn-filtrer" id="he-nuis-filtrer">🔍 Rechercher</button>
     </div>
+    <div class="he-compteur" id="he-nuis-compteur"></div>
+    <div class="he-liste"    id="he-nuis-liste"></div>
+    <div class="he-message"  id="he-nuis-message" hidden><div class="he-message-icone" id="he-nuis-icone">⏳</div><div id="he-nuis-texte">Chargement…</div></div>
   </div>
 
   <!-- 📋 Incidents -->
   <div id="he-content-incid" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-incid">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">📋</div>
-      <div>Historique des fiches d'incident</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/incidents</code></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-incid-debut">Du</label>
+        <input type="date" id="he-incid-debut" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-incid-fin">Au</label>
+        <input type="date" id="he-incid-fin" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-incid-statut">Statut</label>
+        <select id="he-incid-statut" class="he-filtre-input">
+          <option value="">Tous</option>
+          <option value="ouvert">Ouverts</option>
+          <option value="en_cours">En cours</option>
+          <option value="clos">Clos</option>
+        </select>
+      </div>
+      <button class="he-btn-filtrer" id="he-incid-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-incid-reset">✕ Reset</button>
     </div>
+    <div class="he-compteur" id="he-incid-compteur"></div>
+    <div class="he-liste"    id="he-incid-liste"></div>
+    <div class="he-message"  id="he-incid-message" hidden><div class="he-message-icone" id="he-incid-icone">⏳</div><div id="he-incid-texte">Chargement…</div></div>
   </div>
 
   <!-- 🚫 Non-conformités fournisseurs -->
   <div id="he-content-ncf" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ncf">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🚫</div>
-      <div>Historique des non-conformités fournisseurs</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/receptions/non-conformites</code></div>
-    </div>
+    <div class="he-compteur" id="he-ncf-compteur"></div>
+    <div class="he-liste"    id="he-ncf-liste"></div>
+    <div class="he-message"  id="he-ncf-message" hidden><div class="he-message-icone" id="he-ncf-icone">⏳</div><div id="he-ncf-texte">Chargement…</div></div>
   </div>
 
-  <!-- 🔔 Alertes -->
+  <!-- 🔔 Alertes (en cours uniquement — pas d'historique côté API) -->
   <div id="he-content-alert" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-alert">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🔔</div>
-      <div>Historique des alertes</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/alertes</code></div>
-    </div>
+    <div class="he-compteur" id="he-alert-compteur"></div>
+    <div class="he-liste"    id="he-alert-liste"></div>
+    <div class="he-message"  id="he-alert-message" hidden><div class="he-message-icone" id="he-alert-icone">⏳</div><div id="he-alert-texte">Chargement…</div></div>
   </div>
 
   <!-- 📄 Rapports générés -->
   <div id="he-content-rapp" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-rapp">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">📄</div>
-      <div>Rapports générés (journaliers & mensuels)</div>
-      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/rapports</code></div>
-    </div>
+    <div class="he-compteur" id="he-rapp-compteur"></div>
+    <div class="he-liste"    id="he-rapp-liste"></div>
+    <div class="he-message"  id="he-rapp-message" hidden><div class="he-message-icone" id="he-rapp-icone">⏳</div><div id="he-rapp-texte">Chargement…</div></div>
   </div>
 
   <!-- ============================================================
