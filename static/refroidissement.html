@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1F4E78">
+  <title>Refroidissement — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/cuisson.css">
+</head>
+<body class="cu-body">
+
+  <!-- ── Barre supérieure ── -->
+  <header class="cu-bar">
+    <a href="/taches-hub.html" class="cu-retour" aria-label="Retour tâches">← Tâches</a>
+    <div class="cu-bar-titre">❄ Refroidissement</div>
+    <div id="cu-horloge" class="cu-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ── Barre de progression wizard ── -->
+  <div class="cu-topbar">
+    <nav class="cu-progress" aria-label="Étapes du refroidissement">
+      <div class="cu-dot cu-dot--active" data-step="1"><span>1</span></div>
+      <div class="cu-dot-line" data-line="1"></div>
+      <div class="cu-dot" data-step="2"><span>2</span></div>
+      <div class="cu-dot-line" data-line="2"></div>
+      <div class="cu-dot" data-step="3"><span>3</span></div>
+    </nav>
+    <div class="cu-bandeau" id="cu-bandeau" hidden>
+      <span id="cu-bandeau-op" class="cu-bandeau-part"></span>
+      <span id="cu-bandeau-prod" class="cu-bandeau-part"></span>
+    </div>
+  </div>
+
+  <main class="cu-main">
+
+    <!-- ═══ Étape 1 : Opérateur ═══ -->
+    <section class="cu-step cu-step--active" id="cu-step-1" aria-labelledby="cu-step1-titre">
+      <h2 id="cu-step1-titre" class="cu-step-titre">Qui refroidit ?</h2>
+      <div id="cu-operateurs-grid" class="cu-tuiles-grid" role="list">
+        <div class="cu-tuiles-vide">Chargement…</div>
+      </div>
+    </section>
+
+    <!-- ═══ Étape 2 : Produit ═══ -->
+    <section class="cu-step" id="cu-step-2" aria-labelledby="cu-step2-titre" hidden>
+      <h2 id="cu-step2-titre" class="cu-step-titre">Quel produit ?</h2>
+      <p class="cu-step-hint">Uniquement les produits passés en cuisson.</p>
+
+      <input id="cu-produit-search" type="search" class="cu-filter-input"
+             placeholder="Filtrer les produits…" autocomplete="off" inputmode="text"
+             aria-label="Filtrer les produits">
+
+      <div id="cu-produits-grid" class="cu-tuiles-grid" role="list">
+        <div class="cu-tuiles-vide">Chargement…</div>
+      </div>
+
+      <div class="cu-step-actions">
+        <button type="button" class="cu-btn-secondaire" data-back="1">← Retour</button>
+      </div>
+    </section>
+
+    <!-- ═══ Étape 3 : Données refroidissement ═══ -->
+    <section class="cu-step" id="cu-step-3" aria-labelledby="cu-step3-titre" hidden>
+      <h2 id="cu-step3-titre" class="cu-step-titre">Données du refroidissement</h2>
+
+      <section class="cu-carte">
+        <form id="cu-form" class="cu-form" autocomplete="off">
+
+          <!-- Date -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Date <span class="cu-req">*</span></span>
+              <input type="date" id="cu-date" class="cu-input" required>
+            </label>
+          </div>
+
+          <!-- Heures -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Heure mise en refroidissement <span class="cu-req">*</span></span>
+              <input type="time" id="cu-heure-debut" class="cu-input" required>
+            </label>
+
+            <label class="cu-champ">
+              <span class="cu-label">Heure fin refroidissement <span class="cu-req">*</span></span>
+              <input type="time" id="cu-heure-fin" class="cu-input" required>
+              <div class="cu-quick-row" id="cu-quick-fin" role="group" aria-label="Durée rapide">
+                <button type="button" class="cu-quick-btn" data-minutes="60">+1h</button>
+                <button type="button" class="cu-quick-btn" data-minutes="90">+1h30</button>
+                <button type="button" class="cu-quick-btn cu-quick-btn--default" data-minutes="120">+2h (max)</button>
+              </div>
+              <div class="cu-cible">⏱ Durée maxi réglementaire : 2 h</div>
+            </label>
+          </div>
+
+          <!-- Température -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Température à cœur après refroidissement <span class="cu-req">*</span></span>
+              <div class="cu-input-unite">
+                <input type="number" id="cu-temperature" class="cu-input"
+                       step="0.1" min="-30" max="80" placeholder="ex : 8,0"
+                       inputmode="decimal" required>
+                <span class="cu-unite-fixe">°C</span>
+              </div>
+              <div class="cu-cible">🎯 Cible réglementaire : ≤ 10 °C</div>
+            </label>
+          </div>
+
+          <!-- Bandeau conformité + action corrective -->
+          <div id="cu-conformite" class="cu-conformite" hidden>
+            <div id="cu-conformite-texte" class="cu-conformite-texte">—</div>
+          </div>
+
+          <!-- Bandeau "JETER" (durée + T° KO) -->
+          <div id="cu-jeter" class="cu-conformite cu-conformite--ko" hidden>
+            <div class="cu-conformite-texte">
+              ⛔ JETER LES PRODUITS — couple temps/température non respecté
+              (refroidissement &gt; 2 h ET T° &gt; 10 °C).
+            </div>
+          </div>
+
+          <div id="cu-action-wrap" class="cu-champ" hidden>
+            <span class="cu-label">
+              Action corrective <span class="cu-req">*</span>
+            </span>
+            <textarea id="cu-action" class="cu-input cu-textarea"
+                      placeholder="Destruction du lot, correction du process, traçabilité…"
+                      rows="3"></textarea>
+          </div>
+
+          <div id="cu-erreur" class="cu-erreur" hidden></div>
+
+          <div class="cu-actions">
+            <button type="button" class="cu-btn-secondaire" data-back="2">← Retour</button>
+            <button type="submit" id="cu-btn-save" class="cu-btn-primaire">
+              ✓ Enregistrer le refroidissement
+            </button>
+          </div>
+
+        </form>
+      </section>
+
+      <!-- ===== HISTORIQUE RÉCENT ===== -->
+      <section class="cu-carte" aria-labelledby="cu-histo-titre">
+        <h2 id="cu-histo-titre" class="cu-carte-titre">Historique récent</h2>
+        <div id="cu-histo" class="cu-histo">
+          <div class="cu-histo-vide">Chargement…</div>
+        </div>
+      </section>
+    </section>
+
+  </main>
+
+  <div id="cu-toast" class="cu-toast" hidden></div>
+
+  <script src="/static/js/refroidissement.js"></script>
+</body>
+</html>

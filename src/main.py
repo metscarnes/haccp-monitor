@@ -37,6 +37,7 @@ from src.api.routes_nuisibles    import router as router_nuisibles
 from src.api.routes_etalonnage   import router as router_etalonnage
 from src.api.routes_dlc           import router as router_dlc
 from src.api.routes_cuisson       import router as router_cuisson
+from src.api.routes_refroidissement import router as router_refroidissement
 
 load_dotenv()
 
@@ -129,6 +130,9 @@ app.include_router(router_dlc)
 
 # Routes API — Cuisson (Rôtissoire…)
 app.include_router(router_cuisson)
+
+# Routes API — Refroidissement rapide (≤ 10 °C en ≤ 2 h)
+app.include_router(router_refroidissement)
 
 
 # ---------------------------------------------------------------------------
