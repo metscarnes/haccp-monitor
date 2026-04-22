@@ -195,6 +195,34 @@
   flex-wrap: wrap;
 }
 
+/* ── Filtres espèce (boutons) ───────────────────── */
+.cu-espece-filtres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.cu-espece-btn {
+  font-family: inherit;
+  font-size: .92rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  background: #fff;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 20px;
+  padding: .5rem 1rem;
+  min-height: 42px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.cu-espece-btn:hover { background: #f5ede0; border-color: #6B3A1F; }
+.cu-espece-btn:active { transform: scale(.96); }
+.cu-espece-btn--actif {
+  background: #6B3A1F;
+  color: #fff;
+  border-color: #6B3A1F;
+}
+
 /* ── Filtre (search) ────────────────────────────── */
 .cu-filter-input {
   font-family: inherit;

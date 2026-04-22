@@ -74,6 +74,7 @@ const elOperateursGrid = $('cu-operateurs-grid');
 
 const elProdSearch   = $('cu-produit-search');
 const elProduitsGrid = $('cu-produits-grid');
+const elEspeceFiltres = $('cu-espece-filtres');
 const elLotWrap      = $('cu-lot-wrap');
 const elLotSelect    = $('cu-lot-select');
 const elLotCompteur  = $('cu-lot-compteur');
@@ -132,6 +133,19 @@ const state = {
   produitChoisi:   null,   // { id, nom, numero_lot, dlc, reception_ligne_id }
   lotsProduit:     [],
   fifoLotId:       null,
+  especeFiltre:    null,   // null = toutes
+};
+
+const ESPECES_ICONES = {
+  'Bœuf':     '🐂',
+  'Boeuf':    '🐂',
+  'Veau':     '🐄',
+  'Agneau':   '🐑',
+  'Porc':     '🐖',
+  'Gibier':   '🦌',
+  'Volaille': '🐔',
+  'Cheval':   '🐎',
+  'Exotique': '🦬',
 };
 
 // ── Navigation wizard ──────────────────────────────────────
@@ -174,8 +188,38 @@ async function init() {
   ]);
 
   afficherOperateurs();
+  afficherFiltresEspece();
   afficherProduits();
 }
+
+function afficherFiltresEspece() {
+  const aujourdhui = todayISO();
+  const presentes = new Set();
+  state.produits.forEach(p => {
+    if (p.en_stock && p.dlc && p.dlc < aujourdhui) return;
+    if (p.espece) presentes.add(p.espece);
+  });
+  const especes = Array.from(presentes).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const btns = [
+    `<button type="button" class="cu-espece-btn cu-espece-btn--actif" data-espece="">Toutes</button>`,
+    ...especes.map(e => {
+      const icone = ESPECES_ICONES[e] ?? '•';
+      return `<button type="button" class="cu-espece-btn" data-espece="${escHtml(e)}">${icone} ${escHtml(e)}</button>`;
+    }),
+  ];
+  elEspeceFiltres.innerHTML = btns.join('');
+}
+
+elEspeceFiltres.addEventListener('click', e => {
+  const btn = e.target.closest('.cu-espece-btn[data-espece]');
+  if (!btn) return;
+  const val = btn.dataset.espece || null;
+  state.especeFiltre = val;
+  elEspeceFiltres.querySelectorAll('.cu-espece-btn').forEach(b =>
+    b.classList.toggle('cu-espece-btn--actif', b === btn));
+  afficherProduits();
+});
 
 async function chargerPersonnel() {
   try {
@@ -255,6 +299,8 @@ function produitsFiltres() {
   let liste = state.produits.filter(p => {
     // Exclure les produits en stock dont la DLC est dépassée
     if (p.en_stock && p.dlc && p.dlc < aujourdhui) return false;
+    // Filtre espèce
+    if (state.especeFiltre && p.espece !== state.especeFiltre) return false;
     return true;
   });
   if (needle) {
