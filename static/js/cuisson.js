@@ -251,7 +251,12 @@ elOperateursGrid.addEventListener('click', e => {
 // ═══ Étape 2 : Produits ═════════════════════════════════
 function produitsFiltres() {
   const needle = (elProdSearch.value || '').trim().toUpperCase();
-  let liste = state.produits.slice();
+  const aujourdhui = todayISO();
+  let liste = state.produits.filter(p => {
+    // Exclure les produits en stock dont la DLC est dépassée
+    if (p.en_stock && p.dlc && p.dlc < aujourdhui) return false;
+    return true;
+  });
   if (needle) {
     liste = liste.filter(p => (p.nom ?? '').toUpperCase().includes(needle));
   }
