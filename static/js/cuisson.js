@@ -193,10 +193,8 @@ async function init() {
 }
 
 function afficherFiltresEspece() {
-  const aujourdhui = todayISO();
   const presentes = new Set();
   state.produits.forEach(p => {
-    if (p.en_stock && p.dlc && p.dlc < aujourdhui) return;
     if (p.espece) presentes.add(p.espece);
   });
   const especes = Array.from(presentes).sort((a, b) => a.localeCompare(b, 'fr'));
@@ -249,14 +247,19 @@ async function chargerProduits() {
       });
     });
 
+    const aujourdhui = todayISO();
     state.produits = (brut ?? []).map(p => {
       const s = stockMap.get(p.id);
+      // Si le lot FIFO est périmé : on déclasse en "non en stock"
+      // (le produit reste visible mais sans ⭐ ni info de lot)
+      const expire = s && s.dlc && s.dlc < aujourdhui;
+      const stockOk = !!s && !expire;
       return {
         ...p,
-        en_stock:           !!s,
-        numero_lot:         s?.numero_lot ?? null,
-        dlc:                s?.dlc ?? null,
-        reception_ligne_id: s?.reception_ligne_id ?? null,
+        en_stock:           stockOk,
+        numero_lot:         stockOk ? s.numero_lot : null,
+        dlc:                stockOk ? s.dlc : null,
+        reception_ligne_id: stockOk ? s.reception_ligne_id : null,
       };
     });
   } catch (err) {
@@ -295,11 +298,7 @@ elOperateursGrid.addEventListener('click', e => {
 // ═══ Étape 2 : Produits ═════════════════════════════════
 function produitsFiltres() {
   const needle = (elProdSearch.value || '').trim().toUpperCase();
-  const aujourdhui = todayISO();
   let liste = state.produits.filter(p => {
-    // Exclure les produits en stock dont la DLC est dépassée
-    if (p.en_stock && p.dlc && p.dlc < aujourdhui) return false;
-    // Filtre espèce
     if (state.especeFiltre && p.espece !== state.especeFiltre) return false;
     return true;
   });
@@ -331,11 +330,12 @@ function afficherProduits() {
     const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
     const dlc   = p.en_stock && p.dlc
       ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
+    const icone = ESPECES_ICONES[p.espece] ?? '🥩';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
               data-prod-id="${p.id}" data-prod-nom="${escHtml(p.nom)}">
         ${badge}
-        <div class="cu-tuile-icone">🥩</div>
+        <div class="cu-tuile-icone">${icone}</div>
         <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
         ${dlc}
       </button>
