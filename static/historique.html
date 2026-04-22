@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Historique — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    /* ── En-tête ─────────────────────────────────────────────── */
+    .he-header {
+      background: var(--accent);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .he-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 12px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .he-btn-retour:active { opacity: .7; }
+
+    .he-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    /* ── Catégories (niveau 1) ───────────────────────────────── */
+    .he-cats {
+      display: flex;
+      background: var(--accent);
+      border-bottom: 2px solid var(--texte);
+      gap: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .he-cat-btn {
+      flex: 1 0 auto;
+      min-width: 140px;
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,.75);
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 14px 14px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      border-bottom: 4px solid transparent;
+      white-space: nowrap;
+      transition: all .2s;
+    }
+    .he-cat-btn:active { opacity: .85; }
+    .he-cat-btn.actif {
+      color: #FFF;
+      background: rgba(0,0,0,.18);
+      border-bottom-color: var(--secondaire);
+    }
+
+    /* ── Sous-onglets (niveau 2) ─────────────────────────────── */
+    .he-subtabs-wrap {
+      background: var(--secondaire);
+      border-bottom: 2px solid var(--accent);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .he-subtabs {
+      display: none;
+      gap: 0;
+      min-width: 100%;
+      width: max-content;
+    }
+    .he-subtabs.actif { display: flex; }
+
+    /* ── Onglets (réutilisés pour sous-onglets) ──────────────── */
+    .he-tabs {
+      display: flex;
+      background: var(--secondaire);
+      border-bottom: 2px solid var(--accent);
+      gap: 0;
+    }
+
+    .he-tab-btn {
+      flex: 1 0 auto;
+      background: transparent;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 700;
+      padding: 12px 16px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      border-bottom: 4px solid transparent;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .he-tab-btn:active { opacity: .8; }
+    .he-tab-btn.actif {
+      color: #FFF;
+      background: var(--accent);
+      border-bottom-color: #FFF;
+    }
+
+    /* ── Placeholder onglets non câblés ──────────────────────── */
+    .he-placeholder {
+      text-align: center;
+      padding: 64px 24px;
+      color: var(--accent);
+      font-size: 18px;
+      opacity: .7;
+    }
+    .he-placeholder-icone { font-size: 56px; margin-bottom: 14px; }
+    .he-placeholder-note  { font-size: 14px; margin-top: 10px; color: #888; }
+
+    /* ── Contenu onglets ─────────────────────────────────────── */
+    .he-tab-content {
+      display: none;
+    }
+    .he-tab-content.actif {
+      display: block;
+    }
+
+    /* ── Filtres ─────────────────────────────────────────────── */
+    .he-filtres {
+      background: var(--secondaire);
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .he-filtre-groupe {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .he-filtre-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .he-filtre-input {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 17px;
+      height: 48px;
+      padding: 0 12px;
+      width: 100%;
+    }
+    .he-filtre-input:focus { outline: none; border-color: var(--texte); }
+
+    .he-search-wrap { position: relative; flex: 2; min-width: 200px; }
+    .he-autocomplete {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      left: 0; right: 0;
+      max-height: 220px;
+      overflow-y: auto;
+      position: absolute;
+      top: 100%;
+      z-index: 20;
+    }
+    .he-autocomplete[hidden] { display: none; }
+    .he-ac-item {
+      border-bottom: 1px solid #EEE;
+      cursor: pointer;
+      padding: 10px 14px;
+      font-size: 15px;
+    }
+    .he-ac-item:last-child { border-bottom: none; }
+    .he-ac-item:active { background: var(--fond); }
+
+    .he-btn-filtrer {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 48px;
+      padding: 0 20px;
+      white-space: nowrap;
+    }
+    .he-btn-filtrer:active { opacity: .8; }
+
+    .he-btn-reset {
+      background: none;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 14px;
+      white-space: nowrap;
+    }
+
+    /* ── Compteur ────────────────────────────────────────────── */
+    .he-compteur {
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Liste ───────────────────────────────────────────────── */
+    .he-liste {
+      padding: 0 16px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* ── Cartes Ouverture ────────────────────────────────────── */
+    .he-carte-ouv {
+      background: #FFF;
+      border-radius: 12px;
+      border-left: 5px solid var(--secondaire);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      align-items: flex-start;
+    }
+    .he-carte-ouv--tracee  { border-left-color: var(--ok); }
+    .he-carte-ouv--manuelle { border-left-color: var(--attention); }
+
+    .he-photo-ouv {
+      flex-shrink: 0;
+      width: 80px;
+      height: 80px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #EEE;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .he-photo-ouv img { width: 100%; height: 100%; object-fit: cover; }
+    .he-photo-ouv-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+
+    .he-carte-ouv-corps {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .he-carte-ouv-entete {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .he-produit-nom {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--texte);
+      line-height: 1.2;
+    }
+
+    .he-produit-espece {
+      font-size: 14px;
+      color: #777;
+      margin-bottom: 6px;
+    }
+
+    .he-meta {
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .he-badge {
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      align-self: flex-start;
+    }
+    .he-badge--ok {
+      background: rgba(45,125,70,.15);
+      color: var(--ok);
+    }
+    .he-badge--attention {
+      background: rgba(232,145,58,.15);
+      color: var(--attention);
+    }
+
+    .he-reception-infos {
+      background: rgba(45,125,70,.06);
+      border-radius: 8px;
+      border: 1px solid rgba(45,125,70,.2);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 12px;
+      margin-top: 8px;
+      padding: 10px 12px;
+    }
+
+    .he-info-ligne {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .he-info-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .he-info-valeur {
+      font-size: 15px;
+      color: var(--texte);
+      font-weight: 500;
+    }
+
+    /* ── Cartes Réception ────────────────────────────────────── */
+    .he-carte-rec {
+      background: #FFF;
+      border-radius: 12px;
+      border-left: 5px solid var(--secondaire);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      overflow: hidden;
+    }
+    .he-carte-rec--conforme   { border-left-color: var(--ok); }
+    .he-carte-rec--nc         { border-left-color: var(--alerte); }
+    .he-carte-rec--en-cours   { border-left-color: var(--attention); }
+    .he-carte-rec--refusee    { border-left-color: #888; }
+
+    .he-carte-rec-resume {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+    .he-carte-rec-resume:active { background: rgba(0,0,0,.03); }
+
+    .he-photo-rec {
+      flex-shrink: 0;
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #EEE;
+      cursor: pointer;
+    }
+    .he-photo-rec img { width: 100%; height: 100%; object-fit: cover; }
+    .he-photo-rec-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+
+    .he-carte-rec-info { flex: 1; min-width: 0; }
+
+    .he-carte-rec-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .he-date {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+
+    .he-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .he-chip {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 16px;
+      font-size: 13px;
+      padding: 3px 10px;
+      color: var(--texte);
+    }
+    .he-chip--nc { border-color: var(--alerte); color: var(--alerte); }
+
+    .he-chevron {
+      font-size: 20px;
+      color: var(--secondaire);
+      flex-shrink: 0;
+      align-self: center;
+      transition: transform .2s;
+    }
+    .he-carte-rec.ouvert .he-chevron { transform: rotate(180deg); }
+
+    .he-detail {
+      border-top: 1px solid #EEE;
+      padding: 0 14px;
+      display: none;
+    }
+    .he-carte-rec.ouvert .he-detail { display: block; }
+
+    /* ── Message vide ────────────────────────────────────────── */
+    .he-message {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--accent);
+      font-size: 18px;
+    }
+    .he-message-icone { font-size: 48px; margin-bottom: 12px; }
+
+    /* ── Bouton Voir plus ────────────────────────────────────── */
+    .he-btn-plus-wrap { text-align: center; padding: 8px 16px 32px; }
+    .he-btn-plus {
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 64px;
+      padding: 0 32px;
+      width: 100%;
+      max-width: 360px;
+    }
+    .he-btn-plus:disabled { opacity: .4; cursor: default; }
+    .he-btn-plus[hidden] { display: none; }
+
+    /* ── Modal ───────────────────────────────────────────────── */
+    .he-modal {
+      align-items: center;
+      background: rgba(0,0,0,.88);
+      bottom: 0; left: 0; right: 0; top: 0;
+      display: flex;
+      justify-content: center;
+      position: fixed;
+      z-index: 100;
+    }
+    .he-modal[hidden] { display: none; }
+    .he-modal img {
+      max-width: 96vw;
+      max-height: 96dvh;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+
+    /* Réception detail sections */
+    .he-detail-section-titre {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin: 12px 0 6px;
+      border-bottom: 1px solid var(--secondaire);
+      padding-bottom: 4px;
+    }
+
+    .he-detail-bl-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 12px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    .he-detail-camion {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
+    .he-camion-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .he-camion-label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .he-camion-valeur {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .he-lignes {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-bottom: 14px;
+    }
+
+    .he-ligne {
+      background: var(--fond);
+      border-radius: 8px;
+      border: 1px solid var(--secondaire);
+      padding: 10px 12px;
+    }
+    .he-ligne--nc { border-color: var(--alerte); background: rgba(201,48,48,.04); }
+
+    .he-ligne-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .he-ligne-nom {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .he-ligne-espece {
+      font-size: 13px;
+      color: #777;
+    }
+
+    .he-ligne-badge {
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 12px;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+    .he-ligne-badge--ok { background: rgba(45,125,70,.15); color: var(--ok); }
+    .he-ligne-badge--nc { background: rgba(201,48,48,.12); color: var(--alerte); }
+
+    .he-ligne-grille {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 12px;
+    }
+
+    .he-ligne-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+    .he-ligne-champ-label {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .he-ligne-champ-val {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .he-criteres-nc {
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: rgba(201,48,48,.08);
+      border-radius: 6px;
+      border: 1px solid rgba(201,48,48,.25);
+      font-size: 13px;
+      color: var(--alerte);
+    }
+
+    .he-commentaire {
+      background: rgba(232,145,58,.08);
+      border: 1px solid rgba(232,145,58,.3);
+      border-radius: 8px;
+      font-size: 15px;
+      margin: 8px 0;
+      padding: 10px 12px;
+    }
+    .he-commentaire-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--attention);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    /* ── Cartes Fabrication ──────────────────────────────────── */
+    .he-carte-fab {
+      background: #FFF;
+      border-radius: 12px;
+      border-left: 5px solid var(--ok);
+      box-shadow: 0 2px 6px rgba(61,32,8,.10);
+      overflow: hidden;
+    }
+
+    .he-carte-fab-resume {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      align-items: flex-start;
+      cursor: pointer;
+    }
+    .he-carte-fab-resume:active { background: rgba(0,0,0,.03); }
+
+    .he-fab-icone {
+      flex-shrink: 0;
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
+      background: rgba(45,125,70,.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+    }
+
+    .he-carte-fab-info { flex: 1; min-width: 0; }
+
+    .he-fab-entete {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .he-fab-nom {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+
+    .he-fab-lot {
+      font-size: 13px;
+      font-weight: 700;
+      background: rgba(45,125,70,.12);
+      color: var(--ok);
+      border-radius: 14px;
+      padding: 3px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .he-fab-meta {
+      font-size: 15px;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    .he-fab-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .he-fab-chip {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 16px;
+      font-size: 13px;
+      padding: 3px 10px;
+      color: var(--texte);
+    }
+
+    .he-fab-detail {
+      border-top: 1px solid #EEE;
+      padding: 0;
+      display: none;
+    }
+    .he-carte-fab.ouvert .he-fab-detail { display: block; }
+    .he-carte-fab.ouvert .he-chevron { transform: rotate(180deg); }
+
+    .he-fab-ing-liste {
+      padding: 10px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .he-fab-det-poids {
+      padding: 10px 14px 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid #EEE;
+    }
+
+    .he-fab-ing {
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 8px;
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .he-fab-ing-nom {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--texte);
+      min-width: 0;
+    }
+
+    .he-fab-ing-qte {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+      min-width: 64px;
+      text-align: right;
+    }
+
+    .he-fab-ing-lot {
+      font-size: 13px;
+      color: #777;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .he-fab-ing-dlc {
+      font-size: 12px;
+      color: #999;
+    }
+
+    /* ══ ONGLET NETTOYAGE ══════════════════════════════════════ */
+
+    /* Arborescence */
+    .hn-annee {
+      background: var(--accent);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .hn-annee-btn {
+      background: none; border: none; color: #FFF; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 19px; font-weight: 800; padding: 14px 16px;
+      width: 100%; text-align: left; letter-spacing: .03em;
+    }
+    .hn-annee-btn:active { opacity: .8; }
+    .hn-annee-chev { margin-left: auto; font-size: 16px; transition: transform .2s; }
+    .hn-annee.ouvert .hn-annee-chev { transform: rotate(180deg); }
+    .hn-annee-corps { display: none; background: var(--fond); padding: 10px; flex-direction: column; gap: 8px; }
+    .hn-annee.ouvert .hn-annee-corps { display: flex; }
+
+    .hn-mois {
+      background: #FFF; border-radius: 8px;
+      border-left: 4px solid var(--secondaire); overflow: hidden;
+    }
+    .hn-mois-btn {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 16px; font-weight: 700; padding: 12px 14px;
+      width: 100%; text-align: left;
+    }
+    .hn-mois-btn:active { background: rgba(0,0,0,.03); }
+    .hn-mois-badge {
+      background: var(--secondaire); border-radius: 12px;
+      color: var(--accent); font-size: 12px; font-weight: 700; padding: 2px 9px;
+    }
+    .hn-mois-chev { margin-left: auto; font-size: 15px; color: var(--secondaire); transition: transform .2s; }
+    .hn-mois.ouvert .hn-mois-chev { transform: rotate(180deg); }
+    .hn-mois-corps { display: none; border-top: 1px solid #EEE; padding: 8px 10px 10px; flex-direction: column; gap: 8px; }
+    .hn-mois.ouvert .hn-mois-corps { display: flex; }
+
+    .hn-sem {
+      background: var(--fond); border: 1px solid var(--secondaire); border-radius: 8px; overflow: hidden;
+    }
+    .hn-sem-btn {
+      background: none; border: none; cursor: pointer;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 12px; width: 100%; text-align: left;
+    }
+    .hn-sem-btn:active { background: rgba(0,0,0,.03); }
+    .hn-sem-label { font-size: 14px; font-weight: 700; color: var(--accent); }
+    .hn-sem-nb { font-size: 13px; color: #999; }
+    .hn-sem-chev { margin-left: auto; font-size: 13px; color: var(--secondaire); transition: transform .2s; }
+    .hn-sem.ouvert .hn-sem-chev { transform: rotate(180deg); }
+    .hn-sem-corps { display: none; border-top: 1px solid #DDD; }
+    .hn-sem.ouvert .hn-sem-corps { display: block; }
+
+    /* Grille planning (lue en lecture seule) */
+    .hn-planning-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 6px 4px 10px;
+    }
+    .hn-planning-table {
+      border-collapse: collapse;
+      font-size: 11px;
+      min-width: 700px;
+      width: 100%;
+    }
+    .hn-planning-table th {
+      background: var(--accent); color: #FFF;
+      font-weight: 700; padding: 6px 5px;
+      text-align: center; white-space: nowrap;
+      border: 1px solid rgba(255,255,255,.2);
+      font-size: 11px;
+    }
+    .hn-planning-table th.hn-th-zone  { width: 80px; text-align: left; padding-left: 8px; }
+    .hn-planning-table th.hn-th-tache { width: 130px; text-align: left; padding-left: 6px; }
+    .hn-planning-table th.hn-th-freq  { width: 64px; }
+    .hn-planning-table th.hn-th-prod  { width: 100px; text-align: left; padding-left: 6px; }
+    .hn-planning-table th.hn-th-day   { width: 52px; min-width: 48px; }
+    .hn-planning-table th.hn-th-day--valide { background: var(--ok); }
+
+    .hn-planning-table td {
+      border: 1px solid #DDD;
+      padding: 5px 4px;
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+    }
+    .hn-planning-table tr:nth-child(odd)  td { background: #FFF; }
+    .hn-planning-table tr:nth-child(even) td { background: #F9F3EC; }
+    .hn-td-zone   { font-weight: 700; font-size: 10px; color: var(--accent); text-transform: uppercase; }
+    .hn-td-tache  { font-weight: 600; }
+    .hn-td-freq   { text-align: center; font-size: 10px; color: #666; }
+    .hn-td-prod   { font-size: 10px; color: #777; }
+    .hn-td-day    { text-align: center; font-size: 13px; }
+    .hn-td-day--ok { background: rgba(45,125,70,.12) !important; }
+    .hn-td-day--vide { color: #CCC; }
+    .hn-td-initial { font-size: 10px; color: var(--ok); font-weight: 700; display: block; }
+
+    /* Chargement semaine */
+    .hn-sem-loading {
+      padding: 12px; text-align: center; color: #999; font-size: 14px;
+    }
+
+    /* ── Bouton ré-impression ────────────────────────────────── */
+    .he-btn-reimprimer {
+      background: none;
+      border: 1.5px solid var(--ok);
+      border-radius: 20px;
+      color: var(--ok);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-family: inherit;
+    }
+    .he-btn-reimprimer:active { opacity: .7; }
+
+    /* ── Gabarit impression thermique Brother 62mm ── */
+    #print-label { display: none; }
+    @media print {
+      @page {
+        size: 62mm auto;
+        margin: 0mm;
+      }
+
+      body > *:not(#print-label) {
+        display: none !important;
+      }
+
+      #print-label {
+        display: block !important;
+        position: static;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 2mm;
+        margin: 0;
+        color: black;
+        font-family: sans-serif;
+        background: white;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================
+       EN-TÊTE
+  ============================================================= -->
+  <header class="he-header">
+    <button class="he-btn-retour" id="he-btn-retour" aria-label="Retour hub">← Retour</button>
+    <div style="flex:1;"></div>
+    <div class="he-horloge" id="he-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ============================================================
+       CATÉGORIES (niveau 1)
+  ============================================================= -->
+  <nav class="he-cats" role="tablist" aria-label="Catégories">
+    <button class="he-cat-btn" id="he-cat-temp"  data-cat="temp"  role="tab">🌡️ Températures</button>
+    <button class="he-cat-btn" id="he-cat-flux"  data-cat="flux"  role="tab">📦 Flux produits</button>
+    <button class="he-cat-btn actif" id="he-cat-haccp" data-cat="haccp" role="tab">🧹 HACCP</button>
+    <button class="he-cat-btn" id="he-cat-nc"    data-cat="nc"    role="tab">⚠️ Non-conformités</button>
+    <button class="he-cat-btn" id="he-cat-rap"   data-cat="rap"   role="tab">📄 Rapports</button>
+  </nav>
+
+  <!-- ============================================================
+       SOUS-ONGLETS (niveau 2 — affichés selon catégorie)
+  ============================================================= -->
+  <div class="he-subtabs-wrap">
+
+    <!-- 🌡️ Températures -->
+    <div class="he-subtabs" data-cat="temp" role="tablist" aria-label="Températures">
+      <button class="he-tab-btn actif" id="he-tab-relev" data-target="he-content-relev" role="tab">🌡️ Relevés</button>
+      <button class="he-tab-btn"       id="he-tab-cuis"  data-target="he-content-cuis"  role="tab">🔥 Cuissons</button>
+      <button class="he-tab-btn"       id="he-tab-refr"  data-target="he-content-refr"  role="tab">❄️ Refroidissements</button>
+      <button class="he-tab-btn"       id="he-tab-etal"  data-target="he-content-etal"  role="tab">📏 Étalonnages</button>
+    </div>
+
+    <!-- 📦 Flux produits -->
+    <div class="he-subtabs" data-cat="flux" role="tablist" aria-label="Flux produits">
+      <button class="he-tab-btn actif" id="he-tab-rec"    data-target="he-content-rec"    role="tab">📦 Réceptions</button>
+      <button class="he-tab-btn"       id="he-tab-fab"    data-target="he-content-fab"    role="tab">🏭 Fabrications</button>
+      <button class="he-tab-btn"       id="he-tab-etiq"   data-target="he-content-etiq"   role="tab">🏷️ Étiquettes DLC</button>
+      <button class="he-tab-btn"       id="he-tab-dlcdev" data-target="he-content-dlcdev" role="tab">🗑️ Devenir DLC</button>
+    </div>
+
+    <!-- 🧹 HACCP quotidien -->
+    <div class="he-subtabs actif" data-cat="haccp" role="tablist" aria-label="HACCP">
+      <button class="he-tab-btn actif" id="he-tab-ouv"  data-target="he-content-ouv"  role="tab">✂️ Ouvertures</button>
+      <button class="he-tab-btn"       id="he-tab-nett" data-target="he-content-nett" role="tab">🧹 Nettoyage</button>
+      <button class="he-tab-btn"       id="he-tab-nuis" data-target="he-content-nuis" role="tab">🐀 Nuisibles</button>
+    </div>
+
+    <!-- ⚠️ Non-conformités -->
+    <div class="he-subtabs" data-cat="nc" role="tablist" aria-label="Non-conformités">
+      <button class="he-tab-btn actif" id="he-tab-incid" data-target="he-content-incid" role="tab">📋 Incidents</button>
+      <button class="he-tab-btn"       id="he-tab-ncf"   data-target="he-content-ncf"   role="tab">🚫 NC fournisseurs</button>
+      <button class="he-tab-btn"       id="he-tab-alert" data-target="he-content-alert" role="tab">🔔 Alertes</button>
+    </div>
+
+    <!-- 📄 Rapports -->
+    <div class="he-subtabs" data-cat="rap" role="tablist" aria-label="Rapports">
+      <button class="he-tab-btn actif" id="he-tab-rapp" data-target="he-content-rapp" role="tab">📄 Rapports générés</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ONGLET 1 : OUVERTURES
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-ouv" class="he-tab-content actif" role="tabpanel" aria-labelledby="he-tab-ouv">
+
+    <!-- Filtres Ouvertures -->
+    <div class="he-filtres">
+      <div class="he-filtre-groupe he-search-wrap">
+        <label class="he-filtre-label" for="he-ouv-produit">Produit</label>
+        <input type="search" id="he-ouv-produit" class="he-filtre-input"
+               placeholder="Tous les produits" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit" aria-autocomplete="list" aria-controls="he-ouv-auto">
+        <div id="he-ouv-auto" class="he-autocomplete" hidden role="listbox"></div>
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ouv-debut">Du</label>
+        <input type="date" id="he-ouv-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ouv-fin">Au</label>
+        <input type="date" id="he-ouv-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+
+      <button class="he-btn-filtrer" id="he-ouv-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset" id="he-ouv-reset">✕ Reset</button>
+    </div>
+
+    <div class="he-compteur" id="he-ouv-compteur" aria-live="polite"></div>
+    <div class="he-liste" id="he-ouv-liste" role="list" aria-label="Ouvertures"></div>
+    <div class="he-message" id="he-ouv-message" hidden>
+      <div class="he-message-icone" id="he-ouv-icone">⏳</div>
+      <div id="he-ouv-texte">Chargement…</div>
+    </div>
+    <div class="he-btn-plus-wrap">
+      <button class="he-btn-plus" id="he-ouv-plus" hidden>Voir plus…</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ONGLET 2 : RÉCEPTIONS
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-rec" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-rec">
+
+    <!-- Filtres Réceptions -->
+    <div class="he-filtres">
+      <div class="he-filtre-groupe he-search-wrap">
+        <label class="he-filtre-label" for="he-rec-fourn">Fournisseur</label>
+        <input type="search" id="he-rec-fourn" class="he-filtre-input"
+               placeholder="Tous les fournisseurs" autocomplete="off" inputmode="search"
+               aria-label="Filtrer par fournisseur" aria-autocomplete="list" aria-controls="he-rec-auto">
+        <div id="he-rec-auto" class="he-autocomplete" hidden role="listbox"></div>
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-rec-debut">Du</label>
+        <input type="date" id="he-rec-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-rec-fin">Au</label>
+        <input type="date" id="he-rec-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+
+      <button class="he-btn-filtrer" id="he-rec-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset" id="he-rec-reset">✕ Reset</button>
+    </div>
+
+    <div class="he-compteur" id="he-rec-compteur" aria-live="polite"></div>
+    <div class="he-liste" id="he-rec-liste" role="list" aria-label="Réceptions"></div>
+    <div class="he-message" id="he-rec-message" hidden>
+      <div class="he-message-icone" id="he-rec-icone">⏳</div>
+      <div id="he-rec-texte">Chargement…</div>
+    </div>
+    <div class="he-btn-plus-wrap">
+      <button class="he-btn-plus" id="he-rec-plus" hidden>Voir plus…</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ONGLET 3 : FABRICATIONS
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-fab" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-fab">
+
+    <!-- Filtres Fabrications -->
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-fab-debut">Du</label>
+        <input type="date" id="he-fab-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-fab-fin">Au</label>
+        <input type="date" id="he-fab-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+
+      <button class="he-btn-filtrer" id="he-fab-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset" id="he-fab-reset">✕ Reset</button>
+    </div>
+
+    <div class="he-compteur" id="he-fab-compteur" aria-live="polite"></div>
+    <div class="he-liste" id="he-fab-liste" role="list" aria-label="Fabrications"></div>
+    <div class="he-message" id="he-fab-message" hidden>
+      <div class="he-message-icone" id="he-fab-icone">⏳</div>
+      <div id="he-fab-texte">Chargement…</div>
+    </div>
+    <div class="he-btn-plus-wrap">
+      <button class="he-btn-plus" id="he-fab-plus" hidden>Voir plus…</button>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ONGLET 4 : NETTOYAGE
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-nett" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-nett">
+    <div id="hn-message" style="text-align:center;padding:48px 24px;color:var(--accent);font-size:18px;">
+      <div style="font-size:48px;margin-bottom:12px;">⏳</div>
+      <div id="hn-message-texte">Chargement…</div>
+    </div>
+    <div id="hn-arbre" style="padding:12px;display:flex;flex-direction:column;gap:8px;" hidden></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       NOUVEAUX ONGLETS — placeholders (câblage à venir)
+  ══════════════════════════════════════════════════════════ -->
+
+  <!-- 🌡️ Relevés températures enceintes -->
+  <div id="he-content-relev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-relev">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🌡️</div>
+      <div>Historique des relevés de température</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/releves</code></div>
+    </div>
+  </div>
+
+  <!-- 🔥 Cuissons -->
+  <div id="he-content-cuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-cuis">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🔥</div>
+      <div>Historique des cuissons</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/cuissons</code></div>
+    </div>
+  </div>
+
+  <!-- ❄️ Refroidissements -->
+  <div id="he-content-refr" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-refr">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">❄️</div>
+      <div>Historique des refroidissements</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/refroidissements</code></div>
+    </div>
+  </div>
+
+  <!-- 📏 Étalonnages -->
+  <div id="he-content-etal" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-etal">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">📏</div>
+      <div>Historique des étalonnages</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/etalonnages</code></div>
+    </div>
+  </div>
+
+  <!-- 🏷️ Étiquettes DLC -->
+  <div id="he-content-etiq" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-etiq">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🏷️</div>
+      <div>Historique des étiquettes DLC générées</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/etiquettes</code></div>
+    </div>
+  </div>
+
+  <!-- 🗑️ Devenir DLC -->
+  <div id="he-content-dlcdev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-dlcdev">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🗑️</div>
+      <div>Suivi du devenir des produits DLC (jetés / vendus)</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/dlc/devenir</code></div>
+    </div>
+  </div>
+
+  <!-- 🐀 Nuisibles -->
+  <div id="he-content-nuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-nuis">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🐀</div>
+      <div>Historique des contrôles nuisibles</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/nuisibles/controles</code></div>
+    </div>
+  </div>
+
+  <!-- 📋 Incidents -->
+  <div id="he-content-incid" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-incid">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">📋</div>
+      <div>Historique des fiches d'incident</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/incidents</code></div>
+    </div>
+  </div>
+
+  <!-- 🚫 Non-conformités fournisseurs -->
+  <div id="he-content-ncf" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ncf">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🚫</div>
+      <div>Historique des non-conformités fournisseurs</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/receptions/non-conformites</code></div>
+    </div>
+  </div>
+
+  <!-- 🔔 Alertes -->
+  <div id="he-content-alert" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-alert">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🔔</div>
+      <div>Historique des alertes</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/alertes</code></div>
+    </div>
+  </div>
+
+  <!-- 📄 Rapports générés -->
+  <div id="he-content-rapp" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-rapp">
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">📄</div>
+      <div>Rapports générés (journaliers & mensuels)</div>
+      <div class="he-placeholder-note">Câblage à venir — API : <code>/api/rapports</code></div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL PHOTO PLEIN ÉCRAN
+  ============================================================= -->
+  <div class="he-modal" id="he-modal" hidden role="dialog" aria-modal="true" aria-label="Photo en plein écran">
+    <img id="he-modal-img" src="" alt="Photo">
+  </div>
+
+  <!-- ── Gabarit ticket thermique (invisible à l'écran, imprimé via @media print) ── -->
+  <div id="print-label" style="background: white; color: black; font-family: sans-serif;">
+
+    <!-- Entête : nom produit + info complémentaire -->
+    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 6px;">
+      <h1 id="print-nom" style="font-size: 1.1rem; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1.1;">NOM PRODUIT</h1>
+      <div id="print-poids" style="font-size: 0.8rem; font-weight: bold; margin-top: 2px;"></div>
+    </div>
+
+    <!-- DLC encadrée -->
+    <div style="border: 2px solid black; border-radius: 6px; padding: 4px; text-align: center; margin-bottom: 6px;">
+      <div style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">DLC :</div>
+      <div id="print-dlc" style="font-size: 1.4rem; font-weight: 900; color: red;">--/--/----</div>
+    </div>
+
+    <!-- Numéro de lot -->
+    <div id="print-lot" style="font-size: 0.8rem; font-weight: bold; text-align: center; margin-bottom: 6px; padding: 2px; border: 1px dashed black;">Lot : ---------</div>
+
+    <!-- Liste ingrédients -->
+    <div style="font-size: 0.65rem; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">Ingrédients &amp; Lots :</div>
+    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.3; margin: 0 0 8px 0; padding-left: 12px; list-style-type: square;"></ul>
+
+    <!-- Pied de ticket -->
+    <div id="print-meta" style="font-size: 0.55rem; text-align: center; border-top: 1px solid black; padding-top: 2px;">Fabriqué le --/--/----</div>
+
+  </div>
+
+  <script src="/static/js/historique.js"></script>
+</body>
+</html>
