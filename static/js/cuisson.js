@@ -1,13 +1,13 @@
 'use strict';
 /* ============================================================
-   cuisson.js — Module Cuisson (onglet Rôtissoire)
+   cuisson.js — Module Cuisson (wizard 3 étapes)
    Au Comptoir des Lilas — Mets Carnés Holding
 
    Flux :
-     - Sélection produit (recherche dans le catalogue)
-     - Lien FIFO vers le dernier lot de réception
-     - Bouton "Historique de réception" → modal
-     - Validation HACCP : T° ≥ 63 °C sinon action corrective obligatoire
+     Étape 1 — sélection opérateur (grille de tuiles)
+     Étape 2 — sélection produit (grille de tuiles, FIFO ⭐)
+              + sélecteur de lot si ≥ 2 réceptions
+     Étape 3 — quantité / heures / température + conformité HACCP
    ============================================================ */
 
 const TEMP_CIBLE = 63.0;
@@ -53,25 +53,36 @@ function todayISO() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function initialePrenom(prenom) {
+  const p = (prenom ?? '').trim();
+  if (!p) return '?';
+  return p.charAt(0).toUpperCase();
+}
+
 // ── Références DOM ─────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
 const elHorloge      = $('cu-horloge');
-const elDate         = $('cu-date');
-const elOperateur    = $('cu-operateur');
+const elSteps        = [null, $('cu-step-1'), $('cu-step-2'), $('cu-step-3')];
+const elDots         = document.querySelectorAll('.cu-dot');
+const elLines        = document.querySelectorAll('.cu-dot-line');
+const elBandeau      = $('cu-bandeau');
+const elBandeauOp    = $('cu-bandeau-op');
+const elBandeauProd  = $('cu-bandeau-prod');
+
+const elOperateursGrid = $('cu-operateurs-grid');
+
 const elProdSearch   = $('cu-produit-search');
-const elProdClear    = $('cu-produit-clear');
-const elProdSuggest  = $('cu-produit-suggest');
-const elProdSelected = $('cu-produit-selected');
-const elProdSelNom   = $('cu-produit-selected-nom');
-const elProdLot      = $('cu-produit-lot');
-const elProdDlc      = $('cu-produit-dlc');
-const elProdId       = $('cu-produit-id');
-const elRecLigneId   = $('cu-reception-ligne-id');
-const elBtnHisto     = $('cu-btn-historique');
+const elProduitsGrid = $('cu-produits-grid');
 const elLotWrap      = $('cu-lot-wrap');
 const elLotSelect    = $('cu-lot-select');
 const elLotCompteur  = $('cu-lot-compteur');
+const elProdLot      = $('cu-produit-lot');
+const elProdDlc      = $('cu-produit-dlc');
+const elBtnHisto     = $('cu-btn-historique');
+const elBtnStep2Next = $('cu-btn-step2-next');
+
+const elDate         = $('cu-date');
 const elQuantite     = $('cu-quantite');
 const elUnite        = $('cu-unite');
 const elHeureDebut   = $('cu-heure-debut');
@@ -114,13 +125,45 @@ resetInactivite();
 
 // ── État ───────────────────────────────────────────────────
 const state = {
-  produits:        [],    // cache catalogue complet
-  produitChoisi:   null,  // {id, nom, numero_lot, dlc, reception_ligne_id}
-  lotsProduit:     [],    // toutes les réceptions du produit sélectionné
-  fifoLotId:       null,  // reception_ligne_id du lot FIFO (DLC la + courte)
+  step:            1,
+  personnel:       [],
+  produits:        [],
+  operateurChoisi: null,   // { id, prenom }
+  produitChoisi:   null,   // { id, nom, numero_lot, dlc, reception_ligne_id }
+  lotsProduit:     [],
+  fifoLotId:       null,
 };
 
-// ── Init : date, personnel, catalogue, historique ─────────
+// ── Navigation wizard ──────────────────────────────────────
+function goStep(n) {
+  state.step = n;
+  for (let i = 1; i <= 3; i++) {
+    elSteps[i].hidden = (i !== n);
+    elSteps[i].classList.toggle('cu-step--active', i === n);
+  }
+  elDots.forEach(d => {
+    const s = Number(d.dataset.step);
+    d.classList.toggle('cu-dot--active', s === n);
+    d.classList.toggle('cu-dot--done', s < n);
+  });
+  elLines.forEach(l => {
+    const s = Number(l.dataset.line);
+    l.dataset.done = s < n ? '1' : '0';
+  });
+  majBandeau();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function majBandeau() {
+  const parts = [];
+  if (state.operateurChoisi) parts.push(`👤 ${state.operateurChoisi.prenom}`);
+  if (state.produitChoisi)   parts.push(`📦 ${state.produitChoisi.nom}`);
+  elBandeauOp.textContent   = parts[0] ?? '';
+  elBandeauProd.textContent = parts[1] ?? '';
+  elBandeau.hidden = parts.length === 0;
+}
+
+// ── Init : personnel, catalogue, historique ───────────────
 async function init() {
   elDate.value = todayISO();
 
@@ -129,27 +172,25 @@ async function init() {
     chargerProduits(),
     chargerHistorique(),
   ]);
+
+  afficherOperateurs();
+  afficherProduits();
 }
 
 async function chargerPersonnel() {
   try {
     const personnel = await apiFetch('/api/admin/personnel');
-    personnel
+    state.personnel = (personnel ?? [])
       .filter(p => p.actif !== 0 && p.actif !== false)
-      .forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.prenom;
-        elOperateur.appendChild(opt);
-      });
+      .sort((a, b) => (a.prenom ?? '').localeCompare(b.prenom ?? '', 'fr'));
   } catch (err) {
+    state.personnel = [];
     console.warn('[cuisson] Personnel KO :', err);
   }
 }
 
 async function chargerProduits() {
   try {
-    // Catalogue matière première (brut) + info stock/FIFO pour marquer ⭐
     const [brut, enStock] = await Promise.all([
       apiFetch('/api/produits?type=brut'),
       apiFetch('/api/produits?type=brut&en_stock=true').catch(() => []),
@@ -180,15 +221,41 @@ async function chargerProduits() {
   }
 }
 
-// ── Recherche produit : suggestions live ─────────────────
-function filtrerProduits(q) {
-  const needle = q.trim().toUpperCase();
-  const matchs = needle
-    ? state.produits.filter(p => (p.nom ?? '').toUpperCase().includes(needle))
-    : [];
+// ═══ Étape 1 : Opérateurs ═══════════════════════════════
+function afficherOperateurs() {
+  if (!state.personnel.length) {
+    elOperateursGrid.innerHTML = `<div class="cu-tuiles-vide">Aucun opérateur actif.</div>`;
+    return;
+  }
+  elOperateursGrid.innerHTML = state.personnel.map(p => `
+    <button type="button" class="cu-tuile" role="listitem"
+            data-op-id="${p.id}" data-op-prenom="${escHtml(p.prenom)}">
+      <div class="cu-tuile-icone">${escHtml(initialePrenom(p.prenom))}</div>
+      <div class="cu-tuile-nom">${escHtml(p.prenom)}</div>
+    </button>
+  `).join('');
+}
 
-  // Tri : en stock (DLC la plus courte) d'abord, puis reste alphabétique
-  matchs.sort((a, b) => {
+elOperateursGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.cu-tuile[data-op-id]');
+  if (!tuile) return;
+  state.operateurChoisi = {
+    id:     Number(tuile.dataset.opId),
+    prenom: tuile.dataset.opPrenom,
+  };
+  elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
+    t.classList.toggle('cu-tuile--selected', t === tuile));
+  setTimeout(() => goStep(2), 150);
+});
+
+// ═══ Étape 2 : Produits ═════════════════════════════════
+function produitsFiltres() {
+  const needle = (elProdSearch.value || '').trim().toUpperCase();
+  let liste = state.produits.slice();
+  if (needle) {
+    liste = liste.filter(p => (p.nom ?? '').toUpperCase().includes(needle));
+  }
+  liste.sort((a, b) => {
     if (a.en_stock !== b.en_stock) return a.en_stock ? -1 : 1;
     if (a.en_stock && b.en_stock) {
       const da = a.dlc ? new Date(a.dlc).getTime() : Infinity;
@@ -197,96 +264,72 @@ function filtrerProduits(q) {
     }
     return (a.nom ?? '').localeCompare(b.nom ?? '', 'fr');
   });
-
-  return matchs.slice(0, 15);
+  return liste;
 }
 
-function afficherSuggestions(liste) {
+function afficherProduits() {
+  const liste = produitsFiltres();
   if (!liste.length) {
-    elProdSuggest.innerHTML = `<div class="cu-suggest-vide">Aucun produit trouvé</div>`;
-    elProdSuggest.hidden = false;
+    elProduitsGrid.innerHTML = `<div class="cu-tuiles-vide">Aucun produit trouvé.</div>`;
     return;
   }
-  elProdSuggest.innerHTML = liste.map(p => {
-    const etoile = p.en_stock
-      ? `<span class="cu-suggest-star" title="Réception disponible">⭐</span>`
-      : `<span class="cu-suggest-star cu-suggest-star--off"></span>`;
-    const dlcBadge = p.en_stock && p.dlc
-      ? `<span class="cu-suggest-dlc">DLC ${formatDate(p.dlc)}</span>`
-      : '';
+  elProduitsGrid.innerHTML = liste.map(p => {
+    const classes = ['cu-tuile'];
+    if (p.en_stock) classes.push('cu-tuile--stock');
+    if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
+    const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
+    const dlc   = p.en_stock && p.dlc
+      ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
     return `
-      <div class="cu-suggest-item"
-           data-id="${p.id}"
-           data-nom="${escHtml(p.nom)}"
-           role="option" tabindex="0">
-        ${etoile}
-        <span class="cu-suggest-nom">${escHtml(p.nom)}</span>
-        ${dlcBadge}
-      </div>
+      <button type="button" class="${classes.join(' ')}" role="listitem"
+              data-prod-id="${p.id}" data-prod-nom="${escHtml(p.nom)}">
+        ${badge}
+        <div class="cu-tuile-icone">🥩</div>
+        <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
+        ${dlc}
+      </button>
     `;
   }).join('');
-  elProdSuggest.hidden = false;
 }
 
-elProdSearch.addEventListener('input', () => {
-  const q = elProdSearch.value;
-  if (!q.trim()) {
-    elProdSuggest.hidden = true;
-    return;
-  }
-  afficherSuggestions(filtrerProduits(q));
-});
+elProdSearch.addEventListener('input', afficherProduits);
 
-elProdSearch.addEventListener('focus', () => {
-  const q = elProdSearch.value;
-  if (q.trim()) afficherSuggestions(filtrerProduits(q));
-});
-
-document.addEventListener('click', e => {
-  if (!elProdSuggest.contains(e.target) && e.target !== elProdSearch) {
-    elProdSuggest.hidden = true;
-  }
-});
-
-elProdSuggest.addEventListener('click', e => {
-  const item = e.target.closest('.cu-suggest-item[data-id]');
-  if (!item) return;
-  selectionnerProduit(Number(item.dataset.id), item.dataset.nom);
-});
-elProdSuggest.addEventListener('keydown', e => {
-  if (e.key !== 'Enter' && e.key !== ' ') return;
-  const item = e.target.closest('.cu-suggest-item[data-id]');
-  if (item) { e.preventDefault(); selectionnerProduit(Number(item.dataset.id), item.dataset.nom); }
+elProduitsGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.cu-tuile[data-prod-id]');
+  if (!tuile) return;
+  const id  = Number(tuile.dataset.prodId);
+  const nom = tuile.dataset.prodNom;
+  selectionnerProduit(id, nom);
 });
 
 async function selectionnerProduit(id, nom) {
-  elProdSuggest.hidden = true;
-  elProdSearch.value = nom;
-  elProdClear.hidden = false;
-
   state.produitChoisi = { id, nom, numero_lot: null, dlc: null, reception_ligne_id: null };
   state.lotsProduit = [];
-  elProdId.value = id;
-  elRecLigneId.value = '';
-  elProdSelNom.textContent = nom;
-  elProdLot.textContent = '';
-  elProdDlc.textContent = '';
+  state.fifoLotId   = null;
+
+  // MAJ visuelle des tuiles
+  elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t => {
+    t.classList.toggle('cu-tuile--selected', Number(t.dataset.prodId) === id);
+  });
+
+  // Reset panneau lot
   elLotWrap.hidden = true;
   elLotSelect.innerHTML = '';
-  elProdSelected.hidden = false;
-  elBtnHisto.hidden = false;
+  elProdLot.innerHTML = '';
+  elProdDlc.textContent = '';
 
   try {
     const receptions = await apiFetch(`/api/cuisson/produits/${id}/receptions?limit=50`);
     state.lotsProduit = receptions ?? [];
 
     if (state.lotsProduit.length === 0) {
-      elProdLot.textContent = 'Aucune réception enregistrée pour ce produit';
-      elProdDlc.textContent = '';
+      // Pas de réception enregistrée — on avance quand même
+      majBandeau();
+      setTimeout(() => goStep(3), 120);
       return;
     }
 
-    // Identifier le lot FIFO (DLC la plus courte, puis date réception la plus ancienne)
+    // FIFO : DLC la plus courte, puis réception la plus ancienne
     const lotsAvecIdx = state.lotsProduit.map((lot, idx) => ({ lot, idx }));
     lotsAvecIdx.sort((a, b) => {
       const da = a.lot.dlc ? new Date(a.lot.dlc).getTime() : Infinity;
@@ -296,18 +339,18 @@ async function selectionnerProduit(id, nom) {
       const rb = b.lot.date_reception ? new Date(b.lot.date_reception).getTime() : Infinity;
       return ra - rb;
     });
-    const fifoId = lotsAvecIdx[0].lot.reception_ligne_id;
-    state.fifoLotId = fifoId;
+    state.fifoLotId = lotsAvecIdx[0].lot.reception_ligne_id;
 
     if (state.lotsProduit.length === 1) {
-      // Un seul lot → sélection automatique, pas de dropdown
       appliquerLotChoisi(state.lotsProduit[0]);
+      majBandeau();
+      setTimeout(() => goStep(3), 120);
     } else {
-      // Plusieurs lots → dropdown avec badge FIFO
+      // Plusieurs lots → on affiche le sélecteur, l'utilisateur clique "Suivant"
       elLotWrap.hidden = false;
       elLotCompteur.textContent = `(${state.lotsProduit.length} réceptions)`;
       elLotSelect.innerHTML = lotsAvecIdx.map(({ lot }) => {
-        const estFifo = lot.reception_ligne_id === fifoId;
+        const estFifo = lot.reception_ligne_id === state.fifoLotId;
         const label = [
           estFifo ? '⭐ FIFO —' : '',
           `Lot ${lot.numero_lot ?? '—'}`,
@@ -317,13 +360,15 @@ async function selectionnerProduit(id, nom) {
         ].filter(Boolean).join(' ');
         return `<option value="${lot.reception_ligne_id}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
       }).join('');
-      const lotSelectionne = state.lotsProduit.find(l => l.reception_ligne_id === fifoId);
-      appliquerLotChoisi(lotSelectionne);
+      const lotFifo = state.lotsProduit.find(l => l.reception_ligne_id === state.fifoLotId);
+      appliquerLotChoisi(lotFifo);
+      majBandeau();
+      elLotWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (err) {
     console.warn('[cuisson] Historique réceptions KO :', err);
-    elProdLot.textContent = 'Aucune réception enregistrée pour ce produit';
-    elProdDlc.textContent = '';
+    majBandeau();
+    setTimeout(() => goStep(3), 120);
   }
 }
 
@@ -332,7 +377,6 @@ function appliquerLotChoisi(lot) {
   state.produitChoisi.numero_lot         = lot.numero_lot ?? null;
   state.produitChoisi.dlc                = lot.dlc ?? null;
   state.produitChoisi.reception_ligne_id = lot.reception_ligne_id ?? null;
-  elRecLigneId.value = lot.reception_ligne_id ?? '';
 
   const estFifo = lot.reception_ligne_id === state.fifoLotId;
   const badgeFifo = estFifo && state.lotsProduit.length > 1
@@ -350,22 +394,9 @@ elLotSelect.addEventListener('change', () => {
   if (lot) appliquerLotChoisi(lot);
 });
 
-elProdClear.addEventListener('click', () => {
-  elProdSearch.value = '';
-  elProdClear.hidden = true;
-  elProdSuggest.hidden = true;
-  elProdSelected.hidden = true;
-  elBtnHisto.hidden = true;
-  elLotWrap.hidden = true;
-  elLotSelect.innerHTML = '';
-  state.produitChoisi = null;
-  state.lotsProduit = [];
-  state.fifoLotId = null;
-  elProdId.value = '';
-  elRecLigneId.value = '';
-});
+elBtnStep2Next.addEventListener('click', () => goStep(3));
 
-// ── Historique réception produit — modale ────────────────
+// Historique réception produit — modale
 elBtnHisto.addEventListener('click', async () => {
   if (!state.produitChoisi) return;
   const { id, nom } = state.produitChoisi;
@@ -383,8 +414,8 @@ elBtnHisto.addEventListener('click', async () => {
       <div class="cu-histo-ligne">
         <div class="cu-histo-date">${formatDate(r.date_reception)}</div>
         <div class="cu-histo-info">
-          <strong>Lot&nbsp;:</strong> ${escHtml(r.numero_lot ?? '—')}
-          &nbsp;·&nbsp; <strong>DLC&nbsp;:</strong> ${formatDate(r.dlc)}
+          <strong>Lot :</strong> ${escHtml(r.numero_lot ?? '—')}
+          &nbsp;·&nbsp; <strong>DLC :</strong> ${formatDate(r.dlc)}
           ${r.fournisseur_nom ? `<br><small>${escHtml(r.fournisseur_nom)}</small>` : ''}
           ${r.poids_kg ? `&nbsp;·&nbsp;${r.poids_kg} kg` : ''}
           ${r.reception_id ? `<br><a href="/reception-detail.html?id=${r.reception_id}" style="color:#6B3A1F;font-weight:700">→ Fiche réception</a>` : ''}
@@ -401,7 +432,16 @@ elModal.addEventListener('click', e => {
   if (e.target === elModal) elModal.hidden = true;
 });
 
-// ── Heure fin — boutons rapides (+1h, +1h30…) ────────────
+// ═══ Boutons "← Retour" ═════════════════════════════════
+document.querySelectorAll('[data-back]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const n = Number(btn.dataset.back);
+    if (n >= 1 && n <= 3) goStep(n);
+  });
+});
+
+// ═══ Étape 3 : formulaire ═══════════════════════════════
+// ── Heure fin — boutons rapides ─────────────────────────
 const elQuickFin = $('cu-quick-fin');
 
 function ajouterMinutes(hhmm, minutes) {
@@ -431,7 +471,6 @@ elQuickFin.addEventListener('click', e => {
   }
 });
 
-// Reset du bouton actif si l'utilisateur change manuellement
 elHeureFin.addEventListener('input', () => {
   elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
     b.classList.remove('cu-quick-btn--actif'));
@@ -465,11 +504,13 @@ elForm.addEventListener('submit', async e => {
   e.preventDefault();
   elErreur.hidden = true;
 
-  if (!state.produitChoisi) {
-    return afficherErreur('Veuillez sélectionner un produit.');
-  }
-  if (!elOperateur.value) {
+  if (!state.operateurChoisi) {
+    goStep(1);
     return afficherErreur('Veuillez sélectionner un opérateur.');
+  }
+  if (!state.produitChoisi) {
+    goStep(2);
+    return afficherErreur('Veuillez sélectionner un produit.');
   }
   const qte = parseFloat(elQuantite.value);
   if (isNaN(qte) || qte <= 0) {
@@ -489,9 +530,10 @@ elForm.addEventListener('submit', async e => {
   const payload = {
     type_cuisson:       'rotissoire',
     date_cuisson:       elDate.value,
-    personnel_id:       Number(elOperateur.value),
+    personnel_id:       Number(state.operateurChoisi.id),
     produit_id:         Number(state.produitChoisi.id),
-    reception_ligne_id: elRecLigneId.value ? Number(elRecLigneId.value) : null,
+    reception_ligne_id: state.produitChoisi.reception_ligne_id
+                         ? Number(state.produitChoisi.reception_ligne_id) : null,
     quantite:           qte,
     unite:              elUnite.value || 'kg',
     heure_debut:        elHeureDebut.value,
@@ -500,7 +542,7 @@ elForm.addEventListener('submit', async e => {
     action_corrective:  elAction.value.trim() || null,
   };
 
-  elBtnSave.disabled   = true;
+  elBtnSave.disabled    = true;
   elBtnSave.textContent = '⏳ Enregistrement…';
 
   try {
@@ -510,7 +552,7 @@ elForm.addEventListener('submit', async e => {
       body:    JSON.stringify(payload),
     });
     afficherToast(res.conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', res.conforme);
-    resetFormulaire();
+    resetWizard();
     await chargerHistorique();
   } catch (err) {
     afficherErreur(err.message);
@@ -537,17 +579,36 @@ function afficherToast(message, ok = true) {
   }, 3500);
 }
 
-function resetFormulaire() {
-  elProdClear.click();
+function resetWizard() {
+  state.operateurChoisi = null;
+  state.produitChoisi   = null;
+  state.lotsProduit     = [];
+  state.fifoLotId       = null;
+
+  elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
+    t.classList.remove('cu-tuile--selected'));
+  elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t =>
+    t.classList.remove('cu-tuile--selected'));
   elProdSearch.value = '';
-  elQuantite.value = '';
-  elHeureDebut.value = '';
-  elHeureFin.value = '';
+  afficherProduits();
+
+  elLotWrap.hidden = true;
+  elLotSelect.innerHTML = '';
+  elProdLot.innerHTML = '';
+  elProdDlc.textContent = '';
+
+  elQuantite.value    = '';
+  elHeureDebut.value  = '';
+  elHeureFin.value    = '';
   elTemperature.value = '';
-  elAction.value = '';
+  elAction.value      = '';
   elConformite.hidden = true;
   elActionWrap.hidden = true;
-  elDate.value = todayISO();
+  elDate.value        = todayISO();
+  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.remove('cu-quick-btn--actif'));
+
+  goStep(1);
 }
 
 // ── Historique récent ────────────────────────────────────

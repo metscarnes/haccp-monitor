@@ -30,154 +30,166 @@
     <button class="cu-tab actif" data-type="rotissoire" role="tab" aria-selected="true">
       🍗 Rôtissoire
     </button>
-    <!-- Autres onglets à venir (four, friteuse…) -->
   </nav>
+
+  <!-- ── Barre de progression wizard ── -->
+  <div class="cu-topbar">
+    <nav class="cu-progress" aria-label="Étapes de la cuisson">
+      <div class="cu-dot cu-dot--active" data-step="1"><span>1</span></div>
+      <div class="cu-dot-line" data-line="1"></div>
+      <div class="cu-dot" data-step="2"><span>2</span></div>
+      <div class="cu-dot-line" data-line="2"></div>
+      <div class="cu-dot" data-step="3"><span>3</span></div>
+    </nav>
+    <div class="cu-bandeau" id="cu-bandeau" hidden>
+      <span id="cu-bandeau-op" class="cu-bandeau-part"></span>
+      <span id="cu-bandeau-prod" class="cu-bandeau-part"></span>
+    </div>
+  </div>
 
   <main class="cu-main">
 
-    <!-- ===== FORMULAIRE ===== -->
-    <section class="cu-carte" aria-labelledby="cu-form-titre">
-      <h2 id="cu-form-titre" class="cu-carte-titre">Nouvelle cuisson — Rôtissoire</h2>
+    <!-- ═══ Étape 1 : Opérateur ═══ -->
+    <section class="cu-step cu-step--active" id="cu-step-1" aria-labelledby="cu-step1-titre">
+      <h2 id="cu-step1-titre" class="cu-step-titre">Qui cuisine ?</h2>
+      <div id="cu-operateurs-grid" class="cu-tuiles-grid" role="list">
+        <div class="cu-tuiles-vide">Chargement…</div>
+      </div>
+    </section>
 
-      <form id="cu-form" class="cu-form" autocomplete="off">
+    <!-- ═══ Étape 2 : Produit ═══ -->
+    <section class="cu-step" id="cu-step-2" aria-labelledby="cu-step2-titre" hidden>
+      <h2 id="cu-step2-titre" class="cu-step-titre">Quel produit ?</h2>
 
-        <!-- Date + Opérateur -->
-        <div class="cu-row">
-          <label class="cu-champ">
-            <span class="cu-label">Date <span class="cu-req">*</span></span>
-            <input type="date" id="cu-date" class="cu-input" required>
-          </label>
+      <input id="cu-produit-search" type="search" class="cu-filter-input"
+             placeholder="Filtrer les produits…" autocomplete="off" inputmode="text"
+             aria-label="Filtrer les produits">
 
-          <label class="cu-champ">
-            <span class="cu-label">Opérateur <span class="cu-req">*</span></span>
-            <select id="cu-operateur" class="cu-input" required>
-              <option value="">— Sélectionner —</option>
-            </select>
-          </label>
+      <div id="cu-produits-grid" class="cu-tuiles-grid" role="list">
+        <div class="cu-tuiles-vide">Chargement…</div>
+      </div>
+
+      <!-- Sélecteur de lot FIFO (visible uniquement si ≥ 2 réceptions) -->
+      <div id="cu-lot-wrap" class="cu-lot-wrap" hidden>
+        <label class="cu-lot-label" for="cu-lot-select">
+          Lot utilisé <span class="cu-req">*</span>
+          <span class="cu-label-hint" id="cu-lot-compteur"></span>
+        </label>
+        <select id="cu-lot-select" class="cu-input"></select>
+        <div class="cu-produit-selected-meta">
+          <span id="cu-produit-lot"></span>
+          <span id="cu-produit-dlc"></span>
         </div>
+        <button type="button" id="cu-btn-historique" class="cu-btn-secondaire">
+          📋 Historique de réception
+        </button>
+        <button type="button" id="cu-btn-step2-next" class="cu-btn-primaire">Suivant →</button>
+      </div>
 
-        <!-- Produit : recherche + info lot FIFO -->
-        <div class="cu-champ cu-champ-produit">
-          <span class="cu-label">Produit <span class="cu-req">*</span></span>
-          <div class="cu-produit-wrap">
-            <input type="search" id="cu-produit-search" class="cu-input"
-                   placeholder="Rechercher un produit du catalogue…"
-                   autocomplete="off" inputmode="text"
-                   aria-autocomplete="list" aria-controls="cu-produit-suggest">
-            <button type="button" id="cu-produit-clear" class="cu-produit-clear" hidden
-                    aria-label="Effacer la sélection">✕</button>
+      <div class="cu-step-actions">
+        <button type="button" class="cu-btn-secondaire" data-back="1">← Retour</button>
+      </div>
+    </section>
+
+    <!-- ═══ Étape 3 : Paramètres cuisson ═══ -->
+    <section class="cu-step" id="cu-step-3" aria-labelledby="cu-step3-titre" hidden>
+      <h2 id="cu-step3-titre" class="cu-step-titre">Paramètres de cuisson</h2>
+
+      <section class="cu-carte">
+        <form id="cu-form" class="cu-form" autocomplete="off">
+
+          <!-- Date -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Date <span class="cu-req">*</span></span>
+              <input type="date" id="cu-date" class="cu-input" required>
+            </label>
+
+            <!-- Quantité -->
+            <label class="cu-champ">
+              <span class="cu-label">Quantité <span class="cu-req">*</span></span>
+              <div class="cu-input-unite">
+                <input type="number" id="cu-quantite" class="cu-input"
+                       step="0.01" min="0.01" placeholder="0" inputmode="decimal" required>
+                <select id="cu-unite" class="cu-input cu-input--unite">
+                  <option value="kg" selected>kg</option>
+                  <option value="g">g</option>
+                  <option value="pièces">pièces</option>
+                </select>
+              </div>
+            </label>
           </div>
-          <div id="cu-produit-suggest" class="cu-suggest" role="listbox" hidden></div>
 
-          <div id="cu-produit-selected" class="cu-produit-selected" hidden>
-            <div class="cu-produit-selected-nom" id="cu-produit-selected-nom">—</div>
+          <!-- Heures -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Heure début cuisson <span class="cu-req">*</span></span>
+              <input type="time" id="cu-heure-debut" class="cu-input" required>
+            </label>
 
-            <!-- Sélecteur de lot (visible uniquement si ≥ 2 réceptions) -->
-            <div id="cu-lot-wrap" class="cu-lot-wrap" hidden>
-              <label class="cu-lot-label" for="cu-lot-select">
-                Lot utilisé <span class="cu-req">*</span>
-                <span class="cu-label-hint" id="cu-lot-compteur"></span>
-              </label>
-              <select id="cu-lot-select" class="cu-input"></select>
-            </div>
+            <label class="cu-champ">
+              <span class="cu-label">Heure fin cuisson <span class="cu-req">*</span></span>
+              <input type="time" id="cu-heure-fin" class="cu-input" required>
+              <div class="cu-quick-row" id="cu-quick-fin" role="group" aria-label="Durée de cuisson rapide">
+                <button type="button" class="cu-quick-btn" data-minutes="60">+1h</button>
+                <button type="button" class="cu-quick-btn" data-minutes="90">+1h30</button>
+                <button type="button" class="cu-quick-btn" data-minutes="120">+2h</button>
+                <button type="button" class="cu-quick-btn" data-minutes="150">+2h30</button>
+                <button type="button" class="cu-quick-btn" data-minutes="180">+3h</button>
+              </div>
+            </label>
+          </div>
 
-            <div class="cu-produit-selected-meta" id="cu-produit-selected-meta">
-              <span id="cu-produit-lot"></span>
-              <span id="cu-produit-dlc"></span>
-            </div>
-            <button type="button" id="cu-btn-historique" class="cu-btn-secondaire" hidden>
-              📋 Historique de réception
+          <!-- Température -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Température produit — sortie rôtissoire <span class="cu-req">*</span></span>
+              <div class="cu-input-unite">
+                <input type="number" id="cu-temperature" class="cu-input"
+                       step="0.1" min="0" max="120" placeholder="ex : 72,5"
+                       inputmode="decimal" required>
+                <span class="cu-unite-fixe">°C</span>
+              </div>
+              <div class="cu-cible">🎯 Cible réglementaire : ≥ 63 °C</div>
+            </label>
+          </div>
+
+          <!-- Bandeau conformité + action corrective -->
+          <div id="cu-conformite" class="cu-conformite" hidden>
+            <div id="cu-conformite-texte" class="cu-conformite-texte">—</div>
+          </div>
+
+          <div id="cu-action-wrap" class="cu-champ" hidden>
+            <span class="cu-label">
+              Action corrective <span class="cu-req">*</span>
+              <span class="cu-label-hint">(T° &lt; 63 °C)</span>
+            </span>
+            <textarea id="cu-action" class="cu-input cu-textarea"
+                      placeholder="Prolongation cuisson, re-cuisson, retrait du lot…"
+                      rows="3"></textarea>
+          </div>
+
+          <!-- Erreur générale -->
+          <div id="cu-erreur" class="cu-erreur" hidden></div>
+
+          <!-- Actions -->
+          <div class="cu-actions">
+            <button type="button" class="cu-btn-secondaire" data-back="2">← Retour</button>
+            <button type="submit" id="cu-btn-save" class="cu-btn-primaire">
+              ✓ Enregistrer la cuisson
             </button>
           </div>
 
-          <input type="hidden" id="cu-produit-id">
-          <input type="hidden" id="cu-reception-ligne-id">
+        </form>
+      </section>
+
+      <!-- ===== HISTORIQUE RÉCENT ===== -->
+      <section class="cu-carte" aria-labelledby="cu-histo-titre">
+        <h2 id="cu-histo-titre" class="cu-carte-titre">Historique récent</h2>
+        <div id="cu-histo" class="cu-histo">
+          <div class="cu-histo-vide">Chargement…</div>
         </div>
-
-        <!-- Quantité -->
-        <div class="cu-row">
-          <label class="cu-champ">
-            <span class="cu-label">Quantité <span class="cu-req">*</span></span>
-            <div class="cu-input-unite">
-              <input type="number" id="cu-quantite" class="cu-input"
-                     step="0.01" min="0.01" placeholder="0" inputmode="decimal" required>
-              <select id="cu-unite" class="cu-input cu-input--unite">
-                <option value="kg" selected>kg</option>
-                <option value="g">g</option>
-                <option value="pièces">pièces</option>
-              </select>
-            </div>
-          </label>
-        </div>
-
-        <!-- Heures -->
-        <div class="cu-row">
-          <label class="cu-champ">
-            <span class="cu-label">Heure début cuisson <span class="cu-req">*</span></span>
-            <input type="time" id="cu-heure-debut" class="cu-input" required>
-          </label>
-
-          <label class="cu-champ">
-            <span class="cu-label">Heure fin cuisson <span class="cu-req">*</span></span>
-            <input type="time" id="cu-heure-fin" class="cu-input" required>
-            <div class="cu-quick-row" id="cu-quick-fin" role="group" aria-label="Durée de cuisson rapide">
-              <button type="button" class="cu-quick-btn" data-minutes="60">+1h</button>
-              <button type="button" class="cu-quick-btn" data-minutes="90">+1h30</button>
-              <button type="button" class="cu-quick-btn" data-minutes="120">+2h</button>
-              <button type="button" class="cu-quick-btn" data-minutes="150">+2h30</button>
-              <button type="button" class="cu-quick-btn" data-minutes="180">+3h</button>
-            </div>
-          </label>
-        </div>
-
-        <!-- Température -->
-        <div class="cu-row">
-          <label class="cu-champ">
-            <span class="cu-label">Température produit — sortie rôtissoire <span class="cu-req">*</span></span>
-            <div class="cu-input-unite">
-              <input type="number" id="cu-temperature" class="cu-input"
-                     step="0.1" min="0" max="120" placeholder="ex : 72,5"
-                     inputmode="decimal" required>
-              <span class="cu-unite-fixe">°C</span>
-            </div>
-            <div class="cu-cible">🎯 Cible réglementaire : ≥ 63 °C</div>
-          </label>
-        </div>
-
-        <!-- Bandeau conformité + action corrective -->
-        <div id="cu-conformite" class="cu-conformite" hidden>
-          <div id="cu-conformite-texte" class="cu-conformite-texte">—</div>
-        </div>
-
-        <div id="cu-action-wrap" class="cu-champ" hidden>
-          <span class="cu-label">
-            Action corrective <span class="cu-req">*</span>
-            <span class="cu-label-hint">(T° &lt; 63 °C)</span>
-          </span>
-          <textarea id="cu-action" class="cu-input cu-textarea"
-                    placeholder="Prolongation cuisson, re-cuisson, retrait du lot…"
-                    rows="3"></textarea>
-        </div>
-
-        <!-- Erreur générale -->
-        <div id="cu-erreur" class="cu-erreur" hidden></div>
-
-        <!-- Actions -->
-        <div class="cu-actions">
-          <button type="submit" id="cu-btn-save" class="cu-btn-primaire">
-            ✓ Enregistrer la cuisson
-          </button>
-        </div>
-
-      </form>
-    </section>
-
-    <!-- ===== HISTORIQUE RÉCENT ===== -->
-    <section class="cu-carte" aria-labelledby="cu-histo-titre">
-      <h2 id="cu-histo-titre" class="cu-carte-titre">Historique récent</h2>
-      <div id="cu-histo" class="cu-histo">
-        <div class="cu-histo-vide">Chargement…</div>
-      </div>
+      </section>
     </section>
 
   </main>
