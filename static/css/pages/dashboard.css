@@ -27,8 +27,8 @@
 .carte-enceinte:hover { transform: translateY(-2px); }
 .carte-enceinte.ok         { border-left-color: var(--color-ok); }
 .carte-enceinte.attention  { border-left-color: var(--color-warning); }
-.carte-vestre.alerte     { border-left-color: var(--color-alert); }
-.carte-vestre.hors-ligne { border-left-color: var(--color-offline); opacity: .75; }
+.carte-enceinte.alerte     { border-left-color: var(--color-alert); }
+.carte-enceinte.hors-ligne { border-left-color: var(--color-offline); opacity: .75; }
 
 .carte-en-tete {
   display: flex;
@@ -511,7 +511,7 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
   gap: .6rem;
 }
 
-.config-vestre-ligne {
+.config-enceinte-ligne {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -521,25 +521,25 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
   border: 1px solid #e8d9c4;
 }
 
-.config-vestre-info {
+.config-enceinte-info {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: .15rem;
 }
 
-.config-vestre-info strong {
+.config-enceinte-info strong {
   font-size: var(--text-base);
   color: var(--color-text);
 }
 
-.config-vestre-type {
+.config-enceinte-type {
   font-size: var(--text-xs);
   color: var(--color-accent);
   text-transform: capitalize;
 }
 
-.config-vestre-seuils {
+.config-enceinte-seuils {
   font-size: var(--text-xs);
   color: var(--color-accent);
   white-space: nowrap;
@@ -578,7 +578,7 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
 /* Phone portrait (< 480px) */
 @media (max-width: 479px) {
   #vue-dashboard { gap: .75rem; }
-  .carte-vestre { flex: 1 1 100%; max-width: 100%; }
+  .carte-enceinte { flex: 1 1 100%; max-width: 100%; }
   .temp-principale { font-size: var(--text-2xl); }
   nav {
     padding: .5rem .75rem .25rem;
@@ -604,7 +604,7 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
 
 /* Tablet portrait (480px+) */
 @media (min-width: 480px) {
-  .carte-vestre {
+  .carte-enceinte {
     flex: 1 1 calc(50% - var(--space-4, 1rem));
   }
   .chart-canvas-wrap { height: 240px; }
@@ -612,7 +612,7 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
 
 /* Tablet landscape / desktop (768px+) */
 @media (min-width: 768px) {
-  .carte-vestre {
+  .carte-enceinte {
     flex: 1 1 calc(50% - var(--space-4, 1rem));
     max-width: calc(50% - var(--space-4, 1rem));
   }
