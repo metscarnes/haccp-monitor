@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapport HACCP — {{ boutique.nom }}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --brun-profond: #3D2008;
+    --brun: #6B3A1F;
+    --dore: #D4A574;
+    --creme: #F5ECD7;
+    --creme-clair: #FFF9F0;
+    --vert: #2D7D46;
+    --vert-clair: #e6f4eb;
+    --rouge: #C93030;
+    --rouge-clair: #fce8e8;
+    --orange: #E8913A;
+    --orange-clair: #fef3e6;
+    --gris: #6b7280;
+    --ombre: 0 2px 12px rgba(61, 32, 8, 0.08);
+    --ombre-forte: 0 8px 32px rgba(61, 32, 8, 0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+    background: linear-gradient(135deg, #FFF9F0 0%, #F5ECD7 100%);
+    color: var(--brun-profond);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* ---------- HEADER ---------- */
+  .header {
+    background: linear-gradient(135deg, var(--brun-profond) 0%, var(--brun) 100%);
+    color: var(--creme);
+    padding: 2rem;
+    box-shadow: var(--ombre-forte);
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: -50%; right: -10%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(212,165,116,0.2) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+  }
+  .header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; letter-spacing: -0.02em; }
+  .header .sous-titre { color: var(--dore); font-size: 0.95rem; font-weight: 500; }
+  .header .meta { text-align: right; font-size: 0.85rem; color: var(--dore); line-height: 1.8; }
+  .header .meta strong { color: var(--creme); }
+
+  /* ---------- CONTAINER ---------- */
+  .container { max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* ---------- FILTRES ---------- */
+  .filtres {
+    background: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    box-shadow: var(--ombre);
+    margin-bottom: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: center;
+  }
+  .filtre-groupe { display: flex; flex-direction: column; gap: 0.35rem; }
+  .filtre-groupe label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--brun);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .filtre-groupe input, .filtre-groupe select {
+    padding: 0.5rem 0.75rem;
+    border: 1.5px solid #e8ddd0;
+    border-radius: 8px;
+    background: var(--creme-clair);
+    color: var(--brun-profond);
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .filtre-groupe input:focus, .filtre-groupe select:focus {
+    outline: none;
+    border-color: var(--dore);
+    background: white;
+    box-shadow: 0 0 0 3px rgba(212,165,116,0.2);
+  }
+  .presets { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .preset-btn {
+    padding: 0.5rem 0.9rem;
+    border: 1.5px solid #e8ddd0;
+    border-radius: 20px;
+    background: white;
+    color: var(--brun);
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .preset-btn:hover { border-color: var(--dore); transform: translateY(-1px); }
+  .preset-btn.actif { background: var(--brun-profond); color: var(--creme); border-color: var(--brun-profond); }
+
+  .btn-print {
+    margin-left: auto;
+    padding: 0.6rem 1.2rem;
+    background: linear-gradient(135deg, var(--brun-profond), var(--brun));
+    color: var(--creme);
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: var(--ombre);
+  }
+  .btn-print:hover { transform: translateY(-2px); box-shadow: var(--ombre-forte); }
+
+  /* ---------- KPI ---------- */
+  .kpi-grille {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .kpi-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 16px;
+    box-shadow: var(--ombre);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s, box-shadow 0.3s;
+    animation: slideUp 0.5s ease-out backwards;
+  }
+  .kpi-card:nth-child(1) { animation-delay: 0.0s; }
+  .kpi-card:nth-child(2) { animation-delay: 0.1s; }
+  .kpi-card:nth-child(3) { animation-delay: 0.2s; }
+  .kpi-card:nth-child(4) { animation-delay: 0.3s; }
+  .kpi-card:nth-child(5) { animation-delay: 0.4s; }
+  .kpi-card:hover { transform: translateY(-4px); box-shadow: var(--ombre-forte); }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 4px; height: 100%;
+    background: var(--dore);
+  }
+  .kpi-card.vert::before { background: var(--vert); }
+  .kpi-card.rouge::before { background: var(--rouge); }
+  .kpi-card.orange::before { background: var(--orange); }
+
+  .kpi-valeur {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--brun-profond);
+    line-height: 1;
+    margin: 0.5rem 0 0.25rem;
+    letter-spacing: -0.03em;
+  }
+  .kpi-card.vert .kpi-valeur { color: var(--vert); }
+  .kpi-card.rouge .kpi-valeur { color: var(--rouge); }
+  .kpi-card.orange .kpi-valeur { color: var(--orange); }
+  .kpi-label {
+    font-size: 0.8rem;
+    color: var(--gris);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .kpi-icone {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    font-size: 1.5rem;
+    opacity: 0.3;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------- SECTIONS ---------- */
+  .section {
+    background: white;
+    border-radius: 16px;
+    padding: 1.75rem;
+    box-shadow: var(--ombre);
+    margin-bottom: 1.5rem;
+    animation: slideUp 0.6s ease-out backwards;
+    animation-delay: 0.5s;
+  }
+  .section h2 {
+    font-size: 1.1rem;
+    color: var(--brun-profond);
+    font-weight: 700;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--creme);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .section h2 .icone { font-size: 1.3rem; }
+
+  /* ---------- GRILLE GRAPHIQUES ---------- */
+  .grille-2 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  @media (max-width: 900px) { .grille-2 { grid-template-columns: 1fr; } }
+
+  .chart-container { position: relative; height: 350px; }
+  .chart-container-petit { position: relative; height: 280px; }
+
+  /* ---------- BANDEAU CONFORMITE ---------- */
+  .bandeau-conformite {
+    padding: 1.25rem 1.5rem;
+    border-radius: 16px;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    animation: slideUp 0.5s ease-out;
+    box-shadow: var(--ombre);
+  }
+  .bandeau-conformite.conforme {
+    background: linear-gradient(135deg, var(--vert-clair), #d4ecd9);
+    color: var(--vert);
+    border: 2px solid var(--vert);
+  }
+  .bandeau-conformite.non-conforme {
+    background: linear-gradient(135deg, var(--rouge-clair), #f9d9d9);
+    color: var(--rouge);
+    border: 2px solid var(--rouge);
+  }
+  .bandeau-conformite .emoji { font-size: 1.5rem; }
+
+  /* ---------- TABLEAUX ---------- */
+  table.moderne {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  table.moderne th {
+    background: var(--creme);
+    color: var(--brun-profond);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 2px solid var(--dore);
+  }
+  table.moderne td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f0ebe3;
+  }
+  table.moderne tr:hover td { background: var(--creme-clair); }
+  table.moderne tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .badge.vert { background: var(--vert-clair); color: var(--vert); }
+  .badge.rouge { background: var(--rouge-clair); color: var(--rouge); }
+  .badge.orange { background: var(--orange-clair); color: var(--orange); }
+
+  /* ---------- TIMELINE ALERTES ---------- */
+  .timeline { position: relative; padding-left: 2rem; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--dore), transparent);
+  }
+  .timeline-item {
+    position: relative;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    background: var(--creme-clair);
+    border-radius: 10px;
+    border-left: 3px solid var(--rouge);
+  }
+  .timeline-item.resolue { border-left-color: var(--vert); opacity: 0.8; }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -1.65rem;
+    top: 1rem;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--rouge);
+    border: 3px solid white;
+    box-shadow: 0 0 0 2px var(--rouge);
+  }
+  .timeline-item.resolue::before { background: var(--vert); box-shadow: 0 0 0 2px var(--vert); }
+  .timeline-item-entete { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem; }
+  .timeline-item-titre { font-weight: 700; color: var(--brun-profond); font-size: 0.9rem; }
+  .timeline-item-date { font-size: 0.75rem; color: var(--gris); }
+  .timeline-item-details { font-size: 0.85rem; color: var(--brun); }
+
+  .aucune-alerte {
+    text-align: center;
+    padding: 2rem;
+    color: var(--vert);
+    font-weight: 600;
+  }
+  .aucune-alerte .emoji { font-size: 3rem; display: block; margin-bottom: 0.5rem; }
+
+  /* ---------- PIED ---------- */
+  .pied {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--gris);
+    font-size: 0.8rem;
+    border-top: 1px solid #e8ddd0;
+    margin-top: 2rem;
+  }
+
+  /* ---------- PRINT ---------- */
+  @media print {
+    body { background: white; }
+    .filtres, .btn-print { display: none; }
+    .section, .kpi-card { box-shadow: none; border: 1px solid #e8ddd0; page-break-inside: avoid; }
+    .header { background: var(--brun-profond) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .kpi-card, .section { animation: none; }
+  }
+
+  @media (max-width: 600px) {
+    .header h1 { font-size: 1.3rem; }
+    .kpi-valeur { font-size: 1.75rem; }
+    .container { padding: 1rem; }
+    .header .meta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-content">
+    <div>
+      <div class="sous-titre">Mets Carnés Holding — Système HACCP Monitor</div>
+      <h1>Rapport de traçabilité des températures</h1>
+      <div class="sous-titre">{{ boutique.nom }}</div>
+    </div>
+    <div class="meta">
+      <strong>Conformité :</strong> Règlement (CE) 852/2004 & 853/2004<br>
+      <strong>Généré le :</strong> {{ genere_le }}<br>
+      <strong>Boutique :</strong> {{ boutique.adresse or '—' }}
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- BANDEAU CONFORMITE (dynamique) -->
+  <div id="bandeau-conformite" class="bandeau-conformite conforme">
+    <span class="emoji">✅</span>
+    <span id="bandeau-texte">MOIS CONFORME — Aucun dépassement enregistré</span>
+  </div>
+
+  <!-- FILTRES -->
+  <div class="filtres">
+    <div class="filtre-groupe">
+      <label>📅 Période</label>
+      <div class="presets">
+        <button class="preset-btn" data-preset="24h">24h</button>
+        <button class="preset-btn actif" data-preset="7j">7 jours</button>
+        <button class="preset-btn" data-preset="30j">30 jours</button>
+        <button class="preset-btn" data-preset="mois">Ce mois</button>
+        <button class="preset-btn" data-preset="tout">Tout</button>
+      </div>
+    </div>
+    <div class="filtre-groupe">
+      <label>Du</label>
+      <input type="date" id="date-debut">
+    </div>
+    <div class="filtre-groupe">
+      <label>Au</label>
+      <input type="date" id="date-fin">
+    </div>
+    <div class="filtre-groupe">
+      <label>🧊 Enceinte</label>
+      <select id="select-enceinte">
+        <option value="">Toutes les enceintes</option>
+        {% for e in enceintes %}
+        <option value="{{ e.id }}">{{ e.nom }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Imprimer / PDF</button>
+  </div>
+
+  <!-- KPI -->
+  <div class="kpi-grille" id="kpi-grille">
+    <div class="kpi-card">
+      <span class="kpi-icone">🧊</span>
+      <div class="kpi-valeur" id="kpi-enceintes">—</div>
+      <div class="kpi-label">Enceintes surveillées</div>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-icone">📊</span>
+      <div class="kpi-valeur" id="kpi-releves">—</div>
+      <div class="kpi-label">Relevés enregistrés</div>
+    </div>
+    <div class="kpi-card" id="kpi-card-nc">
+      <span class="kpi-icone">⚠️</span>
+      <div class="kpi-valeur" id="kpi-nc">—</div>
+      <div class="kpi-label">Non-conformités</div>
+    </div>
+    <div class="kpi-card" id="kpi-card-duree">
+      <span class="kpi-icone">⏱️</span>
+      <div class="kpi-valeur" id="kpi-duree">—</div>
+      <div class="kpi-label">Durée hors seuil</div>
+    </div>
+    <div class="kpi-card" id="kpi-card-conf">
+      <span class="kpi-icone">✓</span>
+      <div class="kpi-valeur" id="kpi-conformite">—</div>
+      <div class="kpi-label">Taux de conformité</div>
+    </div>
+  </div>
+
+  <!-- GRAPHIQUES PRINCIPAL -->
+  <div class="grille-2">
+    <div class="section">
+      <h2><span class="icone">🌡️</span> Évolution des températures</h2>
+      <div class="chart-container">
+        <canvas id="chart-temperatures"></canvas>
+      </div>
+    </div>
+    <div class="section">
+      <h2><span class="icone">🎯</span> Conformité globale</h2>
+      <div class="chart-container-petit">
+        <canvas id="chart-conformite"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- DUREE DEPASSEMENTS + ALERTES -->
+  <div class="grille-2">
+    <div class="section">
+      <h2><span class="icone">⏰</span> Durée des dépassements par enceinte</h2>
+      <div class="chart-container">
+        <canvas id="chart-depassements"></canvas>
+      </div>
+    </div>
+    <div class="section">
+      <h2><span class="icone">🚨</span> Historique des alertes</h2>
+      <div id="timeline-alertes" style="max-height: 350px; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <!-- SYNTHESE PAR ENCEINTE -->
+  <div class="section">
+    <h2><span class="icone">📋</span> Synthèse par enceinte</h2>
+    <div style="overflow-x: auto;">
+      <table class="moderne">
+        <thead>
+          <tr>
+            <th>Enceinte</th>
+            <th>Type</th>
+            <th>Seuils (°C)</th>
+            <th>T° min</th>
+            <th>T° moy</th>
+            <th>T° max</th>
+            <th>Relevés</th>
+            <th>NC</th>
+            <th>Hors seuil</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody id="tableau-enceintes"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MENTION REGLEMENTAIRE -->
+  <div class="section" style="font-size:0.85rem; color: var(--gris); line-height:1.7">
+    <h2><span class="icone">⚖️</span> Mentions réglementaires</h2>
+    <p>Ce rapport est généré automatiquement par le système HACCP Monitor de Mets Carnés Holding.
+    Les relevés sont horodatés et archivés conformément au Règlement (CE) 852/2004 et au Règlement (CE) 853/2004.
+    Les données sont conservées 12 mois (relevés bruts) et 3 ans (alertes) conformément aux obligations PMS.
+    Ce document peut être présenté lors d'un contrôle de la DDPP (Direction Départementale de la Protection des Populations).</p>
+  </div>
+
+</div>
+
+<div class="pied">
+  Document généré automatiquement — Système HACCP Monitor v2.0 — Mets Carnés Holding
+</div>
+
+<script>
+  // ========================================================================
+  //  DONNÉES EMBARQUÉES
+  // ========================================================================
+  const BOUTIQUE = {{ boutique_json | safe }};
+  const ENCEINTES = {{ enceintes_json | safe }};
+  const RELEVES = {{ releves_json | safe }};
+  const ALERTES = {{ alertes_json | safe }};
+
+  const COULEURS = ['#D4A574', '#6B3A1F', '#2D7D46', '#C93030', '#E8913A', '#5A7A9E', '#8B4789', '#3D2008'];
+
+  // ========================================================================
+  //  UTILS
+  // ========================================================================
+  function fmtDate(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});
+  }
+  function fmtDuree(secondes) {
+    if (!secondes || secondes <= 0) return '0 min';
+    const h = Math.floor(secondes / 3600);
+    const m = Math.floor((secondes % 3600) / 60);
+    if (h > 0) return `${h}h ${m}min`;
+    return `${m} min`;
+  }
+  function toISO(d) { return d.toISOString().slice(0, 10); }
+  function parseD(s) { return new Date(s + 'T00:00:00'); }
+
+  // ========================================================================
+  //  FILTRAGE
+  // ========================================================================
+  function obtenirDonneesFiltrees() {
+    const debut = parseD(document.getElementById('date-debut').value);
+    const fin = parseD(document.getElementById('date-fin').value);
+    fin.setHours(23, 59, 59);
+    const enceinteId = document.getElementById('select-enceinte').value;
+
+    const releves = RELEVES.filter(r => {
+      const ts = new Date(r.horodatage);
+      if (ts < debut || ts > fin) return false;
+      if (enceinteId && r.enceinte_id != enceinteId) return false;
+      return true;
+    });
+
+    const alertes = ALERTES.filter(a => {
+      const ts = new Date(a.debut);
+      if (ts < debut || ts > fin) return false;
+      if (enceinteId && a.enceinte_id != enceinteId) return false;
+      return true;
+    });
+
+    const enceintes = enceinteId
+      ? ENCEINTES.filter(e => e.id == enceinteId)
+      : ENCEINTES;
+
+    return { releves, alertes, enceintes, debut, fin };
+  }
+
+  // ========================================================================
+  //  CALCUL STATS PAR ENCEINTE
+  // ========================================================================
+  function statsEnceinte(enceinte, releves, alertes) {
+    const r = releves.filter(x => x.enceinte_id === enceinte.id);
+    const a = alertes.filter(x => x.enceinte_id === enceinte.id);
+    const nc = a.filter(x => x.type === 'temperature_haute' || x.type === 'temperature_basse');
+
+    const temps = r.map(x => x.temperature).filter(x => x !== null && x !== undefined);
+
+    // Durée dépassements
+    let dureeSec = 0;
+    nc.forEach(al => {
+      const t1 = new Date(al.debut).getTime();
+      const t2 = al.fin ? new Date(al.fin).getTime() : Date.now();
+      dureeSec += Math.max(0, (t2 - t1) / 1000);
+    });
+
+    return {
+      enceinte,
+      nbReleves: r.length,
+      tempMin: temps.length ? Math.min(...temps) : null,
+      tempMax: temps.length ? Math.max(...temps) : null,
+      tempMoy: temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : null,
+      nbNC: nc.length,
+      dureeSec: Math.round(dureeSec),
+      conforme: nc.length === 0,
+    };
+  }
+
+  // ========================================================================
+  //  MISE A JOUR KPIs
+  // ========================================================================
+  function majKPIs(stats, releves, alertes) {
+    const totalNC = stats.reduce((s, x) => s + x.nbNC, 0);
+    const totalDuree = stats.reduce((s, x) => s + x.dureeSec, 0);
+    const nbConformes = stats.filter(x => x.conforme).length;
+    const tauxConf = stats.length ? Math.round(nbConformes / stats.length * 100) : 100;
+
+    document.getElementById('kpi-enceintes').textContent = stats.length;
+    document.getElementById('kpi-releves').textContent = releves.length.toLocaleString('fr-FR');
+    document.getElementById('kpi-nc').textContent = totalNC;
+    document.getElementById('kpi-duree').textContent = fmtDuree(totalDuree);
+    document.getElementById('kpi-conformite').textContent = tauxConf + '%';
+
+    document.getElementById('kpi-card-nc').className = 'kpi-card ' + (totalNC === 0 ? 'vert' : 'rouge');
+    document.getElementById('kpi-card-duree').className = 'kpi-card ' + (totalDuree === 0 ? 'vert' : 'orange');
+    document.getElementById('kpi-card-conf').className = 'kpi-card ' + (tauxConf === 100 ? 'vert' : tauxConf >= 90 ? 'orange' : 'rouge');
+
+    // Bandeau conformité
+    const bandeau = document.getElementById('bandeau-conformite');
+    const texte = document.getElementById('bandeau-texte');
+    if (totalNC === 0) {
+      bandeau.className = 'bandeau-conformite conforme';
+      bandeau.querySelector('.emoji').textContent = '✅';
+      texte.textContent = 'PÉRIODE CONFORME — Aucun dépassement de seuil enregistré';
+    } else {
+      bandeau.className = 'bandeau-conformite non-conforme';
+      bandeau.querySelector('.emoji').textContent = '⚠️';
+      texte.textContent = `${totalNC} non-conformité(s) détectée(s) sur la période`;
+    }
+  }
+
+  // ========================================================================
+  //  TABLEAU SYNTHESE
+  // ========================================================================
+  function majTableau(stats) {
+    const tb = document.getElementById('tableau-enceintes');
+    if (!stats.length) {
+      tb.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#999; padding:2rem">Aucune donnée</td></tr>';
+      return;
+    }
+    tb.innerHTML = stats.map(s => {
+      const e = s.enceinte;
+      const fmtT = t => t === null ? '—' : t.toFixed(1) + '°C';
+      return `
+        <tr>
+          <td><strong>${e.nom}</strong></td>
+          <td style="font-size:0.8rem; color:var(--gris)">${e.type || '—'}</td>
+          <td>${e.seuil_min?.toFixed(1) || '—'} / ${e.seuil_max?.toFixed(1) || '—'}</td>
+          <td>${fmtT(s.tempMin)}</td>
+          <td><strong>${fmtT(s.tempMoy)}</strong></td>
+          <td>${fmtT(s.tempMax)}</td>
+          <td>${s.nbReleves}</td>
+          <td class="${s.nbNC > 0 ? 'badge rouge' : ''}" style="${s.nbNC > 0 ? '' : 'color: var(--vert); font-weight:700'}">${s.nbNC}</td>
+          <td>${fmtDuree(s.dureeSec)}</td>
+          <td><span class="badge ${s.conforme ? 'vert' : 'rouge'}">${s.conforme ? 'CONFORME' : 'NON CONFORME'}</span></td>
+        </tr>`;
+    }).join('');
+  }
+
+  // ========================================================================
+  //  GRAPHIQUES CHART.JS
+  // ========================================================================
+  let chartTemp, chartConf, chartDep;
+
+  function majGraphTemperatures(releves, enceintes) {
+    const ctx = document.getElementById('chart-temperatures');
+
+    const datasets = enceintes.map((e, i) => {
+      const r = releves.filter(x => x.enceinte_id === e.id);
+      return {
+        label: e.nom,
+        data: r.map(x => ({ x: new Date(x.horodatage), y: x.temperature })),
+        borderColor: COULEURS[i % COULEURS.length],
+        backgroundColor: COULEURS[i % COULEURS.length] + '20',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        tension: 0.3,
+      };
+    });
+
+    if (chartTemp) chartTemp.destroy();
+    chartTemp = new Chart(ctx, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', axis: 'x', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15, font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: 'rgba(61, 32, 8, 0.95)',
+            padding: 12,
+            titleFont: { weight: 'bold' },
+            callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1)}°C` },
+          },
+        },
+        scales: {
+          x: { type: 'time', time: { tooltipFormat: 'dd MMM HH:mm' }, grid: { display: false } },
+          y: { title: { display: true, text: 'Température (°C)' }, grid: { color: '#f0ebe3' } },
+        },
+        animation: { duration: 800, easing: 'easeOutQuart' },
+      },
+    });
+  }
+
+  function majGraphConformite(stats) {
+    const ctx = document.getElementById('chart-conformite');
+    const conf = stats.filter(s => s.conforme).length;
+    const nonConf = stats.length - conf;
+
+    if (chartConf) chartConf.destroy();
+    chartConf = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Conformes', 'Non-conformes'],
+        datasets: [{
+          data: [conf, nonConf],
+          backgroundColor: ['#2D7D46', '#C93030'],
+          borderWidth: 0,
+          hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 15, font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: 'rgba(61, 32, 8, 0.95)',
+            padding: 12,
+            callbacks: {
+              label: ctx => {
+                const total = ctx.dataset.data.reduce((a,b) => a+b, 0);
+                const pct = total ? Math.round(ctx.parsed / total * 100) : 0;
+                return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+              },
+            },
+          },
+        },
+        animation: { animateRotate: true, duration: 1000 },
+      },
+    });
+  }
+
+  function majGraphDepassements(stats) {
+    const ctx = document.getElementById('chart-depassements');
+
+    if (chartDep) chartDep.destroy();
+    chartDep = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: stats.map(s => s.enceinte.nom),
+        datasets: [{
+          label: 'Durée cumulée hors seuil (minutes)',
+          data: stats.map(s => Math.round(s.dureeSec / 60)),
+          backgroundColor: stats.map(s => s.dureeSec === 0 ? '#2D7D46' : '#C93030'),
+          borderRadius: 8,
+          borderSkipped: false,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(61, 32, 8, 0.95)',
+            padding: 12,
+            callbacks: { label: ctx => fmtDuree(ctx.parsed.y * 60) },
+          },
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { title: { display: true, text: 'Minutes' }, grid: { color: '#f0ebe3' }, beginAtZero: true },
+        },
+        animation: { duration: 800, easing: 'easeOutQuart' },
+      },
+    });
+  }
+
+  function majTimelineAlertes(alertes) {
+    const div = document.getElementById('timeline-alertes');
+    if (!alertes.length) {
+      div.innerHTML = `
+        <div class="aucune-alerte">
+          <span class="emoji">✅</span>
+          Aucune alerte sur la période
+        </div>`;
+      return;
+    }
+    const items = alertes.slice(0, 50).map(a => {
+      const e = ENCEINTES.find(x => x.id === a.enceinte_id);
+      const typeLabel = {
+        'temperature_haute': '🔥 Température trop haute',
+        'temperature_basse': '❄️ Température trop basse',
+        'capteur_perdu': '📡 Capteur perdu',
+        'humidite_haute': '💧 Humidité trop haute',
+      }[a.type] || a.type;
+      const resolue = !!a.fin;
+      return `
+        <div class="timeline-item ${resolue ? 'resolue' : ''}">
+          <div class="timeline-item-entete">
+            <span class="timeline-item-titre">${typeLabel}</span>
+            <span class="timeline-item-date">${fmtDate(a.debut)}</span>
+          </div>
+          <div class="timeline-item-details">
+            <strong>${e?.nom || 'Enceinte inconnue'}</strong>
+            ${a.valeur ? ` — ${a.valeur.toFixed(1)}°C` : ''}
+            ${resolue ? ` · Résolue en ${fmtDuree((new Date(a.fin) - new Date(a.debut)) / 1000)}` : ' · <span style="color:var(--rouge); font-weight:700">En cours</span>'}
+          </div>
+        </div>`;
+    }).join('');
+    div.innerHTML = `<div class="timeline">${items}</div>`;
+  }
+
+  // ========================================================================
+  //  ORCHESTRATION
+  // ========================================================================
+  function actualiser() {
+    const { releves, alertes, enceintes } = obtenirDonneesFiltrees();
+    const stats = enceintes.map(e => statsEnceinte(e, releves, alertes));
+
+    majKPIs(stats, releves, alertes);
+    majTableau(stats);
+    majGraphTemperatures(releves, enceintes);
+    majGraphConformite(stats);
+    majGraphDepassements(stats);
+    majTimelineAlertes(alertes);
+  }
+
+  // ========================================================================
+  //  PRESETS PERIODE
+  // ========================================================================
+  function appliquerPreset(preset) {
+    const aujourd = new Date();
+    let debut = new Date(aujourd);
+    let fin = new Date(aujourd);
+
+    if (preset === '24h')      debut.setDate(aujourd.getDate() - 1);
+    else if (preset === '7j')  debut.setDate(aujourd.getDate() - 7);
+    else if (preset === '30j') debut.setDate(aujourd.getDate() - 30);
+    else if (preset === 'mois') debut = new Date(aujourd.getFullYear(), aujourd.getMonth(), 1);
+    else if (preset === 'tout') {
+      if (RELEVES.length) debut = new Date(RELEVES[0].horodatage);
+      else debut.setDate(aujourd.getDate() - 30);
+    }
+
+    document.getElementById('date-debut').value = toISO(debut);
+    document.getElementById('date-fin').value = toISO(fin);
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('actif', b.dataset.preset === preset));
+  }
+
+  document.querySelectorAll('.preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => { appliquerPreset(btn.dataset.preset); actualiser(); });
+  });
+  document.getElementById('date-debut').addEventListener('change', actualiser);
+  document.getElementById('date-fin').addEventListener('change', actualiser);
+  document.getElementById('select-enceinte').addEventListener('change', actualiser);
+
+  // ========================================================================
+  //  INIT
+  // ========================================================================
+  appliquerPreset('7j');
+  actualiser();
+</script>
+
+</body>
+</html>

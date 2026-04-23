@@ -1,16 +1,30 @@
 import csv
+import json
 import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
 
-from src.database import get_db, get_rapport, create_rapport, get_boutique, CSV_EXPORT_DIR
+from src.database import (
+    get_db, get_rapport, create_rapport, get_boutique, CSV_EXPORT_DIR,
+    get_enceintes, get_releves, get_alertes_enceinte,
+)
+
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+_jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 
 router = APIRouter(prefix="/api/rapports", tags=["rapports"])
+
+
+def _json_default(o):
+    if isinstance(o, (datetime, date)):
+        return o.isoformat()
+    raise TypeError(f"Type non sérialisable : {type(o)}")
 
 
 class RapportDemande(BaseModel):
@@ -43,6 +57,58 @@ async def generer_rapport(data: RapportDemande):
         rapport_id = await generer(db, data.boutique_id, data.type, debut, fin)
 
     return {"rapport_id": rapport_id, "statut": "généré"}
+
+
+@router.get("/interactif/{boutique_id}", response_class=HTMLResponse)
+async def rapport_interactif(boutique_id: int, jours: int = 90):
+    """
+    Retourne une page HTML interactive autonome avec les données
+    des N derniers jours embarquées (graphiques dynamiques, filtres,
+    export PDF via navigateur).
+    """
+    jours = max(1, min(jours, 365))
+    depuis = datetime.now(timezone.utc) - timedelta(days=jours)
+
+    async with get_db() as db:
+        boutique = await get_boutique(db, boutique_id)
+        if not boutique:
+            raise HTTPException(404, "Boutique introuvable")
+
+        enceintes = await get_enceintes(db, boutique_id)
+
+        releves_total: list[dict] = []
+        alertes_total: list[dict] = []
+        for enc in enceintes:
+            r = await get_releves(db, enc["id"], depuis)
+            for rel in r:
+                releves_total.append({
+                    "enceinte_id": rel["enceinte_id"],
+                    "horodatage":  rel["horodatage"],
+                    "temperature": rel.get("temperature"),
+                    "humidite":    rel.get("humidite"),
+                })
+            a = await get_alertes_enceinte(db, enc["id"], depuis)
+            for al in a:
+                alertes_total.append({
+                    "id":          al["id"],
+                    "enceinte_id": al["enceinte_id"],
+                    "type":        al["type"],
+                    "debut":       al["debut"],
+                    "fin":         al.get("fin"),
+                    "valeur":      al.get("valeur"),
+                })
+
+    template = _jinja_env.get_template("rapport_interactif.html")
+    html = template.render(
+        boutique=boutique,
+        enceintes=enceintes,
+        genere_le=datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        boutique_json=json.dumps(boutique, default=_json_default),
+        enceintes_json=json.dumps(enceintes, default=_json_default),
+        releves_json=json.dumps(releves_total, default=_json_default),
+        alertes_json=json.dumps(alertes_total, default=_json_default),
+    )
+    return HTMLResponse(content=html)
 
 
 @router.get("/{rapport_id}/pdf")

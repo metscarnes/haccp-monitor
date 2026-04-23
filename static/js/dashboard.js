@@ -544,6 +544,16 @@ function initDatesRapports() {
   set('csv-date',           hier);
 }
 
+// Bouton : ouvrir le rapport interactif dans un nouvel onglet
+(function() {
+  const btn = document.getElementById('btn-rapport-interactif');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      window.open(`/api/rapports/interactif/${BOUTIQUE_ID}?jours=90`, '_blank');
+    });
+  }
+})();
+
 // Préremplir les dates du formulaire historique au chargement
 (function() {
   const aujourd_hui = new Date().toISOString().slice(0, 10);
