@@ -92,13 +92,14 @@ function creerLegendHTML() {
  * @returns {Chart}
  */
 function creerChartHistorique(canvas, releves, seuilMin, seuilMax) {
-  const labels = releves.map(r => new Date(r.horodatage));
-  const temps   = releves.map(r => r.temperature);
-  const humids  = releves.map(r => r.humidite);
+  // Créer les données avec les horodatages ISO pour Chart.js
+  const labels = releves.map(r => r.horodatage);
+  const temps   = releves.map((r, i) => ({ x: r.horodatage, y: r.temperature, idx: i }));
+  const humids  = releves.map((r, i) => ({ x: r.horodatage, y: r.humidite, idx: i }));
 
   // Colorer les points hors seuil
   const pointColors = temps.map(t =>
-    (t > seuilMax || t < seuilMin) ? COULEURS.alerte : COULEURS.ok
+    (t.y > seuilMax || t.y < seuilMin) ? COULEURS.alerte : COULEURS.ok
   );
 
   return new Chart(canvas, {
@@ -147,18 +148,22 @@ function creerChartHistorique(canvas, releves, seuilMin, seuilMax) {
           callbacks: {
             title: items => {
               if (!items || items.length === 0) return '';
-              let date = items[0].label;
-              if (typeof date === 'string') {
-                date = new Date(date);
-              } else if (typeof date === 'number') {
-                date = new Date(date);
+
+              // Obtenir la date depuis raw (qui contient {x, y, idx})
+              const rawData = items[0].raw;
+              if (!rawData || !rawData.x) return '';
+
+              try {
+                const date = new Date(rawData.x);
+                if (isNaN(date.getTime())) return 'Date invalide';
+                return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+              } catch (e) {
+                return '';
               }
-              if (isNaN(date.getTime())) return 'Date invalide';
-              return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
             },
             label: item => {
               const unite = item.datasetIndex === 0 ? '°C' : '%';
-              const valeur = item.parsed?.y;
+              const valeur = item.raw?.y;
               if (valeur === null || valeur === undefined) return ` ${item.dataset.label} : —`;
               return ` ${item.dataset.label} : ${valeur.toFixed(1)}${unite}`;
             },
