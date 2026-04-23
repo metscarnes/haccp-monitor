@@ -54,7 +54,8 @@
       "Bash(pip list *)",
       "Bash(python3 -c \"from weasyprint import HTML; print\\('WeasyPrint OK'\\)\")",
       "Bash(git add *)",
-      "Bash(git commit -m 'Fix rapport PDF génération et serveur avec fallback HTML *)"
+      "Bash(git commit -m 'Fix rapport PDF génération et serveur avec fallback HTML *)",
+      "Bash(git commit -m 'Add rapport interactif dynamique avec graphiques Chart.js *)"
     ]
   }
 }
