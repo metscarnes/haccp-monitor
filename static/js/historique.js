@@ -1869,16 +1869,50 @@ _onReady(() => {
 async function ncfCharger() {
   await chargerListe('ncf',
     '/api/non-conformites?limit=100',
-    n => creerCarteSimple({
-      titre: n.produit_nom || n.fournisseur_nom || `NC #${n.id}`,
-      meta : `${formatDateFR(n.date_nc || n.created_at)} — ${n.fournisseur_nom || '—'}`,
-      sousTitre: n.description || n.motif || null,
-      chips: [
-        n.numero_lot ? `Lot ${n.numero_lot}` : null,
-        n.action_corrective ? '✓ Action' : null,
-      ].filter(Boolean),
-      variant: 'nc',
-    }),
+    n => {
+      const chips = [];
+      if (n.nombre_barquettes) chips.push(`${n.nombre_barquettes} barq.`);
+      if (n.refuse_livraison)  chips.push('✗ Refusée');
+      if (n.nc_apres_livraison) chips.push('Après livraison');
+      if (n.info_ddpp)          chips.push('DDPP informé');
+      const carte = creerCarteSimple({
+        titre: n.produits || n.fournisseur_nom || `NC #${n.id}`,
+        meta : `${formatDateFR(n.date_livraison || n.created_at)} — ${n.fournisseur_nom || '—'} — ${n.operateur || ''}`,
+        sousTitre: n.nature_nc || n.commentaires || null,
+        chips,
+        variant: 'nc',
+      });
+
+      // Bouton accès fiche PCR01 (liste des incidents de cette réception)
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;';
+
+      if (n.reception_id) {
+        const btn = document.createElement('button');
+        btn.textContent = '📋 Fiches PCR01';
+        btn.style.cssText = 'background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer;';
+        btn.addEventListener('click', () => {
+          window.location.href = `/incidents.html?reception_id=${n.reception_id}`;
+        });
+        actions.appendChild(btn);
+
+        const btnRec = document.createElement('button');
+        btnRec.textContent = '📦 Voir la réception';
+        btnRec.style.cssText = 'background:none;border:2px solid var(--accent);color:var(--accent);border-radius:8px;padding:6px 12px;font-size:14px;font-weight:600;cursor:pointer;';
+        btnRec.addEventListener('click', () => {
+          window.location.href = `/reception-detail.html?id=${n.reception_id}`;
+        });
+        actions.appendChild(btnRec);
+      } else {
+        const note = document.createElement('div');
+        note.style.cssText = 'font-size:13px;color:#888;font-style:italic;';
+        note.textContent = 'Pas de réception associée';
+        actions.appendChild(note);
+      }
+
+      carte.appendChild(actions);
+      return carte;
+    },
     { singulier: 'non-conformité', pluriel: 'non-conformités' }
   );
 }
