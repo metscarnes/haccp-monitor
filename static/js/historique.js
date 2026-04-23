@@ -171,7 +171,7 @@ const TAB_HOOKS = {
   'he-content-rec'   : () => recCharger(),
   'he-content-fab'   : () => { if (!fabState.charge) fabCharger(); },
   'he-content-nett'  : () => { if (!nettState.charge) nettCharger(); },
-  'he-content-relev' : () => relevCharger(),
+  'he-content-relev' : () => {},  // Redirection vers /index.html?vue=historique
   'he-content-cuis'  : () => cuisCharger(),
   'he-content-refr'  : () => refrCharger(),
   'he-content-etal'  : () => etalCharger(),
@@ -1588,62 +1588,6 @@ function dateDefaut30j(refDebut, refFin) {
   if (refDebut && !refDebut.value) refDebut.value = j30.toISOString().slice(0, 10);
   if (refFin   && !refFin.value)   refFin.value   = auj.toISOString().slice(0, 10);
 }
-
-/* ══════════════════════════════════════════════════════════════
-   🌡️ RELEVÉS (par enceinte)
-   ══════════════════════════════════════════════════════════════ */
-let relevEnceintesCharge = false;
-async function relevCharger() {
-  const sel = $('he-relev-enceinte');
-  const debut = $('he-relev-debut');
-  const fin   = $('he-relev-fin');
-  dateDefaut30j(debut, fin);
-
-  if (!relevEnceintesCharge) {
-    relevEnceintesCharge = true;
-    try {
-      const enceintes = await apiFetch('/api/enceintes');
-      sel.innerHTML = '';
-      enceintes.forEach(e => {
-        const o = document.createElement('option');
-        o.value = e.id; o.textContent = e.nom || `Enceinte ${e.id}`;
-        sel.appendChild(o);
-      });
-    } catch (err) {
-      afficherMessage('relev', '⚠️', `Erreur enceintes : ${err.message}`);
-      return;
-    }
-  }
-  relevLister();
-}
-async function relevLister() {
-  const sel = $('he-relev-enceinte');
-  const debut = $('he-relev-debut').value;
-  const fin   = $('he-relev-fin').value;
-  if (!sel.value) { afficherMessage('relev', '🔍', 'Sélectionnez une enceinte.'); return; }
-  const p = new URLSearchParams();
-  if (debut) p.set('date_debut', debut);
-  if (fin)   p.set('date_fin',   fin);
-  p.set('limit', '100');
-  await chargerListe('relev',
-    `/api/enceintes/${sel.value}/releves?${p.toString()}`,
-    r => creerCarteSimple({
-      titre: `${formatTemp(r.temperature)}`,
-      meta : formatDateHeureFR(r.timestamp || r.created_at),
-      sousTitre: r.type_source ? `Source : ${r.type_source}` : null,
-      variant: r.alerte ? 'nc' : 'ok',
-    }),
-    { singulier: 'relevé', pluriel: 'relevés' }
-  );
-}
-_onReady(() => {
-  $('he-relev-filtrer')?.addEventListener('click', relevLister);
-  $('he-relev-reset')  ?.addEventListener('click', () => {
-    $('he-relev-debut').value = ''; $('he-relev-fin').value = '';
-    dateDefaut30j($('he-relev-debut'), $('he-relev-fin'));
-    relevLister();
-  });
-});
 
 /* ══════════════════════════════════════════════════════════════
    🔥 CUISSONS

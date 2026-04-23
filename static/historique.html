@@ -1167,27 +1167,14 @@
        Gabarit commun : filtres date + liste + pagination
        ══════════════════════════════════════════════════════════ -->
 
-  <!-- 🌡️ Relevés températures enceintes -->
+  <!-- 🌡️ Relevés températures enceintes — redirection vers module Température -->
   <div id="he-content-relev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-relev">
-    <div class="he-filtres">
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-relev-enceinte">Enceinte</label>
-        <select id="he-relev-enceinte" class="he-filtre-input"></select>
-      </div>
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-relev-debut">Du</label>
-        <input type="date" id="he-relev-debut" class="he-filtre-input">
-      </div>
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-relev-fin">Au</label>
-        <input type="date" id="he-relev-fin" class="he-filtre-input">
-      </div>
-      <button class="he-btn-filtrer" id="he-relev-filtrer">🔍 Rechercher</button>
-      <button class="he-btn-reset"   id="he-relev-reset">✕ Reset</button>
+    <div class="he-placeholder">
+      <div class="he-placeholder-icone">🌡️</div>
+      <div style="font-size:18px;font-weight:600;margin-bottom:8px;">Historique des relevés de température</div>
+      <div class="he-placeholder-note" style="margin-bottom:20px;">Géré par le module Température (graphiques, stats, export CSV par enceinte).</div>
+      <a href="/index.html?vue=historique" style="display:inline-block;background:var(--accent);color:#FFF;border-radius:10px;padding:14px 24px;font-size:16px;font-weight:700;text-decoration:none;">📊 Ouvrir le module Température →</a>
     </div>
-    <div class="he-compteur" id="he-relev-compteur"></div>
-    <div class="he-liste"    id="he-relev-liste"></div>
-    <div class="he-message"  id="he-relev-message" hidden><div class="he-message-icone" id="he-relev-icone">⏳</div><div id="he-relev-texte">Chargement…</div></div>
   </div>
 
   <!-- 🔥 Cuissons -->

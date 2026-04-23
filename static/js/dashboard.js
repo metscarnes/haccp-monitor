@@ -84,6 +84,12 @@ document.querySelectorAll('nav button').forEach(btn => {
   btn.addEventListener('click', () => afficherVue(btn.dataset.vue));
 });
 
+// Ouvrir directement une vue via ?vue=historique (utilisé depuis le module Historique)
+const _vueParam = new URLSearchParams(window.location.search).get('vue');
+if (_vueParam && VUES.includes(_vueParam)) {
+  afficherVue(_vueParam);
+}
+
 // ---------------------------------------------------------------------------
 // VUE DASHBOARD
 // ---------------------------------------------------------------------------
