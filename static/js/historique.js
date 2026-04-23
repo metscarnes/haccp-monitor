@@ -175,7 +175,7 @@ const TAB_HOOKS = {
   'he-content-cuis'  : () => cuisCharger(),
   'he-content-refr'  : () => refrCharger(),
   'he-content-etal'  : () => etalCharger(),
-  'he-content-dlcdev': () => {},
+  'he-content-dlcdev': () => dlcdevCharger(),
   'he-content-nuis'  : () => nuisCharger(),
   'he-content-rapp'  : () => rappCharger(),
 };
@@ -1740,6 +1740,64 @@ async function etalCharger() {
     { singulier: 'étalonnage', pluriel: 'étalonnages' }
   );
 }
+
+/* ══════════════════════════════════════════════════════════════
+   🗑️ DEVENIR DLC
+   ══════════════════════════════════════════════════════════════ */
+const DLCDEV_LABELS = {
+  jete:     { txt: '🗑️ Jeté',     variant: 'nc'   },
+  vendu:    { txt: '💰 Vendu',    variant: 'ok'   },
+  consomme: { txt: '🍽️ Consommé', variant: 'ok'   },
+  autre:    { txt: 'Autre',        variant: 'warn' },
+};
+async function dlcdevCharger() {
+  dateDefaut30j($('he-dlcdev-debut'), $('he-dlcdev-fin'));
+  dlcdevLister();
+}
+async function dlcdevLister() {
+  const statut = $('he-dlcdev-statut').value;
+  const source = $('he-dlcdev-source').value;
+  const debut  = $('he-dlcdev-debut').value;
+  const fin    = $('he-dlcdev-fin').value;
+  const p = new URLSearchParams({ limit: '100' });
+  if (statut) p.set('statut', statut);
+  if (source) p.set('source_type', source);
+  if (debut)  p.set('date_debut', debut);
+  if (fin)    p.set('date_fin', fin);
+  await chargerListe('dlcdev',
+    `/api/dlc/devenir?${p.toString()}`,
+    d => {
+      const label = DLCDEV_LABELS[d.statut] || { txt: d.statut, variant: 'warn' };
+      const srcLabel = d.source_type === 'fabrication' ? 'Fabrication' : 'Réception';
+      const chips = [ srcLabel ];
+      if (d.numero_lot) chips.push(`Lot ${d.numero_lot}`);
+      if (d.poids_kg)   chips.push(`${d.poids_kg} kg`);
+      if (d.fournisseur_nom) chips.push(d.fournisseur_nom);
+      return creerCarteSimple({
+        titre: d.produit_nom || `#${d.source_id}`,
+        meta : `${formatDateHeureFR(d.created_at)} — ${d.personnel_prenom || '—'}${d.dlc ? ` — DLC ${formatDateFR(d.dlc)}` : ''}`,
+        sousTitre: d.commentaire || null,
+        chips,
+        badge: { text: label.txt, variant: label.variant },
+        variant: label.variant,
+      });
+    },
+    { singulier: 'enregistrement', pluriel: 'enregistrements' }
+  );
+}
+_onReady(() => {
+  $('he-dlcdev-filtrer')?.addEventListener('click', dlcdevLister);
+  $('he-dlcdev-statut') ?.addEventListener('change', dlcdevLister);
+  $('he-dlcdev-source') ?.addEventListener('change', dlcdevLister);
+  $('he-dlcdev-reset')  ?.addEventListener('click', () => {
+    $('he-dlcdev-statut').value = '';
+    $('he-dlcdev-source').value = '';
+    $('he-dlcdev-debut').value  = '';
+    $('he-dlcdev-fin').value    = '';
+    dateDefaut30j($('he-dlcdev-debut'), $('he-dlcdev-fin'));
+    dlcdevLister();
+  });
+});
 
 /* ══════════════════════════════════════════════════════════════
    🐀 NUISIBLES (grille par semaine)

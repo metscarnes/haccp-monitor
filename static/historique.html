@@ -1242,13 +1242,41 @@
     <div class="he-message"  id="he-etal-message" hidden><div class="he-message-icone" id="he-etal-icone">⏳</div><div id="he-etal-texte">Chargement…</div></div>
   </div>
 
-  <!-- 🗑️ Devenir DLC (pas d'endpoint GET dédié) -->
+  <!-- 🗑️ Devenir DLC -->
   <div id="he-content-dlcdev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-dlcdev">
-    <div class="he-placeholder">
-      <div class="he-placeholder-icone">🗑️</div>
-      <div>Suivi du devenir des produits DLC (jetés / vendus)</div>
-      <div class="he-placeholder-note">L'historique détaillé nécessite un nouvel endpoint côté API.<br>En attendant : <a href="/dlc.html" style="color:var(--accent);font-weight:600;">Ouvrir le calendrier DLC →</a></div>
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-dlcdev-statut">Devenir</label>
+        <select id="he-dlcdev-statut" class="he-filtre-input">
+          <option value="">Tous</option>
+          <option value="jete">Jetés</option>
+          <option value="vendu">Vendus</option>
+          <option value="consomme">Consommés</option>
+          <option value="autre">Autre</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-dlcdev-source">Source</label>
+        <select id="he-dlcdev-source" class="he-filtre-input">
+          <option value="">Toutes</option>
+          <option value="reception_ligne">Réceptions</option>
+          <option value="fabrication">Fabrications</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-dlcdev-debut">Du</label>
+        <input type="date" id="he-dlcdev-debut" class="he-filtre-input">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-dlcdev-fin">Au</label>
+        <input type="date" id="he-dlcdev-fin" class="he-filtre-input">
+      </div>
+      <button class="he-btn-filtrer" id="he-dlcdev-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-dlcdev-reset">✕ Reset</button>
     </div>
+    <div class="he-compteur" id="he-dlcdev-compteur"></div>
+    <div class="he-liste"    id="he-dlcdev-liste"></div>
+    <div class="he-message"  id="he-dlcdev-message" hidden><div class="he-message-icone" id="he-dlcdev-icone">⏳</div><div id="he-dlcdev-texte">Chargement…</div></div>
   </div>
 
   <!-- 🐀 Nuisibles -->
