@@ -164,7 +164,7 @@ haccp-monitor/
 │   ├── reception-detail.html           ← ajout lignes produit à une réception
 │   ├── ouverture.html                  ← enregistrement ouverture de produit
 │   ├── ouvertures-historique.html      ← historique ouvertures
-│   ├── historique-enregistrement.html  ← historique fabrications
+│   ├── historique.html                 ← historique unifié (ouvertures, réceptions, fabrications, nettoyage)
 │   ├── incidents.html                  ← fiches incident PCR01 (liste)
 │   ├── pcr01.html                      ← création fiche incident
 │   ├── pcr01-detail.html               ← détail fiche incident
@@ -190,7 +190,7 @@ haccp-monitor/
 │       ├── reception-detail.js
 │       ├── ouverture.js
 │       ├── ouvertures-historique.js
-│       ├── historique-enregistrement.js
+│       ├── historique.js
 │       ├── incidents.js
 │       ├── pcr01.js
 │       ├── pcr01-detail.js
@@ -747,7 +747,7 @@ setTimeout(() => window.print(), 100);
 
 ### 7.5 Masquage volontaire des poids dans l'historique
 
-**Règle importante** : Dans la page d'historique des fabrications (`historique-enregistrement.html`), les poids ne sont **intentionnellement pas affichés**. Raison : `poids_fabrique` n'est pas encore stocké en base (voir [Limite de la table `fabrications`](#--limite-critique-)). Afficher "— kg" serait confusant pour l'utilisateur. Il ne faut pas exposer cette donnée manquante.
+**Règle importante** : Dans la page d'historique des fabrications (`historique.html`), les poids ne sont **intentionnellement pas affichés**. Raison : `poids_fabrique` n'est pas encore stocké en base (voir [Limite de la table `fabrications`](#--limite-critique-)). Afficher "— kg" serait confusant pour l'utilisateur. Il ne faut pas exposer cette donnée manquante.
 
 ### 7.6 Étiquette de reprise (PCR01)
 
@@ -975,8 +975,8 @@ cp haccp.db haccp.db.backup.$(date +%Y%m%d)
 ### Prochaines priorités identifiées
 
 1. Import catalogue `scripts/import_matieres_premieres.py`
-2. Finaliser l'historique des fabrications (`historique-enregistrement.html`)
-3. Tests fonctionnels terrain sur tablette
+2. Tests fonctionnels terrain sur tablette
+3. Supprimer les anciens fichiers `historique-enregistrement.html` et `historique-enregistrement.js` (tous les redirects sont maintenant en place)
 4. Ajouter `poids_fabrique` et `dlc_finale` dans la table `fabrications`
 5. Installation PWA sur tablette Android (mode kiosque)
 
