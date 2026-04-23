@@ -996,7 +996,6 @@
     <button class="he-cat-btn" id="he-cat-temp"  data-cat="temp"  role="tab">🌡️ Températures</button>
     <button class="he-cat-btn" id="he-cat-flux"  data-cat="flux"  role="tab">📦 Flux produits</button>
     <button class="he-cat-btn actif" id="he-cat-haccp" data-cat="haccp" role="tab">🧹 HACCP</button>
-    <button class="he-cat-btn" id="he-cat-nc"    data-cat="nc"    role="tab">⚠️ Non-conformités</button>
     <button class="he-cat-btn" id="he-cat-rap"   data-cat="rap"   role="tab">📄 Rapports</button>
   </nav>
 
@@ -1026,13 +1025,6 @@
       <button class="he-tab-btn actif" id="he-tab-ouv"  data-target="he-content-ouv"  role="tab">✂️ Ouvertures</button>
       <button class="he-tab-btn"       id="he-tab-nett" data-target="he-content-nett" role="tab">🧹 Nettoyage</button>
       <button class="he-tab-btn"       id="he-tab-nuis" data-target="he-content-nuis" role="tab">🐀 Nuisibles</button>
-    </div>
-
-    <!-- ⚠️ Non-conformités -->
-    <div class="he-subtabs" data-cat="nc" role="tablist" aria-label="Non-conformités">
-      <button class="he-tab-btn actif" id="he-tab-incid" data-target="he-content-incid" role="tab">📋 Incidents</button>
-      <button class="he-tab-btn"       id="he-tab-ncf"   data-target="he-content-ncf"   role="tab">🚫 NC fournisseurs</button>
-      <button class="he-tab-btn"       id="he-tab-alert" data-target="he-content-alert" role="tab">🔔 Alertes</button>
     </div>
 
     <!-- 📄 Rapports -->
@@ -1300,48 +1292,6 @@
     <div class="he-compteur" id="he-nuis-compteur"></div>
     <div class="he-liste"    id="he-nuis-liste"></div>
     <div class="he-message"  id="he-nuis-message" hidden><div class="he-message-icone" id="he-nuis-icone">⏳</div><div id="he-nuis-texte">Chargement…</div></div>
-  </div>
-
-  <!-- 📋 Incidents -->
-  <div id="he-content-incid" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-incid">
-    <div class="he-filtres">
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-incid-debut">Du</label>
-        <input type="date" id="he-incid-debut" class="he-filtre-input">
-      </div>
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-incid-fin">Au</label>
-        <input type="date" id="he-incid-fin" class="he-filtre-input">
-      </div>
-      <div class="he-filtre-groupe">
-        <label class="he-filtre-label" for="he-incid-statut">Statut</label>
-        <select id="he-incid-statut" class="he-filtre-input">
-          <option value="">Tous</option>
-          <option value="ouvert">Ouverts</option>
-          <option value="en_cours">En cours</option>
-          <option value="clos">Clos</option>
-        </select>
-      </div>
-      <button class="he-btn-filtrer" id="he-incid-filtrer">🔍 Rechercher</button>
-      <button class="he-btn-reset"   id="he-incid-reset">✕ Reset</button>
-    </div>
-    <div class="he-compteur" id="he-incid-compteur"></div>
-    <div class="he-liste"    id="he-incid-liste"></div>
-    <div class="he-message"  id="he-incid-message" hidden><div class="he-message-icone" id="he-incid-icone">⏳</div><div id="he-incid-texte">Chargement…</div></div>
-  </div>
-
-  <!-- 🚫 Non-conformités fournisseurs -->
-  <div id="he-content-ncf" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ncf">
-    <div class="he-compteur" id="he-ncf-compteur"></div>
-    <div class="he-liste"    id="he-ncf-liste"></div>
-    <div class="he-message"  id="he-ncf-message" hidden><div class="he-message-icone" id="he-ncf-icone">⏳</div><div id="he-ncf-texte">Chargement…</div></div>
-  </div>
-
-  <!-- 🔔 Alertes (en cours uniquement — pas d'historique côté API) -->
-  <div id="he-content-alert" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-alert">
-    <div class="he-compteur" id="he-alert-compteur"></div>
-    <div class="he-liste"    id="he-alert-liste"></div>
-    <div class="he-message"  id="he-alert-message" hidden><div class="he-message-icone" id="he-alert-icone">⏳</div><div id="he-alert-texte">Chargement…</div></div>
   </div>
 
   <!-- 📄 Rapports générés -->

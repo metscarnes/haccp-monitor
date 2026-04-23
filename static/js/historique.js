@@ -178,9 +178,6 @@ const TAB_HOOKS = {
   'he-content-etiq'  : () => etiqCharger(),
   'he-content-dlcdev': () => {},
   'he-content-nuis'  : () => nuisCharger(),
-  'he-content-incid' : () => incidCharger(),
-  'he-content-ncf'   : () => ncfCharger(),
-  'he-content-alert' : () => alertCharger(),
   'he-content-rapp'  : () => rappCharger(),
 };
 const _tabCharge = new Set();
@@ -1823,118 +1820,6 @@ _onReady(() => {
 });
 
 /* ══════════════════════════════════════════════════════════════
-   📋 INCIDENTS
-   ══════════════════════════════════════════════════════════════ */
-async function incidCharger() {
-  dateDefaut30j($('he-incid-debut'), $('he-incid-fin'));
-  incidLister();
-}
-async function incidLister() {
-  const debut  = $('he-incid-debut').value;
-  const fin    = $('he-incid-fin').value;
-  const statut = $('he-incid-statut').value;
-  const p = new URLSearchParams({ limit: '100' });
-  if (debut)  p.set('date_debut', debut);
-  if (fin)    p.set('date_fin', fin);
-  if (statut) p.set('statut', statut);
-  await chargerListe('incid',
-    `/api/fiches-incident?${p.toString()}`,
-    i => creerCarteSimple({
-      titre: i.produit_nom || i.type_incident || `Incident #${i.id}`,
-      meta : `${formatDateFR(i.date_incident)}${i.heure_incident ? ` à ${i.heure_incident}` : ''} — ${i.fournisseur_nom || '—'}`,
-      sousTitre: i.description || null,
-      chips: [
-        i.statut ? i.statut.replace('_', ' ') : null,
-        i.action_corrective ? '✓ Action' : null,
-      ].filter(Boolean),
-      variant: i.statut === 'clos' ? 'ok' : (i.statut === 'en_cours' ? 'warn' : 'nc'),
-    }),
-    { singulier: 'incident', pluriel: 'incidents' }
-  );
-}
-_onReady(() => {
-  $('he-incid-filtrer')?.addEventListener('click', incidLister);
-  $('he-incid-statut') ?.addEventListener('change', incidLister);
-  $('he-incid-reset')  ?.addEventListener('click', () => {
-    $('he-incid-debut').value = ''; $('he-incid-fin').value = '';
-    $('he-incid-statut').value = '';
-    dateDefaut30j($('he-incid-debut'), $('he-incid-fin'));
-    incidLister();
-  });
-});
-
-/* ══════════════════════════════════════════════════════════════
-   🚫 NON-CONFORMITÉS FOURNISSEURS
-   ══════════════════════════════════════════════════════════════ */
-async function ncfCharger() {
-  await chargerListe('ncf',
-    '/api/non-conformites?limit=100',
-    n => {
-      const chips = [];
-      if (n.nombre_barquettes) chips.push(`${n.nombre_barquettes} barq.`);
-      if (n.refuse_livraison)  chips.push('✗ Refusée');
-      if (n.nc_apres_livraison) chips.push('Après livraison');
-      if (n.info_ddpp)          chips.push('DDPP informé');
-      const carte = creerCarteSimple({
-        titre: n.produits || n.fournisseur_nom || `NC #${n.id}`,
-        meta : `${formatDateFR(n.date_livraison || n.created_at)} — ${n.fournisseur_nom || '—'} — ${n.operateur || ''}`,
-        sousTitre: n.nature_nc || n.commentaires || null,
-        chips,
-        variant: 'nc',
-      });
-
-      // Bouton accès fiche PCR01 (liste des incidents de cette réception)
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;';
-
-      if (n.reception_id) {
-        const btn = document.createElement('button');
-        btn.textContent = '📋 Fiches PCR01';
-        btn.style.cssText = 'background:var(--alerte);color:#FFF;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer;';
-        btn.addEventListener('click', () => {
-          window.location.href = `/incidents.html?reception_id=${n.reception_id}`;
-        });
-        actions.appendChild(btn);
-
-        const btnRec = document.createElement('button');
-        btnRec.textContent = '📦 Voir la réception';
-        btnRec.style.cssText = 'background:none;border:2px solid var(--accent);color:var(--accent);border-radius:8px;padding:6px 12px;font-size:14px;font-weight:600;cursor:pointer;';
-        btnRec.addEventListener('click', () => {
-          window.location.href = `/reception-detail.html?id=${n.reception_id}`;
-        });
-        actions.appendChild(btnRec);
-      } else {
-        const note = document.createElement('div');
-        note.style.cssText = 'font-size:13px;color:#888;font-style:italic;';
-        note.textContent = 'Pas de réception associée';
-        actions.appendChild(note);
-      }
-
-      carte.appendChild(actions);
-      return carte;
-    },
-    { singulier: 'non-conformité', pluriel: 'non-conformités' }
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
-   🔔 ALERTES (en cours — historique indisponible côté API)
-   ══════════════════════════════════════════════════════════════ */
-async function alertCharger() {
-  await chargerListe('alert',
-    '/api/alertes/en-cours',
-    a => creerCarteSimple({
-      titre: a.enceinte_nom || `Enceinte #${a.enceinte_id}`,
-      meta : `${formatDateHeureFR(a.timestamp_debut || a.created_at)} — ${formatTemp(a.temperature)}`,
-      sousTitre: a.type_alerte || 'Alerte température',
-      chips: [ a.statut || 'active' ],
-      variant: 'nc',
-    }),
-    { singulier: 'alerte active', pluriel: 'alertes actives' }
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════
    📄 RAPPORTS GÉNÉRÉS
    ══════════════════════════════════════════════════════════════ */
 async function rappCharger() {
@@ -1988,9 +1873,6 @@ const TAB_MAP = {
   etiquettes   : { cat: 'flux',  btn: 'he-tab-etiq'  },
   dlc          : { cat: 'flux',  btn: 'he-tab-dlcdev'},
   nuisibles    : { cat: 'haccp', btn: 'he-tab-nuis'  },
-  incidents    : { cat: 'nc',    btn: 'he-tab-incid' },
-  ncfournisseurs: { cat: 'nc',   btn: 'he-tab-ncf'   },
-  alertes      : { cat: 'nc',    btn: 'he-tab-alert' },
   rapports     : { cat: 'rap',   btn: 'he-tab-rapp'  },
 };
 
