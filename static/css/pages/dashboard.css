@@ -166,6 +166,45 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
 }
 .historique-controles label { font-size: var(--text-sm); font-weight: 600; color: var(--color-accent); }
 
+.botones-groupe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-toggle-periodo,
+.btn-toggle-enceinte {
+  padding: 0.45rem 0.9rem;
+  border: 1.5px solid var(--color-secondary);
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-accent);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-toggle-periodo:hover,
+.btn-toggle-enceinte:hover {
+  background: rgba(107, 58, 31, 0.05);
+  border-color: var(--color-accent);
+}
+
+.btn-toggle-periodo.actif,
+.btn-toggle-enceinte.actif {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: var(--text-xs);
+}
+
 .chart-principal-wrap {
   background: var(--color-card);
   border-radius: var(--radius);

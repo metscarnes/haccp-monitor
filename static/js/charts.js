@@ -116,14 +116,28 @@ function creerChartHistorique(canvas, releves, seuilMin, seuilMax) {
       plugins: {
         legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
         tooltip: {
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          padding: 12,
+          cornerRadius: 6,
+          titleFont: { size: 12, weight: 'bold' },
+          bodyFont: { size: 12 },
           callbacks: {
             title: items => {
-              const d = new Date(items[0].label);
-              return d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+              if (!items || items.length === 0) return '';
+              let date = items[0].label;
+              if (typeof date === 'string') {
+                date = new Date(date);
+              } else if (typeof date === 'number') {
+                date = new Date(date);
+              }
+              if (isNaN(date.getTime())) return 'Date invalide';
+              return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
             },
             label: item => {
               const unite = item.datasetIndex === 0 ? '°C' : '%';
-              return ` ${item.dataset.label} : ${item.parsed.y?.toFixed(1)}${unite}`;
+              const valeur = item.parsed?.y;
+              if (valeur === null || valeur === undefined) return ` ${item.dataset.label} : —`;
+              return ` ${item.dataset.label} : ${valeur.toFixed(1)}${unite}`;
             },
           },
         },
@@ -132,8 +146,26 @@ function creerChartHistorique(canvas, releves, seuilMin, seuilMax) {
       scales: {
         x: {
           type: 'time',
-          time: { tooltipFormat: 'dd/MM HH:mm', displayFormats: { hour: 'HH:mm', day: 'dd/MM' } },
-          ticks: { maxTicksLimit: 10, font: { size: 11 } },
+          time: {
+            tooltipFormat: 'dd/MM/yyyy HH:mm',
+            displayFormats: {
+              millisecond: 'HH:mm:ss',
+              second: 'HH:mm:ss',
+              minute: 'HH:mm',
+              hour: 'dd/MM HH:mm',
+              day: 'dd/MM/yyyy',
+              week: 'dd/MM/yyyy',
+              month: 'MMM yyyy',
+              quarter: 'QQQ yyyy',
+              year: 'yyyy'
+            }
+          },
+          ticks: {
+            maxTicksLimit: 8,
+            font: { size: 11 },
+            maxRotation: 45,
+            minRotation: 0,
+          },
           grid: { color: '#e8ddd0' },
         },
         yTemp: {

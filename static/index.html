@@ -48,23 +48,23 @@
       <div class="historique-controles">
         <div>
           <label>Enceinte</label>
-          <select id="select-enceinte-historique"></select>
+          <div id="botones-enceinte" class="botones-groupe"></div>
         </div>
         <div>
           <label>Période</label>
-          <select id="select-periode">
-            <option value="24h">24 heures</option>
-            <option value="7j">7 jours</option>
-            <option value="30j">30 jours</option>
-            <option value="custom">Personnalisée</option>
-          </select>
+          <div id="botones-periode" class="botones-groupe">
+            <button class="btn-toggle-periodo" data-value="24h">24h</button>
+            <button class="btn-toggle-periodo" data-value="7j">7 jours</button>
+            <button class="btn-toggle-periodo" data-value="30j">30 jours</button>
+            <button class="btn-toggle-periodo" data-value="custom">Personnalisée</button>
+          </div>
         </div>
         <div id="dates-custom" style="display:none; gap:.5rem; align-items:center">
           <input type="date" id="date-debut">
           <span>→</span>
           <input type="date" id="date-fin">
+          <button class="btn btn-primaire btn-sm" id="btn-appliquer-custom">Appliquer</button>
         </div>
-        <button class="btn btn-primaire" id="btn-charger-historique">Afficher</button>
         <button class="btn btn-secondaire" id="btn-exporter-csv">Exporter CSV</button>
       </div>
 

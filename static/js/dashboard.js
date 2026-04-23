@@ -177,9 +177,19 @@ function renderDashboard(data) {
 async function forerVersHistorique(encId) {
   afficherVue('historique');
   await chargerSelectEnceinteHistorique();
-  document.getElementById('select-enceinte-historique').value = encId;
-  document.getElementById('select-periode').value = '24h';
-  document.getElementById('dates-custom').style.display = 'none';
+  const btnEnceinte = document.querySelector(`[data-id="${encId}"]`);
+  if (btnEnceinte) {
+    document.querySelectorAll('.btn-toggle-enceinte').forEach(b => b.classList.remove('actif'));
+    btnEnceinte.classList.add('actif');
+    enceinteSelectionneeId = encId;
+  }
+  const btn24h = document.querySelector('[data-value="24h"]');
+  if (btn24h) {
+    document.querySelectorAll('.btn-toggle-periodo').forEach(b => b.classList.remove('actif'));
+    btn24h.classList.add('actif');
+    periodeSelectionnee = '24h';
+    document.getElementById('dates-custom').style.display = 'none';
+  }
   chargerHistorique();
 }
 
@@ -210,36 +220,86 @@ async function chargerMiniChart(enc) {
 // ---------------------------------------------------------------------------
 
 let enceintesCachees = [];
+let enceinteSelectionneeId = null;
+let periodeSelectionnee = '24h';
 
 async function chargerSelectEnceinteHistorique() {
   if (enceintesCachees.length) return; // déjà chargé
   try {
     enceintesCachees = await apiFetch(`/api/boutiques/${BOUTIQUE_ID}/enceintes`);
-    const sel = document.getElementById('select-enceinte-historique');
-    sel.innerHTML = enceintesCachees.map(e =>
-      `<option value="${e.id}" data-min="${e.seuil_temp_min}" data-max="${e.seuil_temp_max}">${e.nom}</option>`
+    const container = document.getElementById('botones-enceinte');
+    container.innerHTML = enceintesCachees.map(e =>
+      `<button class="btn-toggle-enceinte" data-id="${e.id}" data-min="${e.seuil_temp_min}" data-max="${e.seuil_temp_max}">${e.nom}</button>`
     ).join('');
+
+    // Ajouter listeners
+    container.querySelectorAll('.btn-toggle-enceinte').forEach(btn => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.btn-toggle-enceinte').forEach(b => b.classList.remove('actif'));
+        btn.classList.add('actif');
+        enceinteSelectionneeId = parseInt(btn.dataset.id);
+        chargerHistorique();
+      });
+    });
+
+    // Sélectionner la première par défaut
+    if (enceintesCachees.length > 0) {
+      const premier = container.querySelector('.btn-toggle-enceinte');
+      if (premier) premier.click();
+    }
   } catch (e) {
     console.error('Erreur chargement enceintes :', e);
   }
 }
 
-document.getElementById('select-periode').addEventListener('change', function () {
-  document.getElementById('dates-custom').style.display =
-    this.value === 'custom' ? 'flex' : 'none';
+// Initialiser les boutons de période (ils existent déjà dans le HTML)
+function initBoutonsperiode() {
+  document.querySelectorAll('.btn-toggle-periodo').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      document.querySelectorAll('.btn-toggle-periodo').forEach(b => b.classList.remove('actif'));
+      this.classList.add('actif');
+      periodeSelectionnee = this.dataset.value;
+
+      const customDates = document.getElementById('dates-custom');
+      if (periodeSelectionnee === 'custom') {
+        customDates.style.display = 'flex';
+      } else {
+        customDates.style.display = 'none';
+        if (enceinteSelectionneeId) chargerHistorique();
+      }
+    });
+  });
+
+  // Sélectionner 24h par défaut
+  const btn24h = document.querySelector('[data-value="24h"]');
+  if (btn24h && !btn24h.classList.contains('actif')) {
+    btn24h.classList.add('actif');
+    periodeSelectionnee = '24h';
+  }
+}
+
+document.getElementById('btn-appliquer-custom').addEventListener('click', () => {
+  chargerHistorique();
 });
 
-document.getElementById('btn-charger-historique').addEventListener('click', chargerHistorique);
+// Initialiser au démarrage
+initBoutonsperiode();
 
 async function chargerHistorique() {
-  const sel      = document.getElementById('select-enceinte-historique');
-  const opt      = sel.options[sel.selectedIndex];
-  const eid      = sel.value;
-  const seuilMin = parseFloat(opt.dataset.min);
-  const seuilMax = parseFloat(opt.dataset.max);
-  const periode  = document.getElementById('select-periode').value;
+  if (!enceinteSelectionneeId) {
+    console.warn('Aucune enceinte sélectionnée');
+    return;
+  }
 
-  let url = `/api/enceintes/${eid}/releves?`;
+  const enceinte = enceintesCachees.find(e => e.id === enceinteSelectionneeId);
+  if (!enceinte) return;
+
+  const seuilMin = enceinte.seuil_temp_min;
+  const seuilMax = enceinte.seuil_temp_max;
+  const periode  = periodeSelectionnee;
+
+  let url = `/api/enceintes/${enceinteSelectionneeId}/releves?`;
   if (periode !== 'custom') {
     url += `periode=${periode}`;
   } else {
@@ -252,7 +312,7 @@ async function chargerHistorique() {
   try {
     const data = await apiFetch(url);
     document.getElementById('titre-chart-historique').textContent =
-      `${opt.text} — ${data.nb_releves} relevés`;
+      `${enceinte.nom} — ${data.nb_releves} relevés`;
 
     // Stats
     const statsData = await apiFetch(url.replace('/releves?', '/releves/stats?'));
@@ -364,10 +424,9 @@ function renderTableauHistorique(releves, periode, seuilMin, seuilMax) {
 }
 
 document.getElementById('btn-exporter-csv').addEventListener('click', () => {
-  const eid    = document.getElementById('select-enceinte-historique').value;
-  const periode = document.getElementById('select-periode').value;
-  if (!eid) return;
-  let url = `/api/enceintes/${eid}/releves/export.csv?`;
+  if (!enceinteSelectionneeId) return;
+  const periode = periodeSelectionnee;
+  let url = `/api/enceintes/${enceinteSelectionneeId}/releves/export.csv?`;
   if (periode !== 'custom') {
     url += `periode=${periode}`;
   } else {
