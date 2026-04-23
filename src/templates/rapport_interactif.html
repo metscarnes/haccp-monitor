@@ -486,6 +486,29 @@
     </div>
   </div>
 
+  <!-- RÉCAP JOURNALIER -->
+  <div class="section">
+    <h2><span class="icone">📅</span> Récapitulatif jour par jour</h2>
+    <div style="overflow-x: auto; max-height: 420px; overflow-y: auto;">
+      <table class="moderne" id="tableau-journalier">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Jour</th>
+            <th>Relevés</th>
+            <th>T° min</th>
+            <th>T° moy</th>
+            <th>T° max</th>
+            <th>Amplitude</th>
+            <th>Alertes</th>
+            <th>Statut</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-journalier"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- SYNTHESE PAR ENCEINTE -->
   <div class="section">
     <h2><span class="icone">📋</span> Synthèse par enceinte</h2>
@@ -536,6 +559,15 @@
 
   const COULEURS = ['#D4A574', '#6B3A1F', '#2D7D46', '#C93030', '#E8913A', '#5A7A9E', '#8B4789', '#3D2008'];
 
+  // Types d'alertes pertinentes pour le rapport HACCP (on ignore capteur_perdu
+  // car le Zigbee est event-driven : pas de signal != déconnexion)
+  const TYPES_ALERTES_PERTINENTS = new Set([
+    'temperature_haute',
+    'temperature_basse',
+    'humidite_haute',
+    'humidite_basse',
+  ]);
+
   // ========================================================================
   //  UTILS
   // ========================================================================
@@ -571,6 +603,8 @@
     });
 
     const alertes = ALERTES.filter(a => {
+      // Filtre : uniquement les alertes HACCP pertinentes (pas capteur_perdu)
+      if (!TYPES_ALERTES_PERTINENTS.has(a.type)) return false;
       const ts = new Date(a.debut);
       if (ts < debut || ts > fin) return false;
       if (enceinteId && a.enceinte_id != enceinteId) return false;
@@ -723,19 +757,55 @@
     });
   }
 
+  // Plugin custom : affiche le pourcentage au centre du donut
+  const pluginCentreDonut = {
+    id: 'centreDonut',
+    afterDraw(chart) {
+      if (chart.config.type !== 'doughnut') return;
+      const { ctx, chartArea } = chart;
+      const centreX = (chartArea.left + chartArea.right) / 2;
+      const centreY = (chartArea.top + chartArea.bottom) / 2;
+      const data = chart.data.datasets[0].data;
+      const total = data.reduce((a, b) => a + b, 0);
+      const pct = total ? Math.round(data[0] / total * 100) : 100;
+
+      ctx.save();
+      // Grand pourcentage
+      ctx.font = 'bold 2.5rem -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.fillStyle = pct === 100 ? '#2D7D46' : pct >= 80 ? '#E8913A' : '#C93030';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pct + '%', centreX, centreY - 10);
+      // Label
+      ctx.font = '600 0.75rem -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.fillStyle = '#6B3A1F';
+      ctx.fillText('CONFORMES', centreX, centreY + 20);
+      ctx.restore();
+    },
+  };
+
   function majGraphConformite(stats) {
     const ctx = document.getElementById('chart-conformite');
     const conf = stats.filter(s => s.conforme).length;
     const nonConf = stats.length - conf;
 
     if (chartConf) chartConf.destroy();
+
+    // Cas particulier : aucune enceinte → donut vide / gris
+    const dataDonut = stats.length === 0
+      ? [1, 0]  // faux donut plein gris
+      : [conf, nonConf];
+    const couleurs = stats.length === 0
+      ? ['#e8ddd0', '#e8ddd0']
+      : ['#2D7D46', '#C93030'];
+
     chartConf = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels: ['Conformes', 'Non-conformes'],
         datasets: [{
-          data: [conf, nonConf],
-          backgroundColor: ['#2D7D46', '#C93030'],
+          data: dataDonut,
+          backgroundColor: couleurs,
           borderWidth: 0,
           hoverOffset: 8,
         }],
@@ -743,10 +813,27 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '70%',
+        cutout: '72%',
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 15, font: { size: 11 } } },
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              font: { size: 11, weight: '600' },
+              usePointStyle: true,
+              generateLabels: (chart) => {
+                if (stats.length === 0) {
+                  return [{ text: 'Aucune donnée', fillStyle: '#e8ddd0', pointStyle: 'circle' }];
+                }
+                return [
+                  { text: `${conf} conforme(s)`, fillStyle: '#2D7D46', pointStyle: 'circle' },
+                  { text: `${nonConf} non-conforme(s)`, fillStyle: '#C93030', pointStyle: 'circle' },
+                ];
+              },
+            },
+          },
           tooltip: {
+            enabled: stats.length > 0,
             backgroundColor: 'rgba(61, 32, 8, 0.95)',
             padding: 12,
             callbacks: {
@@ -760,6 +847,7 @@
         },
         animation: { animateRotate: true, duration: 1000 },
       },
+      plugins: [pluginCentreDonut],
     });
   }
 
@@ -797,6 +885,68 @@
         animation: { duration: 800, easing: 'easeOutQuart' },
       },
     });
+  }
+
+  // ========================================================================
+  //  TABLEAU RÉCAP JOURNALIER
+  // ========================================================================
+  function majTableauJournalier(releves, alertes, debut, fin) {
+    const tbody = document.getElementById('tbody-journalier');
+
+    // Générer la liste des jours entre debut et fin
+    const jours = [];
+    const d = new Date(debut);
+    const f = new Date(fin);
+    while (d <= f) {
+      jours.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+
+    if (!jours.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#999; padding:2rem">Aucune donnée</td></tr>';
+      return;
+    }
+
+    const NOMS_JOUR = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+
+    const lignes = jours.map(jour => {
+      const dateStr = toISO(jour);
+      const nomJour = NOMS_JOUR[jour.getDay()];
+
+      // Relevés du jour
+      const rJour = releves.filter(r => r.horodatage.startsWith(dateStr));
+      const aJour = alertes.filter(a => a.debut.startsWith(dateStr));
+
+      const temps = rJour.map(x => x.temperature).filter(x => x !== null && x !== undefined);
+      const tMin = temps.length ? Math.min(...temps) : null;
+      const tMax = temps.length ? Math.max(...temps) : null;
+      const tMoy = temps.length ? temps.reduce((a,b) => a+b, 0) / temps.length : null;
+      const amplitude = (tMin !== null && tMax !== null) ? (tMax - tMin) : null;
+
+      const fmtT = t => t === null ? '<span style="color:#bbb">—</span>' : t.toFixed(1) + '°C';
+      const conforme = aJour.length === 0 && rJour.length > 0;
+      const pasDeDonnees = rJour.length === 0;
+
+      let statutBadge;
+      if (pasDeDonnees) statutBadge = '<span style="color:#bbb; font-size:.75rem">— aucun relevé</span>';
+      else if (conforme) statutBadge = '<span class="badge vert">✓ OK</span>';
+      else statutBadge = `<span class="badge rouge">${aJour.length} NC</span>`;
+
+      return `
+        <tr${pasDeDonnees ? ' style="opacity:0.5"' : ''}>
+          <td><strong>${jour.toLocaleDateString('fr-FR')}</strong></td>
+          <td style="color:var(--gris); font-size:0.85rem">${nomJour}</td>
+          <td>${rJour.length.toLocaleString('fr-FR')}</td>
+          <td>${fmtT(tMin)}</td>
+          <td><strong>${fmtT(tMoy)}</strong></td>
+          <td>${fmtT(tMax)}</td>
+          <td>${amplitude !== null ? amplitude.toFixed(1) + '°C' : '—'}</td>
+          <td>${aJour.length > 0 ? `<span style="color:var(--rouge); font-weight:700">${aJour.length}</span>` : '<span style="color:var(--vert); font-weight:700">0</span>'}</td>
+          <td>${statutBadge}</td>
+        </tr>`;
+    }).reverse().join('');  // Plus récent en haut
+
+    tbody.innerHTML = lignes;
   }
 
   function majTimelineAlertes(alertes) {
@@ -838,11 +988,12 @@
   //  ORCHESTRATION
   // ========================================================================
   function actualiser() {
-    const { releves, alertes, enceintes } = obtenirDonneesFiltrees();
+    const { releves, alertes, enceintes, debut, fin } = obtenirDonneesFiltrees();
     const stats = enceintes.map(e => statsEnceinte(e, releves, alertes));
 
     majKPIs(stats, releves, alertes);
     majTableau(stats);
+    majTableauJournalier(releves, alertes, debut, fin);
     majGraphTemperatures(releves, enceintes);
     majGraphConformite(stats);
     majGraphDepassements(stats);
