@@ -61,6 +61,29 @@ function creerMiniChart(canvas, temperatures, seuilMin, seuilMax) {
 }
 
 /**
+ * Crée une légende HTML personnalisée avec des lignes
+ */
+function creerLegendHTML() {
+  const legendeHTML = `
+    <div style="display: flex; gap: 2rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; font-size: 12px;">
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <svg width="20" height="2" style="display: block;">
+          <line x1="0" y1="1" x2="20" y2="1" stroke="${COULEURS.brun}" stroke-width="2"/>
+        </svg>
+        <span>Température (°C)</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <svg width="20" height="2" style="display: block;">
+          <line x1="0" y1="1" x2="20" y2="1" stroke="${COULEURS.humidite}" stroke-width="1.5" stroke-dasharray="4,3"/>
+        </svg>
+        <span>Humidité (%)</span>
+      </div>
+    </div>
+  `;
+  return legendeHTML;
+}
+
+/**
  * Graphique historique complet (vue historique)
  * @param {HTMLCanvasElement} canvas
  * @param {Array} releves   — [{horodatage, temperature, humidite}]
@@ -114,7 +137,7 @@ function creerChartHistorique(canvas, releves, seuilMin, seuilMax) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
-        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
+        legend: { display: false },
         tooltip: {
           backgroundColor: 'rgba(0, 0, 0, 0.8)',
           padding: 12,

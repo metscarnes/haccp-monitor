@@ -31,11 +31,18 @@ async def historique_releves(
 
     # Raccourcis période
     if periode:
-        mapping = {"24h": timedelta(hours=24), "7j": timedelta(days=7), "30j": timedelta(days=30)}
-        if periode not in mapping:
+        if periode not in ["24h", "7j", "30j"]:
             raise HTTPException(400, "periode doit être 24h, 7j ou 30j")
-        depuis = now - mapping[periode]
-        jusqu_a = now
+
+        if periode == "24h":
+            # 24h = jour courant entier (0h00 à 23h59)
+            depuis = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            jusqu_a = depuis + timedelta(days=1) - timedelta(microseconds=1)
+        else:
+            # 7j, 30j = derniers N jours
+            mapping = {"7j": timedelta(days=7), "30j": timedelta(days=30)}
+            depuis = now - mapping[periode]
+            jusqu_a = now
     else:
         depuis  = _parse_dt(from_, now - timedelta(hours=24))
         jusqu_a = _parse_dt(to, now)
@@ -64,9 +71,15 @@ async def stats_releves(
 ):
     now = datetime.now(timezone.utc)
     if periode:
-        mapping = {"24h": timedelta(hours=24), "7j": timedelta(days=7), "30j": timedelta(days=30)}
-        depuis  = now - mapping.get(periode, timedelta(hours=24))
-        jusqu_a = now
+        if periode == "24h":
+            # 24h = jour courant entier (0h00 à 23h59)
+            depuis = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            jusqu_a = depuis + timedelta(days=1) - timedelta(microseconds=1)
+        else:
+            # 7j, 30j = derniers N jours
+            mapping = {"7j": timedelta(days=7), "30j": timedelta(days=30)}
+            depuis  = now - mapping.get(periode, timedelta(hours=24))
+            jusqu_a = now
     else:
         depuis  = _parse_dt(from_, now - timedelta(hours=24))
         jusqu_a = _parse_dt(to, now)
@@ -89,9 +102,15 @@ async def exporter_csv(
 ):
     now = datetime.now(timezone.utc)
     if periode:
-        mapping = {"24h": timedelta(hours=24), "7j": timedelta(days=7), "30j": timedelta(days=30)}
-        depuis  = now - mapping.get(periode, timedelta(hours=24))
-        jusqu_a = now
+        if periode == "24h":
+            # 24h = jour courant entier (0h00 à 23h59)
+            depuis = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            jusqu_a = depuis + timedelta(days=1) - timedelta(microseconds=1)
+        else:
+            # 7j, 30j = derniers N jours
+            mapping = {"7j": timedelta(days=7), "30j": timedelta(days=30)}
+            depuis  = now - mapping.get(periode, timedelta(hours=24))
+            jusqu_a = now
     else:
         depuis  = _parse_dt(from_, now - timedelta(hours=24))
         jusqu_a = _parse_dt(to, now)

@@ -213,6 +213,27 @@ nav button.active    { background: var(--color-text); color: var(--color-bg); }
   margin-bottom: 1rem;
 }
 .chart-principal-wrap h3 { font-size: var(--text-base); margin-bottom: 1rem; color: var(--color-accent); }
+
+.legende-personnalisee {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+}
+
+.legende-personnalisee > div {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.legende-personnalisee svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .chart-canvas-wrap {
   position: relative;
   height: 200px;

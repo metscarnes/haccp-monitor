@@ -318,6 +318,16 @@ async function chargerHistorique() {
     const statsData = await apiFetch(url.replace('/releves?', '/releves/stats?'));
     renderStats(statsData, seuilMin, seuilMax);
 
+    // Légende personnalisée
+    const wrapChart = document.querySelector('.chart-principal-wrap');
+    let legendeDiv = wrapChart.querySelector('.legende-personnalisee');
+    if (!legendeDiv) {
+      legendeDiv = document.createElement('div');
+      legendeDiv.className = 'legende-personnalisee';
+      wrapChart.insertAdjacentElement('afterbegin', legendeDiv);
+    }
+    legendeDiv.innerHTML = creerLegendHTML();
+
     // Chart
     const canvas = document.getElementById('chart-historique');
     detruireChart(chartHistorique);
