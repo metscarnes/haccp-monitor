@@ -299,6 +299,8 @@ async def _watchdog_perte_signal() -> None:
                             try:
                                 derniere = datetime.fromisoformat(
                                     releve["horodatage"].replace("Z", "+00:00"))
+                                # Mettre en cache pour éviter les fausses alertes
+                                _derniere_reception[eid] = derniere
                             except Exception:
                                 continue
                         else:

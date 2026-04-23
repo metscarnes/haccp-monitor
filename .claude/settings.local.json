@@ -48,7 +48,13 @@
       "Bash(cp \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/historique-enregistrement.js\" \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/historique.js\")",
       "Bash(sed -n '14,40p' routes_alertes.py)",
       "Bash(sed -n '151,200p' routes_rapports.py)",
-      "Bash(sed -n '444,490p' routes_reception.py)"
+      "Bash(sed -n '444,490p' routes_reception.py)",
+      "Bash(xargs grep *)",
+      "Bash(sqlite3 data/haccp.db \".schema rapports\")",
+      "Bash(pip list *)",
+      "Bash(python3 -c \"from weasyprint import HTML; print\\('WeasyPrint OK'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Fix rapport PDF génération et serveur avec fallback HTML *)"
     ]
   }
 }
