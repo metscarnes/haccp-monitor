@@ -38,7 +38,7 @@ elBtnRetour.addEventListener('click', () => {
   const retour = new URLSearchParams(window.location.search).get('retour');
   if (retour === 'dlc') { window.location.href = '/dlc.html'; return; }
   if (window.history.length > 1) { window.history.back(); return; }
-  window.location.href = '/historique-enregistrement.html';
+  window.location.href = '/historique.html?tab=receptions';
 });
 
 // ── Fetch ───────────────────────────────────────────────────
