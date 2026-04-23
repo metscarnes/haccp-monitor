@@ -175,7 +175,6 @@ const TAB_HOOKS = {
   'he-content-cuis'  : () => cuisCharger(),
   'he-content-refr'  : () => refrCharger(),
   'he-content-etal'  : () => etalCharger(),
-  'he-content-etiq'  : () => etiqCharger(),
   'he-content-dlcdev': () => {},
   'he-content-nuis'  : () => nuisCharger(),
   'he-content-rapp'  : () => rappCharger(),
@@ -1743,32 +1742,6 @@ async function etalCharger() {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   🏷️ ÉTIQUETTES DLC
-   ══════════════════════════════════════════════════════════════ */
-async function etiqCharger() { etiqLister(); }
-async function etiqLister() {
-  const jours = $('he-etiq-jours').value || '30';
-  await chargerListe('etiq',
-    `/api/etiquettes?jours=${jours}`,
-    e => creerCarteSimple({
-      titre: e.produit_nom || '—',
-      meta : `${formatDateHeureFR(e.created_at || e.date_generation)} — DLC : ${formatDateFR(e.dlc)}`,
-      sousTitre: e.numero_lot ? `Lot : ${e.numero_lot}` : null,
-      chips: [
-        e.poids ? `${e.poids}` : null,
-        e.statut_impression || null,
-      ].filter(Boolean),
-      variant: 'ok',
-    }),
-    { singulier: 'étiquette', pluriel: 'étiquettes' }
-  );
-}
-_onReady(() => {
-  $('he-etiq-filtrer')?.addEventListener('click', etiqLister);
-  $('he-etiq-jours')  ?.addEventListener('change', etiqLister);
-});
-
-/* ══════════════════════════════════════════════════════════════
    🐀 NUISIBLES (grille par semaine)
    ══════════════════════════════════════════════════════════════ */
 async function nuisCharger() {
@@ -1870,7 +1843,6 @@ const TAB_MAP = {
   cuissons     : { cat: 'temp',  btn: 'he-tab-cuis'  },
   refroidissements: { cat: 'temp', btn: 'he-tab-refr' },
   etalonnages  : { cat: 'temp',  btn: 'he-tab-etal'  },
-  etiquettes   : { cat: 'flux',  btn: 'he-tab-etiq'  },
   dlc          : { cat: 'flux',  btn: 'he-tab-dlcdev'},
   nuisibles    : { cat: 'haccp', btn: 'he-tab-nuis'  },
   rapports     : { cat: 'rap',   btn: 'he-tab-rapp'  },
