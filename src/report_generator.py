@@ -88,19 +88,34 @@ async def generer(db, boutique_id: int, type_rapport: str, debut: date, fin: dat
     nom_fichier = f"rapport_{type_rapport}_{boutique_id}_{debut}_{fin}.pdf"
     pdf_path    = RAPPORTS_DIR / nom_fichier
     sha256      = None
+    html_path   = pdf_path.with_suffix(".html")
 
+    # Sauvegarder le HTML d'abord (fallback)
+    html_path.write_text(html, encoding="utf-8")
+
+    # Essayer de générer un PDF avec WeasyPrint
     try:
         from weasyprint import HTML as WP_HTML
         WP_HTML(string=html).write_pdf(str(pdf_path))
         sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
-        logger.info("PDF généré : %s", pdf_path)
+        logger.info("PDF généré avec WeasyPrint : %s", pdf_path)
     except ImportError:
-        logger.warning("WeasyPrint absent — PDF non généré, HTML sauvegardé")
-        html_path = pdf_path.with_suffix(".html")
-        html_path.write_text(html, encoding="utf-8")
+        logger.info("WeasyPrint non disponible, tentative avec pdfkit")
+    except Exception as exc:
+        logger.warning("Erreur WeasyPrint : %s, tentative avec pdfkit", type(exc).__name__)
+
+    # Essayer pdfkit comme fallback
+    try:
+        import pdfkit
+        pdfkit.from_string(html, str(pdf_path))
+        sha256 = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+        logger.info("PDF généré avec pdfkit : %s", pdf_path)
+    except ImportError:
+        logger.info("pdfkit non disponible — utilisation du HTML")
         pdf_path = html_path
     except Exception as exc:
-        logger.error("Erreur WeasyPrint : %s", exc)
+        logger.warning("Erreur pdfkit : %s — utilisation du HTML", type(exc).__name__)
+        pdf_path = html_path
 
     rapport_id = await create_rapport(db, {
         "boutique_id":  boutique_id,

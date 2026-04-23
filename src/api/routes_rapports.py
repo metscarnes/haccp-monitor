@@ -60,9 +60,14 @@ async def telecharger_rapport(rapport_id: int):
     if not path.exists():
         raise HTTPException(404, "Fichier PDF introuvable sur le disque")
 
+    # Déterminer le media type basé sur l'extension
+    media_type = "application/pdf"
+    if path.suffix.lower() == ".html":
+        media_type = "text/html; charset=utf-8"
+
     return FileResponse(
         str(path),
-        media_type="application/pdf",
+        media_type=media_type,
         filename=path.name,
     )
 
@@ -147,6 +152,25 @@ async def telecharger_csv(sonde: str, jour: str):
 
 
 # ---------------------------------------------------------------------------
+
+@router.get("/debug/list")
+async def debug_list_rapports():
+    """Debug endpoint pour voir tous les rapports."""
+    from pathlib import Path
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM rapports ORDER BY id DESC LIMIT 10")
+        rows = await cursor.fetchall()
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        if d.get("fichier_path"):
+            path = Path(d["fichier_path"])
+            d["file_exists"] = path.exists()
+            d["file_size"] = path.stat().st_size if path.exists() else None
+        result.append(d)
+    return result
+
 
 @router.get("")
 async def liste_rapports(boutique_id: Optional[int] = None):
