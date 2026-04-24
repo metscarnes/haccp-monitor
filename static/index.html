@@ -33,7 +33,6 @@
     <button data-vue="historique">Historique</button>
     <button data-vue="alertes">Alertes</button>
     <button data-vue="rapports">Rapports</button>
-    <button data-vue="configuration">Configuration</button>
   </nav>
 
   <main>
@@ -148,72 +147,6 @@
     </div>
 
 
-    <!-- ===== VUE CONFIGURATION ===== -->
-    <div id="vue-configuration">
-
-      <div class="config-section">
-        <h2 class="config-titre">Ajouter une enceinte</h2>
-        <form id="form-enceinte" class="config-form">
-          <div class="config-champ">
-            <label for="enc-nom">Nom (friendly name) <span class="requis">*</span></label>
-            <input type="text" id="enc-nom" placeholder="Ex : Frigo vitrine charcuterie" required>
-          </div>
-
-          <div class="config-champ">
-            <label for="enc-type">Type <span class="requis">*</span></label>
-            <select id="enc-type" required>
-              <option value="">— Choisir un type —</option>
-              <option value="refrigerateur">Réfrigérateur</option>
-              <option value="congelateur">Congélateur</option>
-              <option value="vitrine_refrigeree">Vitrine réfrigérée</option>
-              <option value="chambre_froide_positive">Chambre froide positive</option>
-              <option value="chambre_froide_negative">Chambre froide négative</option>
-              <option value="autre">Autre</option>
-            </select>
-          </div>
-
-          <div class="config-champ">
-            <label for="enc-sonde">Friendly name Zigbee2MQTT</label>
-            <input type="text" id="enc-sonde" placeholder="Ex : chambre_froide_1">
-            <span class="config-champ-aide">Doit correspondre exactement au nom configuré dans Zigbee2MQTT (topic : zigbee2mqtt/<strong>friendly_name</strong>)</span>
-          </div>
-
-          <div class="config-grille">
-            <div class="config-champ">
-              <label for="enc-temp-min">Seuil T° min (°C)</label>
-              <input type="number" id="enc-temp-min" value="0" step="0.5">
-            </div>
-            <div class="config-champ">
-              <label for="enc-temp-max">Seuil T° max (°C)</label>
-              <input type="number" id="enc-temp-max" value="4" step="0.5">
-            </div>
-            <div class="config-champ">
-              <label for="enc-hum-max">Seuil humidité max (%)</label>
-              <input type="number" id="enc-hum-max" value="90" step="1" min="0" max="100">
-            </div>
-            <div class="config-champ">
-              <label for="enc-delai">Délai alerte (min)</label>
-              <input type="number" id="enc-delai" value="5" step="1" min="1">
-            </div>
-          </div>
-
-          <div id="config-msg" class="config-msg" style="display:none"></div>
-
-          <div class="config-actions">
-            <button type="submit" class="btn btn-primaire" id="btn-sauver-enceinte">Ajouter l'enceinte</button>
-            <button type="button" class="btn btn-secondaire" id="btn-annuler-enceinte" style="display:none">Annuler</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="config-section">
-        <h2 class="config-titre">Enceintes existantes</h2>
-        <div id="liste-config-enceintes" class="liste-config-enceintes">
-          <div class="spinner"></div>
-        </div>
-      </div>
-
-    </div>
 
   </main>
 

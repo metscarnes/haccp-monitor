@@ -106,6 +106,55 @@
         <div id="enceintes-error" class="admin-error" hidden></div>
         <div id="enceintes-content" hidden>
           <div class="admin-enceintes-grid" id="enceintes-grid"></div>
+
+          <form class="admin-form" id="enceintes-form" style="margin-top:1rem">
+            <h3 class="admin-form-titre" id="enceintes-form-titre" style="margin:0 0 .75rem">Ajouter une enceinte</h3>
+            <div class="admin-form-row">
+              <div class="admin-field">
+                <label for="enc-nom">Nom *</label>
+                <input type="text" id="enc-nom" placeholder="Ex : Frigo vitrine charcuterie" required>
+              </div>
+              <div class="admin-field">
+                <label for="enc-type">Type *</label>
+                <select id="enc-type" required>
+                  <option value="">—</option>
+                  <option value="refrigerateur">Réfrigérateur</option>
+                  <option value="congelateur">Congélateur</option>
+                  <option value="vitrine_refrigeree">Vitrine réfrigérée</option>
+                  <option value="chambre_froide_positive">Chambre froide positive</option>
+                  <option value="chambre_froide_negative">Chambre froide négative</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              <div class="admin-field">
+                <label for="enc-sonde">Friendly name Zigbee2MQTT</label>
+                <input type="text" id="enc-sonde" placeholder="Ex : chambre_froide_1">
+              </div>
+            </div>
+            <div class="admin-form-row">
+              <div class="admin-field">
+                <label for="enc-temp-min">T° min (°C)</label>
+                <input type="number" id="enc-temp-min" value="0" step="0.5">
+              </div>
+              <div class="admin-field">
+                <label for="enc-temp-max">T° max (°C)</label>
+                <input type="number" id="enc-temp-max" value="4" step="0.5">
+              </div>
+              <div class="admin-field">
+                <label for="enc-hum-max">Hum. max (%)</label>
+                <input type="number" id="enc-hum-max" value="90" min="0" max="100">
+              </div>
+              <div class="admin-field">
+                <label for="enc-delai">Délai alerte (min)</label>
+                <input type="number" id="enc-delai" value="5" min="1">
+              </div>
+            </div>
+            <div class="admin-form-row">
+              <button type="submit" class="btn btn-primaire" id="enc-btn-sauver">Ajouter l'enceinte</button>
+              <button type="button" class="btn btn-secondaire" id="enc-btn-annuler" hidden>Annuler</button>
+            </div>
+            <div id="enc-msg" class="admin-depan-msg" hidden></div>
+          </form>
         </div>
       </div>
     </section>
@@ -450,6 +499,8 @@
     });
 
     // ── Enceintes ───────────────────────────────────────────
+    let enceinteEnEdition = null; // null = mode création, id = mode édition
+
     async function loadEnceintes() {
       showLoader('enceintes');
       try {
@@ -463,20 +514,6 @@
       }
     }
 
-    function getEnceinteStatus(enceinte) {
-      if (!enceinte.derniere_temperature && !enceinte.derniere_temperature !== 0) return 'hors-ligne';
-      const t = enceinte.derniere_temperature;
-      const min = parseFloat(enceinte.seuil_min || -99);
-      const max = parseFloat(enceinte.seuil_max || 99);
-      if (t < min || t > max) return 'alerte';
-      if (t < min + 0.5 || t > max - 0.5) return 'attention';
-      return 'ok';
-    }
-
-    function getStatusLabel(status) {
-      return { ok: 'OK', attention: 'Attention', alerte: 'Alerte', 'hors-ligne': 'Hors ligne' }[status] || '?';
-    }
-
     function renderEnceintes(list) {
       const grid = $('enceintes-grid');
       grid.innerHTML = '';
@@ -485,32 +522,148 @@
         return;
       }
       list.forEach(e => {
-        const status = getEnceinteStatus(e);
-        const temp = e.derniere_temperature;
-        const tempStr = (temp !== null && temp !== undefined) ? `${temp.toFixed(1)}<span class="unite">°C</span>` : '—';
-        const min = e.seuil_min ?? '?';
-        const max = e.seuil_max ?? '?';
-        const friendly = e.zigbee_nom || e.nom || 'Sonde';
+        const min = e.seuil_temp_min ?? '—';
+        const max = e.seuil_temp_max ?? '—';
+        const hum = e.seuil_hum_max ?? '—';
+        const delai = e.delai_alerte_minutes ?? '—';
+        const zigbee = e.sonde_zigbee_id
+          ? `📡 ${escHtml(e.sonde_zigbee_id)}`
+          : '<em style="color:#aaa">Aucune sonde</em>';
         const carte = document.createElement('div');
-        carte.className = `admin-enceinte-carte admin-enceinte-carte--${status}`;
+        carte.className = 'admin-enceinte-carte';
+        carte.dataset.id = e.id;
         carte.innerHTML = `
           <div class="admin-enceinte-entete">
             <div>
               <div class="admin-enceinte-nom">${escHtml(e.nom)}</div>
-              <div class="admin-enceinte-zigbee">${escHtml(friendly)}</div>
+              <div class="admin-enceinte-zigbee">${zigbee}</div>
             </div>
-            <span class="badge badge-${status === 'hors-ligne' ? 'hors-ligne' : status}">${getStatusLabel(status)}</span>
           </div>
-          <div class="admin-enceinte-temp">${tempStr}</div>
-          <div class="admin-enceinte-seuils">Seuil : ${min}°C → ${max}°C</div>
+          <div class="admin-enceinte-seuils">
+            T° : ${min}°C → ${max}°C · Hum. max : ${hum}% · Délai : ${delai} min
+          </div>
           <div class="admin-enceinte-meta">
-            <span>${e.type || 'sonde'}</span>
-            ${e.battery !== undefined ? `<span>🔋 ${e.battery}%</span>` : ''}
+            <span>${escHtml((e.type || 'sonde').replace(/_/g, ' '))}</span>
+          </div>
+          <div class="admin-enceinte-actions" style="display:flex; gap:.5rem; margin-top:.5rem;">
+            <button class="btn btn-secondaire btn-sm btn-editer-enceinte" data-id="${e.id}">Modifier</button>
+            <button class="btn btn-sm btn-supprimer-enceinte" data-id="${e.id}" data-nom="${escHtml(e.nom)}"
+              style="background:#fdecea; color:#c93030; border:1px solid #f5c6c6;">Supprimer</button>
           </div>
         `;
         grid.appendChild(carte);
       });
+
+      grid.querySelectorAll('.btn-editer-enceinte').forEach(btn => {
+        btn.addEventListener('click', () => chargerEditionEnceinte(parseInt(btn.dataset.id)));
+      });
+      grid.querySelectorAll('.btn-supprimer-enceinte').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id  = parseInt(btn.dataset.id);
+          const nom = btn.dataset.nom;
+          if (!confirm(`Supprimer "${nom}" et toutes ses mesures ? Cette action est irréversible.`)) return;
+          try {
+            const res = await fetch(`${API_BASE}/api/enceintes/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(await res.text());
+            loadEnceintes();
+          } catch (err) {
+            alert('Erreur lors de la suppression : ' + err.message);
+          }
+        });
+      });
     }
+
+    async function chargerEditionEnceinte(id) {
+      try {
+        const res = await fetch(`${API_BASE}/api/enceintes/${id}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const enc = await res.json();
+        enceinteEnEdition = id;
+
+        $('enc-nom').value      = enc.nom ?? '';
+        $('enc-type').value     = enc.type ?? '';
+        $('enc-sonde').value    = enc.sonde_zigbee_id ?? '';
+        $('enc-temp-min').value = enc.seuil_temp_min ?? 0;
+        $('enc-temp-max').value = enc.seuil_temp_max ?? 4;
+        $('enc-hum-max').value  = enc.seuil_hum_max ?? 90;
+        $('enc-delai').value    = enc.delai_alerte_minutes ?? 5;
+
+        $('enceintes-form-titre').textContent = `Modifier l'enceinte`;
+        $('enc-btn-sauver').textContent = 'Enregistrer les modifications';
+        $('enc-btn-annuler').hidden = false;
+        $('enceintes-form').scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        afficherMsgEnceinte('Erreur lors du chargement : ' + err.message, 'erreur');
+      }
+    }
+
+    function resetFormEnceinte() {
+      enceinteEnEdition = null;
+      $('enceintes-form').reset();
+      $('enc-temp-min').value = 0;
+      $('enc-temp-max').value = 4;
+      $('enc-hum-max').value  = 90;
+      $('enc-delai').value    = 5;
+      $('enceintes-form-titre').textContent = 'Ajouter une enceinte';
+      $('enc-btn-sauver').textContent = 'Ajouter l\'enceinte';
+      $('enc-btn-annuler').hidden = true;
+      afficherMsgEnceinte('', '');
+    }
+
+    function afficherMsgEnceinte(texte, type) {
+      const el = $('enc-msg');
+      if (!texte) { el.hidden = true; el.textContent = ''; return; }
+      el.hidden = false;
+      el.textContent = texte;
+      el.className = type === 'ok'
+        ? 'admin-depan-msg admin-depan-msg--ok'
+        : type === 'erreur'
+          ? 'admin-depan-msg admin-depan-msg--erreur'
+          : 'admin-depan-msg admin-depan-msg--info';
+    }
+
+    $('enceintes-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = $('enc-btn-sauver');
+      btn.disabled = true;
+
+      const payload = {
+        nom:                  $('enc-nom').value.trim(),
+        type:                 $('enc-type').value,
+        sonde_zigbee_id:      $('enc-sonde').value.trim() || null,
+        seuil_temp_min:       parseFloat($('enc-temp-min').value),
+        seuil_temp_max:       parseFloat($('enc-temp-max').value),
+        seuil_hum_max:        parseFloat($('enc-hum-max').value),
+        delai_alerte_minutes: parseInt($('enc-delai').value, 10),
+      };
+
+      try {
+        let res;
+        if (enceinteEnEdition) {
+          res = await fetch(`${API_BASE}/api/enceintes/${enceinteEnEdition}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+        } else {
+          res = await fetch(`${API_BASE}/api/enceintes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, boutique_id: 1 }),
+          });
+        }
+        if (!res.ok) throw new Error(await res.text());
+        afficherMsgEnceinte(enceinteEnEdition ? 'Enceinte mise à jour.' : 'Enceinte ajoutée.', 'ok');
+        resetFormEnceinte();
+        loadEnceintes();
+      } catch (err) {
+        afficherMsgEnceinte('Erreur : ' + err.message, 'erreur');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('enc-btn-annuler').addEventListener('click', resetFormEnceinte);
 
     // ── Alertes ─────────────────────────────────────────────
     async function loadAlertes() {
