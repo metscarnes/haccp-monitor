@@ -472,8 +472,13 @@ async function chargerAlertes() {
       );
     }
 
+    // Filtrer uniquement les alertes de dépassement de température
+    alertes = alertes.filter(a =>
+      a.type === 'temperature_haute' || a.type === 'temperature_basse'
+    );
+
     if (!alertes.length) {
-      conteneur.innerHTML = '<p style="color:var(--brun); padding:1rem">Aucune alerte.</p>';
+      conteneur.innerHTML = '<p style="color:var(--brun); padding:1rem">Aucune alerte de température.</p>';
       return;
     }
 
