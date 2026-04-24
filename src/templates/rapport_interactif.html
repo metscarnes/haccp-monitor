@@ -344,6 +344,49 @@
   .timeline-item-date { font-size: 0.72rem; color: var(--gris); }
   .timeline-item-details { font-size: 0.82rem; color: var(--brun); }
 
+  /* ---------- DÉTAILS NC DANS LE HERO ---------- */
+  .nc-details {
+    margin-top: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    text-align: left;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .nc-enceinte-ligne {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    background: rgba(201, 48, 48, 0.07);
+    border-radius: 8px;
+    padding: 0.45rem 0.8rem;
+    font-size: 0.85rem;
+  }
+  .nc-enceinte-nom {
+    font-weight: 700;
+    color: var(--brun-profond);
+    min-width: 120px;
+  }
+  .nc-enceinte-seuil {
+    color: var(--gris);
+    font-size: 0.78rem;
+    background: #f0ebe3;
+    padding: 0.1rem 0.5rem;
+    border-radius: 10px;
+  }
+  .nc-enceinte-temp {
+    color: var(--rouge);
+    flex: 1;
+  }
+  .nc-enceinte-duree {
+    color: var(--gris);
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+
   .aucune-alerte {
     text-align: center;
     padding: 1.5rem;
@@ -667,8 +710,47 @@
       document.getElementById('hero-icone').textContent = '⚠️';
       document.getElementById('hero-verdict').textContent = 'NON CONFORME';
       const totalDuree = stats.reduce((s, x) => s + x.dureeSec, 0);
-      document.getElementById('hero-sous').textContent =
-        `${totalNC} non-conformité(s) détectée(s) — durée cumulée hors seuil : ${fmtDuree(totalDuree)}.`;
+
+      // Détail des dépassements : températures réellement enregistrées pendant chaque alerte
+      const lignesNC = stats.filter(s => s.nbNC > 0).map(s => {
+        const e = s.enceinte;
+        const aEnc = alertes.filter(a =>
+          a.enceinte_id === e.id &&
+          (a.type === 'temperature_haute' || a.type === 'temperature_basse')
+        );
+        // Relevés pendant les périodes d'alerte + valeur de déclenchement
+        const tempsNC = [];
+        aEnc.forEach(al => {
+          if (al.valeur != null) tempsNC.push(al.valeur);
+          const t1 = new Date(al.debut).getTime();
+          const t2 = al.fin ? new Date(al.fin).getTime() : Date.now();
+          releves.forEach(r => {
+            if (r.enceinte_id === e.id && r.temperature != null) {
+              const ts = new Date(r.horodatage).getTime();
+              if (ts >= t1 && ts <= t2) tempsNC.push(r.temperature);
+            }
+          });
+        });
+        const seuilMin = e.seuil_temp_min;
+        const seuilMax = e.seuil_temp_max;
+        const seuilStr = `${seuilMin != null ? seuilMin.toFixed(1) : '—'} / ${seuilMax != null ? seuilMax.toFixed(1) : '—'}°C`;
+        let tempStr = '—';
+        if (tempsNC.length) {
+          const mn = Math.min(...tempsNC).toFixed(1);
+          const mx = Math.max(...tempsNC).toFixed(1);
+          tempStr = mn === mx ? `${mn}°C` : `${mn}°C → ${mx}°C`;
+        }
+        return `<div class="nc-enceinte-ligne">
+          <span class="nc-enceinte-nom">${e.nom}</span>
+          <span class="nc-enceinte-seuil">seuil ${seuilStr}</span>
+          <span class="nc-enceinte-temp">T° enregistrées : <strong>${tempStr}</strong></span>
+          <span class="nc-enceinte-duree">${fmtDuree(s.dureeSec)}</span>
+        </div>`;
+      }).join('');
+
+      document.getElementById('hero-sous').innerHTML =
+        `${totalNC} non-conformité(s) détectée(s) — durée cumulée hors seuil : ${fmtDuree(totalDuree)}
+        <div class="nc-details">${lignesNC}</div>`;
     }
   }
 
@@ -687,7 +769,7 @@
       return `
         <tr>
           <td><strong>${e.nom}</strong></td>
-          <td>${e.seuil_min?.toFixed(1) || '—'} / ${e.seuil_max?.toFixed(1) || '—'}</td>
+          <td>${e.seuil_temp_min != null ? e.seuil_temp_min.toFixed(1) : '—'} / ${e.seuil_temp_max != null ? e.seuil_temp_max.toFixed(1) : '—'}</td>
           <td>${fmtT(s.tempMin)}</td>
           <td><strong>${fmtT(s.tempMoy)}</strong></td>
           <td>${fmtT(s.tempMax)}</td>
