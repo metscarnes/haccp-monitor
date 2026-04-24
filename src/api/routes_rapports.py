@@ -96,6 +96,7 @@ async def rapport_interactif(boutique_id: int, jours: int = 90):
                     "debut":       al["debut"],
                     "fin":         al.get("fin"),
                     "valeur":      al.get("valeur"),
+                    "seuil":       al.get("seuil"),
                 })
 
     template = _jinja_env.get_template("rapport_interactif.html")

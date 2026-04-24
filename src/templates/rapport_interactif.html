@@ -365,6 +365,13 @@
     padding: 0.45rem 0.8rem;
     font-size: 0.85rem;
   }
+  .nc-enceinte-date {
+    font-size: 0.76rem;
+    color: var(--gris);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    min-width: 80px;
+  }
   .nc-enceinte-nom {
     font-weight: 700;
     color: var(--brun-profond);
@@ -711,46 +718,65 @@
       document.getElementById('hero-verdict').textContent = 'NON CONFORME';
       const totalDuree = stats.reduce((s, x) => s + x.dureeSec, 0);
 
-      // Détail des dépassements : températures réellement enregistrées pendant chaque alerte
-      const lignesNC = stats.filter(s => s.nbNC > 0).map(s => {
-        const e = s.enceinte;
-        const aEnc = alertes.filter(a =>
-          a.enceinte_id === e.id &&
-          (a.type === 'temperature_haute' || a.type === 'temperature_basse')
-        );
-        // Relevés pendant les périodes d'alerte + valeur de déclenchement
-        const tempsNC = [];
-        aEnc.forEach(al => {
-          if (al.valeur != null) tempsNC.push(al.valeur);
-          const t1 = new Date(al.debut).getTime();
-          const t2 = al.fin ? new Date(al.fin).getTime() : Date.now();
-          releves.forEach(r => {
-            if (r.enceinte_id === e.id && r.temperature != null) {
-              const ts = new Date(r.horodatage).getTime();
-              if (ts >= t1 && ts <= t2) tempsNC.push(r.temperature);
-            }
-          });
+      // Une ligne par alerte NC : date historique, seuil historique, T° enregistrées
+      const alertesNC = alertes
+        .filter(a => a.type === 'temperature_haute' || a.type === 'temperature_basse')
+        .sort((a, b) => new Date(b.debut) - new Date(a.debut));
+
+      const MAX_LIGNES = 8;
+      const lignesNC = alertesNC.slice(0, MAX_LIGNES).map(al => {
+        const e = ENCEINTES.find(x => x.id === al.enceinte_id);
+        const nomEnc = e?.nom || 'Enceinte inconnue';
+
+        // Seuil historique enregistré au moment de l'alerte
+        const seuilHisto = al.seuil;
+        const isHaute = al.type === 'temperature_haute';
+        const seuilStr = seuilHisto != null
+          ? `seuil ${isHaute ? 'max' : 'min'} ${seuilHisto.toFixed(1)}°C`
+          : '';
+
+        // Températures réellement enregistrées pendant la période d'alerte
+        const t1 = new Date(al.debut).getTime();
+        const t2 = al.fin ? new Date(al.fin).getTime() : Date.now();
+        const tempsNC = al.valeur != null ? [al.valeur] : [];
+        releves.forEach(r => {
+          if (r.enceinte_id === al.enceinte_id && r.temperature != null) {
+            const ts = new Date(r.horodatage).getTime();
+            if (ts >= t1 && ts <= t2) tempsNC.push(r.temperature);
+          }
         });
-        const seuilMin = e.seuil_temp_min;
-        const seuilMax = e.seuil_temp_max;
-        const seuilStr = `${seuilMin != null ? seuilMin.toFixed(1) : '—'} / ${seuilMax != null ? seuilMax.toFixed(1) : '—'}°C`;
         let tempStr = '—';
         if (tempsNC.length) {
           const mn = Math.min(...tempsNC).toFixed(1);
           const mx = Math.max(...tempsNC).toFixed(1);
           tempStr = mn === mx ? `${mn}°C` : `${mn}°C → ${mx}°C`;
         }
+
+        const dureeAl = al.fin
+          ? fmtDuree((new Date(al.fin) - new Date(al.debut)) / 1000)
+          : '<span style="color:var(--rouge)">en cours</span>';
+
+        // Date courte : jour/mois heure:min
+        const dDebut = new Date(al.debut);
+        const dateStr = dDebut.toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit'})
+          + ' ' + dDebut.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+
         return `<div class="nc-enceinte-ligne">
-          <span class="nc-enceinte-nom">${e.nom}</span>
-          <span class="nc-enceinte-seuil">seuil ${seuilStr}</span>
-          <span class="nc-enceinte-temp">T° enregistrées : <strong>${tempStr}</strong></span>
-          <span class="nc-enceinte-duree">${fmtDuree(s.dureeSec)}</span>
+          <span class="nc-enceinte-date">${dateStr}</span>
+          <span class="nc-enceinte-nom">${nomEnc}</span>
+          ${seuilStr ? `<span class="nc-enceinte-seuil">${seuilStr}</span>` : ''}
+          <span class="nc-enceinte-temp">T° : <strong>${tempStr}</strong></span>
+          <span class="nc-enceinte-duree">${dureeAl}</span>
         </div>`;
       }).join('');
 
+      const plusStr = alertesNC.length > MAX_LIGNES
+        ? `<div style="text-align:center; font-size:0.78rem; color:var(--gris); padding:0.3rem 0">… et ${alertesNC.length - MAX_LIGNES} autre(s) non-conformité(s) — voir l'historique des alertes ci-dessous</div>`
+        : '';
+
       document.getElementById('hero-sous').innerHTML =
         `${totalNC} non-conformité(s) détectée(s) — durée cumulée hors seuil : ${fmtDuree(totalDuree)}
-        <div class="nc-details">${lignesNC}</div>`;
+        <div class="nc-details">${lignesNC}${plusStr}</div>`;
     }
   }
 
