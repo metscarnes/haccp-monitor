@@ -137,13 +137,12 @@ async def taches_resume():
                 (BOUTIQUE_ID,),
             )
             seuils = {r[0]: int(r[1]) for r in params}
-            seuil_rouge  = seuils.get("dlc_alerte_rouge_jours",  1)
-            seuil_orange = seuils.get("dlc_alerte_orange_jours", 3)
+            seuil_rouge = seuils.get("dlc_alerte_rouge_jours", 1)
 
             # Plage : on remonte jusqu'à 30 jours en arrière pour couvrir les DLC
             # déjà dépassées encore ouvertes (devenir non saisi)
             date_debut = (today - timedelta(days=30)).isoformat()
-            date_fin   = (today + timedelta(days=seuil_orange)).isoformat()
+            date_fin   = (today + timedelta(days=SEUIL_A_VENIR_JOURS)).isoformat()
 
             items = await get_dlc_calendrier(db, BOUTIQUE_ID, date_debut, date_fin)
             # On ne garde que les items dont le devenir n'est pas encore saisi
@@ -165,7 +164,7 @@ async def taches_resume():
                     n_expirees += 1
                 elif jours <= seuil_rouge:
                     n_critiques += 1
-                elif jours <= seuil_orange:
+                elif jours <= SEUIL_A_VENIR_JOURS:
                     n_surveiller += 1
 
             if n_expirees > 0:
@@ -192,7 +191,7 @@ async def taches_resume():
                     "libelle": "DLC à surveiller",
                     "url":     "/dlc.html",
                     "icone":   "🟠",
-                    "detail":  f"{n_surveiller} produit(s) — DLC dans ≤ {seuil_orange} j",
+                    "detail":  f"{n_surveiller} produit(s) — DLC dans ≤ {SEUIL_A_VENIR_JOURS} j",
                 })
         except Exception as exc:
             logger.warning("hub résumé dlc : %s", exc)
