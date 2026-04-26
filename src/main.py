@@ -38,6 +38,7 @@ from src.api.routes_etalonnage   import router as router_etalonnage
 from src.api.routes_dlc           import router as router_dlc
 from src.api.routes_cuisson       import router as router_cuisson
 from src.api.routes_refroidissement import router as router_refroidissement
+from src.api.routes_hub             import router as router_hub
 
 load_dotenv()
 
@@ -133,6 +134,7 @@ app.include_router(router_cuisson)
 
 # Routes API — Refroidissement rapide (≤ 10 °C en ≤ 2 h)
 app.include_router(router_refroidissement)
+app.include_router(router_hub)
 
 
 # ---------------------------------------------------------------------------

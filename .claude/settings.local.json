@@ -59,7 +59,9 @@
       "Bash(git commit -m 'Fix rapport interactif : filtrer capteur_perdu, donut avec %, récap journalier *)",
       "Bash(git commit -m 'Rapport interactif : hierarchie claire en 3 niveaux de lecture *)",
       "Bash(node -c static/js/dashboard.js)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_hub.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK routes_hub'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK main'\\)\")"
     ]
   }
 }

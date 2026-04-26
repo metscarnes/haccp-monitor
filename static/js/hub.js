@@ -128,6 +128,99 @@ async function charger() {
   }
 }
 
+// ── Popup tâches HACCP (cloche header) ────────────────────────
+const elCloche       = document.getElementById('hub-cloche');
+const elClocheBadge  = document.getElementById('hub-cloche-badge');
+const elPopupOverlay = document.getElementById('hub-popup-overlay');
+const elPopupFermer  = document.getElementById('hub-popup-fermer');
+const elListeAuj     = document.getElementById('hub-popup-aujourdhui');
+const elListeAVenir  = document.getElementById('hub-popup-avenir');
+
+let popupDejaOuvert = false;   // évite la réouverture auto à chaque refresh
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function ligneTacheHtml(t) {
+  const classeEtat = t.etat === 'en_retard' ? 'hub-popup-item--retard' : '';
+  return `
+    <li class="hub-popup-item ${classeEtat}">
+      <a href="${t.url}" class="hub-popup-lien">
+        <span class="hub-popup-icone" aria-hidden="true">${t.icone ?? '📋'}</span>
+        <span class="hub-popup-texte">
+          <span class="hub-popup-libelle">${escHtml(t.libelle)}</span>
+          <span class="hub-popup-detail">${escHtml(t.detail ?? '')}</span>
+        </span>
+        <span class="hub-popup-fleche" aria-hidden="true">›</span>
+      </a>
+    </li>`;
+}
+
+function listeVideHtml(msg) {
+  return `<li class="hub-popup-vide">${escHtml(msg)}</li>`;
+}
+
+function ouvrirPopup() {
+  elPopupOverlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function fermerPopup() {
+  elPopupOverlay.hidden = true;
+  document.body.style.overflow = '';
+}
+
+elCloche.addEventListener('click', ouvrirPopup);
+elPopupFermer.addEventListener('click', fermerPopup);
+elPopupOverlay.addEventListener('click', (e) => {
+  if (e.target === elPopupOverlay) fermerPopup();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !elPopupOverlay.hidden) fermerPopup();
+});
+
+async function chargerResumeTaches() {
+  let data;
+  try {
+    data = await apiFetch('/api/hub/taches-resume');
+  } catch {
+    elCloche.hidden = true;
+    return;
+  }
+
+  const auj    = data.aujourd_hui ?? [];
+  const avenir = data.a_venir     ?? [];
+  const total  = auj.length + avenir.length;
+
+  // Cloche : visible uniquement s'il y a quelque chose à signaler
+  elCloche.hidden = (total === 0);
+  if (total > 0) {
+    elClocheBadge.textContent = String(total);
+    elClocheBadge.hidden = false;
+    elCloche.classList.toggle('hub-btn-cloche--alerte', auj.length > 0);
+  }
+
+  // Remplissage des listes
+  elListeAuj.innerHTML = auj.length
+    ? auj.map(ligneTacheHtml).join('')
+    : listeVideHtml('✓ Tout est à jour aujourd\'hui');
+
+  elListeAVenir.innerHTML = avenir.length
+    ? avenir.map(ligneTacheHtml).join('')
+    : listeVideHtml('Aucune échéance dans les 14 prochains jours');
+
+  // Ouverture auto au premier chargement (si non vide)
+  if (!popupDejaOuvert && total > 0) {
+    popupDejaOuvert = true;
+    ouvrirPopup();
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 charger();
+chargerResumeTaches();
 setInterval(charger, REFRESH_MS);
+setInterval(chargerResumeTaches, REFRESH_MS);

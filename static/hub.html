@@ -24,6 +24,11 @@
   <header class="hub-header">
     <div class="hub-titre">Au Comptoir des Lilas</div>
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+    <button type="button" id="hub-cloche" class="hub-btn-cloche"
+            aria-label="Voir les tâches du jour" hidden>
+      <span aria-hidden="true">🔔</span>
+      <span id="hub-cloche-badge" class="hub-cloche-badge" hidden>0</span>
+    </button>
     <a href="/admin.html" class="hub-btn-admin" aria-label="Configuration">⚙ Admin</a>
   </header>
 
@@ -90,6 +95,36 @@
     </a>
 
   </main>
+
+  <!-- ========================================================
+       POPUP — Tâches du jour & à venir
+  ========================================================= -->
+  <div id="hub-popup-overlay" class="hub-popup-overlay" hidden role="dialog"
+       aria-modal="true" aria-labelledby="hub-popup-titre">
+    <div class="hub-popup">
+      <header class="hub-popup-header">
+        <h2 id="hub-popup-titre" class="hub-popup-titre">📋 Tâches HACCP</h2>
+        <button type="button" id="hub-popup-fermer" class="hub-popup-fermer"
+                aria-label="Fermer">✕</button>
+      </header>
+
+      <section class="hub-popup-section">
+        <h3 class="hub-popup-section-titre">
+          <span class="hub-popup-pastille hub-popup-pastille--rouge"></span>
+          À faire aujourd'hui
+        </h3>
+        <ul id="hub-popup-aujourdhui" class="hub-popup-liste"></ul>
+      </section>
+
+      <section class="hub-popup-section">
+        <h3 class="hub-popup-section-titre">
+          <span class="hub-popup-pastille hub-popup-pastille--orange"></span>
+          À venir (≤ 14 jours)
+        </h3>
+        <ul id="hub-popup-avenir" class="hub-popup-liste"></ul>
+      </section>
+    </div>
+  </div>
 
   <script src="/static/js/hub.js"></script>
 </body>

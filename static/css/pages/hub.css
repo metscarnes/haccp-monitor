@@ -294,3 +294,205 @@
   .hub-tuile-titre { font-size: 1rem; }
   .hub-bandeau { padding: 0.5rem 1rem; font-size: var(--text-sm); }
 }
+
+/* ============================================================
+   Cloche d'alerte (header) + popup tâches HACCP
+   ============================================================ */
+
+.hub-btn-cloche {
+  position: relative;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.25);
+  color: var(--color-bg);
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s, transform .15s;
+}
+.hub-btn-cloche:hover,
+.hub-btn-cloche:focus-visible {
+  background: rgba(255,255,255,.12);
+}
+.hub-btn-cloche:active { transform: scale(0.95); }
+
+.hub-btn-cloche--alerte {
+  animation: hub-cloche-pulse 1.6s ease-in-out infinite;
+}
+@keyframes hub-cloche-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(201,48,48,.6); }
+  50%     { box-shadow: 0 0 0 8px rgba(201,48,48,0); }
+}
+
+.hub-cloche-badge {
+  position: absolute;
+  top: -4px; right: -4px;
+  min-width: 22px; height: 22px;
+  padding: 0 6px;
+  background: #C93030;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--color-text);
+}
+
+/* ── Popup overlay ── */
+.hub-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: hub-popup-fadein .15s ease-out;
+}
+@keyframes hub-popup-fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.hub-popup {
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #3D2008);
+  width: 100%;
+  max-width: 540px;
+  max-height: 85dvh;
+  border-radius: 14px;
+  overflow: auto;
+  box-shadow: 0 16px 48px rgba(0,0,0,.4);
+  animation: hub-popup-slidein .2s ease-out;
+}
+@keyframes hub-popup-slidein {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.hub-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  position: sticky;
+  top: 0;
+  background: inherit;
+}
+.hub-popup-titre {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.hub-popup-fermer {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  color: inherit;
+}
+.hub-popup-fermer:hover { background: rgba(0,0,0,.06); }
+
+.hub-popup-section {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.hub-popup-section:last-child { border-bottom: none; }
+
+.hub-popup-section-titre {
+  margin: 0 0 .6rem 0;
+  font-size: .95rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: rgba(0,0,0,.65);
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.hub-popup-pastille {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+}
+.hub-popup-pastille--rouge  { background: #C93030; }
+.hub-popup-pastille--orange { background: #E8913A; }
+
+.hub-popup-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.hub-popup-item {
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(0,0,0,.02);
+  overflow: hidden;
+}
+.hub-popup-item--retard {
+  border-color: #C93030;
+  background: rgba(201,48,48,.06);
+}
+
+.hub-popup-lien {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: .85rem;
+  align-items: center;
+  padding: .8rem 1rem;
+  text-decoration: none;
+  color: inherit;
+  min-height: 56px;
+}
+.hub-popup-lien:hover,
+.hub-popup-lien:focus-visible {
+  background: rgba(0,0,0,.04);
+}
+
+.hub-popup-icone {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.hub-popup-texte {
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  min-width: 0;
+}
+.hub-popup-libelle {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.hub-popup-detail {
+  font-size: .85rem;
+  color: rgba(0,0,0,.6);
+}
+.hub-popup-fleche {
+  font-size: 1.6rem;
+  color: rgba(0,0,0,.35);
+  font-weight: 300;
+}
+
+.hub-popup-vide {
+  list-style: none;
+  padding: .9rem 1rem;
+  color: rgba(0,0,0,.5);
+  font-style: italic;
+  text-align: center;
+  background: rgba(0,0,0,.02);
+  border-radius: 10px;
+}
