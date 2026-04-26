@@ -10,7 +10,8 @@ Sources agrégées :
 - Nettoyage  (quotidien)    → table registre_nettoyage
 - Nuisibles  (hebdomadaire) → table nuisibles_controles, semaine ISO en cours
 - Étalonnage (trimestriel)  → table etalonnages, dernier + 92 jours
-- DLC        (continu)      → table etiquettes_generees, seuils paramétrés
+- DLC        (continu)      → reception_lignes + fabrications (get_dlc_calendrier),
+                              avec exclusion des items dont le devenir est déjà saisi
 """
 
 import logging
@@ -18,7 +19,7 @@ from datetime import date as _date, timedelta
 
 from fastapi import APIRouter
 
-from src.database import get_db
+from src.database import get_db, get_dlc_calendrier
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,7 @@ async def taches_resume():
         except Exception as exc:
             logger.warning("hub résumé étalonnage : %s", exc)
 
-        # ── 4. DLC étiquettes ───────────────────────────────────
+        # ── 4. DLC (réceptions + fabrications) ──────────────────
         try:
             params = await db.execute_fetchall(
                 "SELECT cle, valeur FROM parametres "
@@ -139,17 +140,34 @@ async def taches_resume():
             seuil_rouge  = seuils.get("dlc_alerte_rouge_jours",  1)
             seuil_orange = seuils.get("dlc_alerte_orange_jours", 3)
 
-            today_iso  = today.isoformat()
-            rouge_iso  = (today + timedelta(days=seuil_rouge)).isoformat()
-            orange_iso = (today + timedelta(days=seuil_orange)).isoformat()
+            # Plage : on remonte jusqu'à 30 jours en arrière pour couvrir les DLC
+            # déjà dépassées encore ouvertes (devenir non saisi)
+            date_debut = (today - timedelta(days=30)).isoformat()
+            date_fin   = (today + timedelta(days=seuil_orange)).isoformat()
 
-            # DLC dépassées (urgent — déjà périmées)
-            row = await db.execute_fetchall(
-                "SELECT COUNT(*) FROM etiquettes_generees "
-                "WHERE boutique_id = ? AND dlc < ?",
-                (BOUTIQUE_ID, today_iso),
-            )
-            n_expirees = row[0][0] if row else 0
+            items = await get_dlc_calendrier(db, BOUTIQUE_ID, date_debut, date_fin)
+            # On ne garde que les items dont le devenir n'est pas encore saisi
+            ouverts = [it for it in items if not it.get("devenir_statut")]
+
+            n_expirees   = 0
+            n_critiques  = 0
+            n_surveiller = 0
+            for it in ouverts:
+                dlc_iso = it.get("dlc")
+                if not dlc_iso:
+                    continue
+                try:
+                    dlc = _date.fromisoformat(dlc_iso[:10])
+                except ValueError:
+                    continue
+                jours = (dlc - today).days
+                if jours < 0:
+                    n_expirees += 1
+                elif jours <= seuil_rouge:
+                    n_critiques += 1
+                elif jours <= seuil_orange:
+                    n_surveiller += 1
+
             if n_expirees > 0:
                 aujourd_hui.append({
                     "code":    "dlc_expirees",
@@ -159,14 +177,6 @@ async def taches_resume():
                     "etat":    "en_retard",
                     "detail":  f"{n_expirees} produit(s) à retirer",
                 })
-
-            # DLC critiques (≤ seuil rouge jours)
-            row = await db.execute_fetchall(
-                "SELECT COUNT(*) FROM etiquettes_generees "
-                "WHERE boutique_id = ? AND dlc >= ? AND dlc <= ?",
-                (BOUTIQUE_ID, today_iso, rouge_iso),
-            )
-            n_critiques = row[0][0] if row else 0
             if n_critiques > 0:
                 aujourd_hui.append({
                     "code":    "dlc_critiques",
@@ -176,15 +186,6 @@ async def taches_resume():
                     "etat":    "a_faire",
                     "detail":  f"{n_critiques} produit(s) — DLC dans ≤ {seuil_rouge} j",
                 })
-
-            # DLC à surveiller (entre rouge+1 et orange jours)
-            jour_apres_rouge = (today + timedelta(days=seuil_rouge + 1)).isoformat()
-            row = await db.execute_fetchall(
-                "SELECT COUNT(*) FROM etiquettes_generees "
-                "WHERE boutique_id = ? AND dlc >= ? AND dlc <= ?",
-                (BOUTIQUE_ID, jour_apres_rouge, orange_iso),
-            )
-            n_surveiller = row[0][0] if row else 0
             if n_surveiller > 0:
                 a_venir.append({
                     "code":    "dlc_surveiller",
