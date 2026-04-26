@@ -4,14 +4,13 @@
    Au Comptoir des Lilas — Mets Carnés Holding
 
    Tâches affichées :
-     - Nettoyage et désinfection  (nettoyage_desinfection)
-     - Nettoyage pièges oiseaux   (nettoyage_pieges_oiseaux)
+     - Présence rongeurs sur pièges (pieges_rongeurs)
+     - Nettoyage pièges oiseaux     (nettoyage_pieges_oiseaux)
    ============================================================ */
 
 const REFRESH_MS = 60_000;
 
-// Seuls ces deux codes de tâche sont affichés et traités
-const CODES_ACTIFS = new Set(['nettoyage_desinfection', 'pieges_rongeurs', 'nettoyage_pieges_oiseaux']);
+const CODES_ACTIFS = new Set(['pieges_rongeurs', 'nettoyage_pieges_oiseaux']);
 
 // ── État ──────────────────────────────────────────────────────
 let operateur     = null;   // prénom sélectionné
@@ -184,7 +183,6 @@ function carteHtml(tache, etat) {
 
 function iconeParCode(code) {
   const ICONES = {
-    nettoyage_desinfection:   '🧹',
     pieges_rongeurs:          '🪤',
     nettoyage_pieges_oiseaux: '🪤',
   };
@@ -237,24 +235,6 @@ function fermerModal() {
 /** Retourne le HTML des champs spécifiques selon le code de la tâche */
 function construireChamps(code) {
   switch (code) {
-
-    case 'nettoyage_desinfection':
-      return `
-        <fieldset class="modal-fieldset">
-          <legend class="modal-fieldset-titre">Produits utilisés</legend>
-          <div class="modal-grille-2">
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_produit_nett">Produit détergent-désinfectant</label>
-              <input id="ds_produit_nett" name="ds_produit_nett" class="modal-input" type="text"
-                     placeholder="Ex : Désoclean, Diversey...">
-            </div>
-            <div class="modal-champ">
-              <label class="modal-champ-label" for="ds_dilution">Dilution / dose</label>
-              <input id="ds_dilution" name="ds_dilution" class="modal-input" type="text"
-                     placeholder="Ex : 3 %, 50 mL / 5 L...">
-            </div>
-          </div>
-        </fieldset>`;
 
     case 'pieges_rongeurs': {
       const rongeurs = pieges.filter(p => p.type === 'rongeur');
@@ -312,11 +292,6 @@ function collecterDonneesSpecifiques(code) {
   }
 
   switch (code) {
-    case 'nettoyage_desinfection':
-      ds.produit_nettoyage = val('ds_produit_nett');
-      ds.dilution          = val('ds_dilution');
-      break;
-
     case 'pieges_rongeurs': {
       const etat = {};
       pieges.filter(p => p.type === 'rongeur').forEach(p => {

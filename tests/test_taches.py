@@ -2,7 +2,7 @@
 test_taches.py — Tests Module Tâches HACCP
 
 Couvre :
-- Seed des 12 types de tâches par défaut
+- Seed des types de tâches par défaut
 - CRUD types de tâches
 - Création de validations (avec données JSON spécifiques)
 - Vue "Aujourd'hui" (statuts en_retard / a_faire / fait)
@@ -21,18 +21,16 @@ from datetime import date, datetime
 
 @pytest.mark.anyio
 async def test_tache_types_seed(db):
-    """Les 12 types de tâches HACCP sont insérés par défaut."""
+    """Les types de tâches HACCP par défaut sont insérés."""
     from src.database import get_tache_types
     types = await get_tache_types(db, 1)
     codes = {t["code"] for t in types}
-    # Vérifier quelques fiches clés
-    assert "releve_temp_enceintes_matin" in codes
-    assert "releve_temp_enceintes_soir" in codes
-    assert "nettoyage_desinfection" in codes
+    assert "etalonnage_thermometres" in codes
+    assert "pieges_rongeurs" in codes
+    assert "nettoyage_pieges_oiseaux" in codes
     assert "suivi_decongélation" in codes
     assert "tiac" in codes
-    # Au moins 12 types
-    assert len(types) >= 12
+    assert len(types) >= 8
 
 
 @pytest.mark.anyio
@@ -77,7 +75,7 @@ async def test_creer_validation_simple(db):
     from datetime import timezone, timedelta
 
     types = await get_tache_types(db, 1)
-    tache = next(t for t in types if t["code"] == "nettoyage_desinfection")
+    tache = next(t for t in types if t["code"] == "pieges_rongeurs")
 
     vid = await create_validation(db, {
         "boutique_id": 1,
@@ -89,7 +87,7 @@ async def test_creer_validation_simple(db):
         "donnees_specifiques": {
             "local": "Laboratoire",
             "surface": "Plan de travail inox",
-            "frequence": "quotidien",
+            "frequence": "hebdomadaire",
         },
     })
     assert vid > 0
@@ -101,34 +99,6 @@ async def test_creer_validation_simple(db):
     assert v["operateur"] == "Éric"
     assert isinstance(v["donnees_specifiques"], dict)
     assert v["donnees_specifiques"]["local"] == "Laboratoire"
-
-
-@pytest.mark.anyio
-async def test_validation_fiche2_temperatures(db):
-    """Fiche 2 — relevé températures avec données JSON spécifiques."""
-    from src.database import get_tache_types, create_validation, get_validations
-    from datetime import timezone, timedelta
-
-    types = await get_tache_types(db, 1)
-    tache = next(t for t in types if t["code"] == "releve_temp_enceintes_matin")
-
-    await create_validation(db, {
-        "boutique_id": 1,
-        "tache_type_id": tache["id"],
-        "operateur": "Ulysse",
-        "date_tache": date.today().isoformat(),
-        "conforme": True,
-        "donnees_specifiques": {
-            "enceinte_id": 1,
-            "moment": "matin",
-            "temperature": 2.8,
-        },
-    })
-    depuis = datetime.now(timezone.utc) - timedelta(days=1)
-    validations = await get_validations(db, 1, depuis=depuis, tache_type_id=tache["id"])
-    v = validations[0]
-    assert v["donnees_specifiques"]["temperature"] == 2.8
-    assert v["donnees_specifiques"]["moment"] == "matin"
 
 
 @pytest.mark.anyio
@@ -182,8 +152,7 @@ async def test_taches_today_apres_validation(db):
     """Une tâche validée apparaît dans 'fait'."""
     from src.database import get_tache_types, create_validation, get_taches_today
     types = await get_tache_types(db, 1)
-    # Prendre une tâche quotidienne
-    tache = next(t for t in types if t["code"] == "nettoyage_desinfection")
+    tache = next(t for t in types if t["code"] == "pieges_rongeurs")
 
     await create_validation(db, {
         "boutique_id": 1,
@@ -265,7 +234,7 @@ async def test_api_taches_today(app_client):
 async def test_api_taches_types(app_client):
     r = await app_client.get("/api/taches/types")
     assert r.status_code == 200
-    assert len(r.json()) >= 12
+    assert len(r.json()) >= 8
 
 
 @pytest.mark.anyio

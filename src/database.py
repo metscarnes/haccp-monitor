@@ -520,20 +520,18 @@ INSERT OR IGNORE INTO personnel (boutique_id, prenom) VALUES
 (1, 'Éric'),
 (1, 'Ulysse');
 
--- Types de tâches HACCP par défaut (boutique 1) — 12 fiches (8+9 dans module Réception)
+-- Types de tâches HACCP par défaut (boutique 1)
+-- Quotidien : géré par module Nettoyage (nettoyage.html, table dédiée)
+-- Hebdomadaire : géré par module Nuisibles (nuisibles.html)
+-- Trimestriel : géré par module Étalonnage (etalonnage.html)
 INSERT OR IGNORE INTO tache_types (boutique_id, code, libelle, frequence, heure_cible, photo_requise) VALUES
-(1, 'etalonnage_thermometres',    'Étalonnage thermomètres',                    'ponctuel',      NULL,    0),
-(1, 'releve_temp_enceintes_matin','Relevé températures enceintes — Matin',       'quotidien',     '08:00', 0),
-(1, 'releve_temp_enceintes_soir', 'Relevé températures enceintes — Soir',        'quotidien',     '18:00', 0),
+(1, 'etalonnage_thermometres',    'Étalonnage thermomètres',                    'trimestriel',   NULL,    0),
 (1, 'action_corrective_temp',     'Action corrective température',               'evenementiel',  NULL,    0),
 (1, 'pieges_rongeurs',            'Présence rongeurs sur pièges',                'hebdomadaire',  NULL,    0),
 (1, 'nettoyage_pieges_oiseaux',   'Nettoyage pièges oiseaux',                    'hebdomadaire',  NULL,    0),
-(1, 'temp_lave_vaisselle',        'Températures lave-vaisselle',                 'quotidien',     '12:00', 0),
 (1, 'controle_huile_friture',     'Contrôle huile de friture',                   'evenementiel',  NULL,    0),
-(1, 'suivi_temp_production',      'Suivi températures production/service',       'quotidien',     '12:00', 0),
 (1, 'suivi_decongélation',        'Suivi décongélation',                         'evenementiel',  NULL,    0),
 (1, 'suivi_congelation',          'Suivi congélation',                           'evenementiel',  NULL,    0),
-(1, 'nettoyage_desinfection',     'Nettoyage et désinfection',                   'quotidien',     '19:00', 0),
 (1, 'tiac',                       'TIAC — Toxi-infection alimentaire collective', 'exceptionnel',  NULL,    1);
 
 -- Pièges rongeurs par défaut (boutique 1)
