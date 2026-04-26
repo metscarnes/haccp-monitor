@@ -155,6 +155,11 @@ async def fifo_produit(produit_id: int):
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
             WHERE  rl.produit_id = ?
+              AND (rl.dlc IS NULL OR rl.dlc >= DATE('now'))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir d
+                  WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+              )
             ORDER BY
                 CASE WHEN rl.dlc IS NOT NULL THEN 0 ELSE 1 END,
                 rl.dlc           ASC,

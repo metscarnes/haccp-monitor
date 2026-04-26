@@ -65,7 +65,12 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_hub.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(node --check \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/dlc.js\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(r'c:/Users/campi/OneDrive/Création d''entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_dlc.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_dlc.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_dlc.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_db_fabrication.py tests/test_api_fabrication.py -x -q)",
+      "Bash(git stash *)",
+      "Bash(python -m pytest tests/test_api_fabrication.py::test_post_puis_get_recettes -x -q)",
+      "Bash(git checkout *)",
+      "Bash(git restore *)"
     ]
   }
 }
