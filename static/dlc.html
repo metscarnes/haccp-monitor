@@ -60,6 +60,10 @@
           <option value="actif">Actifs (non expirés)</option>
         </select>
       </label>
+
+      <button class="dlc-btn-traitement-masse" id="dlc-btn-traitement-masse" hidden>
+        ⚡ Traiter les expirés (<span id="dlc-nb-expires">0</span>)
+      </button>
     </div>
   </div>
 
@@ -120,6 +124,48 @@
 
         <button class="btn btn-primaire devenir-valider" id="devenir-valider" disabled>
           Confirmer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal traitement en masse des DLC dépassées -->
+  <div class="dlc-modal" id="batch-modal" hidden role="dialog" aria-modal="true">
+    <div class="dlc-modal-backdrop" data-close-batch></div>
+    <div class="dlc-modal-panel">
+      <header class="dlc-modal-header">
+        <h2>Traitement en masse — DLC dépassées</h2>
+        <button class="dlc-modal-close" data-close-batch aria-label="Fermer">✕</button>
+      </header>
+      <div class="dlc-modal-body">
+        <div class="batch-resume" id="batch-resume">—</div>
+
+        <div class="batch-liste-entete">
+          <label class="batch-tout-label">
+            <input type="checkbox" id="batch-tout" checked>
+            Tout sélectionner
+          </label>
+          <span class="batch-compteur" id="batch-compteur">0 sélectionné(s)</span>
+        </div>
+        <div class="batch-liste" id="batch-liste"></div>
+
+        <label class="devenir-label">Prénom opérateur *</label>
+        <select id="batch-personnel" class="devenir-select" required></select>
+
+        <label class="devenir-label">Devenir appliqué à tous *</label>
+        <div class="devenir-statuts">
+          <button class="btn-statut" data-batch-statut="jete">🗑️ Jeté</button>
+          <button class="btn-statut" data-batch-statut="vendu">💰 Vendu</button>
+          <button class="btn-statut" data-batch-statut="consomme">✅ Consommé</button>
+          <button class="btn-statut" data-batch-statut="autre">❓ Autre</button>
+        </div>
+
+        <label class="devenir-label">Commentaire (optionnel)</label>
+        <textarea id="batch-commentaire" class="devenir-textarea"
+                  rows="2" placeholder="Raison commune, lot, etc."></textarea>
+
+        <button class="btn btn-primaire devenir-valider" id="batch-valider" disabled>
+          Confirmer le traitement
         </button>
       </div>
     </div>

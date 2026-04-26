@@ -41,6 +41,18 @@ class DevenirCreate(BaseModel):
     commentaire: Optional[str] = None
 
 
+class DevenirBatchItem(BaseModel):
+    source_type: str
+    source_id: int
+
+
+class DevenirBatchCreate(BaseModel):
+    items: list[DevenirBatchItem] = Field(..., min_length=1)
+    statut: str
+    personnel_id: Optional[int] = None
+    commentaire: Optional[str] = None
+
+
 class ParametresDlc(BaseModel):
     rouge_jours: int = Field(ge=0, le=365)
     orange_jours: int = Field(ge=0, le=365)
@@ -93,6 +105,35 @@ async def enregistrer_devenir(body: DevenirCreate):
             commentaire=body.commentaire,
         )
     return {"ok": True}
+
+
+@router.post("/devenir/batch", status_code=201)
+async def enregistrer_devenir_batch(body: DevenirBatchCreate):
+    """Traite en masse plusieurs DLCs (typiquement les expirées non traitées).
+
+    Applique le même statut / personnel / commentaire à chaque item.
+    """
+    if body.statut not in STATUTS_DEVENIR:
+        raise HTTPException(400, f"statut invalide (attendu : {STATUTS_DEVENIR})")
+    for it in body.items:
+        if it.source_type not in SOURCES_VALIDES:
+            raise HTTPException(
+                400, f"source_type invalide (attendu : {SOURCES_VALIDES})"
+            )
+
+    async with get_db() as db:
+        traites = 0
+        for it in body.items:
+            await create_dlc_devenir(
+                db,
+                source_type=it.source_type,
+                source_id=it.source_id,
+                statut=body.statut,
+                personnel_id=body.personnel_id,
+                commentaire=body.commentaire,
+            )
+            traites += 1
+    return {"ok": True, "traites": traites}
 
 
 @router.get("/devenir")

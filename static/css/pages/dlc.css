@@ -683,6 +683,82 @@
   background: var(--color-accent) !important;
 }
 
+/* ── Traitement en masse ─────────────────────────────────── */
+.dlc-btn-traitement-masse {
+  background: var(--color-danger, #C93030);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: .6rem 1rem;
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: var(--btn-min-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  animation: dlc-pulse-btn 2s infinite;
+}
+.dlc-btn-traitement-masse:active { transform: scale(.97); }
+@keyframes dlc-pulse-btn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 48, 48, .55); }
+  50%      { box-shadow: 0 0 0 8px rgba(201, 48, 48, 0);   }
+}
+
+.batch-resume {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin-bottom: var(--space-3);
+  color: var(--color-danger, #C93030);
+}
+.batch-liste-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border, #ddd);
+  margin-bottom: var(--space-2);
+}
+.batch-tout-label {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.batch-compteur {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted, #666);
+}
+.batch-liste {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: var(--radius-sm);
+}
+.batch-row {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  grid-template-areas:
+    "check src nom dlc"
+    "check src meta meta";
+  gap: .25rem .75rem;
+  align-items: center;
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--color-border, #eee);
+  cursor: pointer;
+}
+.batch-row:last-child { border-bottom: none; }
+.batch-row:hover { background: rgba(0, 0, 0, .03); }
+.batch-row .batch-check { grid-area: check; width: 20px; height: 20px; }
+.batch-row-src  { grid-area: src; font-size: 1.2rem; }
+.batch-row-nom  { grid-area: nom; font-weight: 600; }
+.batch-row-dlc  { grid-area: dlc; font-size: var(--text-sm); font-weight: 600; color: var(--color-danger, #C93030); }
+.batch-row-meta { grid-area: meta; font-size: var(--text-sm); color: var(--color-text-muted, #666); }
+.batch-row--rouge  { border-left: 4px solid var(--color-danger, #C93030); }
+.batch-row--orange { border-left: 4px solid #E8913A; }
+
 /* Responsive : mobile */
 @media (max-width: 640px) {
   .dlc-jour { min-height: 70px; padding: 3px; }

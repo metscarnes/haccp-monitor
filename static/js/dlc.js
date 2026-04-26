@@ -108,6 +108,7 @@ async function chargerCalendrier() {
     state.items  = data.items  || [];
     state.seuils = data.seuils || state.seuils;
     renderVue(debut, fin);
+    rafraichirBoutonTraitementMasse();
   } catch (e) {
     $('dlc-error').hidden = false;
     $('dlc-error').textContent = `Erreur chargement : ${e.message}`;
@@ -656,6 +657,165 @@ $('devenir-valider').addEventListener('click', async () => {
     rafraichirBoutonValider();
   }
 });
+
+// ── Traitement en masse des DLC dépassées ───────────────
+const batchState = { selection: new Set(), statut: null, items: [] };
+
+function listerExpiresNonTraites() {
+  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+  return state.items
+    .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui)
+    .sort((a, b) => (a.dlc < b.dlc ? -1 : a.dlc > b.dlc ? 1 : 0));
+}
+
+function rafraichirBoutonTraitementMasse() {
+  const expires = listerExpiresNonTraites();
+  const btn = $('dlc-btn-traitement-masse');
+  const cpt = $('dlc-nb-expires');
+  if (!btn) return;
+  if (expires.length === 0) {
+    btn.hidden = true;
+  } else {
+    btn.hidden = false;
+    cpt.textContent = expires.length;
+  }
+}
+
+function clefBatch(it) { return `${it.source_type}:${it.source_id}`; }
+
+function ouvrirModalBatch() {
+  const expires = listerExpiresNonTraites();
+  if (expires.length === 0) return;
+
+  batchState.items = expires;
+  batchState.selection = new Set(expires.map(clefBatch));
+  batchState.statut = null;
+
+  $('batch-resume').textContent =
+    `${expires.length} produit${expires.length > 1 ? 's' : ''} dépassé${expires.length > 1 ? 's' : ''} non traité${expires.length > 1 ? 's' : ''}`;
+  $('batch-tout').checked = true;
+  $('batch-commentaire').value = '';
+
+  // Personnel
+  const sel = $('batch-personnel');
+  sel.innerHTML = '<option value="">— Sélectionner —</option>';
+  state.personnel.forEach(p => {
+    const label = [p.prenom, p.nom].filter(Boolean).join(' ');
+    sel.innerHTML += `<option value="${p.id}">${escHtml(label)}</option>`;
+  });
+  sel.value = '';
+
+  // Liste
+  const liste = $('batch-liste');
+  liste.innerHTML = '';
+  expires.forEach(it => {
+    const k = clefBatch(it);
+    const niveau = niveauAlerte(it.dlc);
+    const src = it.source_type === 'fabrication' ? '🔪' : '📦';
+    const meta = [];
+    if (it.numero_lot) meta.push(`Lot ${escHtml(it.numero_lot)}`);
+    if (it.quantite != null) meta.push(`${it.quantite} ${escHtml(it.unite || '')}`);
+    if (it.fournisseur_nom) meta.push(escHtml(it.fournisseur_nom));
+
+    const row = document.createElement('label');
+    row.className = `batch-row batch-row--${niveau}`;
+    row.innerHTML = `
+      <input type="checkbox" class="batch-check" data-key="${k}" checked>
+      <span class="batch-row-src">${src}</span>
+      <span class="batch-row-nom">${escHtml(it.produit_nom)}</span>
+      <span class="batch-row-dlc">DLC ${formatDateFr(it.dlc)}</span>
+      <span class="batch-row-meta">${meta.join(' · ')}</span>
+    `;
+    liste.appendChild(row);
+  });
+
+  liste.querySelectorAll('.batch-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) batchState.selection.add(cb.dataset.key);
+      else batchState.selection.delete(cb.dataset.key);
+      rafraichirBatchUi();
+    });
+  });
+
+  document.querySelectorAll('[data-batch-statut]').forEach(b => b.classList.remove('actif'));
+  rafraichirBatchUi();
+  $('batch-modal').hidden = false;
+}
+
+function fermerModalBatch() {
+  $('batch-modal').hidden = true;
+  batchState.items = [];
+  batchState.selection.clear();
+  batchState.statut = null;
+}
+
+function rafraichirBatchUi() {
+  const n = batchState.selection.size;
+  $('batch-compteur').textContent = `${n} sélectionné${n > 1 ? 's' : ''}`;
+  const tout = $('batch-tout');
+  if (tout) tout.checked = (n === batchState.items.length && n > 0);
+  $('batch-valider').disabled = !(
+    n > 0 && batchState.statut && $('batch-personnel').value
+  );
+}
+
+document.querySelectorAll('#batch-modal [data-close-batch]').forEach(e =>
+  e.addEventListener('click', fermerModalBatch)
+);
+
+document.querySelectorAll('[data-batch-statut]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-batch-statut]').forEach(b => b.classList.remove('actif'));
+    btn.classList.add('actif');
+    batchState.statut = btn.dataset.batchStatut;
+    rafraichirBatchUi();
+  });
+});
+
+$('batch-personnel').addEventListener('change', rafraichirBatchUi);
+
+$('batch-tout').addEventListener('change', e => {
+  const checked = e.target.checked;
+  batchState.selection = new Set(
+    checked ? batchState.items.map(clefBatch) : []
+  );
+  document.querySelectorAll('.batch-check').forEach(cb => { cb.checked = checked; });
+  rafraichirBatchUi();
+});
+
+$('batch-valider').addEventListener('click', async () => {
+  const btn = $('batch-valider');
+  btn.disabled = true;
+  btn.textContent = 'Traitement...';
+  try {
+    const items = batchState.items
+      .filter(it => batchState.selection.has(clefBatch(it)))
+      .map(it => ({ source_type: it.source_type, source_id: it.source_id }));
+
+    const res = await fetch('/api/dlc/devenir/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items,
+        statut: batchState.statut,
+        personnel_id: parseInt($('batch-personnel').value, 10),
+        commentaire: $('batch-commentaire').value.trim() || null,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    fermerModalBatch();
+    await chargerCalendrier();
+    alert(`✅ ${data.traites} produit${data.traites > 1 ? 's' : ''} traité${data.traites > 1 ? 's' : ''}.`);
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    btn.textContent = 'Confirmer le traitement';
+    rafraichirBatchUi();
+  }
+});
+
+$('dlc-btn-traitement-masse').addEventListener('click', ouvrirModalBatch);
 
 // ── Sélecteur de vue ─────────────────────────────────────
 function setVueBouton(vue) {
