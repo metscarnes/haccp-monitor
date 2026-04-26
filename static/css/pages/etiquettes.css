@@ -490,6 +490,19 @@
 .fab-lot-btn-remplacer:hover  { background: #b55b00; }
 .fab-lot-btn-remplacer:active { transform: scale(.95); }
 
+/* Variante discrète : ligne OK, action volontaire de personnalisation */
+.fab-lot-btn-personnaliser {
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: .45rem .8rem;
+  animation: none;
+  margin-left: .5rem;
+}
+.fab-lot-btn-personnaliser:hover  { background: var(--color-accent); color: white; }
+
 /* Badge substitut */
 .fab-lot-sub-badge {
   font-style: italic;

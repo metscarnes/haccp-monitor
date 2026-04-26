@@ -410,7 +410,7 @@ function afficherLots() {
     const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
     console.log('[FIFO] lot affiché :', riId, lot.produit_nom, '→ lot_fifo:', lot.lot_fifo);
     if (lot.lot_fifo != null) {
-      return htmlLigneFifoOk(lot);
+      return htmlLigneFifoOk(lot, riId);
     }
     return htmlLigneManquante(riId, lot.produit_nom ?? lot.ingredient_nom ?? '');
   }).join('');
@@ -433,15 +433,22 @@ function verifierLotsComplets() {
   }
 }
 
-function htmlLigneFifoOk(lot) {
+function htmlLigneFifoOk(lot, ingId) {
   const lotFifo = lot.lot_fifo ?? {};
+  const ingNom  = lot.produit_nom ?? lot.ingredient_nom ?? '';
   return `
-    <div class="fab-lot-ligne fab-lot-ligne--ok">
+    <div class="fab-lot-ligne fab-lot-ligne--ok" data-pid="${ingId}">
       <span class="fab-lot-check">✓</span>
-      <div class="fab-lot-nom">${escHtml(lot.produit_nom ?? lot.ingredient_nom ?? '')}</div>
+      <div class="fab-lot-nom">${escHtml(ingNom)}</div>
       <div class="fab-lot-info">
         Lot ${escHtml(lotFifo.numero_lot ?? '—')} | DLC ${formatDate(lotFifo.dlc ?? '')}
       </div>
+      <button class="fab-lot-btn-remplacer fab-lot-btn-personnaliser"
+              data-pid="${ingId}"
+              data-nom="${escHtml(ingNom)}"
+              aria-label="Personnaliser le lot de ${escHtml(ingNom)}">
+        ✏️ Personnaliser
+      </button>
     </div>`;
 }
 
