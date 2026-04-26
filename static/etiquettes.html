@@ -337,6 +337,29 @@
     </div>
   </div>
 
+  <!-- ── Modale saisie DLC/DLUO après substitution ── -->
+  <div class="fab-modal-overlay" id="fab-dlc-saisie-overlay" hidden>
+    <div class="fab-modal" style="max-width:380px">
+      <div class="fab-modal-titre">📅 Confirmer la date du substitut</div>
+      <p id="fab-dlc-saisie-lot" style="font-size:.85rem;color:#6B3A1F;margin:.25rem 0 .75rem;min-height:1rem"></p>
+      <label style="font-size:.9rem;font-weight:700;display:block;margin-bottom:.4rem">
+        <span id="fab-dlc-saisie-type">DLC</span> du produit de substitution
+      </label>
+      <input type="date" id="fab-dlc-saisie-input"
+             style="width:100%;font-size:1.1rem;padding:.75rem;border:2px solid #d8c9b2;
+                    border-radius:10px;font-family:inherit;box-sizing:border-box;min-height:56px"
+             aria-label="Date DLC ou DLUO du produit de substitution">
+      <p id="fab-dlc-saisie-erreur" hidden
+         style="color:#C0392B;font-size:.85rem;margin:.5rem 0 0;font-weight:600">
+        Veuillez saisir une date.
+      </p>
+      <div style="display:flex;gap:.75rem;margin-top:1.25rem">
+        <button id="fab-dlc-saisie-annuler" class="fab-btn-secondary" style="flex:1">Annuler</button>
+        <button id="fab-dlc-saisie-ok" class="fab-btn-primary" style="flex:2">✓ Valider</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Écran de succès (overlay) ── -->
   <div class="fab-succes" id="fab-succes" hidden>
     <div class="fab-succes-check" aria-hidden="true">✓</div>

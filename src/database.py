@@ -2680,19 +2680,21 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
             SELECT rl.id        AS reception_ligne_id,
                    rl.numero_lot,
                    rl.dlc,
+                   rl.dluo,
                    rl.poids_kg,
                    r.date_reception
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
             WHERE  rl.produit_id = ?
-              AND (rl.dlc IS NULL OR rl.dlc >= DATE('now'))
+              AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                   OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND NOT EXISTS (
                   SELECT 1 FROM dlc_devenir d
                   WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
               )
             ORDER BY
-                CASE WHEN rl.dlc IS NOT NULL THEN 0 ELSE 1 END,
-                rl.dlc          ASC,
+                CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                COALESCE(rl.dlc, rl.dluo) ASC,
                 r.date_reception ASC
             LIMIT 1
             """,

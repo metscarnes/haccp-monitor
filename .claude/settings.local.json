@@ -70,7 +70,11 @@
       "Bash(git stash *)",
       "Bash(python -m pytest tests/test_api_fabrication.py::test_post_puis_get_recettes -x -q)",
       "Bash(git checkout *)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/database.py', encoding='utf-8'\\).read\\(\\)\\); print\\('database.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_fabrication.py', encoding='utf-8'\\).read\\(\\)\\); print\\('routes_fabrication.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_etiquettes.py', encoding='utf-8'\\).read\\(\\)\\); print\\('routes_etiquettes.py OK'\\)\")",
+      "Bash(python -m pytest tests/test_db_fabrication.py -x -q)"
     ]
   }
 }

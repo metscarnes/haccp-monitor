@@ -88,38 +88,43 @@ async def lister_produits(
             # via le module calendrier (absent de dlc_devenir).
             _fifo_where = """
                 rl2.produit_id = p.id
-                AND (rl2.dlc IS NULL OR rl2.dlc >= DATE('now'))
+                AND (COALESCE(rl2.dlc, rl2.dluo) IS NULL
+                     OR COALESCE(rl2.dlc, rl2.dluo) >= DATE('now'))
                 AND NOT EXISTS (
                     SELECT 1 FROM dlc_devenir d
                     WHERE d.source_type = 'reception_ligne' AND d.source_id = rl2.id
                 )
             """
+            _fifo_order = """
+                ORDER BY CASE WHEN COALESCE(rl2.dlc, rl2.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                         COALESCE(rl2.dlc, rl2.dluo) ASC, r2.date_reception ASC LIMIT 1
+            """
             _fifo_sub = f"""
                 (SELECT rl2.numero_lot FROM reception_lignes rl2
                  JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where}
-                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
-                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+                 WHERE {_fifo_where} {_fifo_order})
             """
             _fifo_dlc = f"""
                 (SELECT rl2.dlc FROM reception_lignes rl2
                  JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where}
-                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
-                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+                 WHERE {_fifo_where} {_fifo_order})
+            """
+            _fifo_dluo = f"""
+                (SELECT rl2.dluo FROM reception_lignes rl2
+                 JOIN receptions r2 ON r2.id = rl2.reception_id
+                 WHERE {_fifo_where} {_fifo_order})
             """
             _fifo_id = f"""
                 (SELECT rl2.id FROM reception_lignes rl2
                  JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where}
-                 ORDER BY CASE WHEN rl2.dlc IS NOT NULL THEN 0 ELSE 1 END,
-                          rl2.dlc ASC, r2.date_reception ASC LIMIT 1)
+                 WHERE {_fifo_where} {_fifo_order})
             """
             _exists_dispo = """
                 EXISTS (
                     SELECT 1 FROM reception_lignes rl
                     WHERE rl.produit_id = p.id
-                      AND (rl.dlc IS NULL OR rl.dlc >= DATE('now'))
+                      AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                           OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
                       AND NOT EXISTS (
                           SELECT 1 FROM dlc_devenir d
                           WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
@@ -131,6 +136,7 @@ async def lister_produits(
                     f"""
                     SELECT p.*, {_fifo_sub} AS numero_lot,
                            {_fifo_dlc} AS dlc,
+                           {_fifo_dluo} AS dluo,
                            {_fifo_id}  AS reception_ligne_id
                     FROM produits p
                     WHERE p.boutique_id = ? AND p.actif = 1 AND p.type_produit = ?
@@ -144,6 +150,7 @@ async def lister_produits(
                     f"""
                     SELECT p.*, {_fifo_sub} AS numero_lot,
                            {_fifo_dlc} AS dlc,
+                           {_fifo_dluo} AS dluo,
                            {_fifo_id}  AS reception_ligne_id
                     FROM produits p
                     WHERE p.boutique_id = ? AND p.actif = 1

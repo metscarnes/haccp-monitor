@@ -434,14 +434,16 @@ function verifierLotsComplets() {
 }
 
 function htmlLigneFifoOk(lot, ingId) {
-  const lotFifo = lot.lot_fifo ?? {};
-  const ingNom  = lot.produit_nom ?? lot.ingredient_nom ?? '';
+  const lotFifo   = lot.lot_fifo ?? {};
+  const ingNom    = lot.produit_nom ?? lot.ingredient_nom ?? '';
+  const dateVal   = lotFifo.dlc || lotFifo.dluo;
+  const dateLabel = lotFifo.dluo && !lotFifo.dlc ? 'DLUO' : 'DLC';
   return `
     <div class="fab-lot-ligne fab-lot-ligne--ok" data-pid="${ingId}">
       <span class="fab-lot-check">✓</span>
       <div class="fab-lot-nom">${escHtml(ingNom)}</div>
       <div class="fab-lot-info">
-        Lot ${escHtml(lotFifo.numero_lot ?? '—')} | DLC ${formatDate(lotFifo.dlc ?? '')}
+        Lot ${escHtml(lotFifo.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal ?? '')}
       </div>
       <button class="fab-lot-btn-remplacer fab-lot-btn-personnaliser"
               data-pid="${ingId}"
@@ -513,19 +515,21 @@ function filtrerProduitsIntelligent(produits, ingNom) {
 function htmlSubTuile(p, index = 0) {
   const isPriority = index === 0;
 
-  // Calcul urgence DLC
+  // Calcul urgence DLC/DLUO
+  const dateVal   = p.dlc || p.dluo;
+  const dateLabel = p.dluo && !p.dlc ? 'DLUO' : 'DLC';
   let dlcClasse = '';
-  let dlcTexte  = formatDate(p.dlc);
-  if (p.dlc) {
-    const jours = Math.ceil((new Date(p.dlc) - new Date()) / (1000 * 60 * 60 * 24));
+  let dlcTexte  = formatDate(dateVal);
+  if (dateVal) {
+    const jours = Math.ceil((new Date(dateVal) - new Date()) / (1000 * 60 * 60 * 24));
     if (jours <= 2)      dlcClasse = 'dlc-critique';
     else if (jours <= 5) dlcClasse = 'dlc-attention';
     else                 dlcClasse = 'dlc-ok';
   }
 
-  const lotInfo = (p.numero_lot || p.dlc)
+  const lotInfo = (p.numero_lot || dateVal)
     ? `<div style="font-size:.75rem;margin-top:.35rem">
-         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | DLC&nbsp;: <span class="${dlcClasse}">${dlcTexte}</span>
+         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | ${dateLabel}&nbsp;: <span class="${dlcClasse}">${dlcTexte}</span>
        </div>`
     : '';
 
@@ -549,10 +553,10 @@ function afficherSubProduits(produits) {
     return;
   }
   const tries = [...produits].sort((a, b) => {
-    const da = a.dlc ? new Date(a.dlc) : null;
-    const db = b.dlc ? new Date(b.dlc) : null;
+    const da = (a.dlc || a.dluo) ? new Date(a.dlc || a.dluo) : null;
+    const db = (b.dlc || b.dluo) ? new Date(b.dlc || b.dluo) : null;
     if (!da && !db) return 0;
-    if (!da) return 1;   // sans DLC → fin de liste
+    if (!da) return 1;   // sans date → fin de liste
     if (!db) return -1;
     return da - db;
   });
@@ -632,90 +636,106 @@ elSubGrid.addEventListener('keydown', e => {
 });
 
 function validerSubstitution(produitId, produitNom) {
-  // Logique commune exécutée après confirmation (quelle que soit la modale)
-  function confirmerEtEnregistrer() {
-    // Récupère le vrai lot FIFO du produit substitut
+  // Étape finale : affiche la modale de saisie DLC avec pré-remplissage FIFO
+  function demanderDlc() {
+    elSubOverlay.hidden = true;
     apiFetch(`/api/fabrications/produit-fifo/${produitId}`)
-      .then(data => {
-        // Met à jour state.fifoLots avec les vraies données du nouveau lot
-        const lot = state.fifoLots.find(l =>
-          String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
-        );
-        if (lot) {
-          lot.lot_fifo = {
-            reception_ligne_id: data.id,
-            numero_lot:         data.numero_lot,
-            dlc:                data.dlc,
-          };
-          lot.produit_nom    = produitNom + ' (substitut)';
-          lot.ingredient_nom = produitNom + ' (substitut)';
-        }
-
-        state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
-
-        // Rafraîchit la ligne → verte avec les vraies infos FIFO
-        const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
-        if (ligne) {
-          ligne.outerHTML = `
-            <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
-              <span class="fab-lot-check">✓</span>
-              <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
-              <div class="fab-lot-info fab-lot-sub-badge">
-                → ${escHtml(produitNom)} (substitut)
-                | Lot ${escHtml(data.numero_lot ?? '—')}
-                | DLC ${formatDate(data.dlc)}
-              </div>
-            </div>`;
-        }
-      })
-      .catch(() => {
-        // L'API n'a pas de lot — on enregistre quand même la substitution sans données FIFO
-        const lot = state.fifoLots.find(l =>
-          String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
-        );
-        if (lot) {
-          // Marque le lot comme résolu (substitut sans données FIFO) pour débloquer le bouton
-          lot.lot_fifo = { numero_lot: null, dlc: null };
-          lot.produit_nom    = produitNom + ' (substitut)';
-          lot.ingredient_nom = produitNom + ' (substitut)';
-        }
-        state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
-        const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
-        if (ligne) {
-          ligne.outerHTML = `
-            <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
-              <span class="fab-lot-check">✓</span>
-              <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
-              <div class="fab-lot-info fab-lot-sub-badge">→ ${escHtml(produitNom)} (substitut)</div>
-            </div>`;
-        }
-      })
-      .finally(() => {
-        elSubOverlay.hidden = true;
-        verifierLotsComplets();
-      });
+      .then(fifoData  => ouvrirSaisieDlc(fifoData))
+      .catch(() => ouvrirSaisieDlc(null));
   }
 
-  // Demande de confirmation selon le niveau actif
+  // Étape finale bis : ouvre la modale de saisie DLC
+  function ouvrirSaisieDlc(fifoData) {
+    const overlay    = document.getElementById('fab-dlc-saisie-overlay');
+    const inputDlc   = document.getElementById('fab-dlc-saisie-input');
+    const elTypeDlc  = document.getElementById('fab-dlc-saisie-type');
+    const elLot      = document.getElementById('fab-dlc-saisie-lot');
+    const btnOk      = document.getElementById('fab-dlc-saisie-ok');
+    const btnAnnuler = document.getElementById('fab-dlc-saisie-annuler');
+    const elErreur   = document.getElementById('fab-dlc-saisie-erreur');
+
+    // Pré-remplissage depuis le lot FIFO (dlc ou dluo)
+    const prefill = fifoData ? (fifoData.dlc || fifoData.dluo || '') : '';
+    const isDluo  = fifoData ? (!fifoData.dlc && !!fifoData.dluo) : false;
+    inputDlc.value   = prefill;
+    elTypeDlc.textContent = isDluo ? 'DLUO' : 'DLC';
+    elLot.textContent = fifoData?.numero_lot ? `Lot : ${fifoData.numero_lot}` : '';
+    elErreur.hidden   = true;
+    overlay.hidden    = false;
+    inputDlc.focus();
+
+    function fermer() {
+      overlay.hidden = true;
+      btnOk.removeEventListener('click', onOk);
+      btnAnnuler.removeEventListener('click', fermer);
+    }
+
+    function onOk() {
+      const valeur = inputDlc.value;
+      if (!valeur) {
+        elErreur.hidden = false;
+        inputDlc.focus();
+        return;
+      }
+      fermer();
+      appliquerSubstitution(fifoData, valeur, isDluo);
+    }
+
+    btnOk.addEventListener('click', onOk);
+    btnAnnuler.addEventListener('click', fermer);
+  }
+
+  // Application effective de la substitution avec la date saisie par l'utilisateur
+  function appliquerSubstitution(fifoData, dateSaisie, isDluo) {
+    const lot = state.fifoLots.find(l =>
+      String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
+    );
+    if (lot) {
+      lot.lot_fifo = {
+        reception_ligne_id: fifoData?.id ?? null,
+        numero_lot:         fifoData?.numero_lot ?? null,
+        dlc:  isDluo ? null : dateSaisie,
+        dluo: isDluo ? dateSaisie : null,
+      };
+      lot.produit_nom    = produitNom + ' (substitut)';
+      lot.ingredient_nom = produitNom + ' (substitut)';
+    }
+    state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
+
+    const dateLabel = isDluo ? 'DLUO' : 'DLC';
+    const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
+    if (ligne) {
+      ligne.outerHTML = `
+        <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
+          <span class="fab-lot-check">✓</span>
+          <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
+          <div class="fab-lot-info fab-lot-sub-badge">
+            → ${escHtml(produitNom)} (substitut)
+            | Lot ${escHtml(fifoData?.numero_lot ?? '—')}
+            | ${dateLabel} ${formatDate(dateSaisie)}
+          </div>
+        </div>`;
+    }
+    verifierLotsComplets();
+  }
+
+  // Demande de confirmation selon le niveau actif, puis saisie DLC
   if (subModeManuel) {
-    // Niveau 4 — alerte critique rouge
     afficherCustomConfirm(
       '🚨 ALERTE CRITIQUE',
       `Ce produit n'est pas issu du filtrage recommandé.\n\n` +
       `Vous sélectionnez "${produitNom}" en mode manuel.\n\n` +
       `Confirmez-vous ce choix sous votre responsabilité ?`,
-      confirmerEtEnregistrer
+      demanderDlc
     );
   } else if (produitNom !== subNomCourant) {
-    // Niveau 3 — substitution sémantique
     afficherCustomConfirm(
       '⚠️ Substitution',
       `Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`,
-      confirmerEtEnregistrer
+      demanderDlc
     );
   } else {
-    // Même nom : pas de confirmation nécessaire
-    confirmerEtEnregistrer();
+    demanderDlc();
   }
 }
 
