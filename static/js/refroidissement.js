@@ -92,6 +92,7 @@ const elDate         = $('cu-date');
 const elHeureDebut   = $('cu-heure-debut');
 const elHeureFin     = $('cu-heure-fin');
 const elQuickFin     = $('cu-quick-fin');
+const elTempInitiale = $('cu-temperature-initiale');
 const elTemperature  = $('cu-temperature');
 const elConformite   = $('cu-conformite');
 const elConfTxt      = $('cu-conformite-texte');
@@ -375,8 +376,11 @@ elForm.addEventListener('submit', async e => {
   const d = dureeMinutes(elHeureDebut.value, elHeureFin.value);
   if (d == null || d <= 0) return afficherErreur('Durée de refroidissement invalide.');
 
+  const tInit = parseFloat(elTempInitiale.value);
+  if (isNaN(tInit)) return afficherErreur('Température à cœur avant refroidissement requise.');
+
   const t = parseFloat(elTemperature.value);
-  if (isNaN(t)) return afficherErreur('Température à cœur requise.');
+  if (isNaN(t)) return afficherErreur('Température à cœur après refroidissement requise.');
 
   const tempOk  = t <= TEMP_CIBLE;
   const dureeOk = d <= DUREE_MAX_MIN;
@@ -386,14 +390,15 @@ elForm.addEventListener('submit', async e => {
   }
 
   const payload = {
-    date_refroidissement: elDate.value,
-    personnel_id:         Number(state.operateurChoisi.id),
-    produit_id:           Number(state.produitChoisi.id),
-    cuisson_id:           state.produitChoisi.cuisson_id ?? null,
-    heure_debut:          elHeureDebut.value,
-    heure_fin:            elHeureFin.value,
-    temperature_finale:   t,
-    action_corrective:    elAction.value.trim() || null,
+    date_refroidissement:  elDate.value,
+    personnel_id:          Number(state.operateurChoisi.id),
+    produit_id:            Number(state.produitChoisi.id),
+    cuisson_id:            state.produitChoisi.cuisson_id ?? null,
+    heure_debut:           elHeureDebut.value,
+    heure_fin:             elHeureFin.value,
+    temperature_initiale:  tInit,
+    temperature_finale:    t,
+    action_corrective:     elAction.value.trim() || null,
   };
 
   elBtnSave.disabled    = true;
@@ -447,9 +452,10 @@ function resetWizard() {
   elProdSearch.value = '';
   afficherProduits();
 
-  elHeureDebut.value  = '';
-  elHeureFin.value    = '';
-  elTemperature.value = '';
+  elHeureDebut.value      = '';
+  elHeureFin.value        = '';
+  elTempInitiale.value    = '63';
+  elTemperature.value     = '';
   elAction.value      = '';
   elConformite.hidden = true;
   elJeter.hidden      = true;

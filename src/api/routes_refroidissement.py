@@ -40,6 +40,7 @@ _ENSURE_TABLE = """
         heure_debut           TEXT    NOT NULL,
         heure_fin             TEXT    NOT NULL,
         duree_minutes         INTEGER NOT NULL,
+        temperature_initiale  REAL    DEFAULT 63.0,
         temperature_finale    REAL    NOT NULL,
         temperature_cible     REAL    NOT NULL DEFAULT 10.0,
         duree_max_minutes     INTEGER NOT NULL DEFAULT 120,
@@ -51,6 +52,11 @@ _ENSURE_TABLE = """
         FOREIGN KEY (produit_id)   REFERENCES produits(id),
         FOREIGN KEY (cuisson_id)   REFERENCES cuissons(id)
     )
+"""
+
+# Migration : ajoute la colonne si la table existait avant
+_ENSURE_COL_TEMP_INIT = """
+    ALTER TABLE refroidissements ADD COLUMN temperature_initiale REAL DEFAULT 63.0
 """
 
 _ENSURE_INDEX = """
@@ -88,6 +94,7 @@ class RefroidissementCreate(BaseModel):
     cuisson_id:           Optional[int] = None
     heure_debut:          str   = Field(..., description="HH:MM mise en refroidissement")
     heure_fin:            str   = Field(..., description="HH:MM fin de refroidissement")
+    temperature_initiale: Optional[float] = Field(63.0, description="T° à cœur avant refroidissement")
     temperature_finale:   float = Field(..., description="T° à cœur après refroidissement")
     action_corrective:    Optional[str] = None
 
@@ -148,15 +155,20 @@ async def creer_refroidissement(body: RefroidissementCreate):
     async with get_db() as db:
         await db.execute(_ENSURE_TABLE)
         await db.execute(_ENSURE_INDEX)
+        try:
+            await db.execute(_ENSURE_COL_TEMP_INIT)
+        except Exception:
+            pass  # colonne déjà présente
 
         cur = await db.execute(
             """
             INSERT INTO refroidissements (
                 date_refroidissement, personnel_id, produit_id, cuisson_id,
                 heure_debut, heure_fin, duree_minutes,
-                temperature_finale, temperature_cible, duree_max_minutes,
+                temperature_initiale, temperature_finale,
+                temperature_cible, duree_max_minutes,
                 conforme, jeter, action_corrective
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.date_refroidissement,
@@ -166,6 +178,7 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 body.heure_debut,
                 body.heure_fin,
                 duree,
+                body.temperature_initiale if body.temperature_initiale is not None else 63.0,
                 body.temperature_finale,
                 TEMPERATURE_CIBLE,
                 DUREE_MAX_MINUTES,

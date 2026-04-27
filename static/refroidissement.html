@@ -102,7 +102,21 @@
             </label>
           </div>
 
-          <!-- Température -->
+          <!-- Température initiale (avant) -->
+          <div class="cu-row">
+            <label class="cu-champ">
+              <span class="cu-label">Température à cœur avant refroidissement <span class="cu-req">*</span></span>
+              <div class="cu-input-unite">
+                <input type="number" id="cu-temperature-initiale" class="cu-input"
+                       step="0.1" min="0" max="120" value="63"
+                       inputmode="decimal" required>
+                <span class="cu-unite-fixe">°C</span>
+              </div>
+              <div class="cu-cible">💡 Sortie cuisson : ≥ 63 °C recommandé</div>
+            </label>
+          </div>
+
+          <!-- Température finale (après) -->
           <div class="cu-row">
             <label class="cu-champ">
               <span class="cu-label">Température à cœur après refroidissement <span class="cu-req">*</span></span>
