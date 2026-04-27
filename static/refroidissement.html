@@ -135,11 +135,20 @@
             <div id="cu-conformite-texte" class="cu-conformite-texte">—</div>
           </div>
 
-          <!-- Bandeau "JETER" (durée + T° KO) -->
+          <!-- Bandeau "JETER" — cuisson insuffisante (T° initiale < 63 °C) -->
+          <div id="cu-jeter-init" class="cu-conformite cu-conformite--ko" hidden>
+            <div class="cu-conformite-texte">
+              ⛔ PRODUIT À JETER — Pasteurisation insuffisante à la sortie cuisson (T° &lt; 63 °C).<br>
+              <strong>Pourquoi :</strong> En dessous de 63 °C à cœur, les bactéries pathogènes ne sont pas éliminées.<br>
+              <strong>Que faire :</strong> Écarter et détruire le lot, identifier la cause (sonde, temps de cuisson, épaisseur), corriger le process et consigner l'action ci-dessous.
+            </div>
+          </div>
+
+          <!-- Bandeau "JETER" (durée + T° finale KO) -->
           <div id="cu-jeter" class="cu-conformite cu-conformite--ko" hidden>
             <div class="cu-conformite-texte">
-              ⛔ JETER LES PRODUITS — couple temps/température non respecté
-              (refroidissement &gt; 2 h ET T° &gt; 10 °C).
+              ⛔ JETER LES PRODUITS — couple temps/température de refroidissement non respecté
+              (durée &gt; 2 h ET T° finale &gt; 10 °C).
             </div>
           </div>
 

@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/refroidissement", tags=["refroidissement"])
 
-TEMPERATURE_CIBLE = 10.0      # °C max à cœur après refroidissement
-DUREE_MAX_MINUTES = 120       # 2 h
+TEMPERATURE_CIBLE        = 10.0   # °C max à cœur après refroidissement
+TEMPERATURE_MIN_CUISSON  = 63.0   # °C min à cœur en sortie de cuisson
+DUREE_MAX_MINUTES        = 120    # 2 h
 
 
 # ---------------------------------------------------------------------------
@@ -139,17 +140,31 @@ async def lister_produits_cuisson():
 async def creer_refroidissement(body: RefroidissementCreate):
     duree = _duree_minutes(body.heure_debut, body.heure_fin)
 
-    duree_ok = duree <= DUREE_MAX_MINUTES
-    temp_ok  = body.temperature_finale <= TEMPERATURE_CIBLE
-    conforme = duree_ok and temp_ok
-    # Règle "JETER" : couple temps/température non respecté
-    # = refroidissement > 2 h ET T° > 10 °C
-    jeter = (not duree_ok) and (not temp_ok)
+    temp_init = body.temperature_initiale if body.temperature_initiale is not None else 63.0
+    cuisson_ok = temp_init >= TEMPERATURE_MIN_CUISSON
+    duree_ok   = duree <= DUREE_MAX_MINUTES
+    temp_ok    = body.temperature_finale <= TEMPERATURE_CIBLE
+    conforme   = cuisson_ok and duree_ok and temp_ok
+
+    # Règle "JETER cuisson" : pasteurisation non atteinte
+    jeter_cuisson = not cuisson_ok
+    # Règle "JETER refroidissement" : couple temps/T° finale non respecté
+    jeter_refroidissement = (not duree_ok) and (not temp_ok)
+    jeter = jeter_cuisson or jeter_refroidissement
 
     if not conforme and not (body.action_corrective and body.action_corrective.strip()):
+        raisons = []
+        if not cuisson_ok:
+            raisons.append(
+                f"cuisson insuffisante ({temp_init:.1f} °C < {TEMPERATURE_MIN_CUISSON} °C)"
+            )
+        if not temp_ok:
+            raisons.append(f"T° finale trop haute ({body.temperature_finale:.1f} °C > {TEMPERATURE_CIBLE} °C)")
+        if not duree_ok:
+            raisons.append(f"durée dépassée ({duree} min > {DUREE_MAX_MINUTES} min)")
         raise HTTPException(
             status_code=422,
-            detail="Action corrective obligatoire si refroidissement non conforme.",
+            detail=f"Action corrective obligatoire : {' · '.join(raisons)}.",
         )
 
     async with get_db() as db:
@@ -196,11 +211,13 @@ async def creer_refroidissement(body: RefroidissementCreate):
         conforme, jeter,
     )
     return {
-        "ok": True,
-        "id": nouveau_id,
+        "ok":            True,
+        "id":            nouveau_id,
         "duree_minutes": duree,
-        "conforme": conforme,
-        "jeter": jeter,
+        "conforme":      conforme,
+        "jeter":         jeter,
+        "jeter_cuisson": jeter_cuisson,
+        "cuisson_ok":    cuisson_ok,
     }
 
 

@@ -96,6 +96,7 @@ const elTempInitiale = $('cu-temperature-initiale');
 const elTemperature  = $('cu-temperature');
 const elConformite   = $('cu-conformite');
 const elConfTxt      = $('cu-conformite-texte');
+const elJeterInit    = $('cu-jeter-init');
 const elJeter        = $('cu-jeter');
 const elActionWrap   = $('cu-action-wrap');
 const elAction       = $('cu-action');
@@ -323,23 +324,35 @@ elQuickFin.addEventListener('click', e => {
   })
 );
 
-// ── Conformité live (T° + durée) ─────────────────────────
-function majConformite() {
-  const t = parseFloat(elTemperature.value);
-  const d = dureeMinutes(elHeureDebut.value, elHeureFin.value);
-  const tValide = !isNaN(t);
-  const dValide = d != null;
+// ── Conformité live (T° initiale + T° finale + durée) ───────
+const TEMP_CUISSON_MIN = 63.0;   // °C min sortie cuisson
 
-  if (!tValide && !dValide) {
+function majConformite() {
+  const tInit  = parseFloat(elTempInitiale.value);
+  const t      = parseFloat(elTemperature.value);
+  const d      = dureeMinutes(elHeureDebut.value, elHeureFin.value);
+
+  const tInitValide = !isNaN(tInit);
+  const tValide     = !isNaN(t);
+  const dValide     = d != null;
+
+  // Cuisson insuffisante — bandeau spécifique
+  const cuissonOk = tInitValide ? tInit >= TEMP_CUISSON_MIN : true;
+  elJeterInit.hidden = !(tInitValide && !cuissonOk);
+
+  if (!tInitValide && !tValide && !dValide) {
     elConformite.hidden = true;
-    elJeter.hidden = true;
+    elJeter.hidden      = true;
     elActionWrap.hidden = true;
     return;
   }
 
   const tempOk  = tValide ? t <= TEMP_CIBLE : true;
   const dureeOk = dValide ? d <= DUREE_MAX_MIN : true;
-  const ok = tempOk && dureeOk && tValide && dValide;
+
+  // Conforme = cuisson OK + T° finale OK + durée OK (tous connus)
+  const ok   = cuissonOk && tempOk && dureeOk && tInitValide && tValide && dValide;
+  // JETER si couple refroidissement double KO
   const jeter = tValide && dValide && !tempOk && !dureeOk;
 
   elConformite.hidden = false;
@@ -347,21 +360,26 @@ function majConformite() {
   elConformite.classList.toggle('cu-conformite--ko', !ok);
 
   const partsKo = [];
-  if (tValide && !tempOk) partsKo.push(`T° ${t.toFixed(1)} °C > ${TEMP_CIBLE} °C`);
-  if (dValide && !dureeOk) partsKo.push(`durée ${formatDuree(d)} > 2 h`);
+  if (tInitValide && !cuissonOk)
+    partsKo.push(`cuisson insuffisante ${tInit.toFixed(1)} °C < ${TEMP_CUISSON_MIN} °C`);
+  if (tValide && !tempOk)
+    partsKo.push(`T° finale ${t.toFixed(1)} °C > ${TEMP_CIBLE} °C`);
+  if (dValide && !dureeOk)
+    partsKo.push(`durée ${formatDuree(d)} > 2 h`);
 
   if (ok) {
     elConfTxt.textContent =
-      `✓ Conforme — ${t.toFixed(1)} °C en ${formatDuree(d)} (≤ 10 °C, ≤ 2 h)`;
+      `✓ Conforme — cuisson ${tInit.toFixed(1)} °C · refroidissement ${t.toFixed(1)} °C en ${formatDuree(d)}`;
   } else {
     elConfTxt.textContent =
       `⚠ Non conforme — ${partsKo.join(' · ')} — action corrective requise`;
   }
 
-  elJeter.hidden = !jeter;
+  elJeter.hidden      = !jeter;
+  // Afficher action corrective si au moins une non-conformité
   elActionWrap.hidden = ok;
 }
-elTemperature.addEventListener('input', majConformite);
+[elTempInitiale, elTemperature].forEach(el => el.addEventListener('input', majConformite));
 
 // ── Soumission ───────────────────────────────────────────
 elForm.addEventListener('submit', async e => {
@@ -378,16 +396,23 @@ elForm.addEventListener('submit', async e => {
 
   const tInit = parseFloat(elTempInitiale.value);
   if (isNaN(tInit)) return afficherErreur('Température à cœur avant refroidissement requise.');
-  if (tInit < 63) return afficherErreur('Température avant refroidissement doit être ≥ 63 °C.');
 
   const t = parseFloat(elTemperature.value);
   if (isNaN(t)) return afficherErreur('Température à cœur après refroidissement requise.');
 
-  const tempOk  = t <= TEMP_CIBLE;
-  const dureeOk = d <= DUREE_MAX_MIN;
-  const conforme = tempOk && dureeOk;
+  const cuissonOk = tInit >= TEMP_CUISSON_MIN;
+  const tempOk    = t <= TEMP_CIBLE;
+  const dureeOk   = d <= DUREE_MAX_MIN;
+  const conforme  = cuissonOk && tempOk && dureeOk;
+
   if (!conforme && !elAction.value.trim()) {
-    return afficherErreur('Action corrective obligatoire si refroidissement non conforme.');
+    const raisons = [];
+    if (!cuissonOk) raisons.push(`cuisson insuffisante (${tInit.toFixed(1)} °C < 63 °C) → JETER`);
+    if (!tempOk)    raisons.push(`T° finale trop haute (${t.toFixed(1)} °C > 10 °C)`);
+    if (!dureeOk)   raisons.push(`durée dépassée (${formatDuree(d)} > 2 h)`);
+    return afficherErreur(
+      `Action corrective obligatoire : ${raisons.join(' · ')}.`
+    );
   }
 
   const payload = {
@@ -412,8 +437,9 @@ elForm.addEventListener('submit', async e => {
       body:    JSON.stringify(payload),
     });
     let msg = '✓ Refroidissement enregistré';
-    if (res.jeter)         msg = '⛔ Enregistré — PRODUITS À JETER';
-    else if (!res.conforme) msg = '⚠ Enregistré — non conforme';
+    if (res.jeter_cuisson)         msg = '⛔ Enregistré — CUISSON INSUFFISANTE — PRODUITS À JETER';
+    else if (res.jeter)            msg = '⛔ Enregistré — PRODUITS À JETER';
+    else if (!res.conforme)        msg = '⚠ Enregistré — non conforme';
     afficherToast(msg, !!res.conforme);
     resetWizard();
     await chargerHistorique();
@@ -457,10 +483,11 @@ function resetWizard() {
   elHeureFin.value        = '';
   elTempInitiale.value    = '63';
   elTemperature.value     = '';
-  elAction.value      = '';
-  elConformite.hidden = true;
-  elJeter.hidden      = true;
-  elActionWrap.hidden = true;
+  elAction.value          = '';
+  elConformite.hidden     = true;
+  elJeterInit.hidden      = true;
+  elJeter.hidden          = true;
+  elActionWrap.hidden     = true;
   elDate.value        = todayISO();
   elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
     b.classList.remove('cu-quick-btn--actif'));
