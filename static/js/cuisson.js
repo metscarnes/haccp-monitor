@@ -241,35 +241,17 @@ async function chargerPersonnel() {
 
 async function chargerProduits() {
   try {
-    const [brut, enStock] = await Promise.all([
-      apiFetch('/api/produits?type=brut'),
-      apiFetch('/api/produits?type=brut&en_stock=true').catch(() => []),
-    ]);
-
-    const stockMap = new Map();
-    (enStock ?? []).forEach(p => {
-      stockMap.set(p.id, {
-        numero_lot:         p.numero_lot ?? null,
-        dlc:                p.dlc ?? null,
-        reception_ligne_id: p.reception_ligne_id ?? null,
-      });
-    });
-
-    const aujourdhui = todayISO();
-    state.produits = (brut ?? []).map(p => {
-      const s = stockMap.get(p.id);
-      // Si le lot FIFO est périmé : on déclasse en "non en stock"
-      // (le produit reste visible mais sans ⭐ ni info de lot)
-      const expire = s && s.dlc && s.dlc < aujourdhui;
-      const stockOk = !!s && !expire;
-      return {
-        ...p,
-        en_stock:           stockOk,
-        numero_lot:         stockOk ? s.numero_lot : null,
-        dlc:                stockOk ? s.dlc : null,
-        reception_ligne_id: stockOk ? s.reception_ligne_id : null,
-      };
-    });
+    // On n'affiche que les produits ayant au moins un lot disponible :
+    // DLC non dépassée ET non traitée dans le calendrier DLC (jeté/vendu/consommé).
+    // Le backend (/api/produits?en_stock=true) applique déjà ces deux filtres.
+    const enStock = await apiFetch('/api/produits?type=brut&en_stock=true');
+    state.produits = (enStock ?? []).map(p => ({
+      ...p,
+      en_stock:           true,
+      numero_lot:         p.numero_lot ?? null,
+      dlc:                p.dlc ?? null,
+      reception_ligne_id: p.reception_ligne_id ?? null,
+    }));
   } catch (err) {
     state.produits = [];
     console.warn('[cuisson] Produits KO :', err);

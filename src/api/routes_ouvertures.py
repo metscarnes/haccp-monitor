@@ -161,6 +161,12 @@ async def suggestions_ouvertures(
             JOIN produits p   ON p.id = rl.produit_id
             WHERE r.date_reception >= ?
               AND p.categorie = 'matiere_premiere'
+              AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                   OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir d
+                  WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+              )
               {filter_sql}
             GROUP BY p.id
             ORDER BY last_reception DESC

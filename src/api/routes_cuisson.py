@@ -182,6 +182,7 @@ async def lister_cuissons(
 
 @router.get("/produits/{produit_id}/receptions")
 async def historique_receptions_produit(produit_id: int, limit: int = Query(20, ge=1, le=100)):
+    """Lots disponibles pour cuisson : DLC non dépassée ET non traitée via le calendrier DLC."""
     async with get_db() as db:
         cur = await db.execute(
             """
@@ -198,6 +199,12 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             JOIN   receptions  r ON r.id = rl.reception_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             WHERE  rl.produit_id = ?
+              AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                   OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir d
+                  WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+              )
             ORDER BY r.date_reception DESC, r.id DESC
             LIMIT ?
             """,
