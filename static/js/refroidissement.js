@@ -378,6 +378,7 @@ elForm.addEventListener('submit', async e => {
 
   const tInit = parseFloat(elTempInitiale.value);
   if (isNaN(tInit)) return afficherErreur('Température à cœur avant refroidissement requise.');
+  if (tInit < 63) return afficherErreur('Température avant refroidissement doit être ≥ 63 °C.');
 
   const t = parseFloat(elTemperature.value);
   if (isNaN(t)) return afficherErreur('Température à cœur après refroidissement requise.');
