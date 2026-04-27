@@ -152,13 +152,41 @@
             </div>
           </div>
 
+          <!-- Action corrective : bouton Jeter -->
           <div id="cu-action-wrap" class="cu-champ" hidden>
-            <span class="cu-label">
-              Action corrective <span class="cu-req">*</span>
-            </span>
-            <textarea id="cu-action" class="cu-input cu-textarea"
-                      placeholder="Destruction du lot, correction du process, traçabilité…"
-                      rows="3"></textarea>
+            <span class="cu-label">Action corrective <span class="cu-req">*</span></span>
+
+            <!-- État initial : attente confirmation -->
+            <div id="cu-jeter-btn-wrap">
+              <button type="button" id="cu-btn-jeter"
+                      style="width:100%;padding:1rem;font-size:1.05rem;font-weight:800;
+                             background:#7f1d1d;color:#fff;border:none;border-radius:10px;
+                             cursor:pointer;min-height:56px;font-family:inherit;
+                             display:flex;align-items:center;justify-content:center;gap:.5rem;
+                             transition:background .15s,transform .1s">
+                ⛔ Confirmer : Jeter le produit
+              </button>
+              <p style="font-size:.8rem;color:#7f1d1d;margin:.5rem 0 0;text-align:center;font-weight:600">
+                Ce produit sera retiré du stock et enregistré comme jeté dans le calendrier.
+              </p>
+            </div>
+
+            <!-- État confirmé -->
+            <div id="cu-jeter-confirme" hidden>
+              <div style="background:#7f1d1d;color:#fff;padding:.85rem 1rem;border-radius:10px;
+                          font-weight:800;font-size:1rem;text-align:center;margin-bottom:.6rem">
+                ✓ Produit marqué comme JETÉ — retiré du stock
+              </div>
+              <textarea id="cu-jeter-note" class="cu-input cu-textarea"
+                        placeholder="Note optionnelle : cause, quantité, n° lot…"
+                        rows="2"></textarea>
+              <button type="button" id="cu-btn-jeter-annuler"
+                      style="margin-top:.5rem;width:100%;padding:.6rem;background:transparent;
+                             border:1.5px solid #9E8572;border-radius:8px;color:#6B3A1F;
+                             font-size:.88rem;font-weight:700;cursor:pointer;font-family:inherit">
+                ✕ Annuler
+              </button>
+            </div>
           </div>
 
           <div id="cu-erreur" class="cu-erreur" hidden></div>

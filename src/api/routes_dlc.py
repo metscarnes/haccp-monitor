@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/dlc", tags=["dlc"])
 BOUTIQUE_ID = 1
 
 STATUTS_DEVENIR = {"jete", "vendu", "consomme", "autre"}
-SOURCES_VALIDES = {"reception_ligne", "fabrication"}
+SOURCES_VALIDES = {"reception_ligne", "fabrication", "refroidissement"}
 
 
 # ---------------------------------------------------------------------------
@@ -181,31 +181,38 @@ async def historique_devenir(
             d.created_at,
             pers.prenom AS personnel_prenom,
             CASE d.source_type
-                WHEN 'reception_ligne' THEN p.nom
-                WHEN 'fabrication'     THEN r.nom
+                WHEN 'reception_ligne'  THEN p.nom
+                WHEN 'fabrication'      THEN r.nom
+                WHEN 'refroidissement'  THEN p_ref.nom
             END AS produit_nom,
             CASE d.source_type
-                WHEN 'reception_ligne' THEN rl.dlc
-                WHEN 'fabrication'     THEN f.dlc_finale
+                WHEN 'reception_ligne'  THEN rl.dlc
+                WHEN 'fabrication'      THEN f.dlc_finale
+                WHEN 'refroidissement'  THEN ref.date_refroidissement
             END AS dlc,
             CASE d.source_type
-                WHEN 'reception_ligne' THEN rl.numero_lot
-                WHEN 'fabrication'     THEN f.lot_interne
+                WHEN 'reception_ligne'  THEN rl.numero_lot
+                WHEN 'fabrication'      THEN f.lot_interne
+                WHEN 'refroidissement'  THEN NULL
             END AS numero_lot,
             CASE d.source_type
-                WHEN 'reception_ligne' THEN rl.poids_kg
-                WHEN 'fabrication'     THEN f.poids_fabrique
+                WHEN 'reception_ligne'  THEN rl.poids_kg
+                WHEN 'fabrication'      THEN f.poids_fabrique
+                WHEN 'refroidissement'  THEN NULL
             END AS poids_kg,
             CASE d.source_type
-                WHEN 'reception_ligne' THEN fo.nom
-                WHEN 'fabrication'     THEN NULL
+                WHEN 'reception_ligne'  THEN fo.nom
+                WHEN 'fabrication'      THEN NULL
+                WHEN 'refroidissement'  THEN NULL
             END AS fournisseur_nom
-        FROM       dlc_devenir     d
-        LEFT JOIN  reception_lignes rl ON d.source_type = 'reception_ligne' AND rl.id = d.source_id
-        LEFT JOIN  produits         p  ON p.id = rl.produit_id
-        LEFT JOIN  fournisseurs     fo ON fo.id = rl.fournisseur_id
-        LEFT JOIN  fabrications     f  ON d.source_type = 'fabrication' AND f.id = d.source_id
-        LEFT JOIN  recettes         r  ON r.id = f.recette_id
+        FROM       dlc_devenir      d
+        LEFT JOIN  reception_lignes rl  ON d.source_type = 'reception_ligne' AND rl.id = d.source_id
+        LEFT JOIN  produits         p   ON p.id = rl.produit_id
+        LEFT JOIN  fournisseurs     fo  ON fo.id = rl.fournisseur_id
+        LEFT JOIN  fabrications     f   ON d.source_type = 'fabrication' AND f.id = d.source_id
+        LEFT JOIN  recettes         r   ON r.id = f.recette_id
+        LEFT JOIN  refroidissements ref ON d.source_type = 'refroidissement' AND ref.id = d.source_id
+        LEFT JOIN  produits         p_ref ON p_ref.id = ref.produit_id
         LEFT JOIN  personnel        pers ON pers.id = d.personnel_id
         {where_sql}
         ORDER BY d.created_at DESC, d.id DESC

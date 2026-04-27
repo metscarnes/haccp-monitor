@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db
+from src.database import get_db, create_dlc_devenir
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,7 @@ class RefroidissementCreate(BaseModel):
     heure_fin:            str   = Field(..., description="HH:MM fin de refroidissement")
     temperature_initiale: Optional[float] = Field(63.0, description="T° à cœur avant refroidissement")
     temperature_finale:   float = Field(..., description="T° à cœur après refroidissement")
+    jeter_action:         bool  = Field(False, description="True = jeter le produit + créer entrée devenir")
     action_corrective:    Optional[str] = None
 
 
@@ -202,13 +203,28 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 (body.action_corrective or "").strip() or None,
             ),
         )
-        await db.commit()
         nouveau_id = cur.lastrowid
 
+        # Entrée "devenir" dans le calendrier DLC si l'opérateur confirme le jet
+        if body.jeter_action:
+            try:
+                await create_dlc_devenir(
+                    db,
+                    source_type="refroidissement",
+                    source_id=nouveau_id,
+                    statut="jete",
+                    personnel_id=body.personnel_id,
+                    commentaire=(body.action_corrective or "").strip() or "Produit jeté — refroidissement non conforme",
+                )
+            except Exception as exc:
+                logger.warning("dlc_devenir non créé pour refroidissement #%d : %s", nouveau_id, exc)
+
+        await db.commit()
+
     logger.info(
-        "Refroidissement #%d — produit=%d durée=%dmin T°=%.1f conforme=%s jeter=%s",
-        nouveau_id, body.produit_id, duree, body.temperature_finale,
-        conforme, jeter,
+        "Refroidissement #%d — produit=%d durée=%dmin T°init=%.1f T°=%.1f conforme=%s jeter=%s jeter_action=%s",
+        nouveau_id, body.produit_id, duree, temp_init, body.temperature_finale,
+        conforme, jeter, body.jeter_action,
     )
     return {
         "ok":            True,
@@ -218,6 +234,7 @@ async def creer_refroidissement(body: RefroidissementCreate):
         "jeter":         jeter,
         "jeter_cuisson": jeter_cuisson,
         "cuisson_ok":    cuisson_ok,
+        "devenir_cree":  body.jeter_action,
     }
 
 
