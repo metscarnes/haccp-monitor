@@ -200,6 +200,32 @@
   <!-- ── Toast ── -->
   <div id="cu-toast" class="cu-toast" hidden></div>
 
+  <!-- ── Modal choix post-enregistrement ── -->
+  <div id="cu-modal-choix" class="cu-modal" hidden role="dialog" aria-modal="true" aria-labelledby="cu-choix-titre">
+    <div class="cu-modal-panel cu-modal-panel--choix">
+      <div class="cu-modal-head">
+        <div class="cu-modal-titre" id="cu-choix-titre">Cuisson enregistrée</div>
+      </div>
+      <div class="cu-modal-corps cu-choix-corps">
+        <div class="cu-choix-context" id="cu-choix-context"></div>
+        <div class="cu-choix-grid">
+          <button type="button" id="cu-choix-nouvelle" class="cu-choix-btn">
+            <span class="cu-choix-icone">🍗</span>
+            <span class="cu-choix-label">Nouvelle cuisson</span>
+          </button>
+          <button type="button" id="cu-choix-hub" class="cu-choix-btn">
+            <span class="cu-choix-icone">🏠</span>
+            <span class="cu-choix-label">Retour au hub</span>
+          </button>
+          <button type="button" id="cu-choix-refroid" class="cu-choix-btn cu-choix-btn--accent">
+            <span class="cu-choix-icone">❄</span>
+            <span class="cu-choix-label">Refroidissement du produit</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Modal historique réception produit ── -->
   <div id="cu-modal-histo" class="cu-modal" hidden role="dialog" aria-modal="true">
     <div class="cu-modal-panel">

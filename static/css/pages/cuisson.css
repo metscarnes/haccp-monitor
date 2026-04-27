@@ -797,3 +797,67 @@
 .cu-modal-corps .cu-histo-ligne {
   grid-template-columns: auto 1fr;
 }
+
+/* ── Modal choix post-enregistrement ─────────── */
+.cu-modal-panel--choix {
+  max-width: 400px;
+}
+.cu-choix-corps {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+.cu-choix-context {
+  text-align: center;
+  font-size: .9rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  background: #f5ede0;
+  border-radius: 8px;
+  padding: .5rem .85rem;
+}
+.cu-choix-grid {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+.cu-choix-btn {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  width: 100%;
+  background: #FFFDF7;
+  border: 1.5px solid #d8c9b2;
+  border-radius: 12px;
+  padding: .9rem 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  color: #3D2008;
+  transition: background .15s, border-color .15s, transform .1s;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.cu-choix-btn:hover  { background: #f5ede0; border-color: #6B3A1F; }
+.cu-choix-btn:active { transform: scale(.97); }
+.cu-choix-icone {
+  font-size: 1.6rem;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0e8dc;
+  border-radius: 50%;
+}
+.cu-choix-label {
+  font-size: 1rem;
+  font-weight: 800;
+}
+.cu-choix-btn--accent {
+  background: #EBF6EF;
+  border-color: #2D7D46;
+  color: #2D7D46;
+}
+.cu-choix-btn--accent .cu-choix-icone { background: #d2ecda; }
+.cu-choix-btn--accent:hover { background: #d2ecda; border-color: #2D7D46; }

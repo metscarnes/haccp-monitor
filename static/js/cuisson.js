@@ -103,6 +103,13 @@ const elModalTitre   = $('cu-modal-titre');
 const elModalCorps   = $('cu-modal-corps');
 const elModalClose   = $('cu-modal-close');
 
+const elModalChoix    = $('cu-modal-choix');
+const elChoixTitre    = $('cu-choix-titre');
+const elChoixContext  = $('cu-choix-context');
+const elChoixNouvelle = $('cu-choix-nouvelle');
+const elChoixHub      = $('cu-choix-hub');
+const elChoixRefroid  = $('cu-choix-refroid');
+
 // ── Horloge ────────────────────────────────────────────────
 (function majHorloge() {
   elHorloge.textContent = new Date().toLocaleTimeString('fr-FR', {
@@ -126,14 +133,15 @@ resetInactivite();
 
 // ── État ───────────────────────────────────────────────────
 const state = {
-  step:            1,
-  personnel:       [],
-  produits:        [],
-  operateurChoisi: null,   // { id, prenom }
-  produitChoisi:   null,   // { id, nom, numero_lot, dlc, reception_ligne_id }
-  lotsProduit:     [],
-  fifoLotId:       null,
-  especeFiltre:    null,   // null = toutes
+  step:              1,
+  personnel:         [],
+  produits:          [],
+  operateurChoisi:   null,   // { id, prenom }
+  produitChoisi:     null,   // { id, nom, numero_lot, dlc, reception_ligne_id }
+  lotsProduit:       [],
+  fifoLotId:         null,
+  especeFiltre:      null,   // null = toutes
+  derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
 };
 
 const ESPECES_ICONES = {
@@ -483,6 +491,34 @@ elModal.addEventListener('click', e => {
   if (e.target === elModal) elModal.hidden = true;
 });
 
+// ── Modal choix post-enregistrement ─────────────────────
+function afficherModalChoix(conforme) {
+  const { operateur, produit } = state.derniereSauvegarde;
+  elChoixTitre.textContent  = conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme';
+  elChoixContext.textContent = `${operateur.prenom} · ${produit.nom}`;
+  elModalChoix.hidden = false;
+}
+
+elChoixNouvelle.addEventListener('click', () => {
+  elModalChoix.hidden = true;
+  resetWizard();
+});
+
+elChoixHub.addEventListener('click', () => {
+  window.location.href = '/taches-hub.html';
+});
+
+elChoixRefroid.addEventListener('click', () => {
+  const { operateur, produit } = state.derniereSauvegarde;
+  sessionStorage.setItem('refroidissement_prefill', JSON.stringify({
+    operateur_id:     operateur.id,
+    operateur_prenom: operateur.prenom,
+    produit_id:       produit.id,
+    produit_nom:      produit.nom,
+  }));
+  window.location.href = '/refroidissement.html';
+});
+
 // ═══ Boutons "← Retour" ═════════════════════════════════
 document.querySelectorAll('[data-back]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -602,8 +638,14 @@ elForm.addEventListener('submit', async e => {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
-    afficherToast(res.conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', res.conforme);
-    resetWizard();
+    const conforme = !!res.conforme;
+    afficherToast(conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', conforme);
+    state.derniereSauvegarde = {
+      operateur: { ...state.operateurChoisi },
+      produit:   { ...state.produitChoisi },
+      conforme,
+    };
+    afficherModalChoix(conforme);
     await chargerHistorique();
   } catch (err) {
     afficherErreur(err.message);

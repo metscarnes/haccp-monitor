@@ -177,6 +177,43 @@ async function init() {
 
   afficherOperateurs();
   afficherProduits();
+
+  const prefillRaw = sessionStorage.getItem('refroidissement_prefill');
+  if (prefillRaw) {
+    sessionStorage.removeItem('refroidissement_prefill');
+    try { appliquerPrefill(JSON.parse(prefillRaw)); } catch { /* noop */ }
+  }
+}
+
+function appliquerPrefill(data) {
+  if (data.operateur_id) {
+    const op = state.personnel.find(p => p.id === Number(data.operateur_id));
+    if (op) {
+      state.operateurChoisi = { id: op.id, prenom: op.prenom };
+      elOperateursGrid.querySelectorAll('.cu-tuile[data-op-id]').forEach(t =>
+        t.classList.toggle('cu-tuile--selected', Number(t.dataset.opId) === op.id));
+    }
+  }
+
+  if (data.produit_id) {
+    const tuile = elProduitsGrid.querySelector(`.cu-tuile[data-prod-id="${data.produit_id}"]`);
+    if (tuile) {
+      state.produitChoisi = {
+        id:         Number(tuile.dataset.prodId),
+        nom:        tuile.dataset.prodNom,
+        cuisson_id: tuile.dataset.cuissonId ? Number(tuile.dataset.cuissonId) : null,
+      };
+      tuile.classList.add('cu-tuile--selected');
+    }
+  }
+
+  majBandeau();
+
+  if (state.operateurChoisi && state.produitChoisi) {
+    goStep(3);
+  } else if (state.operateurChoisi) {
+    goStep(2);
+  }
 }
 
 async function chargerPersonnel() {
