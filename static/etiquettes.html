@@ -114,6 +114,39 @@
       max-width: none;
     }
 
+    /* ── En-tête étape 1 : titre + lien admin recettes ── */
+    .fab-step1-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: .25rem;
+    }
+    .fab-step1-header .fab-step-titre {
+      margin-bottom: 0;
+    }
+    .fab-btn-admin-recettes {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .55rem 1rem;
+      background: #f5ede0;
+      border: 1.5px solid #d8c9b2;
+      border-radius: 10px;
+      color: #6B3A1F;
+      font-size: .88rem;
+      font-weight: 700;
+      font-family: inherit;
+      text-decoration: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+      min-height: 44px;
+      flex-shrink: 0;
+    }
+    .fab-btn-admin-recettes:hover  { background: #ede0d0; border-color: #6B3A1F; }
+    .fab-btn-admin-recettes:active { background: #ddd0be; transform: scale(.97); }
+
     /* ── Bouton Remplacer — clignotement niveau 2 ── */
     @keyframes blink-remplacer {
       0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(234,88,12,.4); }
@@ -242,7 +275,12 @@
     <!-- Étape 1 : Choix de la recette -->
     <div class="fab-step fab-step--active" id="fab-step-1">
       <div class="fab-step-inner">
-        <h2 class="fab-step-titre">Choisir une recette</h2>
+        <div class="fab-step1-header">
+          <h2 class="fab-step-titre">Choisir une recette</h2>
+          <a href="/admin-recettes.html" class="fab-btn-admin-recettes">
+            ✏️ Gérer les recettes
+          </a>
+        </div>
         <input id="fab-recette-search" type="search" class="fab-filter-input"
                placeholder="Filtrer les recettes…" autocomplete="off" inputmode="text"
                aria-label="Filtrer les recettes">
