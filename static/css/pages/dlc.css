@@ -358,8 +358,10 @@
 .dlc-item-source {
   font-weight: 700;
 }
-.dlc-item-source--reception   { color: var(--color-accent); }
-.dlc-item-source--fabrication { color: var(--color-ok); }
+.dlc-item-source--reception       { color: var(--color-accent); }
+.dlc-item-source--fabrication     { color: var(--color-ok); }
+.dlc-item-source--cuisson         { color: #d97706; }
+.dlc-item-source--refroidissement { color: #2563eb; }
 
 .dlc-item-devenir {
   margin-top: 4px;

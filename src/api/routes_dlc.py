@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/dlc", tags=["dlc"])
 BOUTIQUE_ID = 1
 
 STATUTS_DEVENIR = {"jete", "vendu", "consomme", "autre"}
-SOURCES_VALIDES = {"reception_ligne", "fabrication", "refroidissement"}
+SOURCES_VALIDES = {"reception_ligne", "fabrication", "cuisson", "refroidissement"}
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ class ParametresDlc(BaseModel):
 async def calendrier(
     date_debut: str = Query(..., description="YYYY-MM-DD"),
     date_fin: str = Query(..., description="YYYY-MM-DD"),
-    source: Optional[str] = Query(None, pattern="^(reception|fabrication)$"),
+    source: Optional[str] = Query(None, pattern="^(reception|fabrication|cuisson|refroidissement)$"),
     categorie: Optional[str] = None,
 ):
     """Retourne les DLCs comprises entre deux dates, toutes sources confondues."""

@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "haccp.db"
 
+# DLC (en jours) appliquée aux produits transformés sur place :
+# cuisson, refroidissement, fabrication HACCP. Règle métier non modifiable.
+DLC_JOURS_TRANSFORMATION = 3
+
 # ---------------------------------------------------------------------------
 # Schéma
 # ---------------------------------------------------------------------------
@@ -492,6 +496,7 @@ CREATE TABLE IF NOT EXISTS cuissons (
     temperature_cible   REAL    NOT NULL DEFAULT 75.0,
     conforme            INTEGER NOT NULL,
     action_corrective   TEXT,
+    dlc_finale          DATE,                        -- date_cuisson + DLC_JOURS_TRANSFORMATION
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
@@ -523,6 +528,7 @@ CREATE TABLE IF NOT EXISTS refroidissements (
     conforme              INTEGER NOT NULL,
     jeter                 INTEGER NOT NULL DEFAULT 0,
     action_corrective     TEXT,
+    dlc_finale            DATE,                       -- date_refroidissement + DLC_JOURS_TRANSFORMATION
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id),
@@ -843,6 +849,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE taches_nettoyage    ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE registre_nettoyage  ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE nuisibles_controles ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
+            # v3.2 — DLC = J+3 sur cuisson / refroidissement (règle HACCP transformation)
+            "ALTER TABLE cuissons         ADD COLUMN dlc_finale DATE",
+            "ALTER TABLE refroidissements ADD COLUMN dlc_finale DATE",
+            # Rétro-remplissage des lignes existantes
+            f"UPDATE cuissons         SET dlc_finale = date(date_cuisson,         '+{DLC_JOURS_TRANSFORMATION} days') WHERE dlc_finale IS NULL",
+            f"UPDATE refroidissements SET dlc_finale = date(date_refroidissement, '+{DLC_JOURS_TRANSFORMATION} days') WHERE dlc_finale IS NULL",
         ]
         for sql in migrations:
             try:
@@ -3051,12 +3063,15 @@ async def get_dlc_calendrier(
     boutique_id: int,
     date_debut: str,   # "YYYY-MM-DD"
     date_fin: str,     # "YYYY-MM-DD"
-    source: Optional[str] = None,       # 'reception' | 'fabrication' | None
+    source: Optional[str] = None,       # 'reception' | 'fabrication' | 'cuisson' | 'refroidissement' | None
     categorie: Optional[str] = None,    # filtre produit
 ) -> list[dict]:
     """
-    Retourne la liste des DLCs (receptions + fabrications) sur la période,
-    enrichie du statut devenir s'il est renseigné.
+    Retourne la liste des DLCs (réceptions + fabrications + cuissons + refroidissements)
+    sur la période, enrichie du statut devenir s'il est renseigné.
+
+    Émojis source pour le frontend :
+        📦 reception_ligne    🔪 fabrication    🔥 cuisson    ❄️ refroidissement
     """
     items: list[dict] = []
 
@@ -3161,6 +3176,91 @@ async def get_dlc_calendrier(
             )
             fab["ingredients"] = [dict(r) for r in await cur2.fetchall()]
             items.append(fab)
+
+    if source in (None, "cuisson"):
+        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_params = (categorie,) if categorie else ()
+        cur = await db.execute(
+            f"""
+            SELECT
+                c.id                 AS source_id,
+                'cuisson'            AS source_type,
+                c.dlc_finale         AS dlc,
+                CAST(c.id AS TEXT)   AS numero_lot,
+                c.quantite           AS quantite,
+                COALESCE(c.unite, 'kg') AS unite,
+                p.id                 AS produit_id,
+                p.nom                AS produit_nom,
+                p.categorie          AS categorie,
+                NULL                 AS fournisseur_nom,
+                c.date_cuisson       AS date_origine,
+                NULL                 AS reception_id,
+                c.type_cuisson       AS type_cuisson,
+                c.temperature_sortie AS temperature_sortie,
+                dd.statut            AS devenir_statut,
+                dd.commentaire       AS devenir_commentaire,
+                dd.created_at        AS devenir_at,
+                pers.prenom          AS devenir_prenom
+            FROM cuissons c
+            JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN dlc_devenir dd
+                   ON dd.source_type = 'cuisson' AND dd.source_id = c.id
+            LEFT JOIN personnel pers ON pers.id = dd.personnel_id
+            WHERE c.dlc_finale IS NOT NULL
+              AND c.dlc_finale BETWEEN ? AND ?
+              AND c.boutique_id = ?
+              -- Si la cuisson a été refroidie, on ne l'affiche plus (seul le refroidissement reste pertinent)
+              AND NOT EXISTS (
+                  SELECT 1 FROM refroidissements rf WHERE rf.cuisson_id = c.id
+              )
+              {cat_filter}
+            """,
+            (date_debut, date_fin, boutique_id, *cat_params),
+        )
+        for row in await cur.fetchall():
+            items.append(dict(row))
+
+    if source in (None, "refroidissement"):
+        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_params = (categorie,) if categorie else ()
+        cur = await db.execute(
+            f"""
+            SELECT
+                rf.id                  AS source_id,
+                'refroidissement'      AS source_type,
+                rf.dlc_finale          AS dlc,
+                CAST(rf.id AS TEXT)    AS numero_lot,
+                NULL                   AS quantite,
+                'kg'                   AS unite,
+                p.id                   AS produit_id,
+                p.nom                  AS produit_nom,
+                p.categorie            AS categorie,
+                NULL                   AS fournisseur_nom,
+                rf.date_refroidissement AS date_origine,
+                NULL                   AS reception_id,
+                rf.cuisson_id          AS cuisson_id,
+                rf.temperature_finale  AS temperature_finale,
+                rf.duree_minutes       AS duree_minutes,
+                dd.statut              AS devenir_statut,
+                dd.commentaire         AS devenir_commentaire,
+                dd.created_at          AS devenir_at,
+                pers.prenom            AS devenir_prenom
+            FROM refroidissements rf
+            JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN dlc_devenir dd
+                   ON dd.source_type = 'refroidissement' AND dd.source_id = rf.id
+            LEFT JOIN personnel pers ON pers.id = dd.personnel_id
+            WHERE rf.dlc_finale IS NOT NULL
+              AND rf.dlc_finale BETWEEN ? AND ?
+              AND rf.boutique_id = ?
+              -- Refroidissements jetés à la saisie (cuisson ratée) : déjà tracés via dlc_devenir
+              AND rf.jeter = 0
+              {cat_filter}
+            """,
+            (date_debut, date_fin, boutique_id, *cat_params),
+        )
+        for row in await cur.fetchall():
+            items.append(dict(row))
 
     items.sort(key=lambda x: (x["dlc"], x["produit_nom"]))
     return items

@@ -11,12 +11,13 @@ POST /api/refroidissement/enregistrements
 """
 
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db, create_dlc_devenir
+from src.database import get_db, create_dlc_devenir, DLC_JOURS_TRANSFORMATION
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,13 @@ async def creer_refroidissement(body: RefroidissementCreate):
             detail=f"Action corrective obligatoire : {' · '.join(raisons)}.",
         )
 
+    # DLC J+3 calculée côté serveur (règle HACCP transformation)
+    try:
+        dlc_finale = (datetime.strptime(body.date_refroidissement, "%Y-%m-%d").date()
+                      + timedelta(days=DLC_JOURS_TRANSFORMATION)).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date_refroidissement invalide (YYYY-MM-DD attendu).")
+
     async with get_db() as db:
         cur = await db.execute(
             """
@@ -130,8 +138,8 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 heure_debut, heure_fin, duree_minutes,
                 temperature_initiale, temperature_finale,
                 temperature_cible, duree_max_minutes,
-                conforme, jeter, action_corrective
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                conforme, jeter, action_corrective, dlc_finale
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.date_refroidissement,
@@ -148,6 +156,7 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 1 if conforme else 0,
                 1 if jeter else 0,
                 (body.action_corrective or "").strip() or None,
+                dlc_finale,
             ),
         )
         nouveau_id = cur.lastrowid

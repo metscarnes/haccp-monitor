@@ -76,7 +76,8 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_etiquettes.py', encoding='utf-8'\\).read\\(\\)\\); print\\('routes_etiquettes.py OK'\\)\")",
       "Bash(python -m pytest tests/test_db_fabrication.py -x -q)",
       "Bash(python -m pytest tests/ -x -q)",
-      "Bash(python -m pytest tests/ -q)"
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest tests/ -q --no-header)"
     ]
   }
 }

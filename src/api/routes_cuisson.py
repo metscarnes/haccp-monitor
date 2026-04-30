@@ -9,13 +9,13 @@ POST /api/cuisson/enregistrements
 """
 
 import logging
-from datetime import date as _date
+from datetime import date as _date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db
+from src.database import get_db, DLC_JOURS_TRANSFORMATION
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,13 @@ async def creer_cuisson(body: CuissonCreate):
             detail="Action corrective obligatoire si température < 75 °C",
         )
 
+    # DLC J+3 calculée côté serveur (règle HACCP transformation)
+    try:
+        dlc_finale = (datetime.strptime(body.date_cuisson, "%Y-%m-%d").date()
+                      + timedelta(days=DLC_JOURS_TRANSFORMATION)).isoformat()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date_cuisson invalide (YYYY-MM-DD attendu).")
+
     async with get_db() as db:
         cur = await db.execute(
             """
@@ -63,8 +70,8 @@ async def creer_cuisson(body: CuissonCreate):
                 reception_ligne_id, quantite, unite,
                 heure_debut, heure_fin,
                 temperature_sortie, temperature_cible,
-                conforme, action_corrective
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                conforme, action_corrective, dlc_finale
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.type_cuisson.lower(),
@@ -80,6 +87,7 @@ async def creer_cuisson(body: CuissonCreate):
                 TEMPERATURE_CIBLE,
                 conforme,
                 (body.action_corrective or "").strip() or None,
+                dlc_finale,
             ),
         )
         await db.commit()

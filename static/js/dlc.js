@@ -2,9 +2,19 @@
 /* ============================================================
    dlc.js — Calendrier DLC multi-vues (semaine / mois / annuel)
    Sources : reception_lignes.dlc + fabrications.dlc_finale
+           + cuissons.dlc_finale + refroidissements.dlc_finale
    ============================================================ */
 
 const $ = (id) => document.getElementById(id);
+
+// Mapping centralisé des sources DLC → emoji + libellé + classe CSS
+const SRC_META = {
+  reception_ligne:  { icon: '📦', label: 'Réception',       cls: 'reception'       },
+  fabrication:      { icon: '🔪', label: 'Fabrication',     cls: 'fabrication'     },
+  cuisson:          { icon: '🔥', label: 'Cuisson',         cls: 'cuisson'         },
+  refroidissement:  { icon: '❄️', label: 'Refroidissement', cls: 'refroidissement' },
+};
+const srcMeta = (t) => SRC_META[t] || SRC_META.reception_ligne;
 
 function escHtml(s) {
   return String(s ?? '')
@@ -234,7 +244,7 @@ function renderSemaine(debut, fin) {
     } else {
       items.forEach(it => {
         const niveau = it.devenir_statut ? 'gris' : niveauAlerte(it.dlc);
-        const src = it.source_type === 'fabrication' ? '🔪' : '📦';
+        const src = srcMeta(it.source_type).icon;
         produitsHtml += `
           <div class="dlc-semaine-item dlc-semaine-item--${niveau}"
                data-date="${key}" data-index="${items.indexOf(it)}">
@@ -402,8 +412,9 @@ function ouvrirModalJour(dateStr, items) {
     const niveau = it.devenir_statut ? 'gris' : niveauAlerte(it.dlc);
     const expire = parseYmd(it.dlc) < aujourdhui;
     const aTraiter = expire && !it.devenir_statut;
-    const sourceLabel = it.source_type === 'fabrication' ? '🔪 Fabrication' : '📦 Réception';
-    const sourceCls = it.source_type === 'fabrication' ? 'fabrication' : 'reception';
+    const _src = srcMeta(it.source_type);
+    const sourceLabel = `${_src.icon} ${_src.label}`;
+    const sourceCls = _src.cls;
 
     const meta = [];
     if (it.numero_lot)       meta.push(`Lot : ${escHtml(it.numero_lot)}`);
@@ -711,7 +722,7 @@ function ouvrirModalBatch() {
   expires.forEach(it => {
     const k = clefBatch(it);
     const niveau = niveauAlerte(it.dlc);
-    const src = it.source_type === 'fabrication' ? '🔪' : '📦';
+    const src = srcMeta(it.source_type).icon;
     const meta = [];
     if (it.numero_lot) meta.push(`Lot ${escHtml(it.numero_lot)}`);
     if (it.quantite != null) meta.push(`${it.quantite} ${escHtml(it.unite || '')}`);
