@@ -217,6 +217,14 @@ function appliquerPrefill(data) {
     }
   }
 
+  // Pré-remplissage des champs de l'étape 3
+  if (data.quantite != null && !isNaN(parseFloat(data.quantite))) {
+    elQuantite.value = parseFloat(data.quantite);
+  }
+  if (data.unite) {
+    elUnite.value = data.unite;
+  }
+
   if (data.produit_id) {
     const prod = state.produits.find(p => p.id === Number(data.produit_id));
     if (prod) {
@@ -525,7 +533,7 @@ elChoixHub.addEventListener('click', () => {
 });
 
 elChoixRefroid.addEventListener('click', () => {
-  const { operateur, produit, cuisson_id, temperature_sortie } = state.derniereSauvegarde;
+  const { operateur, produit, cuisson_id, temperature_sortie, quantite, unite } = state.derniereSauvegarde;
   sessionStorage.setItem('refroidissement_prefill', JSON.stringify({
     operateur_id:       operateur.id,
     operateur_prenom:   operateur.prenom,
@@ -533,6 +541,8 @@ elChoixRefroid.addEventListener('click', () => {
     produit_nom:        produit.nom,
     cuisson_id:         cuisson_id ?? null,
     temperature_sortie: temperature_sortie ?? null,
+    quantite:           quantite ?? null,
+    unite:              unite ?? null,
   }));
   window.location.href = '/refroidissement.html';
 });
@@ -668,6 +678,8 @@ elForm.addEventListener('submit', async e => {
       produit:            { ...state.produitChoisi },
       cuisson_id:         res && res.id ? Number(res.id) : null,
       temperature_sortie: temp,
+      quantite:           qte,
+      unite:              elUnite.value || 'kg',
       conforme,
     };
     afficherModalChoix(conforme);

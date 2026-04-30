@@ -139,6 +139,7 @@ const state = {
   produits:        [],
   operateurChoisi: null,
   produitChoisi:   null,
+  cuissonContext:  null,  // { quantite, unite, temperature_sortie } reçu via sessionStorage
 };
 
 let jeterConfirme = false;
@@ -155,11 +156,14 @@ elBtnJeterAnnuler.addEventListener('click', () => setJeterConfirme(false));
 if (elBtnRecuire) {
   elBtnRecuire.addEventListener('click', () => {
     if (!state.produitChoisi) return;
+    const ctx = state.cuissonContext || {};
     const payload = {
       operateur_id:     state.operateurChoisi ? state.operateurChoisi.id     : null,
       operateur_prenom: state.operateurChoisi ? state.operateurChoisi.prenom : null,
       produit_id:       state.produitChoisi.id,
       produit_nom:      state.produitChoisi.nom,
+      quantite:         ctx.quantite ?? null,
+      unite:            ctx.unite    ?? null,
     };
     sessionStorage.setItem('cuisson_prefill', JSON.stringify(payload));
     window.location.href = '/cuisson.html';
@@ -259,6 +263,13 @@ function appliquerPrefill(data) {
     elTempInitiale.value = parseFloat(data.temperature_sortie).toFixed(1);
     majConformite();
   }
+
+  // Conserver la quantité/unité de la cuisson pour la rebascule éventuelle
+  state.cuissonContext = {
+    quantite:           data.quantite           ?? null,
+    unite:              data.unite              ?? null,
+    temperature_sortie: data.temperature_sortie ?? null,
+  };
 }
 
 async function chargerPersonnel() {
