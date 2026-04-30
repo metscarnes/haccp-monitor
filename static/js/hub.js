@@ -171,7 +171,18 @@ function listeVideHtml(msg) {
   return `<li class="hub-popup-vide">${escHtml(msg)}</li>`;
 }
 
+function majBoutonSnooze() {
+  if (estEnSnooze()) {
+    elPopupSnooze.textContent = '🔔 Réafficher l\'alerte';
+    elPopupSnooze.classList.add('hub-popup-snooze--actif');
+  } else {
+    elPopupSnooze.textContent = '🔕 Ne plus afficher pendant 2h';
+    elPopupSnooze.classList.remove('hub-popup-snooze--actif');
+  }
+}
+
 function ouvrirPopup() {
+  majBoutonSnooze();
   elPopupOverlay.hidden = false;
   document.body.style.overflow = 'hidden';
 }
@@ -181,14 +192,19 @@ function fermerPopup() {
   document.body.style.overflow = '';
 }
 
-function snoozerPopup() {
-  localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
-  fermerPopup();
+function basculerSnooze() {
+  if (estEnSnooze()) {
+    localStorage.removeItem(SNOOZE_KEY);
+    majBoutonSnooze();
+  } else {
+    localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
+    fermerPopup();
+  }
 }
 
 elCloche.addEventListener('click', ouvrirPopup);
 elPopupFermer.addEventListener('click', fermerPopup);
-elPopupSnooze.addEventListener('click', snoozerPopup);
+elPopupSnooze.addEventListener('click', basculerSnooze);
 elPopupOverlay.addEventListener('click', (e) => {
   if (e.target === elPopupOverlay) fermerPopup();
 });

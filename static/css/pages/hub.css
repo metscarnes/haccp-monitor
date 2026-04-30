@@ -523,3 +523,14 @@
   background: rgba(0,0,0,.05);
   color: rgba(0,0,0,.8);
 }
+
+.hub-popup-snooze--actif {
+  border-color: #C93030;
+  color: #C93030;
+  font-weight: 600;
+}
+.hub-popup-snooze--actif:hover,
+.hub-popup-snooze--actif:focus-visible {
+  background: rgba(201,48,48,.08);
+  color: #C93030;
+}
