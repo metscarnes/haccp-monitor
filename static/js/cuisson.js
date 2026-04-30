@@ -199,6 +199,39 @@ async function init() {
   afficherOperateurs();
   afficherFiltresEspece();
   afficherProduits();
+
+  const prefillRaw = sessionStorage.getItem('cuisson_prefill');
+  if (prefillRaw) {
+    sessionStorage.removeItem('cuisson_prefill');
+    try { appliquerPrefill(JSON.parse(prefillRaw)); } catch { /* noop */ }
+  }
+}
+
+function appliquerPrefill(data) {
+  if (data.operateur_id) {
+    const op = state.personnel.find(p => p.id === Number(data.operateur_id));
+    if (op) {
+      state.operateurChoisi = { id: op.id, prenom: op.prenom };
+      elOperateursGrid.querySelectorAll('.cu-tuile[data-op-id]').forEach(t =>
+        t.classList.toggle('cu-tuile--selected', Number(t.dataset.opId) === op.id));
+    }
+  }
+
+  if (data.produit_id) {
+    const prod = state.produits.find(p => p.id === Number(data.produit_id));
+    if (prod) {
+      // Réutilise tout le pipeline (chargement des lots, FIFO, navigation step 3)
+      selectionnerProduit(prod.id, prod.nom);
+    } else {
+      // Produit non en stock — on garde au moins l'opérateur pré-sélectionné
+      majBandeau();
+      if (state.operateurChoisi) goStep(2);
+    }
+    return;
+  }
+
+  majBandeau();
+  if (state.operateurChoisi) goStep(2);
 }
 
 function afficherFiltresEspece() {
@@ -492,12 +525,14 @@ elChoixHub.addEventListener('click', () => {
 });
 
 elChoixRefroid.addEventListener('click', () => {
-  const { operateur, produit } = state.derniereSauvegarde;
+  const { operateur, produit, cuisson_id, temperature_sortie } = state.derniereSauvegarde;
   sessionStorage.setItem('refroidissement_prefill', JSON.stringify({
-    operateur_id:     operateur.id,
-    operateur_prenom: operateur.prenom,
-    produit_id:       produit.id,
-    produit_nom:      produit.nom,
+    operateur_id:       operateur.id,
+    operateur_prenom:   operateur.prenom,
+    produit_id:         produit.id,
+    produit_nom:        produit.nom,
+    cuisson_id:         cuisson_id ?? null,
+    temperature_sortie: temperature_sortie ?? null,
   }));
   window.location.href = '/refroidissement.html';
 });
@@ -629,8 +664,10 @@ elForm.addEventListener('submit', async e => {
     const conforme = !!res.conforme;
     afficherToast(conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', conforme);
     state.derniereSauvegarde = {
-      operateur: { ...state.operateurChoisi },
-      produit:   { ...state.produitChoisi },
+      operateur:          { ...state.operateurChoisi },
+      produit:            { ...state.produitChoisi },
+      cuisson_id:         res && res.id ? Number(res.id) : null,
+      temperature_sortie: temp,
       conforme,
     };
     afficherModalChoix(conforme);

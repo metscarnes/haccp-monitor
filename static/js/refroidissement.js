@@ -104,6 +104,7 @@ const elBtnJeter        = $('cu-btn-jeter');
 const elJeterConfirme   = $('cu-jeter-confirme');
 const elJeterNote       = $('cu-jeter-note');
 const elBtnJeterAnnuler = $('cu-btn-jeter-annuler');
+const elBtnRecuire      = $('cu-btn-recuire');
 const elErreur          = $('cu-erreur');
 const elForm         = $('cu-form');
 const elBtnSave      = $('cu-btn-save');
@@ -150,6 +151,20 @@ function setJeterConfirme(val) {
 
 elBtnJeter.addEventListener('click', () => setJeterConfirme(true));
 elBtnJeterAnnuler.addEventListener('click', () => setJeterConfirme(false));
+
+if (elBtnRecuire) {
+  elBtnRecuire.addEventListener('click', () => {
+    if (!state.produitChoisi) return;
+    const payload = {
+      operateur_id:     state.operateurChoisi ? state.operateurChoisi.id     : null,
+      operateur_prenom: state.operateurChoisi ? state.operateurChoisi.prenom : null,
+      produit_id:       state.produitChoisi.id,
+      produit_nom:      state.produitChoisi.nom,
+    };
+    sessionStorage.setItem('cuisson_prefill', JSON.stringify(payload));
+    window.location.href = '/cuisson.html';
+  });
+}
 
 // ── Navigation wizard ──────────────────────────────────────
 function goStep(n) {
@@ -216,9 +231,18 @@ function appliquerPrefill(data) {
       state.produitChoisi = {
         id:         Number(tuile.dataset.prodId),
         nom:        tuile.dataset.prodNom,
-        cuisson_id: tuile.dataset.cuissonId ? Number(tuile.dataset.cuissonId) : null,
+        cuisson_id: data.cuisson_id != null
+          ? Number(data.cuisson_id)
+          : (tuile.dataset.cuissonId ? Number(tuile.dataset.cuissonId) : null),
       };
       tuile.classList.add('cu-tuile--selected');
+    } else if (data.produit_nom) {
+      // Produit absent de la grille (cuisson tout juste enregistrée non encore remontée)
+      state.produitChoisi = {
+        id:         Number(data.produit_id),
+        nom:        data.produit_nom,
+        cuisson_id: data.cuisson_id != null ? Number(data.cuisson_id) : null,
+      };
     }
   }
 
@@ -228,6 +252,12 @@ function appliquerPrefill(data) {
     goStep(3);
   } else if (state.operateurChoisi) {
     goStep(2);
+  }
+
+  // Préfill T° à cœur avant refroidissement = T° de sortie cuisson mesurée
+  if (data.temperature_sortie != null && !isNaN(parseFloat(data.temperature_sortie))) {
+    elTempInitiale.value = parseFloat(data.temperature_sortie).toFixed(1);
+    majConformite();
   }
 }
 

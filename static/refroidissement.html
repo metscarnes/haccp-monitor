@@ -108,11 +108,11 @@
               <span class="cu-label">Température à cœur avant refroidissement <span class="cu-req">*</span></span>
               <div class="cu-input-unite">
                 <input type="number" id="cu-temperature-initiale" class="cu-input"
-                       step="0.1" min="0" max="120" value="63"
+                       step="0.1" min="0" max="120" value="75"
                        inputmode="decimal" required>
                 <span class="cu-unite-fixe">°C</span>
               </div>
-              <div class="cu-cible">⚠️ Sortie cuisson : minimum 63 °C obligatoire</div>
+              <div class="cu-cible">⚠️ Sortie cuisson : minimum 75 °C obligatoire</div>
             </label>
           </div>
 
@@ -135,12 +135,25 @@
             <div id="cu-conformite-texte" class="cu-conformite-texte">—</div>
           </div>
 
-          <!-- Bandeau "JETER" — cuisson insuffisante (T° initiale < 63 °C) -->
+          <!-- Bandeau "REMETTRE EN CUISSON" — cuisson insuffisante (T° initiale < 75 °C) -->
           <div id="cu-jeter-init" class="cu-conformite cu-conformite--ko" hidden>
             <div class="cu-conformite-texte">
-              ⛔ PRODUIT À JETER — Pasteurisation insuffisante à la sortie cuisson (T° &lt; 63 °C).<br>
-              <strong>Pourquoi :</strong> En dessous de 63 °C à cœur, les bactéries pathogènes ne sont pas éliminées.<br>
-              <strong>Que faire :</strong> Écarter et détruire le lot, identifier la cause (sonde, temps de cuisson, épaisseur), corriger le process et consigner l'action ci-dessous.
+              ⚠ CUISSON INSUFFISANTE — T° à cœur &lt; 75 °C à la sortie cuisson.<br>
+              <strong>Pourquoi :</strong> En dessous de 75 °C à cœur, les bactéries pathogènes ne sont pas éliminées.<br>
+              <strong>Action corrective :</strong> Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu'à l'atteinte de 75 °C à cœur.
+            </div>
+            <div style="margin-top:.75rem">
+              <button type="button" id="cu-btn-recuire"
+                      style="width:100%;padding:1rem;font-size:1.05rem;font-weight:800;
+                             background:#B45309;color:#fff;border:none;border-radius:10px;
+                             cursor:pointer;min-height:56px;font-family:inherit;
+                             display:flex;align-items:center;justify-content:center;gap:.5rem;
+                             transition:background .15s,transform .1s">
+                🔥 Remettre en cuisson
+              </button>
+              <p style="font-size:.8rem;color:#7f1d1d;margin:.5rem 0 0;text-align:center;font-weight:600">
+                Bascule vers le module Cuisson avec le même opérateur et le même produit pré-sélectionnés.
+              </p>
             </div>
           </div>
 

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/refroidissement", tags=["refroidissement"])
 
 TEMPERATURE_CIBLE        = 10.0   # °C max à cœur après refroidissement
-TEMPERATURE_MIN_CUISSON  = 63.0   # °C min à cœur en sortie de cuisson
+TEMPERATURE_MIN_CUISSON  = 75.0   # °C min à cœur en sortie de cuisson
 DUREE_MAX_MINUTES        = 120    # 2 h
 
 
@@ -41,7 +41,7 @@ _ENSURE_TABLE = """
         heure_debut           TEXT    NOT NULL,
         heure_fin             TEXT    NOT NULL,
         duree_minutes         INTEGER NOT NULL,
-        temperature_initiale  REAL    DEFAULT 63.0,
+        temperature_initiale  REAL    DEFAULT 75.0,
         temperature_finale    REAL    NOT NULL,
         temperature_cible     REAL    NOT NULL DEFAULT 10.0,
         duree_max_minutes     INTEGER NOT NULL DEFAULT 120,
@@ -57,7 +57,7 @@ _ENSURE_TABLE = """
 
 # Migration : ajoute la colonne si la table existait avant
 _ENSURE_COL_TEMP_INIT = """
-    ALTER TABLE refroidissements ADD COLUMN temperature_initiale REAL DEFAULT 63.0
+    ALTER TABLE refroidissements ADD COLUMN temperature_initiale REAL DEFAULT 75.0
 """
 
 _ENSURE_INDEX = """
@@ -95,7 +95,7 @@ class RefroidissementCreate(BaseModel):
     cuisson_id:           Optional[int] = None
     heure_debut:          str   = Field(..., description="HH:MM mise en refroidissement")
     heure_fin:            str   = Field(..., description="HH:MM fin de refroidissement")
-    temperature_initiale: Optional[float] = Field(63.0, description="T° à cœur avant refroidissement")
+    temperature_initiale: Optional[float] = Field(75.0, description="T° à cœur avant refroidissement")
     temperature_finale:   float = Field(..., description="T° à cœur après refroidissement")
     jeter_action:         bool  = Field(False, description="True = jeter le produit + créer entrée devenir")
     action_corrective:    Optional[str] = None
@@ -141,7 +141,7 @@ async def lister_produits_cuisson():
 async def creer_refroidissement(body: RefroidissementCreate):
     duree = _duree_minutes(body.heure_debut, body.heure_fin)
 
-    temp_init = body.temperature_initiale if body.temperature_initiale is not None else 63.0
+    temp_init = body.temperature_initiale if body.temperature_initiale is not None else 75.0
     cuisson_ok = temp_init >= TEMPERATURE_MIN_CUISSON
     duree_ok   = duree <= DUREE_MAX_MINUTES
     temp_ok    = body.temperature_finale <= TEMPERATURE_CIBLE
@@ -194,7 +194,7 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 body.heure_debut,
                 body.heure_fin,
                 duree,
-                body.temperature_initiale if body.temperature_initiale is not None else 63.0,
+                body.temperature_initiale if body.temperature_initiale is not None else 75.0,
                 body.temperature_finale,
                 TEMPERATURE_CIBLE,
                 DUREE_MAX_MINUTES,

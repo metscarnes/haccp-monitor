@@ -2,7 +2,7 @@
 routes_cuisson.py — Module Cuisson (HACCP)
 
 Enregistrement des cuissons avec contrôle température de fin de cuisson.
-Cible réglementaire : ≥ 63 °C à cœur.
+Cible réglementaire : ≥ 75 °C à cœur.
 
 GET  /api/cuisson/enregistrements?type=rotissoire&limit=50
 POST /api/cuisson/enregistrements
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/cuisson", tags=["cuisson"])
 
-TEMPERATURE_CIBLE = 63.0
+TEMPERATURE_CIBLE = 75.0
 
 # ---------------------------------------------------------------------------
 # Schéma DB (créé à la volée, comme nuisibles)
@@ -40,7 +40,7 @@ _ENSURE_TABLE = """
         heure_debut         TEXT    NOT NULL,
         heure_fin           TEXT    NOT NULL,
         temperature_sortie  REAL    NOT NULL,
-        temperature_cible   REAL    NOT NULL DEFAULT 63.0,
+        temperature_cible   REAL    NOT NULL DEFAULT 75.0,
         conforme            INTEGER NOT NULL,
         action_corrective   TEXT,
         created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -84,7 +84,7 @@ async def creer_cuisson(body: CuissonCreate):
     if not conforme and not (body.action_corrective and body.action_corrective.strip()):
         raise HTTPException(
             status_code=422,
-            detail="Action corrective obligatoire si température < 63 °C",
+            detail="Action corrective obligatoire si température < 75 °C",
         )
 
     async with get_db() as db:
