@@ -54,18 +54,6 @@ async def lister_taches():
     Format : [{ "zone": "...", "taches": [{id, nom_tache, frequence, methode_produit}, ...] }]
     """
     async with get_db() as db:
-        # S'assure que la table existe même si le seed n'a pas été lancé
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS taches_nettoyage (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                zone            TEXT NOT NULL,
-                nom_tache       TEXT NOT NULL,
-                frequence       TEXT NOT NULL,
-                methode_produit TEXT NOT NULL
-            )
-        """)
-        await db.commit()
-
         rows = await db.execute_fetchall(
             "SELECT id, zone, nom_tache, frequence, methode_produit "
             "FROM taches_nettoyage ORDER BY zone, id"
@@ -169,8 +157,6 @@ async def valider_nettoyage(body: ValidationNettoyage):
     aujourd_hui = body.date or _date.today().isoformat()
 
     async with get_db() as db:
-        await db.execute(_ENSURE_REGISTRE)
-
         nb = 0
         for tid in body.taches_ids:
             # Vérifie l'existence avant d'insérer — évite tout doublon sans index UNIQUE
@@ -208,9 +194,6 @@ async def supprimer_validation_tache(
 ):
     """Supprime toutes les validations d'une tâche pour une date donnée."""
     async with get_db() as db:
-        await db.execute(_ENSURE_REGISTRE)
-        await db.commit()
-
         await db.execute(
             "DELETE FROM registre_nettoyage WHERE tache_id = ? AND date_val = ?",
             (tache_id, date),
@@ -225,16 +208,6 @@ async def supprimer_validation_tache(
 # GET /api/nettoyage/status
 # ---------------------------------------------------------------------------
 
-_ENSURE_REGISTRE = """
-    CREATE TABLE IF NOT EXISTS registre_nettoyage (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        tache_id    INTEGER NOT NULL,
-        operateur   TEXT    NOT NULL,
-        date_val    TEXT    NOT NULL,
-        signature   TEXT    NOT NULL DEFAULT 'OK'
-    )
-"""
-
 @router.get("/status")
 async def statut_validation(date: Optional[str] = Query(default=None)):
     """
@@ -244,9 +217,6 @@ async def statut_validation(date: Optional[str] = Query(default=None)):
     target = date or _date.today().isoformat()
 
     async with get_db() as db:
-        await db.execute(_ENSURE_REGISTRE)
-        await db.commit()
-
         rows = await db.execute_fetchall(
             "SELECT DISTINCT tache_id, operateur FROM registre_nettoyage WHERE date_val = ?",
             (target,),
@@ -292,9 +262,6 @@ async def historique_nettoyage():
     Année → Mois → N° Semaine ISO → Jours
     """
     async with get_db() as db:
-        await db.execute(_ENSURE_REGISTRE)
-        await db.commit()
-
         rows = await db.execute_fetchall("""
             SELECT date_val,
                    GROUP_CONCAT(DISTINCT operateur) AS operateurs,
@@ -381,9 +348,6 @@ async def historique_semaine(
     date_strs = [d.isoformat() for d in dates_semaine]
 
     async with get_db() as db:
-        await db.execute(_ENSURE_REGISTRE)
-        await db.commit()
-
         taches_rows = await db.execute_fetchall(
             "SELECT id, zone, nom_tache, frequence, methode_produit "
             "FROM taches_nettoyage ORDER BY zone, id"

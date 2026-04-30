@@ -473,6 +473,112 @@ CREATE TABLE IF NOT EXISTS parametres (
 );
 
 -- ===========================================================================
+-- PHASE 2 — Module Cuisson (rôtissoire / cuissons HACCP, ≥ 75 °C à cœur)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS cuissons (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id         INTEGER NOT NULL DEFAULT 1,
+    type_cuisson        TEXT    NOT NULL,           -- 'rotissoire', ...
+    date_cuisson        DATE    NOT NULL,
+    personnel_id        INTEGER NOT NULL,
+    produit_id          INTEGER NOT NULL,
+    reception_ligne_id  INTEGER,
+    quantite            REAL,
+    unite               TEXT    DEFAULT 'kg',
+    heure_debut         TEXT    NOT NULL,
+    heure_fin           TEXT    NOT NULL,
+    temperature_sortie  REAL    NOT NULL,
+    temperature_cible   REAL    NOT NULL DEFAULT 75.0,
+    conforme            INTEGER NOT NULL,
+    action_corrective   TEXT,
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)         REFERENCES produits(id),
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_cuissons_type_date
+    ON cuissons(type_cuisson, date_cuisson);
+
+-- ===========================================================================
+-- PHASE 2 — Module Refroidissement (≤ 10 °C à cœur en ≤ 2 h)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS refroidissements (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id           INTEGER NOT NULL DEFAULT 1,
+    date_refroidissement  DATE    NOT NULL,
+    personnel_id          INTEGER NOT NULL,
+    produit_id            INTEGER NOT NULL,
+    cuisson_id            INTEGER,
+    heure_debut           TEXT    NOT NULL,
+    heure_fin             TEXT    NOT NULL,
+    duree_minutes         INTEGER NOT NULL,
+    temperature_initiale  REAL    DEFAULT 75.0,
+    temperature_finale    REAL    NOT NULL,
+    temperature_cible     REAL    NOT NULL DEFAULT 10.0,
+    duree_max_minutes     INTEGER NOT NULL DEFAULT 120,
+    conforme              INTEGER NOT NULL,
+    jeter                 INTEGER NOT NULL DEFAULT 0,
+    action_corrective     TEXT,
+    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)   REFERENCES produits(id),
+    FOREIGN KEY (cuisson_id)   REFERENCES cuissons(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_refroidissements_date
+    ON refroidissements(date_refroidissement);
+
+-- ===========================================================================
+-- PHASE 2 — Module Plan de nettoyage & désinfection
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS taches_nettoyage (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id     INTEGER NOT NULL DEFAULT 1,
+    zone            TEXT    NOT NULL,
+    nom_tache       TEXT    NOT NULL,
+    frequence       TEXT    NOT NULL,
+    methode_produit TEXT    NOT NULL,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+CREATE TABLE IF NOT EXISTS registre_nettoyage (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id INTEGER NOT NULL DEFAULT 1,
+    tache_id    INTEGER NOT NULL,
+    operateur   TEXT    NOT NULL,
+    date_val    TEXT    NOT NULL,
+    signature   TEXT    NOT NULL DEFAULT 'OK',
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id),
+    FOREIGN KEY (tache_id)    REFERENCES taches_nettoyage(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_registre_nettoyage_date
+    ON registre_nettoyage(date_val);
+
+-- ===========================================================================
+-- PHASE 2 — Module Nuisibles (lutte IPM hebdomadaire)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS nuisibles_controles (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id INTEGER NOT NULL DEFAULT 1,
+    type_id     INTEGER NOT NULL,    -- 1=rongeurs 2=ins.vol 3=ins.ramp 4=oiseaux
+    annee       INTEGER NOT NULL,
+    semaine     INTEGER NOT NULL,
+    resultats   TEXT    NOT NULL DEFAULT '{}',
+    visa        TEXT    NOT NULL DEFAULT '',
+    date_saisie TEXT    NOT NULL,
+    UNIQUE(type_id, annee, semaine),
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+-- ===========================================================================
 -- Module DLC — devenir des produits expirés
 -- ===========================================================================
 
@@ -728,6 +834,15 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (etalonnage_id) REFERENCES etalonnages(id),
                 FOREIGN KEY (enceinte_id)   REFERENCES enceintes(id)
             )""",
+            # v3.1 — Rapatriement dans SCHEMA_SQL des tables auparavant créées
+            # à la volée par les routes (cuissons, refroidissements, nettoyage,
+            # nuisibles). Pour les bases déjà déployées, on ajoute boutique_id.
+            "ALTER TABLE cuissons            ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE refroidissements    ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE refroidissements    ADD COLUMN temperature_initiale REAL DEFAULT 75.0",
+            "ALTER TABLE taches_nettoyage    ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE registre_nettoyage  ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE nuisibles_controles ADD COLUMN boutique_id INTEGER NOT NULL DEFAULT 1",
         ]
         for sql in migrations:
             try:

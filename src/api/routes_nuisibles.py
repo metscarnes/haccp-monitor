@@ -19,23 +19,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/nuisibles", tags=["nuisibles"])
 
 # ---------------------------------------------------------------------------
-# Schéma DB (créé à la volée)
-# ---------------------------------------------------------------------------
-
-_ENSURE_TABLE = """
-    CREATE TABLE IF NOT EXISTS nuisibles_controles (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        type_id     INTEGER NOT NULL,
-        annee       INTEGER NOT NULL,
-        semaine     INTEGER NOT NULL,
-        resultats   TEXT    NOT NULL DEFAULT '{}',
-        visa        TEXT    NOT NULL DEFAULT '',
-        date_saisie TEXT    NOT NULL,
-        UNIQUE(type_id, annee, semaine)
-    )
-"""
-
-# ---------------------------------------------------------------------------
 # Schémas Pydantic
 # ---------------------------------------------------------------------------
 
@@ -60,9 +43,6 @@ async def lister_controles(
     Format : { semaine_num: { resultats: {p1: "O"/"N"/null}, visa, date_saisie } }
     """
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
-        await db.commit()
-
         rows = await db.execute_fetchall(
             "SELECT semaine, resultats, visa, date_saisie "
             "FROM nuisibles_controles "
@@ -102,7 +82,6 @@ async def sauvegarder_controle(body: ControleNuisible):
     resultats_json = json.dumps(body.resultats)
 
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
         await db.execute(
             """
             INSERT INTO nuisibles_controles

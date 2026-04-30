@@ -28,45 +28,6 @@ DUREE_MAX_MINUTES        = 120    # 2 h
 
 
 # ---------------------------------------------------------------------------
-# Schéma DB (créé à la volée, comme cuisson / nuisibles)
-# ---------------------------------------------------------------------------
-
-_ENSURE_TABLE = """
-    CREATE TABLE IF NOT EXISTS refroidissements (
-        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-        date_refroidissement  DATE    NOT NULL,
-        personnel_id          INTEGER NOT NULL,
-        produit_id            INTEGER NOT NULL,
-        cuisson_id            INTEGER,
-        heure_debut           TEXT    NOT NULL,
-        heure_fin             TEXT    NOT NULL,
-        duree_minutes         INTEGER NOT NULL,
-        temperature_initiale  REAL    DEFAULT 75.0,
-        temperature_finale    REAL    NOT NULL,
-        temperature_cible     REAL    NOT NULL DEFAULT 10.0,
-        duree_max_minutes     INTEGER NOT NULL DEFAULT 120,
-        conforme              INTEGER NOT NULL,
-        jeter                 INTEGER NOT NULL DEFAULT 0,
-        action_corrective     TEXT,
-        created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (personnel_id) REFERENCES personnel(id),
-        FOREIGN KEY (produit_id)   REFERENCES produits(id),
-        FOREIGN KEY (cuisson_id)   REFERENCES cuissons(id)
-    )
-"""
-
-# Migration : ajoute la colonne si la table existait avant
-_ENSURE_COL_TEMP_INIT = """
-    ALTER TABLE refroidissements ADD COLUMN temperature_initiale REAL DEFAULT 75.0
-"""
-
-_ENSURE_INDEX = """
-    CREATE INDEX IF NOT EXISTS idx_refroidissements_date
-        ON refroidissements(date_refroidissement)
-"""
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -110,13 +71,6 @@ class RefroidissementCreate(BaseModel):
 async def lister_produits_cuisson():
     """Renvoie les produits enregistrés dans le module Cuisson."""
     async with get_db() as db:
-        # cuissons est créée à la volée par routes_cuisson — on s'assure qu'elle existe
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS cuissons (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                produit_id INTEGER NOT NULL
-            )
-        """)
         cur = await db.execute(
             """
             SELECT p.id, p.nom, p.espece,
@@ -169,13 +123,6 @@ async def creer_refroidissement(body: RefroidissementCreate):
         )
 
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
-        await db.execute(_ENSURE_INDEX)
-        try:
-            await db.execute(_ENSURE_COL_TEMP_INIT)
-        except Exception:
-            pass  # colonne déjà présente
-
         cur = await db.execute(
             """
             INSERT INTO refroidissements (
@@ -260,9 +207,6 @@ async def lister_refroidissements(
     params.append(limit)
 
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
-        await db.execute(_ENSURE_INDEX)
-
         cur = await db.execute(
             f"""
             SELECT r.*,

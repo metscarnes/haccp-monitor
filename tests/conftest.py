@@ -64,6 +64,22 @@ async def db():
             "fabrications",                        # → recettes, personnel
             "recette_ingredients",                 # → recettes, produits
             "recettes",                            # → produits
+            # Modules thermiques HACCP
+            "refroidissements",                    # → cuissons, produits, personnel
+            "cuissons",                            # → produits, personnel, reception_lignes
+            # Modules hygiène / IPM
+            "registre_nettoyage",                  # → taches_nettoyage
+            "taches_nettoyage",
+            "nuisibles_controles",
+            # Étalonnage thermomètres
+            "etalonnage_comparaisons",             # → etalonnages, enceintes
+            "etalonnages",                         # → thermometres_ref
+            "thermometres_ref",                    # → boutiques
+            # Paramètres key/value
+            "parametres",                          # → boutiques
+            "lot_interne_counters",
+            # Calendrier DLC
+            "dlc_devenir",                         # → personnel
             # Phase 2
             "fiches_incident",                     # → receptions, reception_lignes, fournisseurs, produits, personnel
             "ouvertures",                          # → produits, personnel, reception_lignes

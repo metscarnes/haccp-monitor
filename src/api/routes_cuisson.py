@@ -23,38 +23,6 @@ router = APIRouter(prefix="/api/cuisson", tags=["cuisson"])
 
 TEMPERATURE_CIBLE = 75.0
 
-# ---------------------------------------------------------------------------
-# Schéma DB (créé à la volée, comme nuisibles)
-# ---------------------------------------------------------------------------
-
-_ENSURE_TABLE = """
-    CREATE TABLE IF NOT EXISTS cuissons (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        type_cuisson        TEXT    NOT NULL,           -- 'rotissoire', ...
-        date_cuisson        DATE    NOT NULL,
-        personnel_id        INTEGER NOT NULL,
-        produit_id          INTEGER NOT NULL,
-        reception_ligne_id  INTEGER,
-        quantite            REAL,
-        unite               TEXT    DEFAULT 'kg',
-        heure_debut         TEXT    NOT NULL,
-        heure_fin           TEXT    NOT NULL,
-        temperature_sortie  REAL    NOT NULL,
-        temperature_cible   REAL    NOT NULL DEFAULT 75.0,
-        conforme            INTEGER NOT NULL,
-        action_corrective   TEXT,
-        created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
-        FOREIGN KEY (produit_id)         REFERENCES produits(id),
-        FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
-    )
-"""
-
-_ENSURE_INDEX = """
-    CREATE INDEX IF NOT EXISTS idx_cuissons_type_date
-        ON cuissons(type_cuisson, date_cuisson)
-"""
-
 
 # ---------------------------------------------------------------------------
 # Schémas Pydantic
@@ -88,9 +56,6 @@ async def creer_cuisson(body: CuissonCreate):
         )
 
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
-        await db.execute(_ENSURE_INDEX)
-
         cur = await db.execute(
             """
             INSERT INTO cuissons (
@@ -153,9 +118,6 @@ async def lister_cuissons(
     params.append(limit)
 
     async with get_db() as db:
-        await db.execute(_ENSURE_TABLE)
-        await db.execute(_ENSURE_INDEX)
-
         cur = await db.execute(
             f"""
             SELECT c.*,
