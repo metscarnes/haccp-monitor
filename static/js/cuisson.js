@@ -11,6 +11,7 @@
    ============================================================ */
 
 const TEMP_CIBLE = 75.0;
+const ACTION_DEFAUT = 'Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu\'à l\'atteinte de la température de 75 °C à cœur';
 
 // ── Helpers ────────────────────────────────────────────────
 function escHtml(str) {
@@ -565,6 +566,11 @@ function majConformite() {
     ? `✓ Conforme — ${v.toFixed(1)} °C ≥ ${TEMP_CIBLE} °C`
     : `⚠ Non conforme — ${v.toFixed(1)} °C < ${TEMP_CIBLE} °C — action corrective requise`;
   elActionWrap.hidden = ok;
+  if (!ok && !elAction.value.trim()) {
+    elAction.value = ACTION_DEFAUT;
+  } else if (ok && elAction.value === ACTION_DEFAUT) {
+    elAction.value = '';
+  }
 }
 elTemperature.addEventListener('input', majConformite);
 
