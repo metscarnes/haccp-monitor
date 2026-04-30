@@ -496,3 +496,30 @@
   background: rgba(0,0,0,.02);
   border-radius: 10px;
 }
+
+.hub-popup-footer {
+  padding: .9rem 1.25rem;
+  border-top: 1px solid rgba(0,0,0,.08);
+  display: flex;
+  justify-content: center;
+  position: sticky;
+  bottom: 0;
+  background: var(--color-bg, #fff);
+}
+
+.hub-popup-snooze {
+  background: transparent;
+  border: 1px solid rgba(0,0,0,.18);
+  color: rgba(0,0,0,.55);
+  font-size: .9rem;
+  padding: .55rem 1.1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  width: 100%;
+}
+.hub-popup-snooze:hover,
+.hub-popup-snooze:focus-visible {
+  background: rgba(0,0,0,.05);
+  color: rgba(0,0,0,.8);
+}

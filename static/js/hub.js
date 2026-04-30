@@ -13,6 +13,8 @@
 
 const REFRESH_MS  = 30_000;          // actualisation des tuiles
 const INACT_MS    = 5 * 60 * 1000;   // inactivité → reload
+const SNOOZE_MS   = 2 * 60 * 60 * 1000;
+const SNOOZE_KEY  = 'hub_popup_snooze_until';
 
 // ── Références DOM ────────────────────────────────────────────
 const elHorloge          = document.getElementById('hub-horloge');
@@ -133,10 +135,16 @@ const elCloche       = document.getElementById('hub-cloche');
 const elClocheBadge  = document.getElementById('hub-cloche-badge');
 const elPopupOverlay = document.getElementById('hub-popup-overlay');
 const elPopupFermer  = document.getElementById('hub-popup-fermer');
+const elPopupSnooze  = document.getElementById('hub-popup-snooze');
 const elListeAuj     = document.getElementById('hub-popup-aujourdhui');
 const elListeAVenir  = document.getElementById('hub-popup-avenir');
 
 let popupDejaOuvert = false;   // évite la réouverture auto à chaque refresh
+
+function estEnSnooze() {
+  const until = Number(localStorage.getItem(SNOOZE_KEY) ?? 0);
+  return Date.now() < until;
+}
 
 function escHtml(str) {
   return String(str)
@@ -173,8 +181,14 @@ function fermerPopup() {
   document.body.style.overflow = '';
 }
 
+function snoozerPopup() {
+  localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
+  fermerPopup();
+}
+
 elCloche.addEventListener('click', ouvrirPopup);
 elPopupFermer.addEventListener('click', fermerPopup);
+elPopupSnooze.addEventListener('click', snoozerPopup);
 elPopupOverlay.addEventListener('click', (e) => {
   if (e.target === elPopupOverlay) fermerPopup();
 });
@@ -212,10 +226,10 @@ async function chargerResumeTaches() {
     ? avenir.map(ligneTacheHtml).join('')
     : listeVideHtml('Aucune échéance dans les 14 prochains jours');
 
-  // Ouverture auto au premier chargement (si non vide)
+  // Ouverture auto au premier chargement (si non vide et pas en snooze)
   if (!popupDejaOuvert && total > 0) {
     popupDejaOuvert = true;
-    ouvrirPopup();
+    if (!estEnSnooze()) ouvrirPopup();
   }
 }
 
