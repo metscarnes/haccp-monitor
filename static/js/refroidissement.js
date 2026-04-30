@@ -153,10 +153,42 @@ function setJeterConfirme(val) {
 elBtnJeter.addEventListener('click', () => setJeterConfirme(true));
 elBtnJeterAnnuler.addEventListener('click', () => setJeterConfirme(false));
 
+async function recupererDerniereCuisson(produitId, cuissonId) {
+  try {
+    const rows = await apiFetch('/api/cuisson/enregistrements?type=rotissoire&limit=50');
+    if (cuissonId) {
+      const exact = rows.find(r => Number(r.id) === Number(cuissonId));
+      if (exact) return exact;
+    }
+    return rows.find(r => Number(r.produit_id) === Number(produitId)) || null;
+  } catch (err) {
+    console.warn('[refroidissement] Lecture cuisson KO :', err);
+    return null;
+  }
+}
+
 if (elBtnRecuire) {
-  elBtnRecuire.addEventListener('click', () => {
+  elBtnRecuire.addEventListener('click', async () => {
     if (!state.produitChoisi) return;
-    const ctx = state.cuissonContext || {};
+    elBtnRecuire.disabled = true;
+    const labelOrig = elBtnRecuire.innerHTML;
+    elBtnRecuire.textContent = '⏳ Préparation…';
+
+    let ctx = state.cuissonContext || {};
+    if (ctx.quantite == null) {
+      const cuisson = await recupererDerniereCuisson(
+        state.produitChoisi.id,
+        state.produitChoisi.cuisson_id,
+      );
+      if (cuisson) {
+        ctx = {
+          quantite:           cuisson.quantite,
+          unite:              cuisson.unite,
+          temperature_sortie: cuisson.temperature_sortie,
+        };
+      }
+    }
+
     const payload = {
       operateur_id:     state.operateurChoisi ? state.operateurChoisi.id     : null,
       operateur_prenom: state.operateurChoisi ? state.operateurChoisi.prenom : null,
@@ -166,6 +198,8 @@ if (elBtnRecuire) {
       unite:            ctx.unite    ?? null,
     };
     sessionStorage.setItem('cuisson_prefill', JSON.stringify(payload));
+    elBtnRecuire.innerHTML = labelOrig;
+    elBtnRecuire.disabled = false;
     window.location.href = '/cuisson.html';
   });
 }
