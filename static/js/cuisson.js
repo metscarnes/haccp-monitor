@@ -10,7 +10,7 @@
      Étape 3 — quantité / heures / température + conformité HACCP
    ============================================================ */
 
-const TEMP_CIBLE = 63.0;
+const TEMP_CIBLE = 75.0;
 
 // ── Helpers ────────────────────────────────────────────────
 function escHtml(str) {
@@ -593,7 +593,7 @@ elForm.addEventListener('submit', async e => {
     return afficherErreur('Température de sortie requise.');
   }
   if (temp < TEMP_CIBLE && !elAction.value.trim()) {
-    return afficherErreur('Action corrective obligatoire si T° < 63 °C.');
+    return afficherErreur('Action corrective obligatoire si T° < 75 °C.');
   }
 
   const payload = {

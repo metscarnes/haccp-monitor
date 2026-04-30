@@ -1613,7 +1613,7 @@ async function cuisLister() {
         c.duree_minutes ? `${c.duree_minutes} min` : null,
         c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
       ].filter(Boolean),
-      variant: (c.temperature_coeur >= 63) ? 'ok' : 'warn',
+      variant: (c.temperature_coeur >= 75) ? 'ok' : 'warn',
     }),
     { singulier: 'cuisson', pluriel: 'cuissons' }
   );

@@ -377,7 +377,7 @@ elQuickFin.addEventListener('click', e => {
 );
 
 // ── Conformité live (T° initiale + T° finale + durée) ───────
-const TEMP_CUISSON_MIN = 63.0;   // °C min sortie cuisson
+const TEMP_CUISSON_MIN = 75.0;   // °C min sortie cuisson
 
 function majConformite() {
   const tInit  = parseFloat(elTempInitiale.value);
@@ -460,7 +460,7 @@ elForm.addEventListener('submit', async e => {
 
   if (!conforme && !jeterConfirme) {
     const raisons = [];
-    if (!cuissonOk) raisons.push(`cuisson insuffisante ${tInit.toFixed(1)} °C < 63 °C`);
+    if (!cuissonOk) raisons.push(`cuisson insuffisante ${tInit.toFixed(1)} °C < 75 °C`);
     if (!tempOk)    raisons.push(`T° finale ${t.toFixed(1)} °C > 10 °C`);
     if (!dureeOk)   raisons.push(`durée ${formatDuree(d)} > 2 h`);
     return afficherErreur(
@@ -538,7 +538,7 @@ function resetWizard() {
 
   elHeureDebut.value   = '';
   elHeureFin.value     = '';
-  elTempInitiale.value = '63';
+  elTempInitiale.value = '75';
   elTemperature.value  = '';
   elJeterNote.value    = '';
   setJeterConfirme(false);
