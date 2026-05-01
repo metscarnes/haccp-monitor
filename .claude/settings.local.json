@@ -80,7 +80,11 @@
       "Bash(python -m pytest tests/ -q --no-header)",
       "Bash(python -m pytest tests/test_stock.py -v --no-header)",
       "Bash(python -m pytest tests/test_stock.py -x -q)",
-      "Bash(python -m pytest --ignore=tests/test_stock.py -x -q)"
+      "Bash(python -m pytest --ignore=tests/test_stock.py -x -q)",
+      "Bash(python -c \"from pathlib import Path; p = Path\\('src/database.py'\\).parent.parent / 'haccp.db'; print\\('DB path:', p.resolve\\(\\)\\); print\\('Exists:', p.exists\\(\\)\\)\")",
+      "Bash(grep -n \"^SCHEMA_SQL\\\\|^SEED_SQL\\\\|^\\\\\"\\\\\"\\\\\"$\\\\|^'''$\" src/database.py)",
+      "Bash(dir haccp.db data\\\\\\\\haccp.db)",
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); from src.database import DB_PATH; import os; print\\('Size:', os.path.getsize\\(str\\(DB_PATH\\)\\), 'bytes'\\)\")"
     ]
   }
 }
