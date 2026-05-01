@@ -371,8 +371,11 @@ function afficherProduits() {
   elProduitsGrid.innerHTML = liste.map(p => {
     const classes = ['cu-tuile'];
     if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
-    const meta = p.cuisson_date
-      ? `<div class="cu-tuile-dlc">Cuisson du ${formatDate(p.cuisson_date)}</div>`
+    const metaParts = [];
+    if (p.cuisson_date) metaParts.push(`Cuisson du ${formatDate(p.cuisson_date)}`);
+    if (p.numero_lot)   metaParts.push(`Lot : ${escHtml(p.numero_lot)}`);
+    const meta = metaParts.length
+      ? `<div class="cu-tuile-dlc">${metaParts.join('<br>')}</div>`
       : '';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
