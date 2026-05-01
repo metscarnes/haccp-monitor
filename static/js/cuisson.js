@@ -362,6 +362,8 @@ function afficherProduits() {
     const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
     const dlc   = p.en_stock && p.dlc
       ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
+    const lot   = p.en_stock && p.numero_lot
+      ? `<div class="cu-tuile-lot">Lot ${escHtml(p.numero_lot)}</div>` : '';
     const icone = ESPECES_ICONES[p.espece] ?? '🥩';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
@@ -370,6 +372,7 @@ function afficherProduits() {
         <div class="cu-tuile-icone">${icone}</div>
         <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
         ${dlc}
+        ${lot}
       </button>
     `;
   }).join('');

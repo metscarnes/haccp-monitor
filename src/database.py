@@ -3186,7 +3186,7 @@ async def get_dlc_calendrier(
                 c.id                 AS source_id,
                 'cuisson'            AS source_type,
                 c.dlc_finale         AS dlc,
-                CAST(c.id AS TEXT)   AS numero_lot,
+                COALESCE(rl.numero_lot, 'C-' || c.id) AS numero_lot,
                 c.quantite           AS quantite,
                 COALESCE(c.unite, 'kg') AS unite,
                 p.id                 AS produit_id,
@@ -3203,6 +3203,7 @@ async def get_dlc_calendrier(
                 pers.prenom          AS devenir_prenom
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'cuisson' AND dd.source_id = c.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
@@ -3229,7 +3230,7 @@ async def get_dlc_calendrier(
                 rf.id                  AS source_id,
                 'refroidissement'      AS source_type,
                 rf.dlc_finale          AS dlc,
-                CAST(rf.id AS TEXT)    AS numero_lot,
+                COALESCE(rl.numero_lot, 'R-' || rf.id) AS numero_lot,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 p.id                   AS produit_id,
@@ -3247,6 +3248,8 @@ async def get_dlc_calendrier(
                 pers.prenom            AS devenir_prenom
             FROM refroidissements rf
             JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
+            LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'refroidissement' AND dd.source_id = rf.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
@@ -3403,13 +3406,14 @@ async def get_stock_unifie(
                 p.categorie           AS categorie,
                 p.type_produit        AS type_produit,
                 c.dlc_finale          AS dlc,
-                'C-' || c.id          AS numero_lot,
+                COALESCE(rl.numero_lot, 'C-' || c.id) AS numero_lot,
                 c.quantite            AS quantite,
                 COALESCE(c.unite,'kg') AS unite,
                 c.date_cuisson        AS date_origine,
                 NULL                  AS fournisseur_nom
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
             WHERE c.boutique_id = ?
               AND c.dlc_finale IS NOT NULL
               {extra_sql}
@@ -3438,13 +3442,15 @@ async def get_stock_unifie(
                 p.categorie            AS categorie,
                 p.type_produit         AS type_produit,
                 rf.dlc_finale          AS dlc,
-                'R-' || rf.id          AS numero_lot,
+                COALESCE(rl.numero_lot, 'R-' || rf.id) AS numero_lot,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 rf.date_refroidissement AS date_origine,
                 NULL                   AS fournisseur_nom
             FROM refroidissements rf
             JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
+            LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
             WHERE rf.boutique_id = ?
               AND rf.dlc_finale IS NOT NULL
               AND rf.jeter = 0

@@ -322,6 +322,11 @@
   padding: .15rem .55rem;
   border-radius: 20px;
 }
+.cu-tuile-lot {
+  font-size: .7rem;
+  color: #6b7280;
+  margin-top: 2px;
+}
 .cu-tuile-badge {
   position: absolute;
   top: -1px;
