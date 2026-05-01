@@ -84,7 +84,14 @@
       "Bash(python -c \"from pathlib import Path; p = Path\\('src/database.py'\\).parent.parent / 'haccp.db'; print\\('DB path:', p.resolve\\(\\)\\); print\\('Exists:', p.exists\\(\\)\\)\")",
       "Bash(grep -n \"^SCHEMA_SQL\\\\|^SEED_SQL\\\\|^\\\\\"\\\\\"\\\\\"$\\\\|^'''$\" src/database.py)",
       "Bash(dir haccp.db data\\\\\\\\haccp.db)",
-      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); from src.database import DB_PATH; import os; print\\('Size:', os.path.getsize\\(str\\(DB_PATH\\)\\), 'bytes'\\)\")"
+      "Bash(python -c \"import sys; sys.path.insert\\(0,'.'\\); from src.database import DB_PATH; import os; print\\('Size:', os.path.getsize\\(str\\(DB_PATH\\)\\), 'bytes'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/database.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_stock.py -q)",
+      "Bash(python -m pytest tests/test_taches.py::test_taches_today_apres_validation -q)",
+      "Bash(python -m pytest tests/test_stock.py tests/test_api.py tests/test_etiquettes.py tests/test_reception.py -q)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_refroidissement.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -m pytest tests/test_stock.py tests/test_refroidissement.py -q)",
+      "Bash(python -m pytest tests/ -q --ignore=tests/test_taches.py)"
     ]
   }
 }

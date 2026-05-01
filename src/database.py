@@ -3290,6 +3290,7 @@ async def get_stock_unifie(
     produit_id: Optional[int] = None,
     inclure_expires: bool = False,
     dlc_max: Optional[str] = None,      # 'YYYY-MM-DD' inclusif
+    sources: Optional[list[str]] = None,  # restreint aux source_type listés
 ) -> list[dict]:
     """
     Retourne le stock vivant FIFO, toutes sources confondues :
@@ -3298,12 +3299,19 @@ async def get_stock_unifie(
     Filtres communs : DLC future (sauf si inclure_expires=True), pas dans dlc_devenir,
     refroidissements jetés exclus, cuissons déjà refroidies masquées.
 
+    `sources` : si fourni, ne retourne que les source_type listés (ex:
+    ['reception_ligne'] pour le module Cuisson, ['cuisson'] pour Refroidissement).
+    Source unique de vérité du stock disponible à chaque étape de la chaîne HACCP.
+
     Tri : DLC croissante (plus pressé en premier), puis date_origine croissante.
     """
     from datetime import date as _date
 
     today = _date.today().isoformat()
     items: list[dict] = []
+
+    def _src_actif(src: str) -> bool:
+        return sources is None or src in sources
 
     inclure_brut = type_produit in ("tous", "brut")
     inclure_fini = type_produit in ("tous", "fini")
@@ -3327,7 +3335,7 @@ async def get_stock_unifie(
         return "\n              ".join(sql_parts), params
 
     # ── 📦 reception_lignes ────────────────────────────────────────────────
-    if inclure_brut:
+    if inclure_brut and _src_actif("reception_ligne"):
         extra_sql, extra_params = _build_filters("rl.dlc")
         cur = await db.execute(
             f"""
@@ -3338,6 +3346,7 @@ async def get_stock_unifie(
                 p.nom              AS produit_nom,
                 p.categorie        AS categorie,
                 p.type_produit     AS type_produit,
+                p.espece           AS espece,
                 rl.dlc             AS dlc,
                 rl.numero_lot      AS numero_lot,
                 rl.poids_kg        AS quantite,
@@ -3361,7 +3370,7 @@ async def get_stock_unifie(
         items.extend(dict(r) for r in await cur.fetchall())
 
     # ── 🔪 fabrications ────────────────────────────────────────────────────
-    if inclure_fini:
+    if inclure_fini and _src_actif("fabrication"):
         extra_sql, extra_params = _build_filters("fab.dlc_finale")
         cur = await db.execute(
             f"""
@@ -3372,6 +3381,7 @@ async def get_stock_unifie(
                 p.nom              AS produit_nom,
                 p.categorie        AS categorie,
                 p.type_produit     AS type_produit,
+                p.espece           AS espece,
                 fab.dlc_finale     AS dlc,
                 fab.lot_interne    AS numero_lot,
                 fab.poids_fabrique AS quantite,
@@ -3394,7 +3404,7 @@ async def get_stock_unifie(
         items.extend(dict(r) for r in await cur.fetchall())
 
     # ── 🔥 cuissons (hors celles refroidies) ───────────────────────────────
-    if inclure_fini:
+    if inclure_fini and _src_actif("cuisson"):
         extra_sql, extra_params = _build_filters("c.dlc_finale")
         cur = await db.execute(
             f"""
@@ -3405,6 +3415,7 @@ async def get_stock_unifie(
                 p.nom                 AS produit_nom,
                 p.categorie           AS categorie,
                 p.type_produit        AS type_produit,
+                p.espece              AS espece,
                 c.dlc_finale          AS dlc,
                 COALESCE(rl.numero_lot, 'C-' || c.id) AS numero_lot,
                 c.quantite            AS quantite,
@@ -3430,7 +3441,7 @@ async def get_stock_unifie(
         items.extend(dict(r) for r in await cur.fetchall())
 
     # ── ❄️ refroidissements (jeter=0) ──────────────────────────────────────
-    if inclure_fini:
+    if inclure_fini and _src_actif("refroidissement"):
         extra_sql, extra_params = _build_filters("rf.dlc_finale")
         cur = await db.execute(
             f"""
@@ -3441,6 +3452,7 @@ async def get_stock_unifie(
                 p.nom                  AS produit_nom,
                 p.categorie            AS categorie,
                 p.type_produit         AS type_produit,
+                p.espece               AS espece,
                 rf.dlc_finale          AS dlc,
                 COALESCE(rl.numero_lot, 'R-' || rf.id) AS numero_lot,
                 NULL                   AS quantite,
@@ -3540,6 +3552,81 @@ async def update_stock_item(
         return cur.rowcount > 0
 
 
+async def _insert_dlc_devenir(
+    db: aiosqlite.Connection,
+    source_type: str,
+    source_id: int,
+    statut: str,
+    personnel_id: Optional[int],
+    commentaire: Optional[str],
+    replace: bool,
+) -> int:
+    """Insert atomique dans dlc_devenir, sans commit. `replace=False` préserve un statut existant."""
+    if replace:
+        sql = """
+            INSERT INTO dlc_devenir (source_type, source_id, statut, personnel_id, commentaire)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source_type, source_id) DO UPDATE SET
+                statut       = excluded.statut,
+                personnel_id = excluded.personnel_id,
+                commentaire  = excluded.commentaire,
+                created_at   = CURRENT_TIMESTAMP
+        """
+    else:
+        sql = """
+            INSERT OR IGNORE INTO dlc_devenir
+                (source_type, source_id, statut, personnel_id, commentaire)
+            VALUES (?, ?, ?, ?, ?)
+        """
+    cur = await db.execute(sql, (source_type, source_id, statut, personnel_id, commentaire))
+    return cur.lastrowid or 0
+
+
+async def _cascade_dlc_aval(
+    db: aiosqlite.Connection,
+    source_type: str,
+    source_id: int,
+    statut: str,
+    personnel_id: Optional[int],
+    commentaire_amont: Optional[str],
+) -> None:
+    """
+    Propage la sortie de stock vers l'aval de la chaîne HACCP :
+        reception_ligne → cuissons → refroidissements
+        cuisson         → refroidissements
+
+    Utilise INSERT OR IGNORE : si l'aval a déjà été tracé (ex: cuisson marquée
+    "consommée"), on préserve l'historique existant.
+    """
+    cascade_msg = f"Cascade depuis sortie {source_type} #{source_id} ({statut})"
+    if commentaire_amont:
+        cascade_msg += f" — {commentaire_amont}"
+
+    cuisson_ids: list[int] = []
+    if source_type == "reception_ligne":
+        cur = await db.execute(
+            "SELECT id FROM cuissons WHERE reception_ligne_id = ?", (source_id,)
+        )
+        cuisson_ids = [r[0] for r in await cur.fetchall()]
+        for cid in cuisson_ids:
+            await _insert_dlc_devenir(
+                db, "cuisson", cid, statut, personnel_id, cascade_msg, replace=False,
+            )
+    elif source_type == "cuisson":
+        cuisson_ids = [source_id]
+
+    if cuisson_ids:
+        placeholders = ",".join("?" * len(cuisson_ids))
+        cur = await db.execute(
+            f"SELECT id FROM refroidissements WHERE cuisson_id IN ({placeholders})",
+            cuisson_ids,
+        )
+        for rid in [r[0] for r in await cur.fetchall()]:
+            await _insert_dlc_devenir(
+                db, "refroidissement", rid, statut, personnel_id, cascade_msg, replace=False,
+            )
+
+
 async def create_dlc_devenir(
     db: aiosqlite.Connection,
     source_type: str,
@@ -3548,17 +3635,15 @@ async def create_dlc_devenir(
     personnel_id: Optional[int] = None,
     commentaire: Optional[str] = None,
 ) -> int:
-    cur = await db.execute(
-        """
-        INSERT INTO dlc_devenir (source_type, source_id, statut, personnel_id, commentaire)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(source_type, source_id) DO UPDATE SET
-            statut       = excluded.statut,
-            personnel_id = excluded.personnel_id,
-            commentaire  = excluded.commentaire,
-            created_at   = CURRENT_TIMESTAMP
-        """,
-        (source_type, source_id, statut, personnel_id, commentaire),
+    """
+    Sortie de stock (jeté/vendu/consommé/autre) avec cascade aval.
+
+    Logique métier : la matière première alimente la cuisson qui alimente le
+    refroidissement. Sortir un maillon amont sort tout l'aval qui en dépend.
+    """
+    nouveau_id = await _insert_dlc_devenir(
+        db, source_type, source_id, statut, personnel_id, commentaire, replace=True,
     )
+    await _cascade_dlc_aval(db, source_type, source_id, statut, personnel_id, commentaire)
     await db.commit()
-    return cur.lastrowid or 0
+    return nouveau_id

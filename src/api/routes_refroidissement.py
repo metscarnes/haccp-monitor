@@ -17,7 +17,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db, create_dlc_devenir, DLC_JOURS_TRANSFORMATION
+from src.database import get_db, get_stock_unifie, create_dlc_devenir, DLC_JOURS_TRANSFORMATION
+
+BOUTIQUE_ID = 1  # mono-boutique Phase 2
 
 logger = logging.getLogger(__name__)
 
@@ -70,22 +72,39 @@ class RefroidissementCreate(BaseModel):
 
 @router.get("/produits")
 async def lister_produits_cuisson():
-    """Renvoie les produits enregistrés dans le module Cuisson."""
+    """
+    Cuissons disponibles à refroidir : produites mais ni encore refroidies, ni jetées,
+    ni périmées. Une ligne par produit, avec la cuisson FIFO (DLC la plus courte).
+
+    Source unique : get_stock_unifie() restreint aux cuissons. Si toutes les cuissons
+    sont refroidies/jetées (ou si la matière première source a été sortie en cascade),
+    la liste est vide — pas de refroidissement possible.
+    """
     async with get_db() as db:
-        cur = await db.execute(
-            """
-            SELECT p.id, p.nom, p.espece,
-                   MAX(c.id)           AS dernier_cuisson_id,
-                   MAX(c.date_cuisson) AS derniere_cuisson_date,
-                   COUNT(c.id)         AS nb_cuissons
-            FROM   cuissons c
-            JOIN   produits p ON p.id = c.produit_id
-            GROUP  BY p.id
-            ORDER  BY derniere_cuisson_date DESC, p.nom ASC
-            """
+        stock = await get_stock_unifie(
+            db, BOUTIQUE_ID,
+            type_produit="fini",
+            sources=["cuisson"],
         )
-        rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+
+    par_produit: dict[int, dict] = {}
+    for lot in stock:
+        pid = lot["produit_id"]
+        if pid in par_produit:
+            par_produit[pid]["nb_cuissons_disponibles"] += 1
+            continue
+        par_produit[pid] = {
+            "id":                       pid,
+            "nom":                      lot["produit_nom"],
+            "espece":                   lot.get("espece"),
+            "cuisson_id":               lot["source_id"],     # FIFO (plus pressé)
+            "cuisson_date":             lot.get("date_origine"),
+            "dlc":                      lot.get("dlc"),
+            "numero_lot":               lot.get("numero_lot"),
+            "nb_cuissons_disponibles":  1,
+        }
+
+    return sorted(par_produit.values(), key=lambda p: (p["nom"] or "").lower())
 
 
 # ---------------------------------------------------------------------------

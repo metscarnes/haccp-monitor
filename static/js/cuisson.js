@@ -283,17 +283,10 @@ async function chargerPersonnel() {
 
 async function chargerProduits() {
   try {
-    // On n'affiche que les produits ayant au moins un lot disponible :
-    // DLC non dépassée ET non traitée dans le calendrier DLC (jeté/vendu/consommé).
-    // Le backend (/api/produits?en_stock=true) applique déjà ces deux filtres.
-    const enStock = await apiFetch('/api/produits?type=brut&en_stock=true');
-    state.produits = (enStock ?? []).map(p => ({
-      ...p,
-      en_stock:           true,
-      numero_lot:         p.numero_lot ?? null,
-      dlc:                p.dlc ?? null,
-      reception_ligne_id: p.reception_ligne_id ?? null,
-    }));
+    // Source unique : get_stock_unifie() côté serveur, restreint aux réceptions.
+    // Si l'inventaire est vide, cette liste l'est aussi.
+    const enStock = await apiFetch('/api/cuisson/produits-disponibles');
+    state.produits = enStock ?? [];
   } catch (err) {
     state.produits = [];
     console.warn('[cuisson] Produits KO :', err);

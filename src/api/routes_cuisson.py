@@ -15,7 +15,9 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db, DLC_JOURS_TRANSFORMATION
+from src.database import get_db, get_stock_unifie, DLC_JOURS_TRANSFORMATION
+
+BOUTIQUE_ID = 1  # mono-boutique Phase 2
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +145,50 @@ async def lister_cuissons(
         rows = await cur.fetchall()
 
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/cuisson/produits-disponibles
+# Source unique du stock disponible à cuire — alimentée par get_stock_unifie()
+# ---------------------------------------------------------------------------
+
+@router.get("/produits-disponibles")
+async def produits_disponibles_pour_cuisson():
+    """
+    Produits bruts ayant au moins un lot de réception disponible (DLC future,
+    non sortis via dlc_devenir). Une ligne par produit, avec le lot FIFO
+    (DLC la plus courte, puis date de réception la plus ancienne).
+
+    Si l'inventaire est vide, cette liste l'est aussi : on ne peut pas cuire
+    ce qu'on n'a pas reçu.
+    """
+    async with get_db() as db:
+        stock = await get_stock_unifie(
+            db, BOUTIQUE_ID,
+            type_produit="brut",
+            sources=["reception_ligne"],
+        )
+
+    # get_stock_unifie est déjà trié par DLC croissante, date_origine croissante.
+    # On garde le premier lot rencontré pour chaque produit (= FIFO).
+    par_produit: dict[int, dict] = {}
+    for lot in stock:
+        pid = lot["produit_id"]
+        if pid in par_produit:
+            continue
+        par_produit[pid] = {
+            "id":                 pid,
+            "nom":                lot["produit_nom"],
+            "espece":             lot.get("espece"),
+            "categorie":          lot.get("categorie"),
+            "type_produit":       lot.get("type_produit"),
+            "en_stock":           True,
+            "numero_lot":         lot.get("numero_lot"),
+            "dlc":                lot.get("dlc"),
+            "reception_ligne_id": lot["source_id"],
+        }
+
+    return sorted(par_produit.values(), key=lambda p: (p["nom"] or "").lower())
 
 
 # ---------------------------------------------------------------------------

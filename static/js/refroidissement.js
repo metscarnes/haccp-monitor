@@ -371,14 +371,14 @@ function afficherProduits() {
   elProduitsGrid.innerHTML = liste.map(p => {
     const classes = ['cu-tuile'];
     if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
-    const meta = p.derniere_cuisson_date
-      ? `<div class="cu-tuile-dlc">Dernière cuisson : ${formatDate(p.derniere_cuisson_date)}</div>`
+    const meta = p.cuisson_date
+      ? `<div class="cu-tuile-dlc">Cuisson du ${formatDate(p.cuisson_date)}</div>`
       : '';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
               data-prod-id="${p.id}"
               data-prod-nom="${escHtml(p.nom)}"
-              data-cuisson-id="${p.dernier_cuisson_id ?? ''}">
+              data-cuisson-id="${p.cuisson_id ?? ''}">
         <div class="cu-tuile-icone">🥩</div>
         <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
         ${meta}
