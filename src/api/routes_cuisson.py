@@ -59,12 +59,25 @@ async def creer_cuisson(body: CuissonCreate):
 
     # DLC J+3 calculée côté serveur (règle HACCP transformation)
     try:
-        dlc_finale = (datetime.strptime(body.date_cuisson, "%Y-%m-%d").date()
-                      + timedelta(days=DLC_JOURS_TRANSFORMATION)).isoformat()
+        dlc_calculee = (datetime.strptime(body.date_cuisson, "%Y-%m-%d").date()
+                        + timedelta(days=DLC_JOURS_TRANSFORMATION))
     except ValueError:
         raise HTTPException(status_code=422, detail="date_cuisson invalide (YYYY-MM-DD attendu).")
 
     async with get_db() as db:
+        # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
+        dlc_finale = dlc_calculee
+        if body.reception_ligne_id:
+            cur_rl = await db.execute(
+                "SELECT dlc FROM reception_lignes WHERE id = ?",
+                (body.reception_ligne_id,),
+            )
+            rl = await cur_rl.fetchone()
+            if rl and rl["dlc"]:
+                dlc_origine = datetime.strptime(rl["dlc"], "%Y-%m-%d").date()
+                dlc_finale = min(dlc_calculee, dlc_origine)
+        dlc_finale = dlc_finale.isoformat()
+
         cur = await db.execute(
             """
             INSERT INTO cuissons (

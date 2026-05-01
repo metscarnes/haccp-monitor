@@ -144,8 +144,8 @@ async def creer_refroidissement(body: RefroidissementCreate):
 
     # DLC J+3 calculée côté serveur (règle HACCP transformation)
     try:
-        dlc_finale = (datetime.strptime(body.date_refroidissement, "%Y-%m-%d").date()
-                      + timedelta(days=DLC_JOURS_TRANSFORMATION)).isoformat()
+        dlc_calculee = (datetime.strptime(body.date_refroidissement, "%Y-%m-%d").date()
+                        + timedelta(days=DLC_JOURS_TRANSFORMATION))
     except ValueError:
         raise HTTPException(status_code=422, detail="date_refroidissement invalide (YYYY-MM-DD attendu).")
 
@@ -166,16 +166,23 @@ async def creer_refroidissement(body: RefroidissementCreate):
             cuisson = await cur_cuisson.fetchone()
             if cuisson and cuisson["reception_ligne_id"]:
                 reception_ligne_id = cuisson["reception_ligne_id"]
-                # Récupérer le numéro de lot depuis reception_lignes
+                # Récupérer le numéro de lot et la DLC d'origine depuis reception_lignes
                 cur_reception = await db.execute(
                     """
-                    SELECT numero_lot FROM reception_lignes WHERE id = ?
+                    SELECT numero_lot, dlc FROM reception_lignes WHERE id = ?
                     """,
                     (reception_ligne_id,),
                 )
                 reception_ligne = await cur_reception.fetchone()
                 if reception_ligne:
                     numero_lot = reception_ligne["numero_lot"]
+
+        # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
+        dlc_finale = dlc_calculee
+        if reception_ligne_id and reception_ligne and reception_ligne["dlc"]:
+            dlc_origine = datetime.strptime(reception_ligne["dlc"], "%Y-%m-%d").date()
+            dlc_finale = min(dlc_calculee, dlc_origine)
+        dlc_finale = dlc_finale.isoformat()
 
         cur = await db.execute(
             """
