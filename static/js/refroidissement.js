@@ -576,6 +576,12 @@ elForm.addEventListener('submit', async e => {
     else if (res.jeter)            msg = '⛔ Enregistré — PRODUITS À JETER';
     else if (!res.conforme)        msg = '⚠ Enregistré — non conforme';
     afficherToast(msg, !!res.conforme);
+
+    // Afficher un popup si la DLC a été ajustée à la DLC d'origine
+    if (res.dlc_ajustee && res.dlc_origine) {
+      afficherPopupAjustementDLC('Refroidissement', formatDate(res.dlc_origine));
+    }
+
     resetWizard();
     await chargerHistorique();
   } catch (err) {
@@ -675,6 +681,12 @@ async function chargerHistorique() {
   } catch (err) {
     elHisto.innerHTML = `<div class="cu-erreur">Erreur : ${escHtml(err.message)}</div>`;
   }
+}
+
+// ── Popup ajustement DLC ────────────────────────────────
+function afficherPopupAjustementDLC(module, dlcOrigine) {
+  const msg = `⚠ DLC ajustée\n\nLe module ${module} a ajusté la DLC calculée à la DLC d'origine du produit :\n\n${dlcOrigine}`;
+  alert(msg);
 }
 
 // ── Go ──────────────────────────────────────────────────

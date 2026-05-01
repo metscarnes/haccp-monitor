@@ -67,6 +67,8 @@ async def creer_cuisson(body: CuissonCreate):
     async with get_db() as db:
         # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
         dlc_finale = dlc_calculee
+        dlc_origine = None
+        dlc_ajustee = False
         if body.reception_ligne_id:
             cur_rl = await db.execute(
                 "SELECT dlc FROM reception_lignes WHERE id = ?",
@@ -75,8 +77,12 @@ async def creer_cuisson(body: CuissonCreate):
             rl = await cur_rl.fetchone()
             if rl and rl["dlc"]:
                 dlc_origine = datetime.strptime(rl["dlc"], "%Y-%m-%d").date()
-                dlc_finale = min(dlc_calculee, dlc_origine)
-        dlc_finale = dlc_finale.isoformat()
+                if dlc_calculee > dlc_origine:
+                    dlc_finale = dlc_origine
+                    dlc_ajustee = True
+                else:
+                    dlc_finale = dlc_calculee
+        dlc_finale_iso = dlc_finale.isoformat()
 
         cur = await db.execute(
             """
@@ -102,7 +108,7 @@ async def creer_cuisson(body: CuissonCreate):
                 TEMPERATURE_CIBLE,
                 conforme,
                 (body.action_corrective or "").strip() or None,
-                dlc_finale,
+                dlc_finale_iso,
             ),
         )
         await db.commit()
@@ -113,7 +119,13 @@ async def creer_cuisson(body: CuissonCreate):
         body.type_cuisson, nouveau_id, body.produit_id,
         body.temperature_sortie, bool(conforme),
     )
-    return {"ok": True, "id": nouveau_id, "conforme": bool(conforme)}
+    return {
+        "ok": True,
+        "id": nouveau_id,
+        "conforme": bool(conforme),
+        "dlc_ajustee": dlc_ajustee,
+        "dlc_origine": dlc_origine.isoformat() if dlc_origine else None,
+    }
 
 
 # ---------------------------------------------------------------------------

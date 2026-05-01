@@ -91,7 +91,8 @@
       "Bash(python -m pytest tests/test_stock.py tests/test_api.py tests/test_etiquettes.py tests/test_reception.py -q)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_refroidissement.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -m pytest tests/test_stock.py tests/test_refroidissement.py -q)",
-      "Bash(python -m pytest tests/ -q --ignore=tests/test_taches.py)"
+      "Bash(python -m pytest tests/ -q --ignore=tests/test_taches.py)",
+      "Bash(python -m py_compile src/api/routes_cuisson.py src/api/routes_refroidissement.py)"
     ]
   }
 }

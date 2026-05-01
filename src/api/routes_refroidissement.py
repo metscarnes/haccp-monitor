@@ -179,10 +179,16 @@ async def creer_refroidissement(body: RefroidissementCreate):
 
         # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
         dlc_finale = dlc_calculee
+        dlc_origine = None
+        dlc_ajustee = False
         if reception_ligne_id and reception_ligne and reception_ligne["dlc"]:
             dlc_origine = datetime.strptime(reception_ligne["dlc"], "%Y-%m-%d").date()
-            dlc_finale = min(dlc_calculee, dlc_origine)
-        dlc_finale = dlc_finale.isoformat()
+            if dlc_calculee > dlc_origine:
+                dlc_finale = dlc_origine
+                dlc_ajustee = True
+            else:
+                dlc_finale = dlc_calculee
+        dlc_finale_iso = dlc_finale.isoformat()
 
         cur = await db.execute(
             """
@@ -212,7 +218,7 @@ async def creer_refroidissement(body: RefroidissementCreate):
                 1 if conforme else 0,
                 1 if jeter else 0,
                 (body.action_corrective or "").strip() or None,
-                dlc_finale,
+                dlc_finale_iso,
             ),
         )
         nouveau_id = cur.lastrowid
@@ -247,6 +253,8 @@ async def creer_refroidissement(body: RefroidissementCreate):
         "jeter_cuisson": jeter_cuisson,
         "cuisson_ok":    cuisson_ok,
         "devenir_cree":  body.jeter_action,
+        "dlc_ajustee":   dlc_ajustee,
+        "dlc_origine":   dlc_origine.isoformat() if dlc_origine else None,
     }
 
 

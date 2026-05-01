@@ -669,6 +669,12 @@ elForm.addEventListener('submit', async e => {
     });
     const conforme = !!res.conforme;
     afficherToast(conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', conforme);
+
+    // Afficher un popup si la DLC a été ajustée à la DLC d'origine
+    if (res.dlc_ajustee && res.dlc_origine) {
+      afficherPopupAjustementDLC('Cuisson', formatDate(res.dlc_origine));
+    }
+
     state.derniereSauvegarde = {
       operateur:          { ...state.operateurChoisi },
       produit:            { ...state.produitChoisi },
@@ -773,6 +779,12 @@ async function chargerHistorique() {
   } catch (err) {
     elHisto.innerHTML = `<div class="cu-erreur">Erreur : ${escHtml(err.message)}</div>`;
   }
+}
+
+// ── Popup ajustement DLC ────────────────────────────────
+function afficherPopupAjustementDLC(module, dlcOrigine) {
+  const msg = `⚠ DLC ajustée\n\nLe module ${module} a ajusté la DLC calculée à la DLC d'origine du produit :\n\n${dlcOrigine}`;
+  alert(msg);
 }
 
 // ── Go ──────────────────────────────────────────────────
