@@ -657,6 +657,8 @@ async function chargerHistorique() {
             <strong>${badge}${escHtml(r.produit_nom ?? '—')}</strong>
             <br>
             <small>
+              Lot : ${escHtml(r.numero_lot ?? r.reception_numero_lot ?? '—')}
+              <br>
               Opérateur : ${escHtml(r.personnel_prenom ?? '—')}
               ${r.action_corrective ? `· Action : ${escHtml(r.action_corrective)}` : ''}
             </small>

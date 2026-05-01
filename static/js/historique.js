@@ -1645,8 +1645,8 @@ async function refrLister() {
     `/api/refroidissement/enregistrements?${p.toString()}`,
     r => creerCarteSimple({
       titre: r.produit_nom || '—',
-      meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'}`,
-      sousTitre: `T° début ${formatTemp(r.temperature_debut)} → T° fin ${formatTemp(r.temperature_fin)}`,
+      meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — Lot : ${r.numero_lot || r.reception_numero_lot || '—'}`,
+      sousTitre: `T° début ${formatTemp(r.temperature_initiale)} → T° fin ${formatTemp(r.temperature_finale)}`,
       chips: [
         r.duree_minutes ? `${r.duree_minutes} min` : null,
         r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',

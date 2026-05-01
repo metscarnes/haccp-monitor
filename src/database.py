@@ -518,6 +518,8 @@ CREATE TABLE IF NOT EXISTS refroidissements (
     personnel_id          INTEGER NOT NULL,
     produit_id            INTEGER NOT NULL,
     cuisson_id            INTEGER,
+    numero_lot            TEXT,
+    reception_ligne_id    INTEGER,
     heure_debut           TEXT    NOT NULL,
     heure_fin             TEXT    NOT NULL,
     duree_minutes         INTEGER NOT NULL,
@@ -530,10 +532,11 @@ CREATE TABLE IF NOT EXISTS refroidissements (
     action_corrective     TEXT,
     dlc_finale            DATE,                       -- date_refroidissement + DLC_JOURS_TRANSFORMATION
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
-    FOREIGN KEY (personnel_id) REFERENCES personnel(id),
-    FOREIGN KEY (produit_id)   REFERENCES produits(id),
-    FOREIGN KEY (cuisson_id)   REFERENCES cuissons(id)
+    FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)         REFERENCES produits(id),
+    FOREIGN KEY (cuisson_id)         REFERENCES cuissons(id),
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_refroidissements_date
@@ -855,6 +858,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # Rétro-remplissage des lignes existantes
             f"UPDATE cuissons         SET dlc_finale = date(date_cuisson,         '+{DLC_JOURS_TRANSFORMATION} days') WHERE dlc_finale IS NULL",
             f"UPDATE refroidissements SET dlc_finale = date(date_refroidissement, '+{DLC_JOURS_TRANSFORMATION} days') WHERE dlc_finale IS NULL",
+            # v3.3 — Traçabilité refroidissement : numerotet reception_ligne_id pour retrouver le lot
+            "ALTER TABLE refroidissements ADD COLUMN numero_lot TEXT",
+            "ALTER TABLE refroidissements ADD COLUMN reception_ligne_id INTEGER",
         ]
         for sql in migrations:
             try:

@@ -150,21 +150,51 @@ async def creer_refroidissement(body: RefroidissementCreate):
         raise HTTPException(status_code=422, detail="date_refroidissement invalide (YYYY-MM-DD attendu).")
 
     async with get_db() as db:
+        numero_lot = None
+        reception_ligne_id = None
+
+        # Récupérer la traçabilité depuis la cuisson
+        if body.cuisson_id:
+            cur_cuisson = await db.execute(
+                """
+                SELECT c.reception_ligne_id
+                FROM cuissons c
+                WHERE c.id = ?
+                """,
+                (body.cuisson_id,),
+            )
+            cuisson = await cur_cuisson.fetchone()
+            if cuisson and cuisson["reception_ligne_id"]:
+                reception_ligne_id = cuisson["reception_ligne_id"]
+                # Récupérer le numéro de lot depuis reception_lignes
+                cur_reception = await db.execute(
+                    """
+                    SELECT numero_lot FROM reception_lignes WHERE id = ?
+                    """,
+                    (reception_ligne_id,),
+                )
+                reception_ligne = await cur_reception.fetchone()
+                if reception_ligne:
+                    numero_lot = reception_ligne["numero_lot"]
+
         cur = await db.execute(
             """
             INSERT INTO refroidissements (
                 date_refroidissement, personnel_id, produit_id, cuisson_id,
+                numero_lot, reception_ligne_id,
                 heure_debut, heure_fin, duree_minutes,
                 temperature_initiale, temperature_finale,
                 temperature_cible, duree_max_minutes,
                 conforme, jeter, action_corrective, dlc_finale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.date_refroidissement,
                 body.personnel_id,
                 body.produit_id,
                 body.cuisson_id,
+                numero_lot,
+                reception_ligne_id,
                 body.heure_debut,
                 body.heure_fin,
                 duree,
@@ -239,10 +269,12 @@ async def lister_refroidissements(
             f"""
             SELECT r.*,
                    p.nom        AS produit_nom,
-                   pers.prenom  AS personnel_prenom
+                   pers.prenom  AS personnel_prenom,
+                   rl.numero_lot AS reception_numero_lot
             FROM   refroidissements r
             LEFT   JOIN produits  p    ON p.id    = r.produit_id
             LEFT   JOIN personnel pers ON pers.id = r.personnel_id
+            LEFT   JOIN reception_lignes rl ON rl.id = r.reception_ligne_id
             {where_sql}
             ORDER BY r.date_refroidissement DESC, r.id DESC
             LIMIT ?
