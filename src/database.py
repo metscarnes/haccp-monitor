@@ -3266,6 +3266,216 @@ async def get_dlc_calendrier(
     return items
 
 
+# ===========================================================================
+# Stock unifié — vue FIFO toutes sources confondues
+# ===========================================================================
+
+# Émoji par source — utilisé par le frontend pour identification visuelle
+_SRC_ICONS = {
+    "reception_ligne": "📦",
+    "fabrication":     "🔪",
+    "cuisson":         "🔥",
+    "refroidissement": "❄️",
+}
+
+
+async def get_stock_unifie(
+    db: aiosqlite.Connection,
+    boutique_id: int,
+    type_produit: str = "tous",         # 'tous' | 'brut' | 'fini'
+    categorie: Optional[str] = None,
+    produit_id: Optional[int] = None,
+    inclure_expires: bool = False,
+    dlc_max: Optional[str] = None,      # 'YYYY-MM-DD' inclusif
+) -> list[dict]:
+    """
+    Retourne le stock vivant FIFO, toutes sources confondues :
+        📦 reception_lignes   🔪 fabrications   🔥 cuissons   ❄️ refroidissements
+
+    Filtres communs : DLC future (sauf si inclure_expires=True), pas dans dlc_devenir,
+    refroidissements jetés exclus, cuissons déjà refroidies masquées.
+
+    Tri : DLC croissante (plus pressé en premier), puis date_origine croissante.
+    """
+    from datetime import date as _date
+
+    today = _date.today().isoformat()
+    items: list[dict] = []
+
+    inclure_brut = type_produit in ("tous", "brut")
+    inclure_fini = type_produit in ("tous", "fini")
+
+    def _build_filters(dlc_col: str) -> tuple[str, list]:
+        """Construit le SQL et les paramètres pour les filtres optionnels communs."""
+        sql_parts = []
+        params: list = []
+        if not inclure_expires:
+            sql_parts.append(f"AND {dlc_col} >= ?")
+            params.append(today)
+        if dlc_max:
+            sql_parts.append(f"AND {dlc_col} <= ?")
+            params.append(dlc_max)
+        if categorie:
+            sql_parts.append("AND p.categorie = ?")
+            params.append(categorie)
+        if produit_id:
+            sql_parts.append("AND p.id = ?")
+            params.append(produit_id)
+        return "\n              ".join(sql_parts), params
+
+    # ── 📦 reception_lignes ────────────────────────────────────────────────
+    if inclure_brut:
+        extra_sql, extra_params = _build_filters("rl.dlc")
+        cur = await db.execute(
+            f"""
+            SELECT
+                'reception_ligne'  AS source_type,
+                rl.id              AS source_id,
+                p.id               AS produit_id,
+                p.nom              AS produit_nom,
+                p.categorie        AS categorie,
+                p.type_produit     AS type_produit,
+                rl.dlc             AS dlc,
+                rl.numero_lot      AS numero_lot,
+                rl.poids_kg        AS quantite,
+                'kg'               AS unite,
+                r.date_reception   AS date_origine,
+                f.nom              AS fournisseur_nom
+            FROM reception_lignes rl
+            JOIN receptions   r ON r.id = rl.reception_id
+            JOIN produits     p ON p.id = rl.produit_id
+            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            WHERE p.boutique_id = ?
+              AND rl.dlc IS NOT NULL
+              {extra_sql}
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir dd
+                  WHERE dd.source_type = 'reception_ligne' AND dd.source_id = rl.id
+              )
+            """,
+            (boutique_id, *extra_params),
+        )
+        items.extend(dict(r) for r in await cur.fetchall())
+
+    # ── 🔪 fabrications ────────────────────────────────────────────────────
+    if inclure_fini:
+        extra_sql, extra_params = _build_filters("fab.dlc_finale")
+        cur = await db.execute(
+            f"""
+            SELECT
+                'fabrication'      AS source_type,
+                fab.id             AS source_id,
+                p.id               AS produit_id,
+                p.nom              AS produit_nom,
+                p.categorie        AS categorie,
+                p.type_produit     AS type_produit,
+                fab.dlc_finale     AS dlc,
+                fab.lot_interne    AS numero_lot,
+                fab.poids_fabrique AS quantite,
+                'kg'               AS unite,
+                fab.date           AS date_origine,
+                NULL               AS fournisseur_nom
+            FROM fabrications fab
+            JOIN recettes rec ON rec.id = fab.recette_id
+            JOIN produits p   ON p.id   = rec.produit_fini_id
+            WHERE p.boutique_id = ?
+              AND fab.dlc_finale IS NOT NULL
+              {extra_sql}
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir dd
+                  WHERE dd.source_type = 'fabrication' AND dd.source_id = fab.id
+              )
+            """,
+            (boutique_id, *extra_params),
+        )
+        items.extend(dict(r) for r in await cur.fetchall())
+
+    # ── 🔥 cuissons (hors celles refroidies) ───────────────────────────────
+    if inclure_fini:
+        extra_sql, extra_params = _build_filters("c.dlc_finale")
+        cur = await db.execute(
+            f"""
+            SELECT
+                'cuisson'             AS source_type,
+                c.id                  AS source_id,
+                p.id                  AS produit_id,
+                p.nom                 AS produit_nom,
+                p.categorie           AS categorie,
+                p.type_produit        AS type_produit,
+                c.dlc_finale          AS dlc,
+                'C-' || c.id          AS numero_lot,
+                c.quantite            AS quantite,
+                COALESCE(c.unite,'kg') AS unite,
+                c.date_cuisson        AS date_origine,
+                NULL                  AS fournisseur_nom
+            FROM cuissons c
+            JOIN produits p ON p.id = c.produit_id
+            WHERE c.boutique_id = ?
+              AND c.dlc_finale IS NOT NULL
+              {extra_sql}
+              AND NOT EXISTS (
+                  SELECT 1 FROM refroidissements rf WHERE rf.cuisson_id = c.id
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir dd
+                  WHERE dd.source_type = 'cuisson' AND dd.source_id = c.id
+              )
+            """,
+            (boutique_id, *extra_params),
+        )
+        items.extend(dict(r) for r in await cur.fetchall())
+
+    # ── ❄️ refroidissements (jeter=0) ──────────────────────────────────────
+    if inclure_fini:
+        extra_sql, extra_params = _build_filters("rf.dlc_finale")
+        cur = await db.execute(
+            f"""
+            SELECT
+                'refroidissement'      AS source_type,
+                rf.id                  AS source_id,
+                p.id                   AS produit_id,
+                p.nom                  AS produit_nom,
+                p.categorie            AS categorie,
+                p.type_produit         AS type_produit,
+                rf.dlc_finale          AS dlc,
+                'R-' || rf.id          AS numero_lot,
+                NULL                   AS quantite,
+                'kg'                   AS unite,
+                rf.date_refroidissement AS date_origine,
+                NULL                   AS fournisseur_nom
+            FROM refroidissements rf
+            JOIN produits p ON p.id = rf.produit_id
+            WHERE rf.boutique_id = ?
+              AND rf.dlc_finale IS NOT NULL
+              AND rf.jeter = 0
+              {extra_sql}
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir dd
+                  WHERE dd.source_type = 'refroidissement' AND dd.source_id = rf.id
+              )
+            """,
+            (boutique_id, *extra_params),
+        )
+        items.extend(dict(r) for r in await cur.fetchall())
+
+    # ── Enrichissement Python : icône + jours_restants + tri FIFO ──────────
+    today_d = _date.fromisoformat(today)
+    for it in items:
+        it["source_icon"] = _SRC_ICONS.get(it["source_type"], "")
+        if it["dlc"]:
+            try:
+                it["jours_restants"] = (_date.fromisoformat(it["dlc"]) - today_d).days
+            except ValueError:
+                it["jours_restants"] = None
+        else:
+            it["jours_restants"] = None
+
+    items.sort(key=lambda x: (x["dlc"] or "9999-12-31",
+                              x.get("date_origine") or "9999-12-31",
+                              x["produit_nom"] or ""))
+    return items
+
+
 async def create_dlc_devenir(
     db: aiosqlite.Connection,
     source_type: str,

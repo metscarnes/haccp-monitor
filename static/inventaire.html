@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Stock unifié — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/inventaire.css">
+</head>
+<body class="inv-body">
+
+  <header class="inv-bar">
+    <a href="/hub.html" class="inv-retour" aria-label="Retour accueil">← Accueil</a>
+    <div class="inv-bar-titre">📋 Stock unifié</div>
+    <div id="inv-horloge" class="inv-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- Bandeau statistiques -->
+  <section class="inv-stats" aria-live="polite">
+    <div class="inv-stat inv-stat--total">
+      <div class="inv-stat-num" id="inv-stat-total">—</div>
+      <div class="inv-stat-lbl">Total</div>
+    </div>
+    <div class="inv-stat inv-stat--reception">
+      <div class="inv-stat-num" id="inv-stat-reception">—</div>
+      <div class="inv-stat-lbl">📦 Réceptions</div>
+    </div>
+    <div class="inv-stat inv-stat--fabrication">
+      <div class="inv-stat-num" id="inv-stat-fabrication">—</div>
+      <div class="inv-stat-lbl">🔪 Fabrications</div>
+    </div>
+    <div class="inv-stat inv-stat--cuisson">
+      <div class="inv-stat-num" id="inv-stat-cuisson">—</div>
+      <div class="inv-stat-lbl">🔥 Cuissons</div>
+    </div>
+    <div class="inv-stat inv-stat--refroidissement">
+      <div class="inv-stat-num" id="inv-stat-refroidissement">—</div>
+      <div class="inv-stat-lbl">❄️ Refroidis</div>
+    </div>
+    <div class="inv-stat inv-stat--alerte">
+      <div class="inv-stat-num" id="inv-stat-3j">—</div>
+      <div class="inv-stat-lbl">⏰ ≤ 3 jours</div>
+    </div>
+  </section>
+
+  <!-- Filtres -->
+  <section class="inv-filtres">
+    <label class="inv-filtre">
+      <span>Type</span>
+      <select id="inv-filtre-type">
+        <option value="tous">Tous</option>
+        <option value="brut">📦 Bruts (réception)</option>
+        <option value="fini">🔪🔥❄️ Finis (transformés)</option>
+      </select>
+    </label>
+    <label class="inv-filtre">
+      <span>Catégorie</span>
+      <select id="inv-filtre-categorie">
+        <option value="">Toutes</option>
+        <option value="matiere_premiere">Matière première</option>
+        <option value="viande_hachee">Viande hachée</option>
+        <option value="viande_pieces">Pièces de viande</option>
+        <option value="preparation_crue">Préparation crue</option>
+        <option value="charcuterie_tranchee">Charcuterie tranchée</option>
+        <option value="plat_cuisine">Plat cuisiné</option>
+        <option value="produit_deconge">Produit décongelé</option>
+        <option value="produit_congele">Produit congelé</option>
+      </select>
+    </label>
+    <label class="inv-filtre">
+      <span>DLC max</span>
+      <input type="date" id="inv-filtre-dlc-max">
+    </label>
+    <label class="inv-filtre inv-filtre--check">
+      <input type="checkbox" id="inv-filtre-expires">
+      <span>Inclure périmés</span>
+    </label>
+    <button type="button" id="inv-reset" class="inv-reset">Réinitialiser</button>
+  </section>
+
+  <!-- Liste FIFO -->
+  <main class="inv-main">
+    <div id="inv-liste" class="inv-liste" aria-live="polite">
+      <div class="inv-vide">Chargement…</div>
+    </div>
+  </main>
+
+  <script src="/static/js/inventaire.js"></script>
+</body>
+</html>

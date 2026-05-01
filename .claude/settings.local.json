@@ -77,7 +77,8 @@
       "Bash(python -m pytest tests/test_db_fabrication.py -x -q)",
       "Bash(python -m pytest tests/ -x -q)",
       "Bash(python -m pytest tests/ -q)",
-      "Bash(python -m pytest tests/ -q --no-header)"
+      "Bash(python -m pytest tests/ -q --no-header)",
+      "Bash(python -m pytest tests/test_stock.py -v --no-header)"
     ]
   }
 }
