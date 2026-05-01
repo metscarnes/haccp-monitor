@@ -3482,6 +3482,64 @@ async def get_stock_unifie(
     return items
 
 
+async def update_stock_item(
+    db: aiosqlite.Connection,
+    source_type: str,
+    source_id: int,
+    dlc: str | None = None,
+    quantite: float | None = None,
+) -> bool:
+    """
+    Modifie la DLC et/ou la quantité d'un article en stock.
+    Le N° de lot (numero_lot / lot_interne) n'est jamais touché.
+    Retourne True si la ligne a été modifiée, False si introuvable.
+    """
+    SOURCES = {
+        "reception_ligne": {
+            "table":    "reception_lignes",
+            "col_dlc":  "dlc",
+            "col_qte":  "poids_kg",
+        },
+        "fabrication": {
+            "table":    "fabrications",
+            "col_dlc":  "dlc_finale",
+            "col_qte":  "poids_fabrique",
+        },
+        "cuisson": {
+            "table":    "cuissons",
+            "col_dlc":  "dlc_finale",
+            "col_qte":  "quantite",
+        },
+        "refroidissement": {
+            "table":    "refroidissements",
+            "col_dlc":  "dlc_finale",
+            "col_qte":  None,  # pas de colonne quantité
+        },
+    }
+    if source_type not in SOURCES:
+        raise ValueError(f"source_type inconnu : {source_type}")
+
+    cfg = SOURCES[source_type]
+    sets, params = [], []
+
+    if dlc is not None:
+        sets.append(f"{cfg['col_dlc']} = ?")
+        params.append(dlc)
+
+    if quantite is not None and cfg["col_qte"] is not None:
+        sets.append(f"{cfg['col_qte']} = ?")
+        params.append(quantite)
+
+    if not sets:
+        return True  # rien à faire
+
+    params.append(source_id)
+    sql = f"UPDATE {cfg['table']} SET {', '.join(sets)} WHERE id = ?"
+    async with db.execute(sql, params) as cur:
+        await db.commit()
+        return cur.rowcount > 0
+
+
 async def create_dlc_devenir(
     db: aiosqlite.Connection,
     source_type: str,

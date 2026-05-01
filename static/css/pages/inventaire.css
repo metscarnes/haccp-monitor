@@ -226,3 +226,310 @@
     border-top: 1px dashed #e5e7eb;
   }
 }
+
+/* ── Bouton Gérer (header) ────────────────────────────────── */
+.inv-btn-gestion {
+  background: rgba(255, 255, 255, .15);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, .4);
+  padding: .6rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: var(--btn-min-sm);
+  white-space: nowrap;
+}
+.inv-btn-gestion.actif {
+  background: #fff;
+  color: var(--color-accent);
+}
+.inv-btn-gestion:active { filter: brightness(.9); }
+
+/* ── Barre d'action flottante (mode gestion) ──────────────── */
+.inv-action-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  z-index: 90;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, .25);
+  gap: var(--space-3);
+}
+.inv-action-bar[hidden] { display: none; }
+.inv-action-sel {
+  font-weight: 700;
+  font-size: var(--text-base);
+  flex: 1;
+}
+.inv-action-btns {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.inv-btn-traiter {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: .7rem 1.2rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-height: 44px;
+}
+.inv-btn-traiter:disabled { background: #9ca3af; cursor: not-allowed; }
+.inv-btn-traiter:active { filter: brightness(.9); }
+.inv-btn-modifier {
+  background: #fff;
+  color: var(--color-accent);
+  border: 2px solid rgba(255, 255, 255, .6);
+  padding: .7rem 1.2rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  min-height: 44px;
+}
+.inv-btn-modifier:disabled { opacity: .45; cursor: not-allowed; }
+.inv-btn-modifier:active { filter: brightness(.9); }
+
+/* ── Items en mode gestion (checkboxes) ──────────────────── */
+.inv-item { position: relative; cursor: default; }
+.inv-item-check {
+  display: none;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+.inv-liste.gestion-mode .inv-item {
+  grid-template-columns: 28px 52px 1fr auto;
+  cursor: pointer;
+  transition: outline .1s;
+}
+.inv-liste.gestion-mode .inv-item-check { display: block; }
+.inv-liste.gestion-mode .inv-item.selectionne {
+  outline: 2.5px solid var(--color-accent);
+  background: #fdf3e8;
+}
+.inv-liste.gestion-mode .inv-item--rouge.selectionne { background: #fde8e8; }
+.inv-liste.gestion-mode .inv-item--noir.selectionne  { background: #e5e7eb; }
+
+/* padding bas pour ne pas masquer par la barre flottante */
+.inv-main.gestion-active { padding-bottom: 80px; }
+
+/* ── Modals inventaire ────────────────────────────────────── */
+.inv-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.inv-modal[hidden] { display: none; }
+.inv-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+}
+.inv-modal-panel {
+  position: relative;
+  background: var(--color-card);
+  max-width: 640px;
+  width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.inv-modal-panel--small { max-width: 460px; }
+.inv-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  background: var(--color-accent);
+  color: #fff;
+  flex-shrink: 0;
+}
+.inv-modal-header h2 { margin: 0; font-size: var(--text-lg); }
+.inv-modal-close {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 1.4rem;
+  cursor: pointer;
+  min-width: 40px;
+  min-height: 40px;
+}
+.inv-modal-body {
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+/* ── Batch modal ──────────────────────────────────────────── */
+.inv-batch-resume {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-accent);
+  padding: var(--space-2) 0 var(--space-3);
+}
+.inv-batch-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid #e8d9c4;
+}
+.inv-batch-tout-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.inv-batch-tout-label input { width: 18px; height: 18px; accent-color: var(--color-accent); }
+.inv-batch-compteur { font-size: var(--text-sm); color: #6b7280; }
+.inv-batch-liste {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid #e8d9c4;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
+}
+.inv-batch-row {
+  display: grid;
+  grid-template-areas: "check src nom dlc" "check src meta meta";
+  grid-template-columns: 28px 28px 1fr auto;
+  gap: 3px 8px;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid #f0e8dc;
+  cursor: pointer;
+  user-select: none;
+}
+.inv-batch-row:last-child { border-bottom: none; }
+.inv-batch-row:hover { background: rgba(0, 0, 0, .03); }
+.inv-batch-check { grid-area: check; width: 20px; height: 20px; accent-color: var(--color-accent); }
+.inv-batch-src  { grid-area: src; font-size: 1.2rem; text-align: center; }
+.inv-batch-nom  { grid-area: nom; font-weight: 600; font-size: var(--text-sm); }
+.inv-batch-dlc  { grid-area: dlc; font-size: var(--text-sm); font-weight: 700; color: #dc2626; white-space: nowrap; }
+.inv-batch-meta { grid-area: meta; font-size: var(--text-xs); color: #6b7280; grid-column: 3 / -1; }
+
+/* ── Labels, inputs, statuts (communs aux 2 modals) ──────── */
+.inv-m-label {
+  display: block;
+  font-weight: 600;
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+}
+.inv-m-select,
+.inv-m-textarea,
+.inv-m-input {
+  width: 100%;
+  padding: .7rem .9rem;
+  border: 1.5px solid #d8c9b2;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  font-family: inherit;
+  box-sizing: border-box;
+  background: #fff;
+  color: var(--color-text);
+}
+.inv-m-input[readonly] {
+  background: #f5ede0;
+  color: #6b7280;
+  cursor: default;
+}
+.inv-m-statuts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.inv-btn-statut {
+  padding: .9rem .5rem;
+  border-radius: var(--radius);
+  border: 2px solid #d8c9b2;
+  background: #fff;
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 56px;
+  color: var(--color-text);
+}
+.inv-btn-statut:active { transform: scale(.97); }
+.inv-btn-statut.actif {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+}
+.inv-m-valider {
+  width: 100%;
+  margin-top: var(--space-4);
+  padding: 1rem;
+  background: var(--color-ok);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  cursor: pointer;
+  min-height: var(--btn-min);
+}
+.inv-m-valider:disabled { background: #bbb; cursor: not-allowed; }
+
+/* ── Modal modification ───────────────────────────────────── */
+.inv-edit-nom {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+.inv-edit-lot-bloc {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: #f5ede0;
+  border-radius: var(--radius-sm);
+  border: 1px solid #d8c9b2;
+}
+.inv-edit-lot-label {
+  font-size: var(--text-xs);
+  color: #6b7280;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  white-space: nowrap;
+}
+.inv-edit-lot-val {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.inv-edit-lot-lock {
+  margin-left: auto;
+  font-size: .9rem;
+  color: #9ca3af;
+}
+
+@media (max-width: 480px) {
+  .inv-m-statuts { grid-template-columns: 1fr 1fr; }
+  .inv-action-btns { flex-direction: column; gap: 6px; }
+}

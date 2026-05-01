@@ -17,15 +17,47 @@ Sources unifiées :
 Tri FIFO : DLC ascendante, puis date_origine ascendante.
 """
 
+import re
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
-from src.database import get_db, get_stock_unifie
+from src.database import get_db, get_stock_unifie, update_stock_item
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
 
 BOUTIQUE_ID = 1
+SOURCES_VALIDES = {"reception_ligne", "fabrication", "cuisson", "refroidissement"}
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+class StockModif(BaseModel):
+    dlc: Optional[str] = None       # YYYY-MM-DD — jamais le N° de lot
+    quantite: Optional[float] = None
+
+
+@router.patch("/{source_type}/{source_id}")
+async def modifier_stock_item(source_type: str, source_id: int, body: StockModif):
+    """Modifie la DLC et/ou la quantité d'un article en stock. Le lot n'est jamais modifié."""
+    if source_type not in SOURCES_VALIDES:
+        raise HTTPException(400, f"source_type invalide : {source_type}")
+    if body.dlc is not None and not _DATE_RE.match(body.dlc):
+        raise HTTPException(400, "dlc doit être au format YYYY-MM-DD")
+    if body.quantite is not None and body.quantite < 0:
+        raise HTTPException(400, "quantite doit être >= 0")
+
+    async with get_db() as db:
+        found = await update_stock_item(
+            db,
+            source_type=source_type,
+            source_id=source_id,
+            dlc=body.dlc,
+            quantite=body.quantite,
+        )
+    if not found:
+        raise HTTPException(404, "Article introuvable")
+    return {"ok": True}
 
 
 @router.get("")
