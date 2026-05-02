@@ -109,8 +109,11 @@ const elBtnGenerer     = document.getElementById('fab-btn-generer');
 const elErreur         = document.getElementById('fab-erreur');
 const elSucces         = document.getElementById('fab-succes');
 const elSuccesLot      = document.getElementById('fab-succes-lot');
-const elBtnMemeRecette = document.getElementById('fab-btn-meme-recette');
-const elBtnNouvelleFab = document.getElementById('fab-btn-nouvelle-fab');
+const elBtnMemeRecette  = document.getElementById('fab-btn-meme-recette');
+const elBtnNouvelleFab  = document.getElementById('fab-btn-nouvelle-fab');
+const elBtnHub          = document.getElementById('fab-btn-hub');
+const elSuccesCountdown = document.getElementById('fab-succes-countdown');
+const elCountdownSec    = document.getElementById('fab-countdown-sec');
 const elSubOverlay     = document.getElementById('fab-sub-overlay');
 const elSubTitre       = document.getElementById('fab-sub-titre');
 const elAlertManuel    = document.getElementById('alert-manuel');
@@ -924,6 +927,7 @@ elBtnGenerer.addEventListener('click', async () => {
     console.log('[Fabrication] Réponse API :', result);
     elSuccesLot.textContent = result.lot_interne ? `Lot : ${result.lot_interne}` : '';
     elSucces.hidden = false;
+    demarrerCompteurSucces();
 
     // ── Remplissage du gabarit d'impression ──────────────────
     const dlcFormatee = state.dlcFinale
@@ -980,15 +984,47 @@ elBtnGenerer.addEventListener('click', async () => {
 });
 
 // ─────────────────────────────────────────────────────────────
+//  Compte à rebours 20 s — retour hub automatique (écran succès)
+// ─────────────────────────────────────────────────────────────
+let _timerSucces = null;
+
+function demarrerCompteurSucces() {
+  let restant = 20;
+  elCountdownSec.textContent = restant;
+  elSuccesCountdown.hidden = false;
+  _timerSucces = setInterval(() => {
+    restant--;
+    elCountdownSec.textContent = restant;
+    if (restant <= 0) {
+      arreterCompteurSucces();
+      window.location.href = '/production-hub.html';
+    }
+  }, 1000);
+}
+
+function arreterCompteurSucces() {
+  clearInterval(_timerSucces);
+  _timerSucces = null;
+  elSuccesCountdown.hidden = true;
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Écran de succès — actions post-impression
 // ─────────────────────────────────────────────────────────────
+elBtnHub.addEventListener('click', () => {
+  arreterCompteurSucces();
+  window.location.href = '/production-hub.html';
+});
+
 elBtnMemeRecette.addEventListener('click', async () => {
+  arreterCompteurSucces();
   elSucces.hidden = true;
   await chargerIngredientsRecette(state.recetteId);
   allerEtape(2);
 });
 
 elBtnNouvelleFab.addEventListener('click', () => {
+  arreterCompteurSucces();
   elSucces.hidden = true;
   Object.assign(state, {
     recetteId: null, recetteNom: null, recetteDlcJours: null,

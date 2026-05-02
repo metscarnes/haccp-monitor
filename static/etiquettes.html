@@ -213,6 +213,36 @@
     .dlc-attention { color: #D97706; font-weight: 700; }
     .dlc-ok        { color: #6b7280; }
 
+    /* ── Bouton retour hub (écran succès) ── */
+    .fab-btn-hub {
+      background: transparent;
+      border: 1.5px solid #d8c9b2;
+      color: #6B3A1F;
+      border-radius: 10px;
+      padding: .65rem 1.75rem;
+      font-size: .95rem;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      min-height: 48px;
+      width: 100%;
+      max-width: 500px;
+      transition: background .15s, border-color .15s;
+    }
+    .fab-btn-hub:hover  { background: #f5ede0; border-color: #6B3A1F; }
+    .fab-btn-hub:active { background: #ede0d0; transform: scale(.97); }
+
+    /* ── Compte à rebours (écran succès) ── */
+    .fab-succes-countdown {
+      font-size: .85rem;
+      color: #9E8572;
+      letter-spacing: .02em;
+    }
+    .fab-succes-countdown span {
+      font-weight: 800;
+      color: #6B3A1F;
+    }
+
     /* ── Gabarit impression thermique Brother 62mm ── */
     #print-label { display: none; }
     @media print {
@@ -406,6 +436,10 @@
     <div class="fab-succes-actions">
       <button id="fab-btn-meme-recette" class="fab-btn-secondary">Même recette</button>
       <button id="fab-btn-nouvelle-fab" class="fab-btn-primary">Nouvelle fabrication</button>
+    </div>
+    <button id="fab-btn-hub" class="fab-btn-hub">← Retour au hub production</button>
+    <div id="fab-succes-countdown" class="fab-succes-countdown" hidden>
+      Retour automatique dans <span id="fab-countdown-sec">20</span>&nbsp;s
     </div>
   </div>
 
