@@ -117,8 +117,8 @@ document.addEventListener('input',      resetInactivite, true);
 resetInactivite();
 
 // ── Fetch helper ─────────────────────────────────────────────
-async function apiFetch(url) {
-  const res = await fetch(url, { cache: 'no-store' });
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, { cache: 'no-store', ...options });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
