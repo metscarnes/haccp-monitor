@@ -376,7 +376,7 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
     impression_ok = False
     impression_erreur = None
     try:
-        from src.printing.brother_ql_driver import imprimer_etiquette
+        from src.printing.brother_ql_driver import imprimer_etiquette, verifier_imprimante
         impression_ok = imprimer_etiquette({
             "template":      "transforme",
             "tag":           cfg["tag"],
@@ -388,6 +388,10 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
             "heure_action":  heure_action,
             "operateur":     operateur,
         })
+        if not impression_ok:
+            # Diagnostic : on demande au driver pourquoi il a échoué
+            statut = verifier_imprimante()
+            impression_erreur = statut.get("message") or "Imprimante indisponible"
     except ImportError:
         impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
     except Exception as e:
