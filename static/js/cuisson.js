@@ -54,6 +54,12 @@ function todayISO() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+function nowHHMM() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 function initialePrenom(prenom) {
   const p = (prenom ?? '').trim();
   if (!p) return '?';
@@ -90,6 +96,10 @@ const elUnite        = $('cu-unite');
 const elHeureDebut   = $('cu-heure-debut');
 const elHeureFin     = $('cu-heure-fin');
 const elTemperature  = $('cu-temperature');
+const elQuickTemp    = $('cu-quick-temp');
+const elDureeH       = $('cu-duree-h');
+const elDureeM       = $('cu-duree-m');
+const elDureeAppliquer = $('cu-duree-appliquer');
 const elConformite   = $('cu-conformite');
 const elConfTxt      = $('cu-conformite-texte');
 const elActionWrap   = $('cu-action-wrap');
@@ -190,6 +200,7 @@ function majBandeau() {
 // ── Init : personnel, catalogue, historique ───────────────
 async function init() {
   elDate.value = todayISO();
+  elHeureDebut.value = nowHHMM();
 
   await Promise.all([
     chargerPersonnel(),
@@ -651,6 +662,24 @@ elHeureDebut.addEventListener('input', () => {
     b.classList.remove('cu-quick-btn--actif'));
 });
 
+elDureeAppliquer.addEventListener('click', () => {
+  const h = Math.max(0, parseInt(elDureeH.value, 10) || 0);
+  const m = Math.max(0, parseInt(elDureeM.value, 10) || 0);
+  const total = h * 60 + m;
+  if (!total) return;
+  if (!elHeureDebut.value) {
+    afficherErreur(‘Renseignez d’abord l’heure de début.’);
+    return;
+  }
+  const fin = ajouterMinutes(elHeureDebut.value, total);
+  if (fin) {
+    elHeureFin.value = fin;
+    elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+      b.classList.remove('cu-quick-btn--actif'));
+    elErreur.hidden = true;
+  }
+});
+
 // ── Conformité température — live ────────────────────────
 function majConformite() {
   const v = parseFloat(elTemperature.value);
@@ -673,7 +702,20 @@ function majConformite() {
     elAction.value = '';
   }
 }
-elTemperature.addEventListener('input', majConformite);
+elTemperature.addEventListener('input', () => {
+  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.remove('cu-quick-btn--actif'));
+  majConformite();
+});
+
+elQuickTemp.addEventListener('click', e => {
+  const btn = e.target.closest('.cu-quick-btn[data-temp]');
+  if (!btn) return;
+  elTemperature.value = btn.dataset.temp;
+  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.toggle('cu-quick-btn--actif', b === btn));
+  majConformite();
+});
 
 // ── Soumission ───────────────────────────────────────────
 elForm.addEventListener('submit', async e => {
@@ -790,14 +832,18 @@ function resetWizard() {
   elProdDlc.textContent = '';
 
   elQuantite.value    = '';
-  elHeureDebut.value  = '';
+  elHeureDebut.value  = nowHHMM();
   elHeureFin.value    = '';
   elTemperature.value = '';
   elAction.value      = '';
   elConformite.hidden = true;
   elActionWrap.hidden = true;
   elDate.value        = todayISO();
+  elDureeH.value      = '';
+  elDureeM.value      = '';
   elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.remove('cu-quick-btn--actif'));
+  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
     b.classList.remove('cu-quick-btn--actif'));
 
   goStep(1);

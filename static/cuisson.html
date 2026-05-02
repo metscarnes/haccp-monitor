@@ -164,6 +164,15 @@
                 <button type="button" class="cu-quick-btn" data-minutes="150">+2h30</button>
                 <button type="button" class="cu-quick-btn" data-minutes="180">+3h</button>
               </div>
+              <div class="cu-manual-row" id="cu-manual-duree">
+                <input type="number" id="cu-duree-h" class="cu-input cu-input--duree"
+                       min="0" max="23" placeholder="h" inputmode="numeric">
+                <span class="cu-duree-sep">h</span>
+                <input type="number" id="cu-duree-m" class="cu-input cu-input--duree"
+                       min="0" max="59" placeholder="min" inputmode="numeric">
+                <span class="cu-duree-sep">min</span>
+                <button type="button" id="cu-duree-appliquer" class="cu-quick-btn cu-quick-btn--apply">→</button>
+              </div>
             </label>
           </div>
 
@@ -178,6 +187,16 @@
                 <span class="cu-unite-fixe">°C</span>
               </div>
               <div class="cu-cible">🎯 Cible réglementaire : ≥ 75 °C</div>
+              <div class="cu-quick-row" id="cu-quick-temp" role="group" aria-label="Température rapide">
+                <button type="button" class="cu-quick-btn" data-temp="70">70°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="72">72°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="75">75°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="78">78°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="80">80°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="82">82°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="85">85°C</button>
+                <button type="button" class="cu-quick-btn" data-temp="90">90°C</button>
+              </div>
             </label>
           </div>
 

@@ -468,6 +468,36 @@
   margin-top: .2rem;
 }
 
+.cu-manual-row {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-top: .4rem;
+  flex-wrap: wrap;
+}
+.cu-input--duree {
+  width: 68px;
+  min-width: 0;
+  flex: 0 0 68px;
+  text-align: center;
+  padding: .55rem .3rem;
+  min-height: 44px;
+}
+.cu-duree-sep {
+  font-size: .9rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  flex-shrink: 0;
+}
+.cu-quick-btn--apply {
+  flex: 0 0 auto;
+  min-width: 44px;
+  background: #6B3A1F;
+  color: #fff;
+  border-color: #6B3A1F;
+}
+.cu-quick-btn--apply:hover { background: #5a2f18; border-color: #5a2f18; }
+
 /* ── Produit — recherche / suggestions ─────────── */
 .cu-champ-produit { position: relative; }
 .cu-produit-wrap { position: relative; }
