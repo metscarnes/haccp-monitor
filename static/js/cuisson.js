@@ -107,6 +107,7 @@ const elModalClose   = $('cu-modal-close');
 const elModalChoix    = $('cu-modal-choix');
 const elChoixTitre    = $('cu-choix-titre');
 const elChoixContext  = $('cu-choix-context');
+const elChoixEtiquette = $('cu-choix-etiquette');
 const elChoixNouvelle = $('cu-choix-nouvelle');
 const elChoixHub      = $('cu-choix-hub');
 const elChoixRefroid  = $('cu-choix-refroid');
@@ -518,6 +519,35 @@ function afficherModalChoix(conforme) {
   elChoixContext.textContent = `${operateur.prenom} · ${produit.nom}`;
   elModalChoix.hidden = false;
 }
+
+elChoixEtiquette.addEventListener('click', async () => {
+  const { operateur, cuisson_id } = state.derniereSauvegarde;
+  if (!cuisson_id || !operateur) return;
+  elChoixEtiquette.disabled = true;
+  const labelOriginal = elChoixEtiquette.querySelector('.cu-choix-label').textContent;
+  elChoixEtiquette.querySelector('.cu-choix-label').textContent = 'Impression…';
+  try {
+    const res = await apiFetch('/api/etiquettes/transformes', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        source_type:  'cuisson',
+        source_id:    cuisson_id,
+        personnel_id: Number(operateur.id),
+      }),
+    });
+    if (res.impression_ok) {
+      afficherToast(`✓ Étiquette imprimée (Lot ${res.numero_lot})`, true);
+    } else {
+      afficherToast(`⚠ Étiquette tracée mais non imprimée : ${res.impression_erreur ?? 'imprimante indisponible'}`, false);
+    }
+  } catch (err) {
+    afficherToast(`Erreur impression : ${err.message}`, false);
+  } finally {
+    elChoixEtiquette.disabled = false;
+    elChoixEtiquette.querySelector('.cu-choix-label').textContent = labelOriginal;
+  }
+});
 
 elChoixNouvelle.addEventListener('click', () => {
   elModalChoix.hidden = true;

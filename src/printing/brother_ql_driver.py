@@ -135,12 +135,102 @@ def generer_image_etiquette(data: dict) -> "Image":
     return img
 
 
+def generer_image_etiquette_transforme(data: dict) -> "Image":
+    """
+    Génère une image PIL (RGB) pour un produit transformé (cuisson / refroidissement
+    / fabrication). Format compact :
+
+      [TAG]
+      Produit
+      DLC : jj/mm/aa     Lot : C-42
+      <Action> le jj/mm à HHhMM
+      Par : Prénom
+
+    Champs attendus dans data :
+      - tag                 str  ("CUIT" | "REFROIDI" | "MAISON")
+      - produit_nom         str
+      - dlc                 str  (YYYY-MM-DD)
+      - numero_lot          str
+      - action_verbe        str  ("Cuit" | "Refroidi" | "Fabriqué")
+      - date_action         str  (YYYY-MM-DD)
+      - heure_action        str  ("HH:MM")
+      - operateur           str
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    from datetime import date
+
+    img = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font_tag      = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
+        font_produit  = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
+        font_dlc      = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
+        font_normal   = ImageFont.truetype("DejaVuSans.ttf", 24)
+    except (IOError, OSError):
+        font_tag = font_produit = font_dlc = font_normal = ImageFont.load_default()
+
+    def fmt_date(d_str: str) -> str:
+        try:
+            return date.fromisoformat(d_str).strftime("%d/%m/%y")
+        except Exception:
+            return d_str or ""
+
+    def fmt_heure(h_str: str) -> str:
+        if not h_str:
+            return ""
+        return h_str.replace(":", "h")
+
+    mx, my = 14, 12
+    y = my
+
+    # Tag encadré
+    tag = (data.get("tag") or "").upper()
+    draw.rectangle([(mx, y), (mx + 230, y + 50)], outline="black", width=3)
+    draw.text((mx + 10, y + 2), f"[{tag}]", font=font_tag, fill="black")
+    y += 60
+
+    # Nom du produit
+    draw.text((mx, y), str(data.get("produit_nom", "")), font=font_produit, fill="black")
+    y += 50
+
+    # DLC + Lot
+    dlc_str = fmt_date(data.get("dlc", ""))
+    lot_str = data.get("numero_lot", "") or "—"
+    draw.text((mx, y), f"DLC : {dlc_str}", font=font_dlc, fill="black")
+    draw.text((mx + 360, y), f"Lot : {lot_str}", font=font_dlc, fill="black")
+    y += 50
+
+    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
+    y += 10
+
+    # Ligne action
+    verbe   = data.get("action_verbe", "Préparé")
+    date_a  = fmt_date(data.get("date_action", ""))
+    heure_a = fmt_heure(data.get("heure_action", ""))
+    ligne_action = f"{verbe} le {date_a}"
+    if heure_a:
+        ligne_action += f" à {heure_a}"
+    draw.text((mx, y), ligne_action, font=font_normal, fill="black")
+    y += 36
+
+    # Opérateur
+    op = data.get("operateur", "")
+    if op:
+        draw.text((mx, y), f"Par : {op}", font=font_normal, fill="black")
+
+    return img
+
+
 def imprimer_etiquette(data: dict) -> bool:
     """
     Génère et envoie l'étiquette à l'imprimante Brother QL via USB.
 
     Retourne True si succès, False si erreur.
     Ne propage jamais d'exception — l'API reste disponible même sans imprimante.
+
+    Si data["template"] == "transforme", utilise le rendu compact pour produit
+    transformé (cuisson / refroidissement / fabrication).
     """
     try:
         from brother_ql.conversion import convert
@@ -151,7 +241,10 @@ def imprimer_etiquette(data: dict) -> bool:
         return False
 
     try:
-        image = generer_image_etiquette(data)
+        if data.get("template") == "transforme":
+            image = generer_image_etiquette_transforme(data)
+        else:
+            image = generer_image_etiquette(data)
 
         qlr = BrotherQLRaster(PRINTER_IDENTIFIER)
         instructions = convert(

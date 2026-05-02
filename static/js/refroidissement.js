@@ -111,6 +111,13 @@ const elBtnSave      = $('cu-btn-save');
 const elHisto        = $('cu-histo');
 const elToast        = $('cu-toast');
 
+const elModalChoix     = $('cu-modal-choix');
+const elChoixTitre     = $('cu-choix-titre');
+const elChoixContext   = $('cu-choix-context');
+const elChoixEtiquette = $('cu-choix-etiquette');
+const elChoixNouvelle  = $('cu-choix-nouvelle');
+const elChoixHub       = $('cu-choix-hub');
+
 // ── Horloge ────────────────────────────────────────────────
 (function majHorloge() {
   elHorloge.textContent = new Date().toLocaleTimeString('fr-FR', {
@@ -582,7 +589,14 @@ elForm.addEventListener('submit', async e => {
       afficherPopupAjustementDLC('Refroidissement', formatDate(res.dlc_origine));
     }
 
-    resetWizard();
+    state.derniereSauvegarde = {
+      operateur:         { ...state.operateurChoisi },
+      produit:           { ...state.produitChoisi },
+      refroidissement_id: res && res.id ? Number(res.id) : null,
+      jeter:             !!res.jeter,
+      conforme:          !!res.conforme,
+    };
+    afficherModalChoix(res);
     await chargerHistorique();
   } catch (err) {
     afficherErreur(err.message);
@@ -607,6 +621,64 @@ function afficherToast(message, ok = true) {
     elToast.classList.remove('cu-toast--visible');
     setTimeout(() => { elToast.hidden = true; }, 300);
   }, 3500);
+}
+
+// ── Modal choix post-enregistrement ─────────────────────
+function afficherModalChoix(res) {
+  if (!elModalChoix) return;
+  const { operateur, produit } = state.derniereSauvegarde;
+  if (res.jeter)          elChoixTitre.textContent = '⛔ Refroidissement enregistré — produits à jeter';
+  else if (!res.conforme) elChoixTitre.textContent = '⚠ Refroidissement enregistré — non conforme';
+  else                    elChoixTitre.textContent = '✓ Refroidissement enregistré';
+  elChoixContext.textContent = `${operateur?.prenom ?? ''} · ${produit?.nom ?? ''}`;
+  // Pas d'étiquette si le produit est jeté
+  if (elChoixEtiquette) elChoixEtiquette.hidden = !!res.jeter;
+  elModalChoix.hidden = false;
+}
+
+if (elChoixEtiquette) {
+  elChoixEtiquette.addEventListener('click', async () => {
+    const { operateur, refroidissement_id } = state.derniereSauvegarde || {};
+    if (!refroidissement_id || !operateur) return;
+    elChoixEtiquette.disabled = true;
+    const labelEl = elChoixEtiquette.querySelector('.cu-choix-label');
+    const labelOriginal = labelEl ? labelEl.textContent : '';
+    if (labelEl) labelEl.textContent = 'Impression…';
+    try {
+      const res = await apiFetch('/api/etiquettes/transformes', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          source_type:  'refroidissement',
+          source_id:    refroidissement_id,
+          personnel_id: Number(operateur.id),
+        }),
+      });
+      if (res.impression_ok) {
+        afficherToast(`✓ Étiquette imprimée (Lot ${res.numero_lot})`, true);
+      } else {
+        afficherToast(`⚠ Étiquette tracée mais non imprimée : ${res.impression_erreur ?? 'imprimante indisponible'}`, false);
+      }
+    } catch (err) {
+      afficherToast(`Erreur impression : ${err.message}`, false);
+    } finally {
+      elChoixEtiquette.disabled = false;
+      if (labelEl) labelEl.textContent = labelOriginal;
+    }
+  });
+}
+
+if (elChoixNouvelle) {
+  elChoixNouvelle.addEventListener('click', () => {
+    elModalChoix.hidden = true;
+    resetWizard();
+  });
+}
+
+if (elChoixHub) {
+  elChoixHub.addEventListener('click', () => {
+    window.location.href = '/taches-hub.html';
+  });
 }
 
 function resetWizard() {

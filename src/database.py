@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS etiquettes_generees (
     lot_type                 TEXT    NOT NULL,
     info_complementaire      TEXT,
     mode_impression          TEXT    NOT NULL DEFAULT 'manuel',
+    source_type              TEXT,
+    source_id                INTEGER,
     imprime_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id),
     FOREIGN KEY (produit_id)  REFERENCES produits(id)
@@ -861,6 +863,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v3.3 — Traçabilité refroidissement : numerotet reception_ligne_id pour retrouver le lot
             "ALTER TABLE refroidissements ADD COLUMN numero_lot TEXT",
             "ALTER TABLE refroidissements ADD COLUMN reception_ligne_id INTEGER",
+            # v3.4 — Étiquettes des produits transformés (cuisson / refroidissement / fabrication)
+            "ALTER TABLE etiquettes_generees ADD COLUMN source_type TEXT",
+            "ALTER TABLE etiquettes_generees ADD COLUMN source_id INTEGER",
         ]
         for sql in migrations:
             try:
@@ -1715,8 +1720,8 @@ async def create_etiquette(db: aiosqlite.Connection, data: dict) -> int:
         INSERT INTO etiquettes_generees
             (boutique_id, produit_id, produit_nom, type_date, date_etiquette,
              dlc, temperature_conservation, operateur, numero_lot, lot_type,
-             info_complementaire, mode_impression)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             info_complementaire, mode_impression, source_type, source_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["boutique_id"],
@@ -1731,6 +1736,8 @@ async def create_etiquette(db: aiosqlite.Connection, data: dict) -> int:
             data["lot_type"],
             data.get("info_complementaire"),
             data.get("mode_impression", "manuel"),
+            data.get("source_type"),
+            data.get("source_id"),
         ),
     )
     await db.commit()

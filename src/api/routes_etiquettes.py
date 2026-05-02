@@ -8,6 +8,7 @@ DELETE /api/produits/{id}               → désactiver produit
 GET    /api/regles-dlc                  → règles DLC par catégorie
 PUT    /api/regles-dlc/{categorie}      → modifier une règle
 POST   /api/etiquettes/generer          → générer + imprimer étiquette
+POST   /api/etiquettes/transformes      → étiquette produit transformé (cuisson / refroidissement)
 GET    /api/etiquettes                  → historique
 GET    /api/etiquettes/alertes-dlc      → produits DLC proche
 """
@@ -277,6 +278,126 @@ async def generer_etiquette(body: EtiquetteGenerer):
         "numero_lot": numero_lot,
         "dlc": dlc.isoformat(),
         "impression_ok": impression_ok,
+        "impression_erreur": impression_erreur,
+    }
+
+
+class EtiquetteTransforme(BaseModel):
+    source_type: str                          # "cuisson" | "refroidissement"
+    source_id:   int
+    personnel_id: int
+
+
+SOURCE_CONFIG = {
+    "cuisson": {
+        "tag":          "CUIT",
+        "verbe":        "Cuit",
+        "lot_prefix":   "C",
+        "type_date":    "fabrication",
+        "table":        "cuissons",
+        "date_col":     "date_cuisson",
+    },
+    "refroidissement": {
+        "tag":          "REFROIDI",
+        "verbe":        "Refroidi",
+        "lot_prefix":   "R",
+        "type_date":    "fabrication",
+        "table":        "refroidissements",
+        "date_col":     "date_refroidissement",
+    },
+}
+
+
+@router.post("/etiquettes/transformes", status_code=201)
+async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
+    """
+    Imprime une étiquette pour un produit transformé (cuisson / refroidissement)
+    et trace l'opération dans `etiquettes_generees` avec source_type / source_id.
+    """
+    cfg = SOURCE_CONFIG.get(body.source_type)
+    if not cfg:
+        raise HTTPException(400, f"source_type invalide : {body.source_type}")
+
+    async with get_db() as db:
+        cur = await db.execute(
+            f"""
+            SELECT s.id            AS source_id,
+                   s.{cfg['date_col']} AS date_action,
+                   s.heure_fin     AS heure_action,
+                   s.produit_id    AS produit_id,
+                   s.dlc_finale    AS dlc,
+                   p.nom           AS produit_nom,
+                   p.temperature_conservation AS temperature_conservation,
+                   pers.prenom     AS operateur,
+                   {('s.numero_lot' if body.source_type == 'refroidissement' else 'NULL')} AS reception_lot
+            FROM   {cfg['table']} s
+            LEFT   JOIN produits  p    ON p.id    = s.produit_id
+            LEFT   JOIN personnel pers ON pers.id = ?
+            WHERE  s.id = ?
+            """,
+            (body.personnel_id, body.source_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, f"{body.source_type} #{body.source_id} introuvable")
+
+        if not row["dlc"]:
+            raise HTTPException(422, "DLC absente sur l'enregistrement source")
+
+        numero_lot   = f"{cfg['lot_prefix']}-{row['source_id']}"
+        produit_nom  = row["produit_nom"] or ""
+        operateur    = row["operateur"] or ""
+        date_action  = row["date_action"]
+        heure_action = row["heure_action"] or ""
+        dlc_iso      = row["dlc"]
+        reception_lot = row["reception_lot"]
+
+        info_compl = f"Lot origine : {reception_lot}" if reception_lot else None
+
+        etiquette_data = {
+            "boutique_id":              BOUTIQUE_ID,
+            "produit_id":               row["produit_id"],
+            "produit_nom":              produit_nom,
+            "type_date":                cfg["type_date"],
+            "date_etiquette":           date_action,
+            "dlc":                      dlc_iso,
+            "temperature_conservation": row["temperature_conservation"],
+            "operateur":                operateur,
+            "numero_lot":               numero_lot,
+            "lot_type":                 "interne",
+            "info_complementaire":      info_compl,
+            "mode_impression":          "auto",
+            "source_type":              body.source_type,
+            "source_id":                body.source_id,
+        }
+        etiquette_id = await create_etiquette(db, etiquette_data)
+
+    # Impression via brother_ql_driver (template "transforme")
+    impression_ok = False
+    impression_erreur = None
+    try:
+        from src.printing.brother_ql_driver import imprimer_etiquette
+        impression_ok = imprimer_etiquette({
+            "template":      "transforme",
+            "tag":           cfg["tag"],
+            "produit_nom":   produit_nom,
+            "dlc":           dlc_iso,
+            "numero_lot":    numero_lot,
+            "action_verbe":  cfg["verbe"],
+            "date_action":   date_action,
+            "heure_action":  heure_action,
+            "operateur":     operateur,
+        })
+    except ImportError:
+        impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
+    except Exception as e:
+        impression_erreur = str(e)
+
+    return {
+        "id":                etiquette_id,
+        "numero_lot":        numero_lot,
+        "dlc":               dlc_iso,
+        "impression_ok":     impression_ok,
         "impression_erreur": impression_erreur,
     }
 
