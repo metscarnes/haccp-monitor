@@ -97,7 +97,8 @@
       "Bash(python3 -c \"import sqlite3; db = sqlite3.connect\\('haccp.db'\\); c = db.cursor\\(\\); c.execute\\('SELECT id, nom, type_produit FROM produits WHERE nom LIKE \\\\\"%EPICE%\\\\\" OR nom LIKE \\\\\"%MERGUEZ%\\\\\" LIMIT 20'\\); print\\('\\\\n'.join\\(str\\(row\\) for row in c.fetchall\\(\\)\\)\\)\")",
       "Bash(findstr stock *)",
       "Bash(sqlite3 data/database.db \"SELECT id, nom, type_produit, categorie, actif FROM produits WHERE nom LIKE '%MERGUEZ FORTE%' OR nom LIKE '%AG FOIE%' OR nom LIKE '%AGN-%'\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(sqlite3 haccp.db \"SELECT id, nom, type_produit, categorie FROM produits WHERE nom LIKE '%AGNEAU%' OR nom LIKE '%MERGUEZ%' LIMIT 20;\")"
     ]
   }
 }
