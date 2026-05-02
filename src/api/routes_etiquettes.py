@@ -296,6 +296,7 @@ SOURCE_CONFIG = {
         "type_date":    "fabrication",
         "table":        "cuissons",
         "date_col":     "date_cuisson",
+        "temp_label":   "T° fin cuisson",
     },
     "refroidissement": {
         "tag":          "REFROIDI",
@@ -304,6 +305,7 @@ SOURCE_CONFIG = {
         "type_date":    "fabrication",
         "table":        "refroidissements",
         "date_col":     "date_refroidissement",
+        "temp_label":   "T° fin refroidissement",
     },
 }
 
@@ -323,12 +325,19 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         # de la réception d'origine (vrai numéro de lot HACCP). Pour la cuisson
         # → via reception_ligne_id ; pour le refroidissement → champ déjà rempli
         # à l'enregistrement (cf. routes_refroidissement.py).
+        # Quantité : disponible directement sur cuisson, et cascadée depuis
+        # la cuisson source pour le refroidissement.
+        # Température : sortie cuisson pour CUIT, finale pour REFROIDI.
         if body.source_type == "refroidissement":
             lot_select = "s.numero_lot AS lot_origine"
-            lot_join   = ""
+            qte_select = "c.quantite AS quantite, c.unite AS unite"
+            temp_select = "s.temperature_finale AS temperature"
+            extra_join = "LEFT JOIN cuissons c ON c.id = s.cuisson_id"
         else:
             lot_select = "rl.numero_lot AS lot_origine"
-            lot_join   = "LEFT JOIN reception_lignes rl ON rl.id = s.reception_ligne_id"
+            qte_select = "s.quantite AS quantite, s.unite AS unite"
+            temp_select = "s.temperature_sortie AS temperature"
+            extra_join = "LEFT JOIN reception_lignes rl ON rl.id = s.reception_ligne_id"
 
         cur = await db.execute(
             f"""
@@ -340,11 +349,13 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
                    p.nom           AS produit_nom,
                    p.temperature_conservation AS temperature_conservation,
                    pers.prenom     AS operateur,
-                   {lot_select}
+                   {lot_select},
+                   {qte_select},
+                   {temp_select}
             FROM   {cfg['table']} s
             LEFT   JOIN produits  p    ON p.id    = s.produit_id
             LEFT   JOIN personnel pers ON pers.id = ?
-            {lot_join}
+            {extra_join}
             WHERE  s.id = ?
             """,
             (body.personnel_id, body.source_id),
@@ -362,6 +373,9 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         heure_action = row["heure_action"] or ""
         dlc_iso      = row["dlc"]
         lot_origine  = row["lot_origine"]
+        quantite     = row["quantite"]
+        unite        = row["unite"] or "kg"
+        temperature  = row["temperature"]
 
         # Numéro de lot affiché : on privilégie le vrai lot HACCP issu de la
         # réception. Fallback synthétique C-{id} / R-{id} uniquement si la
@@ -400,6 +414,10 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         "date_action":  date_action,
         "heure_action": heure_action,
         "operateur":    operateur,
+        "quantite":     quantite,
+        "unite":        unite,
+        "temperature":  temperature,
+        "temp_label":   cfg["temp_label"],
         "info_complementaire": info_compl,
     }
 

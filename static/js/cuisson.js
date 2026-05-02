@@ -521,22 +521,34 @@ function afficherModalChoix(conforme) {
 }
 
 function remplirGabaritEtiquette(data) {
-  const dlcFmt = data.dlc
-    ? data.dlc.split('-').reverse().join('/')
-    : '--/--/--';
-  const dateFmt = data.date_action
-    ? data.date_action.split('-').reverse().slice(0, 2).join('/')
-    : '—';
+  // Format jj/mm/aa (année sur 2 chiffres) — ex: "2026-05-03" → "03/05/26"
+  const fmtDate = iso => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+  const dlcFmt   = fmtDate(data.dlc);
+  const dateFmt  = fmtDate(data.date_action);
   const heureFmt = (data.heure_action || '').replace(':', 'h');
   const ligneAction = heureFmt
     ? `${data.action_verbe} le ${dateFmt} à ${heureFmt}`
     : `${data.action_verbe} le ${dateFmt}`;
-  document.getElementById('pt-tag').textContent    = `[${data.tag}]`;
-  document.getElementById('pt-nom').textContent    = data.produit_nom || '—';
-  document.getElementById('pt-dlc').textContent    = dlcFmt;
-  document.getElementById('pt-lot').textContent    = `Lot : ${data.numero_lot || '—'}`;
-  document.getElementById('pt-action').textContent = ligneAction;
-  document.getElementById('pt-meta').textContent   = `Par : ${data.operateur || '—'}`;
+
+  const quantiteTxt = (data.quantite != null && data.quantite !== '')
+    ? `Quantité : ${data.quantite} ${data.unite || 'kg'}`
+    : 'Quantité : —';
+  const tempTxt = (data.temperature != null && data.temperature !== '')
+    ? `${data.temp_label || 'T°'} : ${parseFloat(data.temperature).toFixed(1)} °C`
+    : `${data.temp_label || 'T°'} : —`;
+
+  document.getElementById('pt-tag').textContent       = `[${data.tag}]`;
+  document.getElementById('pt-nom').textContent       = data.produit_nom || '—';
+  document.getElementById('pt-quantite').textContent  = quantiteTxt;
+  document.getElementById('pt-dlc').textContent       = dlcFmt;
+  document.getElementById('pt-lot').textContent       = `Lot : ${data.numero_lot || '—'}`;
+  document.getElementById('pt-temperature').textContent = tempTxt;
+  document.getElementById('pt-action').textContent    = ligneAction;
+  document.getElementById('pt-meta').textContent      = `Par : ${data.operateur || '—'}`;
 }
 
 elChoixEtiquette.addEventListener('click', async () => {
