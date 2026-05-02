@@ -668,7 +668,7 @@ elDureeAppliquer.addEventListener('click', () => {
   const total = h * 60 + m;
   if (!total) return;
   if (!elHeureDebut.value) {
-    afficherErreur(‘Renseignez d’abord l’heure de début.’);
+    afficherErreur("Renseignez d’abord l’heure de début.");
     return;
   }
   const fin = ajouterMinutes(elHeureDebut.value, total);
