@@ -953,18 +953,19 @@
     .he-btn-reimprimer:active { opacity: .7; }
 
     /* ── Gabarit impression thermique Brother 62mm ── */
-    #print-label { display: none; }
+    #print-label, #print-label-transforme { display: none; }
     @media print {
       @page {
         size: 62mm auto;
         margin: 0mm;
       }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
 
-      body > *:not(#print-label) {
+      /* Mode fabrication (par défaut) : seul #print-label est visible */
+      body:not(.printing-transforme) > *:not(#print-label) {
         display: none !important;
       }
-
-      #print-label {
+      body:not(.printing-transforme) #print-label {
         display: block !important;
         position: static;
         width: 100%;
@@ -974,6 +975,24 @@
         color: black;
         font-family: sans-serif;
         background: white;
+      }
+
+      /* Mode transformé (cuisson / refroidissement) : seul #print-label-transforme est visible */
+      body.printing-transforme > *:not(#print-label-transforme) {
+        display: none !important;
+      }
+      body.printing-transforme #print-label-transforme {
+        display: block !important;
+        position: static;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 2mm;
+        margin: 0;
+        color: black;
+        background: white;
+        font-family: sans-serif;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
     }
   </style>
@@ -1328,6 +1347,23 @@
     <!-- Pied de ticket -->
     <div id="print-meta" style="font-size: 0.55rem; text-align: center; border-top: 1px solid black; padding-top: 2px;">Fabriqué le --/--/----</div>
 
+  </div>
+
+  <!-- ── Gabarit ticket thermique pour produit transformé (cuisson / refroidissement) ── -->
+  <div id="print-label-transforme">
+    <div style="text-align:center;border:2px solid black;border-radius:6px;padding:4px;margin-bottom:6px;">
+      <div id="pt-tag" style="font-size:1.1rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;">[—]</div>
+    </div>
+    <h1 id="pt-nom" style="font-size:1.1rem;font-weight:900;margin:0 0 6px;text-transform:uppercase;line-height:1.1;text-align:center;">PRODUIT</h1>
+    <div id="pt-quantite" style="font-size:.8rem;font-weight:bold;text-align:center;margin-bottom:6px;">Quantité : —</div>
+    <div style="border:2px solid black;border-radius:6px;padding:4px;text-align:center;margin-bottom:6px;">
+      <div style="font-size:.7rem;font-weight:bold;text-transform:uppercase;">DLC :</div>
+      <div id="pt-dlc" style="font-size:1.4rem;font-weight:900;color:red;">--/--/--</div>
+    </div>
+    <div id="pt-lot" style="font-size:.85rem;font-weight:bold;text-align:center;margin-bottom:6px;padding:2px;border:1px dashed black;">Lot : —</div>
+    <div id="pt-temperature" style="font-size:.78rem;font-weight:bold;text-align:center;margin-bottom:4px;">T° : — °C</div>
+    <div id="pt-action" style="font-size:.75rem;text-align:center;margin-bottom:4px;">— le —</div>
+    <div id="pt-meta" style="font-size:.7rem;text-align:center;border-top:1px solid black;padding-top:2px;">Par : —</div>
   </div>
 
   <script src="/static/js/historique.js"></script>

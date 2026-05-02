@@ -1182,6 +1182,92 @@ function fabExtraireBase(instructions) {
   return { base, unite: m[2] || 'kg' };
 }
 
+/* ── Étiquette produit transformé (cuisson / refroidissement) ─────────── */
+
+function ajouterBoutonEtiquette(carte, sourceType, sourceId, personnelId) {
+  if (!carte || !sourceId) return;
+  const btn = document.createElement('button');
+  btn.className  = 'he-btn-reimprimer';
+  btn.type       = 'button';
+  btn.textContent = '🖨 Étiquette';
+  btn.style.marginTop = '8px';
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    transformeReimprimer(sourceType, sourceId, personnelId, btn);
+  });
+  carte.appendChild(btn);
+}
+
+function remplirGabaritEtiquetteTransforme(data) {
+  const fmtDate = iso => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+  const dlcFmt   = fmtDate(data.dlc);
+  const dateFmt  = fmtDate(data.date_action);
+  const heureFmt = (data.heure_action || '').replace(':', 'h');
+  const ligneAction = heureFmt
+    ? `${data.action_verbe} le ${dateFmt} à ${heureFmt}`
+    : `${data.action_verbe} le ${dateFmt}`;
+
+  const quantiteTxt = (data.quantite != null && data.quantite !== '')
+    ? `Quantité : ${data.quantite} ${data.unite || 'kg'}`
+    : 'Quantité : —';
+  const tempTxt = (data.temperature != null && data.temperature !== '')
+    ? `${data.temp_label || 'T°'} : ${parseFloat(data.temperature).toFixed(1)} °C`
+    : `${data.temp_label || 'T°'} : —`;
+
+  document.getElementById('pt-tag').textContent         = `[${data.tag}]`;
+  document.getElementById('pt-nom').textContent         = data.produit_nom || '—';
+  document.getElementById('pt-quantite').textContent    = quantiteTxt;
+  document.getElementById('pt-dlc').textContent         = dlcFmt;
+  document.getElementById('pt-lot').textContent         = `Lot : ${data.numero_lot || '—'}`;
+  document.getElementById('pt-temperature').textContent = tempTxt;
+  document.getElementById('pt-action').textContent      = ligneAction;
+  document.getElementById('pt-meta').textContent        = `Par : ${data.operateur || '—'}`;
+}
+
+async function transformeReimprimer(sourceType, sourceId, personnelId, btn) {
+  if (!personnelId) {
+    alert("Impossible d'imprimer : opérateur d'origine manquant pour cet enregistrement.");
+    return;
+  }
+  if (btn) {
+    btn.disabled    = true;
+    btn.dataset.lbl = btn.textContent;
+    btn.textContent = '⏳ Impression…';
+  }
+  try {
+    const res = await apiFetch('/api/etiquettes/transformes', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        source_type:  sourceType,
+        source_id:    sourceId,
+        personnel_id: Number(personnelId),
+      }),
+    });
+    remplirGabaritEtiquetteTransforme(res);
+    document.body.classList.add('printing-transforme');
+    const cleanup = () => {
+      document.body.classList.remove('printing-transforme');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    setTimeout(() => window.print(), 100);
+    // Filet de sécurité si afterprint ne se déclenche pas (vieux navigateurs)
+    setTimeout(cleanup, 5000);
+  } catch (err) {
+    alert(`Erreur impression : ${err.message}`);
+  } finally {
+    if (btn) {
+      btn.disabled    = false;
+      btn.textContent = btn.dataset.lbl || '🖨 Étiquette';
+    }
+  }
+}
+
 function fabReimprimer(fab) {
   const dlcFormatee = fab.dlc_finale
     ? fab.dlc_finale.split('-').reverse().join('/')
@@ -1605,16 +1691,20 @@ async function cuisLister() {
   if (fin)   p.set('date_fin',   fin);
   await chargerListe('cuis',
     `/api/cuisson/enregistrements?${p.toString()}`,
-    c => creerCarteSimple({
-      titre: c.produit_nom || '—',
-      meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_coeur)}`,
-      sousTitre: c.type_cuisson ? `Cuisson ${c.type_cuisson}` : null,
-      chips: [
-        c.duree_minutes ? `${c.duree_minutes} min` : null,
-        c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
-      ].filter(Boolean),
-      variant: (c.temperature_coeur >= 75) ? 'ok' : 'warn',
-    }),
+    c => {
+      const carte = creerCarteSimple({
+        titre: c.produit_nom || '—',
+        meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_coeur)}`,
+        sousTitre: c.type_cuisson ? `Cuisson ${c.type_cuisson}` : null,
+        chips: [
+          c.duree_minutes ? `${c.duree_minutes} min` : null,
+          c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
+        ].filter(Boolean),
+        variant: (c.temperature_coeur >= 75) ? 'ok' : 'warn',
+      });
+      ajouterBoutonEtiquette(carte, 'cuisson', c.id, c.personnel_id);
+      return carte;
+    },
     { singulier: 'cuisson', pluriel: 'cuissons' }
   );
 }
@@ -1643,16 +1733,23 @@ async function refrLister() {
   if (fin)   p.set('date_fin',   fin);
   await chargerListe('refr',
     `/api/refroidissement/enregistrements?${p.toString()}`,
-    r => creerCarteSimple({
-      titre: r.produit_nom || '—',
-      meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — Lot : ${r.numero_lot || r.reception_numero_lot || '—'}`,
-      sousTitre: `T° début ${formatTemp(r.temperature_initiale)} → T° fin ${formatTemp(r.temperature_finale)}`,
-      chips: [
-        r.duree_minutes ? `${r.duree_minutes} min` : null,
-        r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
-      ].filter(Boolean),
-      variant: r.conforme === 0 ? 'nc' : 'ok',
-    }),
+    r => {
+      const carte = creerCarteSimple({
+        titre: r.produit_nom || '—',
+        meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — Lot : ${r.numero_lot || r.reception_numero_lot || '—'}`,
+        sousTitre: `T° début ${formatTemp(r.temperature_initiale)} → T° fin ${formatTemp(r.temperature_finale)}`,
+        chips: [
+          r.duree_minutes ? `${r.duree_minutes} min` : null,
+          r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
+        ].filter(Boolean),
+        variant: r.conforme === 0 ? 'nc' : 'ok',
+      });
+      // Pas d'étiquette si le produit a été jeté
+      if (!r.jeter) {
+        ajouterBoutonEtiquette(carte, 'refroidissement', r.id, r.personnel_id);
+      }
+      return carte;
+    },
     { singulier: 'refroidissement', pluriel: 'refroidissements' }
   );
 }
