@@ -20,19 +20,22 @@
     #print-label-transforme { display: none; }
     @media print {
       @page { size: 62mm auto; margin: 0; }
-      body * { visibility: hidden; }
-      #print-label-transforme, #print-label-transforme * { visibility: visible; }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
+      /* Retire complètement du flux tout ce qui n'est pas l'étiquette,
+         sinon le navigateur étire le document sur plusieurs feuilles. */
+      body > *:not(#print-label-transforme) { display: none !important; }
       #print-label-transforme {
         display: block;
-        position: absolute;
-        left: 0; top: 0;
+        position: static;
         width: 100%;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
         color: black;
-        background: transparent;
+        background: white;
         font-family: sans-serif;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
     }
   </style>
