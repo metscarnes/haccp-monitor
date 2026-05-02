@@ -3,7 +3,7 @@
    ouverture.js — Module Ouverture sous-vide
    Au Comptoir des Lilas — Mets Carnés Holding
 
-   Flux wizard : Photo → Produit → Opérateur → Confirmation
+   Flux wizard : Opérateur → Photo → Produit → Confirmation
    ============================================================ */
 
 // ── Références DOM ─────────────────────────────────────────
@@ -22,26 +22,27 @@ const elStep3            = document.getElementById('ouv-step-3');
 const elStepConfirm      = document.getElementById('ouv-step-confirm');
 const STEPS              = [elStep1, elStep2, elStep3, elStepConfirm];
 
-// Étape 1
+// Étape 1 — Opérateur
+const elPersonnelGrille  = document.getElementById('ouv-personnel-grille');
+
+// Étape 2 — Photo
 const elBtnCamera        = document.getElementById('ouv-btn-camera');
 const elInputPhoto       = document.getElementById('ouv-input-photo');
 const elApercu           = document.getElementById('ouv-apercu');
 const elPhotoVignette    = document.getElementById('ouv-photo-vignette');
 
-// Étape 2
+// Étape 3 — Produit
 const elSearch           = document.getElementById('ouv-search');
 const elSectionLabel     = document.getElementById('ouv-section-label');
 const elProduitsList     = document.getElementById('ouv-produits-liste');
 const elListeVide        = document.getElementById('ouv-liste-vide');
-
-// Étape 3
-const elPersonnelGrille  = document.getElementById('ouv-personnel-grille');
 const elErreur3          = document.getElementById('ouv-erreur-3');
 const elBtnEnregistrer   = document.getElementById('ouv-btn-enregistrer');
 
 // Confirmation
 const elConfirmDetail    = document.getElementById('ouv-confirm-detail');
 const elConfirmCountdown = document.getElementById('ouv-confirm-countdown');
+const elBtnImprimer      = document.getElementById('ouv-btn-imprimer');
 const elBtnMemeProduit   = document.getElementById('ouv-btn-meme-produit');
 const elBtnNouvelle      = document.getElementById('ouv-btn-nouvelle');
 
@@ -52,6 +53,7 @@ let photoObjectUrl      = null;
 let produitSelectionne  = null;
 let personnelId         = null;
 let personnelPrenom     = null;
+let dernierOuvertureId  = null;
 let suggestions         = [];
 let timerInactivite     = null;
 let timerConfirmation   = null;
@@ -90,6 +92,14 @@ async function apiFetch(url, options = {}) {
   return res.json();
 }
 
+// ── Utilitaire HTML sécurisé ───────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // ── Navigation wizard ──────────────────────────────────────
 function allerEtape(cible) {
   etape = cible;
@@ -99,7 +109,6 @@ function allerEtape(cible) {
     el.classList.remove('actif', 'gauche');
     if (i < index) el.classList.add('gauche');
     else if (i === index) el.classList.add('actif');
-    // else : reste translateX(100%) — hors écran à droite
   });
 
   // Progress bar
@@ -109,20 +118,25 @@ function allerEtape(cible) {
     elProgress.hidden = false;
     [elDot1, elDot2, elDot3].forEach((dot, i) => {
       dot.classList.remove('actif', 'complet');
-      if (i < cible - 1)      dot.classList.add('complet');
+      if (i < cible - 1)        dot.classList.add('complet');
       else if (i === cible - 1) dot.classList.add('actif');
     });
   }
 
-  // Bandeau produit (étape 3 seulement)
-  const afficherBandeau = (cible === 3 && produitSelectionne !== null);
+  // Bandeau opérateur (étapes 2 et 3)
+  const afficherBandeau = (cible === 2 || cible === 3) && personnelPrenom !== null;
   elBandeauProduit.hidden = !afficherBandeau;
   if (afficherBandeau) {
-    elBandeauProduit.textContent = `📦 ${produitSelectionne.nom}`;
+    elBandeauProduit.textContent = `👤 ${personnelPrenom}`;
   }
 
   // Bouton retour masqué sur la confirmation
   elBtnRetour.hidden = (cible > 3);
+
+  // Pré-surligner le produit déjà sélectionné quand on arrive à l'étape 3
+  if (cible === 3 && produitSelectionne) {
+    requestAnimationFrame(highlightProduitSelectionne);
+  }
 }
 
 // ── Retour ─────────────────────────────────────────────────
@@ -134,7 +148,37 @@ elBtnRetour.addEventListener('click', () => {
   }
 });
 
-// ── ÉTAPE 1 : Photo ────────────────────────────────────────
+// ── ÉTAPE 1 : Opérateur ────────────────────────────────────
+async function chargerPersonnel() {
+  try {
+    const liste = await apiFetch('/api/admin/personnel');
+    elPersonnelGrille.innerHTML = '';
+    liste.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'ouv-btn-prenom';
+      btn.textContent = p.prenom;
+      btn.dataset.id     = p.id;
+      btn.dataset.prenom = p.prenom;
+      btn.addEventListener('click', () => selectionnerPersonnel(p.id, p.prenom, btn));
+      elPersonnelGrille.appendChild(btn);
+    });
+  } catch {
+    elPersonnelGrille.innerHTML =
+      '<div class="ouv-liste-vide">Impossible de charger le personnel.</div>';
+  }
+}
+
+function selectionnerPersonnel(id, prenom, btnClique) {
+  personnelId     = id;
+  personnelPrenom = prenom;
+  elPersonnelGrille.querySelectorAll('.ouv-btn-prenom')
+    .forEach(b => b.classList.remove('selectionne'));
+  btnClique.classList.add('selectionne');
+  // Auto-avance vers l'étape 2 (Photo)
+  setTimeout(() => allerEtape(2), 200);
+}
+
+// ── ÉTAPE 2 : Photo ────────────────────────────────────────
 elBtnCamera.addEventListener('click', () => {
   elInputPhoto.click();
 });
@@ -150,11 +194,10 @@ elInputPhoto.addEventListener('change', () => {
   elPhotoVignette.src = photoObjectUrl;
   elApercu.hidden = false;
 
-  // Si produit déjà sélectionné (flux "même produit"), sauter l'étape 2
-  setTimeout(() => allerEtape(produitSelectionne ? 3 : 2), 450);
+  setTimeout(() => allerEtape(3), 450);
 });
 
-// ── ÉTAPE 2 : Suggestions produits ─────────────────────────
+// ── ÉTAPE 3 : Suggestions produits ─────────────────────────
 async function chargerSuggestions() {
   elListeVide.textContent = 'Chargement…';
   elListeVide.hidden = false;
@@ -171,12 +214,11 @@ function formatDateFR(isoStr) {
   if (!isoStr) return '';
   try {
     const d = new Date(isoStr);
-    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
   } catch { return ''; }
 }
 
 function afficherProduits(liste) {
-  // Vider (conserver elListeVide)
   [...elProduitsList.children].forEach(el => {
     if (el !== elListeVide) el.remove();
   });
@@ -209,12 +251,16 @@ function afficherProduits(liste) {
     }
     autres.forEach(p => elProduitsList.appendChild(creerCarte(p)));
   }
+
+  // Restaurer la sélection si un produit est déjà choisi (flux "même produit")
+  if (produitSelectionne) highlightProduitSelectionne();
 }
 
 function creerCarte(produit) {
   const carte = document.createElement('div');
   carte.className = 'ouv-produit-carte' + (produit.is_recent ? ' recent' : '');
   carte.setAttribute('role', 'listitem');
+  carte.dataset.produitId = produit.produit_id;
 
   const info = document.createElement('div');
   info.className = 'ouv-produit-info';
@@ -231,11 +277,24 @@ function creerCarte(produit) {
     info.appendChild(espece);
   }
 
-  if (produit.is_recent && produit.last_reception) {
-    const recu = document.createElement('div');
-    recu.className = 'ouv-produit-recu';
-    recu.textContent = `Reçu le ${formatDateFR(produit.last_reception)}`;
-    info.appendChild(recu);
+  if (produit.is_recent) {
+    if (produit.numero_lot) {
+      const lot = document.createElement('div');
+      lot.className = 'ouv-produit-lot';
+      lot.textContent = `Lot : ${produit.numero_lot}`;
+      info.appendChild(lot);
+    }
+    if (produit.dlc) {
+      const dlc = document.createElement('div');
+      dlc.className = 'ouv-produit-dlc';
+      dlc.textContent = `DLC : ${formatDateFR(produit.dlc)}`;
+      info.appendChild(dlc);
+    } else if (!produit.numero_lot && produit.last_reception) {
+      const recu = document.createElement('div');
+      recu.className = 'ouv-produit-recu';
+      recu.textContent = `Reçu le ${formatDateFR(produit.last_reception)}`;
+      info.appendChild(recu);
+    }
   }
 
   carte.appendChild(info);
@@ -247,13 +306,31 @@ function creerCarte(produit) {
     carte.appendChild(code);
   }
 
-  carte.addEventListener('click', () => selectionnerProduit(produit));
+  carte.addEventListener('click', () => {
+    elProduitsList.querySelectorAll('.ouv-produit-carte')
+      .forEach(c => c.classList.remove('selectionne'));
+    carte.classList.add('selectionne');
+    selectionnerProduit(produit);
+  });
   return carte;
+}
+
+function highlightProduitSelectionne() {
+  if (!produitSelectionne) return;
+  elProduitsList.querySelectorAll('.ouv-produit-carte').forEach(carte => {
+    if (parseInt(carte.dataset.produitId, 10) === produitSelectionne.produit_id) {
+      carte.classList.add('selectionne');
+      elBtnEnregistrer.disabled = false;
+      elBtnEnregistrer.setAttribute('aria-disabled', 'false');
+    }
+  });
 }
 
 function selectionnerProduit(produit) {
   produitSelectionne = produit;
-  allerEtape(3);
+  elBtnEnregistrer.disabled = false;
+  elBtnEnregistrer.setAttribute('aria-disabled', 'false');
+  elErreur3.hidden = true;
 }
 
 // Filtre : local immédiat + appel API debounced
@@ -266,7 +343,6 @@ elSearch.addEventListener('input', () => {
     return;
   }
 
-  // Filtre local instantané sur les suggestions déjà chargées
   const ql = q.toLowerCase();
   const locaux = suggestions.filter(p =>
     p.nom.toLowerCase().includes(ql) ||
@@ -274,7 +350,6 @@ elSearch.addEventListener('input', () => {
   );
   afficherProduits(locaux);
 
-  // Appel API debounced pour couvrir tout le catalogue
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(async () => {
     try {
@@ -286,40 +361,9 @@ elSearch.addEventListener('input', () => {
   }, 350);
 });
 
-// ── ÉTAPE 3 : Personnel ────────────────────────────────────
-async function chargerPersonnel() {
-  try {
-    const liste = await apiFetch('/api/admin/personnel');
-    elPersonnelGrille.innerHTML = '';
-    liste.forEach(p => {
-      const btn = document.createElement('button');
-      btn.className = 'ouv-btn-prenom';
-      btn.textContent = p.prenom;
-      btn.dataset.id     = p.id;
-      btn.dataset.prenom = p.prenom;
-      btn.addEventListener('click', () => selectionnerPersonnel(p.id, p.prenom, btn));
-      elPersonnelGrille.appendChild(btn);
-    });
-  } catch {
-    elPersonnelGrille.innerHTML =
-      '<div class="ouv-liste-vide">Impossible de charger le personnel.</div>';
-  }
-}
-
-function selectionnerPersonnel(id, prenom, btnClique) {
-  personnelId     = id;
-  personnelPrenom = prenom;
-  elPersonnelGrille.querySelectorAll('.ouv-btn-prenom')
-    .forEach(b => b.classList.remove('selectionne'));
-  btnClique.classList.add('selectionne');
-  elBtnEnregistrer.disabled = false;
-  elBtnEnregistrer.setAttribute('aria-disabled', 'false');
-  elErreur3.hidden = true;
-}
-
 // ── Enregistrement ─────────────────────────────────────────
 elBtnEnregistrer.addEventListener('click', async () => {
-  if (!personnelId) {
+  if (!produitSelectionne) {
     elErreur3.hidden = false;
     return;
   }
@@ -332,22 +376,36 @@ elBtnEnregistrer.addEventListener('click', async () => {
     fd.append('photo',        photoFile);
     fd.append('produit_id',   String(produitSelectionne.produit_id));
     fd.append('personnel_id', String(personnelId));
+    if (produitSelectionne.reception_ligne_id != null) {
+      fd.append('reception_ligne_id', String(produitSelectionne.reception_ligne_id));
+    }
 
     const res = await fetch('/api/ouvertures', { method: 'POST', body: fd });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    afficherConfirmation();
+    const data = await res.json();
+    dernierOuvertureId = data.id;
+    afficherConfirmation(data);
   } catch (err) {
     elErreur3.textContent = `Erreur : ${err.message}`;
     elErreur3.hidden = false;
     elBtnEnregistrer.disabled = false;
-    elBtnEnregistrer.textContent = '✔\u00A0Enregistrer l\'ouverture';
+    elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
   }
 });
 
 // ── Confirmation ───────────────────────────────────────────
-function afficherConfirmation() {
-  elConfirmDetail.textContent = `${produitSelectionne.nom} — ${personnelPrenom}`;
+function afficherConfirmation(data) {
+  const lines = [
+    `${escHtml(produitSelectionne.nom)} — ${escHtml(personnelPrenom)}`,
+  ];
+  if (data.numero_lot) lines.push(`Lot : ${escHtml(data.numero_lot)}`);
+  if (data.dlc)        lines.push(`DLC : ${escHtml(formatDateFR(data.dlc))}`);
+  elConfirmDetail.innerHTML = lines.join('<br>');
+
+  elBtnImprimer.disabled = false;
+  elBtnImprimer.textContent = '🖨️ Imprimer l\'étiquette';
+
   allerEtape(4);
   demarrerCountdown();
 }
@@ -368,10 +426,29 @@ function demarrerCountdown() {
   tick();
 }
 
+// ── Impression étiquette ───────────────────────────────────
+elBtnImprimer.addEventListener('click', async () => {
+  if (!dernierOuvertureId) return;
+  clearTimeout(timerConfirmation);
+  elBtnImprimer.disabled = true;
+  elBtnImprimer.textContent = 'Impression…';
+  try {
+    const res = await apiFetch(
+      `/api/ouvertures/${dernierOuvertureId}/etiquette`,
+      { method: 'POST' }
+    );
+    elBtnImprimer.textContent = res.impression_ok
+      ? '✓ Étiquette imprimée'
+      : `⚠ ${res.impression_erreur || 'Erreur impression'}`;
+  } catch (err) {
+    elBtnImprimer.textContent = `⚠ ${err.message}`;
+  }
+});
+
+// ── Boutons post-confirmation ──────────────────────────────
 elBtnMemeProduit.addEventListener('click', () => {
   clearTimeout(timerConfirmation);
 
-  // Conserver produit + personnel pour la prochaine ouverture
   const produitGarde  = produitSelectionne;
   const idGarde       = personnelId;
   const prenomGarde   = personnelPrenom;
@@ -382,15 +459,14 @@ elBtnMemeProduit.addEventListener('click', () => {
   personnelId        = idGarde;
   personnelPrenom    = prenomGarde;
 
-  // Pré-sélectionner le personnel dans la grille
+  // Pré-sélectionner l'opérateur dans la grille
   elPersonnelGrille.querySelectorAll('.ouv-btn-prenom').forEach(btn => {
     if (parseInt(btn.dataset.id, 10) === personnelId) {
       btn.classList.add('selectionne');
     }
   });
-  elBtnEnregistrer.disabled = false;
 
-  allerEtape(1);
+  allerEtape(2); // Reprise directe à la photo
 });
 
 elBtnNouvelle.addEventListener('click', () => {
@@ -406,22 +482,23 @@ function resetEtat() {
   produitSelectionne = null;
   personnelId        = null;
   personnelPrenom    = null;
+  dernierOuvertureId = null;
 
   // Étape 1
-  elInputPhoto.value = '';
-  elApercu.hidden    = true;
-  elPhotoVignette.src = '';
-
-  // Étape 2
-  elSearch.value = '';
-  afficherProduits(suggestions);
-
-  // Étape 3
   elPersonnelGrille.querySelectorAll('.ouv-btn-prenom')
     .forEach(b => b.classList.remove('selectionne'));
+
+  // Étape 2
+  elInputPhoto.value  = '';
+  elApercu.hidden     = true;
+  elPhotoVignette.src = '';
+
+  // Étape 3
+  elSearch.value = '';
+  afficherProduits(suggestions);
   elBtnEnregistrer.disabled = true;
   elBtnEnregistrer.setAttribute('aria-disabled', 'true');
-  elBtnEnregistrer.textContent = '✔\u00A0Enregistrer l\'ouverture';
+  elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
   elErreur3.hidden = true;
 }
 

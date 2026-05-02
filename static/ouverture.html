@@ -37,7 +37,7 @@
   </div>
 
   <!-- ============================================================
-       BANDEAU PRODUIT — visible à l'étape 3 seulement
+       BANDEAU OPÉRATEUR — visible aux étapes 2 et 3
   ============================================================= -->
   <div class="ouv-bandeau-produit" id="ouv-bandeau-produit"
        hidden aria-live="polite"></div>
@@ -47,9 +47,22 @@
   ============================================================= -->
   <main class="ouv-main" role="main">
 
-    <!-- ── ÉTAPE 1 : Photo ── -->
+    <!-- ── ÉTAPE 1 : Opérateur ── -->
     <section class="ouv-step actif" id="ouv-step-1"
-             aria-label="Étape 1 — Prendre la photo">
+             aria-label="Étape 1 — Qui ouvre ?">
+
+      <div class="ouv-section-titre">Qui ouvre ?</div>
+
+      <div class="ouv-personnel-grille" id="ouv-personnel-grille"
+           role="group" aria-label="Sélection opérateur">
+        <!-- Boutons injectés par JS -->
+      </div>
+
+    </section>
+
+    <!-- ── ÉTAPE 2 : Photo ── -->
+    <section class="ouv-step" id="ouv-step-2"
+             aria-label="Étape 2 — Prendre la photo">
 
       <div class="ouv-photo-apercu" id="ouv-apercu" hidden>
         <img id="ouv-photo-vignette" class="ouv-photo-vignette" alt="Aperçu de la photo">
@@ -66,9 +79,9 @@
              id="ouv-input-photo" hidden aria-hidden="true">
     </section>
 
-    <!-- ── ÉTAPE 2 : Choix produit ── -->
-    <section class="ouv-step" id="ouv-step-2"
-             aria-label="Étape 2 — Choisir le produit">
+    <!-- ── ÉTAPE 3 : Choix produit ── -->
+    <section class="ouv-step" id="ouv-step-3"
+             aria-label="Étape 3 — Choisir le produit">
 
       <div class="ouv-search-wrap">
         <span class="ouv-search-icon" aria-hidden="true">🔍</span>
@@ -85,21 +98,8 @@
         <div class="ouv-liste-vide" id="ouv-liste-vide">Chargement…</div>
       </div>
 
-    </section>
-
-    <!-- ── ÉTAPE 3 : Opérateur + Confirmation ── -->
-    <section class="ouv-step" id="ouv-step-3"
-             aria-label="Étape 3 — Opérateur">
-
-      <div class="ouv-section-titre">Qui ouvre ?</div>
-
-      <div class="ouv-personnel-grille" id="ouv-personnel-grille"
-           role="group" aria-label="Sélection opérateur">
-        <!-- Boutons injectés par JS -->
-      </div>
-
       <div class="ouv-erreur" id="ouv-erreur-3" hidden role="alert">
-        Veuillez sélectionner un opérateur.
+        Veuillez sélectionner un produit.
       </div>
 
       <button class="ouv-btn-enregistrer" id="ouv-btn-enregistrer"
@@ -118,6 +118,9 @@
       <div class="ouv-confirm-detail" id="ouv-confirm-detail"></div>
 
       <div class="ouv-confirm-actions">
+        <button class="ouv-btn-imprimer" id="ouv-btn-imprimer">
+          🖨️&nbsp;Imprimer l'étiquette
+        </button>
         <button class="ouv-btn-meme-produit" id="ouv-btn-meme-produit">
           ↩&nbsp;Même produit
         </button>

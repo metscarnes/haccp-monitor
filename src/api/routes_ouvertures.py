@@ -115,9 +115,23 @@ async def creer_ouverture(
         )
         await db.commit()
 
-        # Lire l'enregistrement créé
+        # Lire l'enregistrement créé avec données jointes
         cursor = await db.execute(
-            "SELECT * FROM ouvertures WHERE id = ?", (ouverture_id,)
+            """
+            SELECT
+                o.id, o.produit_id, o.personnel_id, o.photo_filename,
+                o.source, o.reception_ligne_id, o.timestamp,
+                p.nom           AS produit_nom,
+                per.prenom      AS personnel_prenom,
+                rl.numero_lot,
+                COALESCE(rl.dlc, rl.dluo) AS dlc
+            FROM ouvertures o
+            JOIN produits  p   ON p.id   = o.produit_id
+            JOIN personnel per ON per.id = o.personnel_id
+            LEFT JOIN reception_lignes rl ON rl.id = o.reception_ligne_id
+            WHERE o.id = ?
+            """,
+            (ouverture_id,),
         )
         row = await cursor.fetchone()
         return dict(row)
@@ -134,11 +148,28 @@ async def suggestions_ouvertures(
     """
     Retourne les produits matière_première pour l'autocomplete :
     1. Produits issus de réceptions des 21 derniers jours (triés par date DESC, dédupliqués)
+       → inclut N° lot et DLC du lot FIFO disponible
     2. Reste du catalogue matière_première
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
 
     like = f"%{q}%" if q else None
+
+    # Sous-requête FIFO réutilisable : lot disponible non périmé, non traité
+    _fifo_base = """
+        FROM reception_lignes rl2
+        JOIN receptions r2 ON r2.id = rl2.reception_id
+        WHERE rl2.produit_id = p.id
+          AND (COALESCE(rl2.dlc, rl2.dluo) IS NULL
+               OR COALESCE(rl2.dlc, rl2.dluo) >= DATE('now'))
+          AND NOT EXISTS (
+              SELECT 1 FROM dlc_devenir d
+              WHERE d.source_type = 'reception_ligne' AND d.source_id = rl2.id
+          )
+        ORDER BY CASE WHEN COALESCE(rl2.dlc, rl2.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                 COALESCE(rl2.dlc, rl2.dluo) ASC, r2.date_reception ASC
+        LIMIT 1
+    """
 
     async with get_db() as db:
         # --- Produits récents depuis réceptions ---
@@ -155,7 +186,10 @@ async def suggestions_ouvertures(
                 p.nom,
                 p.code_unique,
                 p.espece,
-                MAX(r.date_reception) AS last_reception
+                MAX(r.date_reception) AS last_reception,
+                (SELECT rl2.numero_lot {_fifo_base}) AS numero_lot,
+                (SELECT COALESCE(rl2.dlc, rl2.dluo) {_fifo_base}) AS dlc,
+                (SELECT rl2.id {_fifo_base}) AS reception_ligne_id
             FROM reception_lignes rl
             JOIN receptions r ON r.id = rl.reception_id
             JOIN produits p   ON p.id = rl.produit_id
@@ -203,6 +237,9 @@ async def suggestions_ouvertures(
             "espece": row["espece"],
             "is_recent": True,
             "last_reception": row["last_reception"],
+            "numero_lot": row["numero_lot"],
+            "dlc": row["dlc"],
+            "reception_ligne_id": row["reception_ligne_id"],
         }
         for row in recent_rows
     ]
@@ -215,6 +252,9 @@ async def suggestions_ouvertures(
                 "espece": row["espece"],
                 "is_recent": False,
                 "last_reception": None,
+                "numero_lot": None,
+                "dlc": None,
+                "reception_ligne_id": None,
             })
 
     return results
@@ -282,6 +322,69 @@ async def lister_ouvertures(
         rows = await cursor.fetchall()
 
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/ouvertures/{id}/etiquette  — impression étiquette ouverture
+# ---------------------------------------------------------------------------
+
+@router.post("/ouvertures/{ouverture_id}/etiquette")
+async def imprimer_etiquette_ouverture(ouverture_id: int):
+    """Imprime l'étiquette Brother QL pour une ouverture enregistrée."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT
+                o.timestamp,
+                p.nom           AS produit_nom,
+                per.prenom      AS operateur,
+                rl.numero_lot,
+                COALESCE(rl.dlc, rl.dluo) AS dlc
+            FROM ouvertures o
+            JOIN produits  p   ON p.id   = o.produit_id
+            JOIN personnel per ON per.id = o.personnel_id
+            LEFT JOIN reception_lignes rl ON rl.id = o.reception_ligne_id
+            WHERE o.id = ?
+            """,
+            (ouverture_id,),
+        )
+        row = await cursor.fetchone()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Ouverture introuvable")
+
+    ts = row["timestamp"] or ""
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        date_action  = dt.strftime("%Y-%m-%d")
+        heure_action = dt.strftime("%H:%M")
+    except Exception:
+        date_action  = ts[:10] if ts else ""
+        heure_action = ts[11:16] if len(ts) > 10 else ""
+
+    data = {
+        "template":     "transforme",
+        "tag":          "OUVERT",
+        "produit_nom":  row["produit_nom"] or "",
+        "dlc":          row["dlc"] or "",
+        "numero_lot":   row["numero_lot"] or "",
+        "action_verbe": "Ouvert",
+        "date_action":  date_action,
+        "heure_action": heure_action,
+        "operateur":    row["operateur"] or "",
+    }
+
+    impression_ok = False
+    impression_erreur = None
+    try:
+        from src.printing.brother_ql_driver import imprimer_etiquette
+        impression_ok = imprimer_etiquette(data)
+    except ImportError:
+        impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
+    except Exception as exc:
+        impression_erreur = str(exc)
+
+    return {"impression_ok": impression_ok, "impression_erreur": impression_erreur}
 
 
 # ---------------------------------------------------------------------------
