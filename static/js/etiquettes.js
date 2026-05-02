@@ -178,7 +178,7 @@ function majProgress() {
 // ── Bouton Retour ─────────────────────────────────────────────
 elBtnRetour.addEventListener('click', () => {
   if (state.etape === 1) {
-    window.location.href = '/hub.html';
+    window.location.href = '/production-hub.html';
   } else {
     allerEtape(state.etape - 1);
   }

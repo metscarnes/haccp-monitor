@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Production — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <a href="/hub.html" class="hub-btn-admin" aria-label="Retour au hub">← Hub</a>
+    <div class="hub-titre">PRODUCTION</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       GRILLE — Sous-modules Production
+  ========================================================= -->
+  <main class="hub-grille taches-hub-grille" role="main">
+
+    <!-- ── Étiquettes Fabrication ── -->
+    <a class="hub-tuile" id="tuile-etiquettes"
+       href="/etiquettes.html" aria-label="Étiquettes Fabrication">
+      <div class="hub-tuile-icone" aria-hidden="true">🔪</div>
+      <div class="hub-tuile-titre">FABRICATION</div>
+      <div class="hub-tuile-statut">Étiquettes & traçabilité</div>
+    </a>
+
+    <!-- ── Cuisson ── -->
+    <a class="hub-tuile" id="tuile-cuisson"
+       href="/cuisson.html" aria-label="Cuisson — contrôle HACCP (≥ 75 °C)">
+      <div class="hub-tuile-icone" aria-hidden="true">🔥</div>
+      <div class="hub-tuile-titre">CUISSON</div>
+      <div class="hub-tuile-statut">Rôtissoire — T° ≥ 75 °C</div>
+    </a>
+
+    <!-- ── Refroidissement rapide ── -->
+    <a class="hub-tuile" id="tuile-refroidissement"
+       href="/refroidissement.html" aria-label="Refroidissement — contrôle HACCP (≤ 10 °C en ≤ 2 h)">
+      <div class="hub-tuile-icone" aria-hidden="true">❄️</div>
+      <div class="hub-tuile-titre">REFROIDISSEMENT</div>
+      <div class="hub-tuile-statut">≤ 10 °C en ≤ 2 h</div>
+    </a>
+
+  </main>
+
+  <script src="/static/js/production-hub.js"></script>
+</body>
+</html>
