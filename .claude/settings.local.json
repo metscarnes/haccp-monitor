@@ -92,7 +92,12 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_refroidissement.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -m pytest tests/test_stock.py tests/test_refroidissement.py -q)",
       "Bash(python -m pytest tests/ -q --ignore=tests/test_taches.py)",
-      "Bash(python -m py_compile src/api/routes_cuisson.py src/api/routes_refroidissement.py)"
+      "Bash(python -m py_compile src/api/routes_cuisson.py src/api/routes_refroidissement.py)",
+      "Bash(sqlite3 haccp.db \"SELECT * FROM produits WHERE nom LIKE '%EPICE%' OR nom LIKE '%MERGUEZ%' LIMIT 10;\")",
+      "Bash(python3 -c \"import sqlite3; db = sqlite3.connect\\('haccp.db'\\); c = db.cursor\\(\\); c.execute\\('SELECT id, nom, type_produit FROM produits WHERE nom LIKE \\\\\"%EPICE%\\\\\" OR nom LIKE \\\\\"%MERGUEZ%\\\\\" LIMIT 20'\\); print\\('\\\\n'.join\\(str\\(row\\) for row in c.fetchall\\(\\)\\)\\)\")",
+      "Bash(findstr stock *)",
+      "Bash(sqlite3 data/database.db \"SELECT id, nom, type_produit, categorie, actif FROM produits WHERE nom LIKE '%MERGUEZ FORTE%' OR nom LIKE '%AG FOIE%' OR nom LIKE '%AGN-%'\")",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

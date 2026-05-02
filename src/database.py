@@ -3327,7 +3327,7 @@ async def get_stock_unifie(
         sql_parts = []
         params: list = []
         if not inclure_expires:
-            sql_parts.append(f"AND {dlc_col} >= ?")
+            sql_parts.append(f"AND ({dlc_col} IS NULL OR {dlc_col} >= ?)")
             params.append(today)
         if dlc_max:
             sql_parts.append(f"AND {dlc_col} <= ?")
@@ -3342,7 +3342,7 @@ async def get_stock_unifie(
 
     # ── 📦 reception_lignes ────────────────────────────────────────────────
     if inclure_brut and _src_actif("reception_ligne"):
-        extra_sql, extra_params = _build_filters("rl.dlc")
+        extra_sql, extra_params = _build_filters("COALESCE(rl.dlc, rl.dluo)")
         cur = await db.execute(
             f"""
             SELECT
@@ -3353,7 +3353,8 @@ async def get_stock_unifie(
                 p.categorie        AS categorie,
                 p.type_produit     AS type_produit,
                 p.espece           AS espece,
-                rl.dlc             AS dlc,
+                COALESCE(rl.dlc, rl.dluo) AS dlc,
+                rl.dlc IS NULL AND rl.dluo IS NOT NULL AS est_dluo,
                 rl.numero_lot      AS numero_lot,
                 rl.poids_kg        AS quantite,
                 'kg'               AS unite,
@@ -3364,7 +3365,6 @@ async def get_stock_unifie(
             JOIN produits     p ON p.id = rl.produit_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             WHERE p.boutique_id = ?
-              AND rl.dlc IS NOT NULL
               {extra_sql}
               AND NOT EXISTS (
                   SELECT 1 FROM dlc_devenir dd

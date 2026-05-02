@@ -116,7 +116,7 @@ function renderItems() {
         </div>
         <div class="inv-item-dlc">
           <div class="inv-item-jr inv-item-jr--${niveau}">${escHtml(lblJr)}</div>
-          <div class="inv-item-dlc-date">DLC : ${formatDateFr(it.dlc)}</div>
+          <div class="inv-item-dlc-date">${it.est_dluo ? 'DLUO' : 'DLC'} : ${formatDateFr(it.dlc)}</div>
         </div>
       </article>
     `;
@@ -282,7 +282,7 @@ function ouvrirBatchModal() {
       <input type="checkbox" class="inv-batch-check" data-key="${escHtml(k)}" checked>
       <span class="inv-batch-src">${it.source_icon || ''}</span>
       <span class="inv-batch-nom">${escHtml(it.produit_nom)}</span>
-      <span class="inv-batch-dlc">DLC ${formatDateFr(it.dlc)}</span>
+      <span class="inv-batch-dlc">${it.est_dluo ? 'DLUO' : 'DLC'} ${formatDateFr(it.dlc)}</span>
       <span class="inv-batch-meta">${meta.join(' · ')}</span>
     `;
     liste.appendChild(row);
@@ -420,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dlcVal = $('inv-edit-dlc').value;
     const qteVal = $('inv-edit-qte').value;
 
-    if (!dlcVal) {
+    if (!dlcVal && it.dlc != null) {
       alert('La date DLC est obligatoire.');
       return;
     }
