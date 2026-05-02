@@ -1694,13 +1694,13 @@ async function cuisLister() {
     c => {
       const carte = creerCarteSimple({
         titre: c.produit_nom || '—',
-        meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_coeur)}`,
+        meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_sortie)}`,
         sousTitre: c.type_cuisson ? `Cuisson ${c.type_cuisson}` : null,
         chips: [
           c.duree_minutes ? `${c.duree_minutes} min` : null,
           c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
         ].filter(Boolean),
-        variant: (c.temperature_coeur >= 75) ? 'ok' : 'warn',
+        variant: (c.temperature_sortie >= 75) ? 'ok' : 'warn',
       });
       ajouterBoutonEtiquette(carte, 'cuisson', c.id, c.personnel_id);
       return carte;
@@ -1939,8 +1939,8 @@ const TAB_MAP = {
   fabrications : { cat: 'flux',  btn: 'he-tab-fab'   },
   nettoyage    : { cat: 'haccp', btn: 'he-tab-nett'  },
   releves      : { cat: 'temp',  btn: 'he-tab-relev' },
-  cuissons     : { cat: 'temp',  btn: 'he-tab-cuis'  },
-  refroidissements: { cat: 'temp', btn: 'he-tab-refr' },
+  cuissons     : { cat: 'flux',  btn: 'he-tab-cuis'  },
+  refroidissements: { cat: 'flux', btn: 'he-tab-refr' },
   etalonnages  : { cat: 'temp',  btn: 'he-tab-etal'  },
   dlc          : { cat: 'flux',  btn: 'he-tab-dlcdev'},
   nuisibles    : { cat: 'haccp', btn: 'he-tab-nuis'  },

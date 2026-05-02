@@ -156,11 +156,13 @@ async def lister_cuissons(
         cur = await db.execute(
             f"""
             SELECT c.*,
-                   p.nom      AS produit_nom,
-                   pers.prenom AS personnel_prenom
+                   p.nom       AS produit_nom,
+                   pers.prenom AS personnel_prenom,
+                   rl.numero_lot
             FROM   cuissons c
-            LEFT   JOIN produits  p    ON p.id    = c.produit_id
-            LEFT   JOIN personnel pers ON pers.id = c.personnel_id
+            LEFT   JOIN produits        p    ON p.id    = c.produit_id
+            LEFT   JOIN personnel       pers ON pers.id = c.personnel_id
+            LEFT   JOIN reception_lignes rl  ON rl.id   = c.reception_ligne_id
             WHERE  {where_sql}
             ORDER BY c.date_cuisson DESC, c.id DESC
             LIMIT ?

@@ -107,7 +107,9 @@
       "Bash(grep -n \"SELECT c\\\\.\\\\\\\\*\\\\|SELECT r\\\\.\\\\\\\\*\" \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_cuisson.py\" \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_refroidissement.py\")",
       "Bash(node -e \"new Function\\(require\\('fs'\\).readFileSync\\('static/js/historique.js','utf8'\\)\\); console.log\\('JS OK'\\)\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\campi\\\\OneDrive\\\\Création d'entreprise\\\\Boucherie\\\\SoftWare\\\\haccp-monitor\" -Recurse -File)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Recurse -Force)",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

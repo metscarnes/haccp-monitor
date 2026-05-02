@@ -193,7 +193,7 @@ async def historique_devenir(
             CASE d.source_type
                 WHEN 'reception_ligne'  THEN rl.numero_lot
                 WHEN 'fabrication'      THEN f.lot_interne
-                WHEN 'refroidissement'  THEN NULL
+                WHEN 'refroidissement'  THEN ref.numero_lot
             END AS numero_lot,
             CASE d.source_type
                 WHEN 'reception_ligne'  THEN rl.poids_kg
