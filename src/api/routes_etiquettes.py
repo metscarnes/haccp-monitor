@@ -319,6 +319,17 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         raise HTTPException(400, f"source_type invalide : {body.source_type}")
 
     async with get_db() as db:
+        # Pour les deux sources, on essaie de remonter le numéro de lot
+        # de la réception d'origine (vrai numéro de lot HACCP). Pour la cuisson
+        # → via reception_ligne_id ; pour le refroidissement → champ déjà rempli
+        # à l'enregistrement (cf. routes_refroidissement.py).
+        if body.source_type == "refroidissement":
+            lot_select = "s.numero_lot AS lot_origine"
+            lot_join   = ""
+        else:
+            lot_select = "rl.numero_lot AS lot_origine"
+            lot_join   = "LEFT JOIN reception_lignes rl ON rl.id = s.reception_ligne_id"
+
         cur = await db.execute(
             f"""
             SELECT s.id            AS source_id,
@@ -329,10 +340,11 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
                    p.nom           AS produit_nom,
                    p.temperature_conservation AS temperature_conservation,
                    pers.prenom     AS operateur,
-                   {('s.numero_lot' if body.source_type == 'refroidissement' else 'NULL')} AS reception_lot
+                   {lot_select}
             FROM   {cfg['table']} s
             LEFT   JOIN produits  p    ON p.id    = s.produit_id
             LEFT   JOIN personnel pers ON pers.id = ?
+            {lot_join}
             WHERE  s.id = ?
             """,
             (body.personnel_id, body.source_id),
@@ -344,15 +356,18 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         if not row["dlc"]:
             raise HTTPException(422, "DLC absente sur l'enregistrement source")
 
-        numero_lot   = f"{cfg['lot_prefix']}-{row['source_id']}"
         produit_nom  = row["produit_nom"] or ""
         operateur    = row["operateur"] or ""
         date_action  = row["date_action"]
         heure_action = row["heure_action"] or ""
         dlc_iso      = row["dlc"]
-        reception_lot = row["reception_lot"]
+        lot_origine  = row["lot_origine"]
 
-        info_compl = f"Lot origine : {reception_lot}" if reception_lot else None
+        # Numéro de lot affiché : on privilégie le vrai lot HACCP issu de la
+        # réception. Fallback synthétique C-{id} / R-{id} uniquement si la
+        # source n'a pas de lot rattaché (cas exceptionnel).
+        numero_lot = lot_origine or f"{cfg['lot_prefix']}-{row['source_id']}"
+        info_compl = None
 
         etiquette_data = {
             "boutique_id":              BOUTIQUE_ID,
