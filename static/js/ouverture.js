@@ -53,7 +53,7 @@ let photoObjectUrl      = null;
 let produitSelectionne  = null;
 let personnelId         = null;
 let personnelPrenom     = null;
-let dernierOuvertureId  = null;
+let dernierSauvegardeData = null;
 let suggestions         = [];
 let timerInactivite     = null;
 let timerConfirmation   = null;
@@ -384,7 +384,7 @@ elBtnEnregistrer.addEventListener('click', async () => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    dernierOuvertureId = data.id;
+    dernierSauvegardeData = data;
     afficherConfirmation(data);
   } catch (err) {
     elErreur3.textContent = `Erreur : ${err.message}`;
@@ -427,22 +427,33 @@ function demarrerCountdown() {
 }
 
 // ── Impression étiquette ───────────────────────────────────
-elBtnImprimer.addEventListener('click', async () => {
-  if (!dernierOuvertureId) return;
-  clearTimeout(timerConfirmation);
-  elBtnImprimer.disabled = true;
-  elBtnImprimer.textContent = 'Impression…';
+function remplirGabaritOuverture(data) {
+  const fmtDate = iso => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = (iso.split('T')[0] || iso).split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+
+  let dateStr = '--/--/--', heureStr = '--h--';
   try {
-    const res = await apiFetch(
-      `/api/ouvertures/${dernierOuvertureId}/etiquette`,
-      { method: 'POST' }
-    );
-    elBtnImprimer.textContent = res.impression_ok
-      ? '✓ Étiquette imprimée'
-      : `⚠ ${res.impression_erreur || 'Erreur impression'}`;
-  } catch (err) {
-    elBtnImprimer.textContent = `⚠ ${err.message}`;
-  }
+    const ts = (data.timestamp || '').replace(' ', 'T');
+    const dt = new Date(ts);
+    dateStr  = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getFullYear()).slice(-2)}`;
+    heureStr = `${String(dt.getHours()).padStart(2,'0')}h${String(dt.getMinutes()).padStart(2,'0')}`;
+  } catch { /* laisse les valeurs par défaut */ }
+
+  document.getElementById('pol-nom').textContent    = (produitSelectionne.nom || '').toUpperCase();
+  document.getElementById('pol-dlc').textContent    = fmtDate(data.dlc);
+  document.getElementById('pol-lot').textContent    = data.numero_lot ? `Lot : ${data.numero_lot}` : 'Lot : —';
+  document.getElementById('pol-action').textContent = `Ouvert le ${dateStr} à ${heureStr}`;
+  document.getElementById('pol-meta').textContent   = `Par : ${personnelPrenom || '—'}`;
+}
+
+elBtnImprimer.addEventListener('click', () => {
+  if (!dernierSauvegardeData) return;
+  clearTimeout(timerConfirmation);
+  remplirGabaritOuverture(dernierSauvegardeData);
+  setTimeout(() => window.print(), 100);
 });
 
 // ── Boutons post-confirmation ──────────────────────────────
@@ -479,10 +490,10 @@ elBtnNouvelle.addEventListener('click', () => {
 function resetEtat() {
   photoFile = null;
   if (photoObjectUrl) { URL.revokeObjectURL(photoObjectUrl); photoObjectUrl = null; }
-  produitSelectionne = null;
-  personnelId        = null;
-  personnelPrenom    = null;
-  dernierOuvertureId = null;
+  produitSelectionne    = null;
+  personnelId           = null;
+  personnelPrenom       = null;
+  dernierSauvegardeData = null;
 
   // Étape 1
   elPersonnelGrille.querySelectorAll('.ouv-btn-prenom')
