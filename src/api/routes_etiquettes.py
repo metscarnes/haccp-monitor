@@ -372,37 +372,20 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
         }
         etiquette_id = await create_etiquette(db, etiquette_data)
 
-    # Impression via brother_ql_driver (template "transforme")
-    impression_ok = False
-    impression_erreur = None
-    try:
-        from src.printing.brother_ql_driver import imprimer_etiquette, verifier_imprimante
-        impression_ok = imprimer_etiquette({
-            "template":      "transforme",
-            "tag":           cfg["tag"],
-            "produit_nom":   produit_nom,
-            "dlc":           dlc_iso,
-            "numero_lot":    numero_lot,
-            "action_verbe":  cfg["verbe"],
-            "date_action":   date_action,
-            "heure_action":  heure_action,
-            "operateur":     operateur,
-        })
-        if not impression_ok:
-            # Diagnostic : on demande au driver pourquoi il a échoué
-            statut = verifier_imprimante()
-            impression_erreur = statut.get("message") or "Imprimante indisponible"
-    except ImportError:
-        impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
-    except Exception as e:
-        impression_erreur = str(e)
-
+    # L'impression elle-même est faite côté client via window.print()
+    # (même mécanisme que le module fabrication). On retourne ici les données
+    # nécessaires au rendu du gabarit thermique.
     return {
-        "id":                etiquette_id,
-        "numero_lot":        numero_lot,
-        "dlc":               dlc_iso,
-        "impression_ok":     impression_ok,
-        "impression_erreur": impression_erreur,
+        "id":           etiquette_id,
+        "numero_lot":   numero_lot,
+        "dlc":          dlc_iso,
+        "tag":          cfg["tag"],
+        "produit_nom":  produit_nom,
+        "action_verbe": cfg["verbe"],
+        "date_action":  date_action,
+        "heure_action": heure_action,
+        "operateur":    operateur,
+        "info_complementaire": info_compl,
     }
 
 

@@ -636,6 +636,25 @@ function afficherModalChoix(res) {
   elModalChoix.hidden = false;
 }
 
+function remplirGabaritEtiquette(data) {
+  const dlcFmt = data.dlc
+    ? data.dlc.split('-').reverse().join('/')
+    : '--/--/--';
+  const dateFmt = data.date_action
+    ? data.date_action.split('-').reverse().slice(0, 2).join('/')
+    : '—';
+  const heureFmt = (data.heure_action || '').replace(':', 'h');
+  const ligneAction = heureFmt
+    ? `${data.action_verbe} le ${dateFmt} à ${heureFmt}`
+    : `${data.action_verbe} le ${dateFmt}`;
+  document.getElementById('pt-tag').textContent    = `[${data.tag}]`;
+  document.getElementById('pt-nom').textContent    = data.produit_nom || '—';
+  document.getElementById('pt-dlc').textContent    = dlcFmt;
+  document.getElementById('pt-lot').textContent    = `Lot : ${data.numero_lot || '—'}`;
+  document.getElementById('pt-action').textContent = ligneAction;
+  document.getElementById('pt-meta').textContent   = `Par : ${data.operateur || '—'}`;
+}
+
 if (elChoixEtiquette) {
   elChoixEtiquette.addEventListener('click', async () => {
     const { operateur, refroidissement_id } = state.derniereSauvegarde || {};
@@ -654,11 +673,9 @@ if (elChoixEtiquette) {
           personnel_id: Number(operateur.id),
         }),
       });
-      if (res.impression_ok) {
-        afficherToast(`✓ Étiquette imprimée (Lot ${res.numero_lot})`, true);
-      } else {
-        afficherToast(`⚠ Étiquette tracée mais non imprimée : ${res.impression_erreur ?? 'imprimante indisponible'}`, false);
-      }
+      remplirGabaritEtiquette(res);
+      afficherToast(`✓ Étiquette envoyée à l'imprimante (Lot ${res.numero_lot})`, true);
+      setTimeout(() => window.print(), 100);
     } catch (err) {
       afficherToast(`Erreur impression : ${err.message}`, false);
     } finally {

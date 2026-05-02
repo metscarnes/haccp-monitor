@@ -520,12 +520,32 @@ function afficherModalChoix(conforme) {
   elModalChoix.hidden = false;
 }
 
+function remplirGabaritEtiquette(data) {
+  const dlcFmt = data.dlc
+    ? data.dlc.split('-').reverse().join('/')
+    : '--/--/--';
+  const dateFmt = data.date_action
+    ? data.date_action.split('-').reverse().slice(0, 2).join('/')
+    : '—';
+  const heureFmt = (data.heure_action || '').replace(':', 'h');
+  const ligneAction = heureFmt
+    ? `${data.action_verbe} le ${dateFmt} à ${heureFmt}`
+    : `${data.action_verbe} le ${dateFmt}`;
+  document.getElementById('pt-tag').textContent    = `[${data.tag}]`;
+  document.getElementById('pt-nom').textContent    = data.produit_nom || '—';
+  document.getElementById('pt-dlc').textContent    = dlcFmt;
+  document.getElementById('pt-lot').textContent    = `Lot : ${data.numero_lot || '—'}`;
+  document.getElementById('pt-action').textContent = ligneAction;
+  document.getElementById('pt-meta').textContent   = `Par : ${data.operateur || '—'}`;
+}
+
 elChoixEtiquette.addEventListener('click', async () => {
   const { operateur, cuisson_id } = state.derniereSauvegarde;
   if (!cuisson_id || !operateur) return;
   elChoixEtiquette.disabled = true;
-  const labelOriginal = elChoixEtiquette.querySelector('.cu-choix-label').textContent;
-  elChoixEtiquette.querySelector('.cu-choix-label').textContent = 'Impression…';
+  const labelEl = elChoixEtiquette.querySelector('.cu-choix-label');
+  const labelOriginal = labelEl.textContent;
+  labelEl.textContent = 'Impression…';
   try {
     const res = await apiFetch('/api/etiquettes/transformes', {
       method:  'POST',
@@ -536,16 +556,14 @@ elChoixEtiquette.addEventListener('click', async () => {
         personnel_id: Number(operateur.id),
       }),
     });
-    if (res.impression_ok) {
-      afficherToast(`✓ Étiquette imprimée (Lot ${res.numero_lot})`, true);
-    } else {
-      afficherToast(`⚠ Étiquette tracée mais non imprimée : ${res.impression_erreur ?? 'imprimante indisponible'}`, false);
-    }
+    remplirGabaritEtiquette(res);
+    afficherToast(`✓ Étiquette envoyée à l'imprimante (Lot ${res.numero_lot})`, true);
+    setTimeout(() => window.print(), 100);
   } catch (err) {
     afficherToast(`Erreur impression : ${err.message}`, false);
   } finally {
     elChoixEtiquette.disabled = false;
-    elChoixEtiquette.querySelector('.cu-choix-label').textContent = labelOriginal;
+    labelEl.textContent = labelOriginal;
   }
 });
 
