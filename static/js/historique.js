@@ -852,13 +852,18 @@ async function _chargerFournisseurs() {
   return _fournisseursCache;
 }
 
+function _frnKey(s) {
+  return _normaliserHist(s).trim();
+}
+
 async function _suggererFournisseurs() {
   const q = recRefs.input.value.trim().toLowerCase();
   const liste = await _chargerFournisseurs();
   let filtres = q ? liste.filter(f => f.nom.toLowerCase().includes(q)) : [...liste];
-  // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés
+  // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés.
+  // Comparaison normalisée (sans accents, sans casse, trim) pour éviter les ratés.
   if (recState.fournisseursLies && recState.fournisseursLies.size > 0) {
-    filtres = filtres.filter(f => recState.fournisseursLies.has(f.nom));
+    filtres = filtres.filter(f => recState.fournisseursLies.has(_frnKey(f.nom)));
   }
   filtres.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
   recAfficherAuto(filtres);
@@ -935,8 +940,12 @@ function recAfficherAuto(liste) {
       const liste = await apiFetch(url);
       if (myFetch !== dernierFetch) return; // requête obsolète
       // Mettre à jour le set des fournisseurs liés (pour cross-filter)
+      // Stocké en clé normalisée (sans accents, sans casse) pour fiabiliser la comparaison.
       const setFrn = new Set();
-      liste.forEach(p => (p.fournisseurs || []).forEach(f => setFrn.add(f)));
+      liste.forEach(p => (p.fournisseurs || []).forEach(f => {
+        const k = _frnKey(f);
+        if (k) setFrn.add(k);
+      }));
       recState.fournisseursLies = (q && setFrn.size > 0) ? setFrn : null;
 
       _renderHistAC(auto, liste, (nom) => {

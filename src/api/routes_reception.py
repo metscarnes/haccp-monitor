@@ -434,14 +434,16 @@ async def suggestions_produits_receptions(
                 p.id           AS produit_id,
                 p.nom          AS nom,
                 p.espece       AS espece,
-                COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
+                -- Fournisseur de la ligne si défini, sinon de la réception parente
+                COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom) AS fournisseur_nom,
                 rl.numero_lot  AS numero_lot,
                 rl.dlc         AS dlc,
                 r.date_reception AS date_reception
             FROM reception_lignes rl
             JOIN receptions   r ON r.id = rl.reception_id
             JOIN produits     p ON p.id = rl.produit_id
-            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            LEFT JOIN fournisseurs fl ON fl.id = rl.fournisseur_id
+            LEFT JOIN fournisseurs fr ON fr.id = r.fournisseur_principal_id
             WHERE 1=1
               {where_q}
             ORDER BY r.date_reception DESC, rl.id DESC
