@@ -124,6 +124,64 @@
 .inv-filtre--search input[type="search"] {
   width: 100%;
 }
+
+/* ── Autocomplete (recherche produit) ───────────────────── */
+.inv-search-wrap {
+  position: relative;
+  display: flex;
+  gap: 4px;
+}
+.inv-search-wrap input[type="search"] {
+  flex: 1;
+  min-width: 0;
+}
+.inv-search-chev {
+  background: #fff;
+  border: 1px solid #d4c5af;
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  min-width: 36px;
+  min-height: var(--btn-min-sm);
+  padding: 0 .5rem;
+}
+.inv-search-chev:active { background: #f0e8dc; }
+.inv-autocomplete {
+  background: #fff;
+  border: 1px solid #d4c5af;
+  border-top: none;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .08);
+  left: 0; right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  position: absolute;
+  top: 100%;
+  z-index: 30;
+}
+.inv-autocomplete[hidden] { display: none; }
+.inv-ac-item {
+  border-bottom: 1px solid #f1ede4;
+  cursor: pointer;
+  padding: .55rem .75rem;
+  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inv-ac-item:last-child { border-bottom: none; }
+.inv-ac-item:hover,
+.inv-ac-item.actif { background: #faf6f0; }
+.inv-ac-item-nom { font-weight: 600; color: var(--color-text); }
+.inv-ac-item-meta { font-size: var(--text-xs); color: #6b7280; }
+.inv-ac-vide {
+  padding: .75rem;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: #6b7280;
+}
 .inv-reset {
   min-height: var(--btn-min-sm);
   padding: .5rem 1rem;

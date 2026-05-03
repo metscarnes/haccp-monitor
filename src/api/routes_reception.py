@@ -406,6 +406,79 @@ async def historique_receptions(
         )
 
 
+@router.get("/receptions/produits-suggestions")
+async def suggestions_produits_receptions(
+    q: Optional[str] = Query(None, description="Filtre nom produit ou N° de lot"),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """
+    Auto-complétion produits/lots vus en réception.
+    Retourne, pour chaque produit ayant au moins une ligne de réception correspondant à `q` :
+        - produit_id, nom, espece
+        - fournisseurs : liste distincte des fournisseurs ayant livré ce produit
+        - dernier_lot, derniere_dlc, derniere_reception
+    Trié par dernière réception (plus récent en premier).
+    Si `q` est vide → tous les produits jamais réceptionnés (limité à `limit`).
+    """
+    like = f"%{q.strip()}%" if q else None
+    where_q = ""
+    params: list = []
+    if like:
+        where_q = "AND (p.nom LIKE ? COLLATE NOCASE OR rl.numero_lot LIKE ? COLLATE NOCASE)"
+        params.extend([like, like])
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"""
+            SELECT
+                p.id           AS produit_id,
+                p.nom          AS nom,
+                p.espece       AS espece,
+                COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
+                rl.numero_lot  AS numero_lot,
+                rl.dlc         AS dlc,
+                r.date_reception AS date_reception
+            FROM reception_lignes rl
+            JOIN receptions   r ON r.id = rl.reception_id
+            JOIN produits     p ON p.id = rl.produit_id
+            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            WHERE 1=1
+              {where_q}
+            ORDER BY r.date_reception DESC, rl.id DESC
+            """,
+            tuple(params),
+        )
+        rows = await cursor.fetchall()
+
+    par_produit: dict[int, dict] = {}
+    for row in rows:
+        d = dict(row)
+        pid = d["produit_id"]
+        entry = par_produit.get(pid)
+        if entry is None:
+            entry = {
+                "produit_id": pid,
+                "nom": d["nom"],
+                "espece": d["espece"],
+                "fournisseurs": [],
+                "dernier_lot": d["numero_lot"],
+                "derniere_dlc": d["dlc"],
+                "derniere_reception": d["date_reception"],
+            }
+            par_produit[pid] = entry
+        f_nom = (d["fournisseur_nom"] or "").strip()
+        if f_nom and f_nom not in entry["fournisseurs"]:
+            entry["fournisseurs"].append(f_nom)
+
+    # Tri global par date de dernière réception (DESC), produits sans date à la fin
+    out = sorted(
+        par_produit.values(),
+        key=lambda e: (e["derniere_reception"] is None, e["derniere_reception"] or ""),
+    )
+    out.reverse()
+    return out[:limit]
+
+
 @router.get("/receptions/{reception_id}")
 async def detail_reception(reception_id: int):
     async with get_db() as db:

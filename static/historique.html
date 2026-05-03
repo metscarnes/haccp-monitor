@@ -251,6 +251,38 @@
     .he-filtre-input:focus { outline: none; border-color: var(--texte); }
 
     .he-search-wrap { position: relative; flex: 2; min-width: 200px; }
+    .he-search-input-wrap {
+      display: flex;
+      gap: 4px;
+      width: 100%;
+    }
+    .he-search-input-wrap input { flex: 1; min-width: 0; }
+    .he-search-chev {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 48px;
+      min-width: 44px;
+      padding: 0 10px;
+      flex-shrink: 0;
+    }
+    .he-search-chev:active { background: var(--fond); }
+    .he-ac-item-meta {
+      display: block;
+      font-size: 12px;
+      color: #777;
+      margin-top: 2px;
+    }
+    .he-ac-vide {
+      padding: 12px;
+      text-align: center;
+      font-size: 14px;
+      color: #888;
+    }
     .he-autocomplete {
       background: #FFF;
       border: 2px solid var(--accent);
@@ -1100,11 +1132,17 @@
 
     <!-- Filtres Réceptions -->
     <div class="he-filtres">
-      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+      <div class="he-filtre-groupe he-search-wrap" style="flex:2;min-width:200px;">
         <label class="he-filtre-label" for="he-rec-q">Recherche produit</label>
-        <input type="search" id="he-rec-q" class="he-filtre-input"
-               placeholder="Nom du produit ou N° de lot…" autocomplete="off" inputmode="search"
-               aria-label="Rechercher par produit ou numéro de lot">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-rec-q" class="he-filtre-input"
+                 placeholder="Nom du produit ou N° de lot…" autocomplete="off" inputmode="search"
+                 aria-label="Rechercher par produit ou numéro de lot"
+                 aria-autocomplete="list" aria-controls="he-rec-q-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-rec-q-auto"
+                  aria-label="Voir tous les produits réceptionnés" title="Voir tous les produits">▾</button>
+        </div>
+        <div id="he-rec-q-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
 
       <div class="he-filtre-groupe he-search-wrap">
@@ -1148,11 +1186,17 @@
 
     <!-- Filtres Fabrications -->
     <div class="he-filtres">
-      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+      <div class="he-filtre-groupe he-search-wrap" style="flex:2;min-width:200px;">
         <label class="he-filtre-label" for="he-fab-q">Recherche</label>
-        <input type="search" id="he-fab-q" class="he-filtre-input"
-               placeholder="Produit ou lot interne…" autocomplete="off" inputmode="search"
-               aria-label="Rechercher par produit ou lot">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-fab-q" class="he-filtre-input"
+                 placeholder="Produit ou lot interne…" autocomplete="off" inputmode="search"
+                 aria-label="Rechercher par produit ou lot"
+                 aria-autocomplete="list" aria-controls="he-fab-q-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-fab-q-auto"
+                  aria-label="Voir toutes les fabrications" title="Voir toutes les recettes">▾</button>
+        </div>
+        <div id="he-fab-q-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
 
       <div class="he-filtre-groupe">
@@ -1225,11 +1269,17 @@
   <!-- 🔥 Cuissons -->
   <div id="he-content-cuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-cuis">
     <div class="he-filtres">
-      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+      <div class="he-filtre-groupe he-search-wrap" style="flex:2;min-width:200px;">
         <label class="he-filtre-label" for="he-cuis-q">Recherche</label>
-        <input type="search" id="he-cuis-q" class="he-filtre-input"
-               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
-               aria-label="Rechercher par produit ou lot">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-cuis-q" class="he-filtre-input"
+                 placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+                 aria-label="Rechercher par produit ou lot"
+                 aria-autocomplete="list" aria-controls="he-cuis-q-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-cuis-q-auto"
+                  aria-label="Voir toutes les cuissons" title="Voir tous les produits">▾</button>
+        </div>
+        <div id="he-cuis-q-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-cuis-espece">Espèce</label>
@@ -1273,11 +1323,17 @@
   <!-- ❄️ Refroidissements -->
   <div id="he-content-refr" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-refr">
     <div class="he-filtres">
-      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+      <div class="he-filtre-groupe he-search-wrap" style="flex:2;min-width:200px;">
         <label class="he-filtre-label" for="he-refr-q">Recherche</label>
-        <input type="search" id="he-refr-q" class="he-filtre-input"
-               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
-               aria-label="Rechercher par produit ou lot">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-refr-q" class="he-filtre-input"
+                 placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+                 aria-label="Rechercher par produit ou lot"
+                 aria-autocomplete="list" aria-controls="he-refr-q-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-refr-q-auto"
+                  aria-label="Voir tous les refroidissements" title="Voir tous les produits">▾</button>
+        </div>
+        <div id="he-refr-q-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-refr-espece">Espèce</label>
@@ -1321,11 +1377,17 @@
   <!-- 🗑️ Devenir DLC -->
   <div id="he-content-dlcdev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-dlcdev">
     <div class="he-filtres">
-      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+      <div class="he-filtre-groupe he-search-wrap" style="flex:2;min-width:200px;">
         <label class="he-filtre-label" for="he-dlcdev-q">Recherche</label>
-        <input type="search" id="he-dlcdev-q" class="he-filtre-input"
-               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
-               aria-label="Rechercher par produit ou lot">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-dlcdev-q" class="he-filtre-input"
+                 placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+                 aria-label="Rechercher par produit ou lot"
+                 aria-autocomplete="list" aria-controls="he-dlcdev-q-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-dlcdev-q-auto"
+                  aria-label="Voir tous les enregistrements" title="Voir tous les produits">▾</button>
+        </div>
+        <div id="he-dlcdev-q-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-dlcdev-tri">Tri</label>

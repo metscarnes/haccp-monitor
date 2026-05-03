@@ -61,10 +61,17 @@
   <section class="inv-filtres">
     <label class="inv-filtre inv-filtre--search">
       <span>Recherche</span>
-      <input type="search" id="inv-filtre-recherche"
-             placeholder="Nom du produit ou N° de lot…"
-             autocomplete="off" inputmode="search"
-             aria-label="Rechercher un produit par nom ou numéro de lot">
+      <div class="inv-search-wrap">
+        <input type="search" id="inv-filtre-recherche"
+               placeholder="Nom du produit ou N° de lot…"
+               autocomplete="off" inputmode="search"
+               aria-label="Rechercher un produit par nom ou numéro de lot"
+               aria-autocomplete="list" aria-controls="inv-ac-recherche">
+        <button type="button" class="inv-search-chev" id="inv-ac-toggle"
+                aria-label="Voir tous les produits en stock"
+                title="Voir tous les produits">▾</button>
+        <div id="inv-ac-recherche" class="inv-autocomplete" hidden role="listbox"></div>
+      </div>
     </label>
     <label class="inv-filtre">
       <span>Espèce</span>

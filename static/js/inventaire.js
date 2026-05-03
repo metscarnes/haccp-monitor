@@ -206,6 +206,71 @@ function comparer(a, b) {
   }
 }
 
+// ── Autocomplete produits (depuis itemsRaw) ──────────────────
+function _produitsCorrespondants(qNorm) {
+  // Regroupe par produit_nom : nb d'unités, espèces, lots
+  const map = new Map();
+  for (const it of state.itemsRaw) {
+    const nom = (it.produit_nom || '').trim();
+    if (!nom) continue;
+    const matchN = !qNorm || normaliser(nom).includes(qNorm);
+    const matchL = !qNorm || normaliser(it.numero_lot).includes(qNorm);
+    if (!matchN && !matchL) continue;
+    const cur = map.get(nom);
+    if (cur) {
+      cur.count += 1;
+      if (it.espece && !cur.especes.includes(it.espece)) cur.especes.push(it.espece);
+    } else {
+      map.set(nom, { nom, count: 1, especes: it.espece ? [it.espece] : [] });
+    }
+  }
+  // Tri alphabétique
+  return [...map.values()].sort((a, b) =>
+    a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+  );
+}
+
+function _renderAutocomplete(items) {
+  const ac = $('inv-ac-recherche');
+  if (!ac) return;
+  if (!items.length) {
+    ac.innerHTML = `<div class="inv-ac-vide">Aucun produit correspondant.</div>`;
+    ac.hidden = false;
+    return;
+  }
+  ac.innerHTML = items.map(p => `
+    <div class="inv-ac-item" role="option" data-nom="${escHtml(p.nom)}">
+      <span class="inv-ac-item-nom">${escHtml(p.nom)}</span>
+      <span class="inv-ac-item-meta">
+        ${p.count} unité${p.count > 1 ? 's' : ''} en stock${
+          p.especes.length ? ' · ' + escHtml(p.especes.join(', ')) : ''
+        }
+      </span>
+    </div>
+  `).join('');
+  ac.hidden = false;
+
+  ac.querySelectorAll('.inv-ac-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const nom = el.dataset.nom;
+      $('inv-filtre-recherche').value = nom;
+      state.recherche = nom;
+      ac.hidden = true;
+      appliquerFiltresClient();
+    });
+  });
+}
+
+function _ouvrirAutocomplete() {
+  const q = normaliser(state.recherche).trim();
+  _renderAutocomplete(_produitsCorrespondants(q));
+}
+
+function _fermerAutocomplete() {
+  const ac = $('inv-ac-recherche');
+  if (ac) ac.hidden = true;
+}
+
 function appliquerFiltresClient() {
   const q = normaliser(state.recherche).trim();
   const esp = state.espece;
@@ -564,12 +629,35 @@ function bindFiltres() {
 
   // Filtres client (instantanés, sans rechargement réseau)
   let debounceRecherche;
-  $('inv-filtre-recherche').addEventListener('input', (e) => {
+  const inRech = $('inv-filtre-recherche');
+  inRech.addEventListener('input', (e) => {
     clearTimeout(debounceRecherche);
     debounceRecherche = setTimeout(() => {
       state.recherche = e.target.value;
       appliquerFiltresClient();
+      _ouvrirAutocomplete();
     }, 150);
+  });
+  inRech.addEventListener('focus', () => {
+    if (state.itemsRaw.length) _ouvrirAutocomplete();
+  });
+  inRech.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') _fermerAutocomplete();
+    if (e.key === 'Enter')  _fermerAutocomplete();
+  });
+  // Bouton chevron : voir tous les produits correspondants (ou tous si vide)
+  $('inv-ac-toggle').addEventListener('click', () => {
+    const ac = $('inv-ac-recherche');
+    if (ac && !ac.hidden) {
+      _fermerAutocomplete();
+    } else {
+      _ouvrirAutocomplete();
+    }
+  });
+  // Fermer si clic ailleurs
+  document.addEventListener('click', (e) => {
+    const wrap = inRech.closest('.inv-search-wrap');
+    if (wrap && !wrap.contains(e.target)) _fermerAutocomplete();
   });
   $('inv-filtre-espece').addEventListener('change', (e) => {
     state.espece = e.target.value;

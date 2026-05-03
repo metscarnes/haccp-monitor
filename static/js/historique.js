@@ -81,6 +81,9 @@ const recState = {
   totalCharges: 0,
   debounce: null,
   inactivite: null,
+  // Cross-filter : ensemble des fournisseurs liés au produit recherché
+  // (rempli par l'autocomplete produit, utilisé par l'autocomplete fournisseur).
+  fournisseursLies: null,   // Set<string> ou null si pas de filtre produit actif
 };
 
 const fabState = {
@@ -837,7 +840,7 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
   return div;
 }
 
-// ── Autocomplete réceptions ──────────────────────────────────
+// ── Autocomplete réceptions (fournisseurs avec cross-filter) ─
 recRefs.input.addEventListener('input', () => {
   recState.fournisseurId = null;
   const q = recRefs.input.value.trim();
@@ -848,15 +851,25 @@ recRefs.input.addEventListener('input', () => {
     try {
       const liste = await apiFetch('/api/fournisseurs');
       const ql = q.toLowerCase();
-      const filtres = liste.filter(f => f.nom.toLowerCase().includes(ql)).slice(0, 10);
-      recAfficherAuto(filtres);
+      let filtres = liste.filter(f => f.nom.toLowerCase().includes(ql));
+      // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés
+      if (recState.fournisseursLies && recState.fournisseursLies.size > 0) {
+        filtres = filtres.filter(f => recState.fournisseursLies.has(f.nom));
+      }
+      recAfficherAuto(filtres.slice(0, 10));
     } catch { /* silencieux */ }
   }, 300);
 });
 
 function recAfficherAuto(liste) {
   recRefs.auto.innerHTML = '';
-  if (!liste.length) { recRefs.auto.hidden = true; return; }
+  if (!liste.length) {
+    recRefs.auto.innerHTML = recState.fournisseursLies
+      ? '<div class="he-ac-vide">Aucun fournisseur ne correspond au produit recherché.</div>'
+      : '<div class="he-ac-vide">Aucun fournisseur trouvé.</div>';
+    recRefs.auto.hidden = false;
+    return;
+  }
   liste.forEach(f => {
     const item = document.createElement('div');
     item.className = 'he-ac-item';
@@ -873,6 +886,74 @@ function recAfficherAuto(liste) {
   recRefs.auto.hidden = false;
 }
 
+// ── Autocomplete recherche produit (réceptions, server-side) ──
+(function bindRecProduitAC() {
+  const inQ = document.getElementById('he-rec-q');
+  const auto = document.getElementById('he-rec-q-auto');
+  if (!inQ || !auto) return;
+
+  let debounce;
+  let dernierFetch = 0;
+
+  async function fetchSuggestions(q) {
+    const myFetch = ++dernierFetch;
+    try {
+      const url = q
+        ? `/api/receptions/produits-suggestions?q=${encodeURIComponent(q)}`
+        : `/api/receptions/produits-suggestions?limit=50`;
+      const liste = await apiFetch(url);
+      if (myFetch !== dernierFetch) return; // requête obsolète
+      // Mettre à jour le set des fournisseurs liés (pour cross-filter)
+      const setFrn = new Set();
+      liste.forEach(p => (p.fournisseurs || []).forEach(f => setFrn.add(f)));
+      recState.fournisseursLies = (q && setFrn.size > 0) ? setFrn : null;
+
+      _renderHistAC(auto, liste, (nom) => {
+        inQ.value = nom;
+        auto.hidden = true;
+        recCharger();
+      });
+    } catch (e) {
+      // silencieux
+    }
+  }
+
+  function ouvrir(force = false) {
+    const q = inQ.value.trim();
+    if (!q && !force) {
+      // Premier focus avec champ vide : montrer une page de produits récents
+      fetchSuggestions('');
+      return;
+    }
+    fetchSuggestions(q);
+  }
+  function fermer() { auto.hidden = true; }
+
+  inQ.addEventListener('focus', () => ouvrir());
+  inQ.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => ouvrir(), 250);
+  });
+  inQ.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Enter') fermer();
+  });
+  const chev = inQ.parentElement?.querySelector('.he-search-chev');
+  if (chev) chev.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!auto.hidden) fermer();
+    else ouvrir(true);
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = inQ.closest('.he-search-wrap');
+    if (wrap && !wrap.contains(e.target)) fermer();
+  });
+
+  // Quand l'utilisateur efface le champ → drop le cross-filter
+  inQ.addEventListener('input', () => {
+    if (!inQ.value.trim()) recState.fournisseursLies = null;
+  });
+})();
+
 document.addEventListener('click', e => {
   if (!recRefs.input.contains(e.target) && !recRefs.auto.contains(e.target)) {
     recRefs.auto.hidden = true;
@@ -883,10 +964,13 @@ document.addEventListener('click', e => {
 recRefs.filtrer.addEventListener('click', recCharger);
 recRefs.reset.addEventListener('click', () => {
   recState.fournisseurId = null;
+  recState.fournisseursLies = null;
   recRefs.input.value = '';
   recRefs.auto.hidden = true;
   const elQ = document.getElementById('he-rec-q');
   if (elQ) elQ.value = '';
+  const elQAuto = document.getElementById('he-rec-q-auto');
+  if (elQAuto) elQAuto.hidden = true;
   initDates(recRefs);
   recCharger();
 });
@@ -1402,6 +1486,51 @@ fabRefs.plus.addEventListener('click', fabChargerSuite);
     });
   }
   if (ft) ft.addEventListener('change', () => { if (fabState.rows.length) fabRendre(); });
+
+  // ── Autocomplete fabrication (recette_nom / lot_interne) ──
+  const auto = document.getElementById('he-fab-q-auto');
+  if (!fq || !auto) return;
+
+  function suggestionsFab(qNorm) {
+    const map = new Map();
+    for (const f of fabState.rows) {
+      const nom = (f.recette_nom || '').trim();
+      if (!nom) continue;
+      const lot = f.lot_interne || '';
+      const matchN = !qNorm || _normaliserHist(nom).includes(qNorm);
+      const matchL = !qNorm || _normaliserHist(lot).includes(qNorm);
+      if (!matchN && !matchL) continue;
+      const cur = map.get(nom);
+      if (cur) cur.count += 1;
+      else map.set(nom, { nom, count: 1 });
+    }
+    return [...map.values()].sort((a, b) =>
+      a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+    );
+  }
+
+  const ouvrir = () => {
+    const q = _normaliserHist(fq.value).trim();
+    _renderHistAC(auto, suggestionsFab(q), (nom) => {
+      fq.value = nom;
+      auto.hidden = true;
+      if (fabState.rows.length) fabRendre();
+    });
+  };
+  fq.addEventListener('focus', () => { if (fabState.rows.length) ouvrir(); });
+  fq.addEventListener('input', ouvrir);
+  fq.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Enter') auto.hidden = true;
+  });
+  const chev = fq.parentElement?.querySelector('.he-search-chev');
+  if (chev) chev.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!auto.hidden) auto.hidden = true; else ouvrir();
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = fq.closest('.he-search-wrap');
+    if (wrap && !wrap.contains(e.target)) auto.hidden = true;
+  });
 })();
 
 // ── Bouton retour ────────────────────────────────────────────
@@ -1823,6 +1952,97 @@ function _appliquerFiltresHist(key) {
   majCompteur(key, rows.length, c.singulier, c.pluriel);
 }
 
+// ── Autocomplete générique sur cache local (cuis/refr/dlcdev) ────
+function _produitsFromCache(key, qNorm) {
+  const c = histCache[key];
+  if (!c) return [];
+  const map = new Map();
+  const fNom = c.triFields?.nom || 'produit_nom';
+  const fLots = c.searchFields || [];
+  for (const r of c.rows) {
+    const nom = (r[fNom] || '').trim();
+    if (!nom) continue;
+    const lots = fLots.map(f => r[f]).filter(v => v && v !== nom);
+    const matchN = !qNorm || _normaliserHist(nom).includes(qNorm);
+    const matchL = !qNorm || lots.some(l => _normaliserHist(l).includes(qNorm));
+    if (!matchN && !matchL) continue;
+    const cur = map.get(nom);
+    if (cur) {
+      cur.count += 1;
+      if (r.espece && !cur.especes.includes(r.espece)) cur.especes.push(r.espece);
+    } else {
+      map.set(nom, { nom, count: 1, especes: r.espece ? [r.espece] : [] });
+    }
+  }
+  return [...map.values()].sort((a, b) =>
+    a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+  );
+}
+
+function _renderHistAC(autoEl, items, onPick) {
+  if (!autoEl) return;
+  if (!items.length) {
+    autoEl.innerHTML = '<div class="he-ac-vide">Aucun produit correspondant.</div>';
+    autoEl.hidden = false;
+    return;
+  }
+  autoEl.innerHTML = items.map(p => {
+    const meta = [];
+    if (p.count != null) meta.push(`${p.count} entrée${p.count > 1 ? 's' : ''}`);
+    if (p.especes?.length) meta.push(p.especes.join(', '));
+    if (p.fournisseurs?.length) meta.push('Frn : ' + p.fournisseurs.slice(0, 3).join(', '));
+    return `
+      <div class="he-ac-item" role="option" data-nom="${p.nom.replace(/"/g, '&quot;')}">
+        <div style="font-weight:600;">${p.nom}</div>
+        ${meta.length ? `<span class="he-ac-item-meta">${meta.join(' · ')}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+  autoEl.hidden = false;
+  autoEl.querySelectorAll('.he-ac-item').forEach(el => {
+    el.addEventListener('click', () => {
+      onPick(el.dataset.nom);
+    });
+  });
+}
+
+function _bindAutocompleteCache(key) {
+  const inQ = $(`he-${key}-q`);
+  const auto = $(`he-${key}-q-auto`);
+  if (!inQ || !auto) return;
+  if (histCache[`__ac_${key}`]) return;
+  histCache[`__ac_${key}`] = true;
+
+  const ouvrir = () => {
+    const q = _normaliserHist(inQ.value).trim();
+    _renderHistAC(auto, _produitsFromCache(key, q), (nom) => {
+      inQ.value = nom;
+      auto.hidden = true;
+      _appliquerFiltresHist(key);
+    });
+  };
+  const fermer = () => { auto.hidden = true; };
+
+  inQ.addEventListener('focus', () => { if (histCache[key]?.rows.length) ouvrir(); });
+  inQ.addEventListener('input', ouvrir);
+  inQ.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'Enter') fermer(); });
+
+  // Bouton chevron
+  const chev = inQ.parentElement?.querySelector('.he-search-chev');
+  if (chev) {
+    chev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!auto.hidden) fermer();
+      else ouvrir();
+    });
+  }
+  // Fermer si clic ailleurs
+  document.addEventListener('click', (e) => {
+    const wrap = inQ.closest('.he-search-wrap');
+    if (wrap && !wrap.contains(e.target)) fermer();
+  });
+}
+
 function _bindFiltresHist(key) {
   if (histCache[`__bound_${key}`]) return;
   histCache[`__bound_${key}`] = true;
@@ -1838,6 +2058,8 @@ function _bindFiltresHist(key) {
   }
   if (inTri) inTri.addEventListener('change', () => _appliquerFiltresHist(key));
   if (inEsp) inEsp.addEventListener('change', () => _appliquerFiltresHist(key));
+  // Autocomplete depuis le cache (uniquement si la combinaison input + dropdown existe)
+  if (inQ && $(`he-${key}-q-auto`)) _bindAutocompleteCache(key);
 }
 
 /* ── Helper de chargement générique (liste simple) ─────────────── */
