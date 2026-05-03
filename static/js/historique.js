@@ -842,14 +842,27 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
 
 // ── Autocomplete réceptions (fournisseurs avec cross-filter) ─
 let _fournisseursCache = null;
+let _fournisseursPending = null;
 async function _chargerFournisseurs() {
-  if (_fournisseursCache) return _fournisseursCache;
-  try {
-    _fournisseursCache = await apiFetch('/api/fournisseurs');
-  } catch {
-    _fournisseursCache = [];
+  // On ne cache QUE les résultats non-vides : un cache vide signifie probablement
+  // une erreur transitoire au 1er appel. Réessaye à chaque ouverture du dropdown.
+  if (Array.isArray(_fournisseursCache) && _fournisseursCache.length) {
+    return _fournisseursCache;
   }
-  return _fournisseursCache;
+  if (_fournisseursPending) return _fournisseursPending;
+  _fournisseursPending = (async () => {
+    try {
+      const data = await apiFetch('/api/fournisseurs');
+      if (Array.isArray(data) && data.length) _fournisseursCache = data;
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      console.warn('Impossible de charger les fournisseurs :', err);
+      return [];
+    } finally {
+      _fournisseursPending = null;
+    }
+  })();
+  return _fournisseursPending;
 }
 
 function _frnKey(s) {
@@ -995,9 +1008,12 @@ function recAfficherAuto(liste) {
 })();
 
 document.addEventListener('click', e => {
-  if (!recRefs.input.contains(e.target) && !recRefs.auto.contains(e.target)) {
-    recRefs.auto.hidden = true;
-  }
+  // Inclure tout le wrap (input + chevron + auto) pour ne pas fermer
+  // le dropdown quand on clique sur le bouton chevron du fournisseur.
+  const wrap = recRefs.input.closest('.he-search-wrap');
+  if (wrap && wrap.contains(e.target)) return;
+  if (recRefs.auto.contains(e.target)) return;
+  recRefs.auto.hidden = true;
 });
 
 // ── Boutons réceptions ───────────────────────────────────────
