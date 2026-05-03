@@ -2175,6 +2175,7 @@ async def get_receptions(
     date_debut: Optional[str] = None,
     date_fin: Optional[str] = None,
     fournisseur_id: Optional[int] = None,
+    q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -2190,6 +2191,20 @@ async def get_receptions(
     if fournisseur_id is not None:
         conditions.append("r.fournisseur_principal_id = ?")
         params.append(fournisseur_id)
+    if q:
+        # Filtre les réceptions dont au moins une ligne contient un produit
+        # ou un N° de lot correspondant (recherche insensible à la casse, sous-chaîne).
+        like = f"%{q.strip()}%"
+        conditions.append(
+            "EXISTS ("
+            "  SELECT 1 FROM reception_lignes rl2 "
+            "  LEFT JOIN produits pr2 ON pr2.id = rl2.produit_id "
+            "  WHERE rl2.reception_id = r.id "
+            "    AND (pr2.nom LIKE ? COLLATE NOCASE "
+            "         OR rl2.numero_lot LIKE ? COLLATE NOCASE)"
+            ")"
+        )
+        params.extend([like, like])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

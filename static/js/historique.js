@@ -468,6 +468,9 @@ function recBuildUrl(offset = 0) {
   if (recState.fournisseurId !== null) p.set('fournisseur_id', String(recState.fournisseurId));
   if (recRefs.debut.value) p.set('date_debut', recRefs.debut.value);
   if (recRefs.fin.value) p.set('date_fin', recRefs.fin.value);
+  const elQ = document.getElementById('he-rec-q');
+  const q = elQ ? elQ.value.trim() : '';
+  if (q) p.set('q', q);
   return `/api/receptions?${p.toString()}`;
 }
 
@@ -882,10 +885,23 @@ recRefs.reset.addEventListener('click', () => {
   recState.fournisseurId = null;
   recRefs.input.value = '';
   recRefs.auto.hidden = true;
+  const elQ = document.getElementById('he-rec-q');
+  if (elQ) elQ.value = '';
   initDates(recRefs);
   recCharger();
 });
 recRefs.plus.addEventListener('click', recChargerSuite);
+
+// Recherche produit (déclenche un rechargement serveur, debounce 350ms)
+(function bindRecQ() {
+  const elQ = document.getElementById('he-rec-q');
+  if (!elQ) return;
+  let deb;
+  elQ.addEventListener('input', () => {
+    clearTimeout(deb);
+    deb = setTimeout(() => recCharger(), 350);
+  });
+})();
 
 // ── Modal ────────────────────────────────────────────────────
 function ouvrirModal(ouvertureId, nom) {
@@ -1756,6 +1772,18 @@ function _trierLignes(rows, tri, fields) {
   return arr;
 }
 
+function _majSelectEspeceHist(key, rows) {
+  const sel = $(`he-${key}-espece`);
+  if (!sel) return;
+  const especes = [...new Set(
+    rows.map(r => (r.espece || '').trim()).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  const courant = sel.value;
+  sel.innerHTML = '<option value="">Toutes</option>' +
+    especes.map(e => `<option value="${e.replace(/"/g, '&quot;')}">${e}</option>`).join('');
+  if (especes.includes(courant)) sel.value = courant;
+}
+
 function _appliquerFiltresHist(key) {
   const c = histCache[key];
   if (!c) return;
@@ -1764,12 +1792,17 @@ function _appliquerFiltresHist(key) {
 
   const inQ = $(`he-${key}-q`);
   const inTri = $(`he-${key}-tri`);
+  const inEsp = $(`he-${key}-espece`);
   const q = inQ ? _normaliserHist(inQ.value).trim() : '';
   const tri = inTri ? inTri.value : 'date_desc';
+  const esp = inEsp ? inEsp.value : '';
 
   let rows = c.rows;
   if (q && c.searchFields?.length) {
     rows = rows.filter(r => c.searchFields.some(f => _normaliserHist(r[f]).includes(q)));
+  }
+  if (esp) {
+    rows = rows.filter(r => (r.espece || '') === esp);
   }
   rows = _trierLignes(rows, tri, c.triFields);
 
@@ -1795,6 +1828,7 @@ function _bindFiltresHist(key) {
   histCache[`__bound_${key}`] = true;
   const inQ = $(`he-${key}-q`);
   const inTri = $(`he-${key}-tri`);
+  const inEsp = $(`he-${key}-espece`);
   if (inQ) {
     let deb;
     inQ.addEventListener('input', () => {
@@ -1803,6 +1837,7 @@ function _bindFiltresHist(key) {
     });
   }
   if (inTri) inTri.addEventListener('change', () => _appliquerFiltresHist(key));
+  if (inEsp) inEsp.addEventListener('change', () => _appliquerFiltresHist(key));
 }
 
 /* ── Helper de chargement générique (liste simple) ─────────────── */
@@ -1827,6 +1862,7 @@ async function chargerListe(key, url, render, {
       searchFields,
       triFields,
     };
+    _majSelectEspeceHist(key, histCache[key].rows);
     _bindFiltresHist(key);
     _appliquerFiltresHist(key);
   } catch (err) {
@@ -1884,8 +1920,9 @@ _onReady(() => {
   $('he-cuis-type')   ?.addEventListener('change', cuisLister);
   $('he-cuis-reset')  ?.addEventListener('click', () => {
     $('he-cuis-debut').value = ''; $('he-cuis-fin').value = '';
-    if ($('he-cuis-q'))   $('he-cuis-q').value = '';
-    if ($('he-cuis-tri')) $('he-cuis-tri').value = 'date_desc';
+    if ($('he-cuis-q'))      $('he-cuis-q').value = '';
+    if ($('he-cuis-tri'))    $('he-cuis-tri').value = 'date_desc';
+    if ($('he-cuis-espece')) $('he-cuis-espece').value = '';
     dateDefaut30j($('he-cuis-debut'), $('he-cuis-fin'));
     cuisLister();
   });
@@ -1935,8 +1972,9 @@ _onReady(() => {
   $('he-refr-filtrer')?.addEventListener('click', refrLister);
   $('he-refr-reset')  ?.addEventListener('click', () => {
     $('he-refr-debut').value = ''; $('he-refr-fin').value = '';
-    if ($('he-refr-q'))   $('he-refr-q').value = '';
-    if ($('he-refr-tri')) $('he-refr-tri').value = 'date_desc';
+    if ($('he-refr-q'))      $('he-refr-q').value = '';
+    if ($('he-refr-tri'))    $('he-refr-tri').value = 'date_desc';
+    if ($('he-refr-espece')) $('he-refr-espece').value = '';
     dateDefaut30j($('he-refr-debut'), $('he-refr-fin'));
     refrLister();
   });

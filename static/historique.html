@@ -1100,6 +1100,13 @@
 
     <!-- Filtres Réceptions -->
     <div class="he-filtres">
+      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+        <label class="he-filtre-label" for="he-rec-q">Recherche produit</label>
+        <input type="search" id="he-rec-q" class="he-filtre-input"
+               placeholder="Nom du produit ou N° de lot…" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit ou numéro de lot">
+      </div>
+
       <div class="he-filtre-groupe he-search-wrap">
         <label class="he-filtre-label" for="he-rec-fourn">Fournisseur</label>
         <input type="search" id="he-rec-fourn" class="he-filtre-input"
@@ -1225,6 +1232,12 @@
                aria-label="Rechercher par produit ou lot">
       </div>
       <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-cuis-espece">Espèce</label>
+        <select id="he-cuis-espece" class="he-filtre-input">
+          <option value="">Toutes</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-cuis-tri">Tri</label>
         <select id="he-cuis-tri" class="he-filtre-input">
           <option value="date_desc">📅 Plus récent</option>
@@ -1265,6 +1278,12 @@
         <input type="search" id="he-refr-q" class="he-filtre-input"
                placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
                aria-label="Rechercher par produit ou lot">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-refr-espece">Espèce</label>
+        <select id="he-refr-espece" class="he-filtre-input">
+          <option value="">Toutes</option>
+        </select>
       </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-refr-tri">Tri</label>

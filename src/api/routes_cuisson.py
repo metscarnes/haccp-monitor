@@ -157,6 +157,7 @@ async def lister_cuissons(
             f"""
             SELECT c.*,
                    p.nom       AS produit_nom,
+                   p.espece    AS espece,
                    pers.prenom AS personnel_prenom,
                    rl.numero_lot
             FROM   cuissons c

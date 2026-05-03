@@ -390,6 +390,7 @@ async def historique_receptions(
     date_debut:    Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_fin:      Optional[str] = Query(None, description="YYYY-MM-DD"),
     fournisseur_id: Optional[int] = Query(None),
+    q:             Optional[str] = Query(None, description="Recherche produit ou N° de lot dans les lignes"),
     limit:         int            = Query(50, ge=1, le=500),
     offset:        int            = Query(0, ge=0),
 ):
@@ -399,6 +400,7 @@ async def historique_receptions(
             date_debut=date_debut,
             date_fin=date_fin,
             fournisseur_id=fournisseur_id,
+            q=q,
             limit=limit,
             offset=offset,
         )

@@ -284,6 +284,7 @@ async def lister_refroidissements(
             f"""
             SELECT r.*,
                    p.nom        AS produit_nom,
+                   p.espece     AS espece,
                    pers.prenom  AS personnel_prenom,
                    rl.numero_lot AS reception_numero_lot
             FROM   refroidissements r
