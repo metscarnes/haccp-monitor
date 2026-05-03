@@ -109,7 +109,10 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\campi\\\\OneDrive\\\\Création d'entreprise\\\\Boucherie\\\\SoftWare\\\\haccp-monitor\" -Recurse -File)",
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(Get-ChildItem -Recurse -Force)",
-      "Bash(Select-Object FullName)"
+      "Bash(Select-Object FullName)",
+      "Bash(awk 'NR==156 {for\\(i=1;i<=length\\($0\\);i++\\){c=substr\\($0,i,1\\); printf \"%d \", ord[c]?ord[c]:c} print \"\"}' \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/inventaire.js\")",
+      "Bash(node --check \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/historique.js\")",
+      "Bash(node --check \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/inventaire.js\")"
     ]
   }
 }

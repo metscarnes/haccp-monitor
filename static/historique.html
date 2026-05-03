@@ -1141,6 +1141,25 @@
 
     <!-- Filtres Fabrications -->
     <div class="he-filtres">
+      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+        <label class="he-filtre-label" for="he-fab-q">Recherche</label>
+        <input type="search" id="he-fab-q" class="he-filtre-input"
+               placeholder="Produit ou lot interne…" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit ou lot">
+      </div>
+
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-fab-tri">Tri</label>
+        <select id="he-fab-tri" class="he-filtre-input">
+          <option value="date_desc">📅 Plus récent</option>
+          <option value="date_asc">📅 Plus ancien</option>
+          <option value="dlc_asc">⏰ DLC ↑</option>
+          <option value="dlc_desc">⏰ DLC ↓</option>
+          <option value="nom_asc">🔤 Nom A→Z</option>
+          <option value="nom_desc">🔤 Nom Z→A</option>
+        </select>
+      </div>
+
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-fab-debut">Du</label>
         <input type="date" id="he-fab-debut" class="he-filtre-input" aria-label="Date de début">
@@ -1199,6 +1218,22 @@
   <!-- 🔥 Cuissons -->
   <div id="he-content-cuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-cuis">
     <div class="he-filtres">
+      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+        <label class="he-filtre-label" for="he-cuis-q">Recherche</label>
+        <input type="search" id="he-cuis-q" class="he-filtre-input"
+               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit ou lot">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-cuis-tri">Tri</label>
+        <select id="he-cuis-tri" class="he-filtre-input">
+          <option value="date_desc">📅 Plus récent</option>
+          <option value="date_asc">📅 Plus ancien</option>
+          <option value="dlc_asc">⏰ DLC ↑</option>
+          <option value="nom_asc">🔤 Nom A→Z</option>
+          <option value="nom_desc">🔤 Nom Z→A</option>
+        </select>
+      </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-cuis-type">Type</label>
         <select id="he-cuis-type" class="he-filtre-input">
@@ -1225,6 +1260,22 @@
   <!-- ❄️ Refroidissements -->
   <div id="he-content-refr" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-refr">
     <div class="he-filtres">
+      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+        <label class="he-filtre-label" for="he-refr-q">Recherche</label>
+        <input type="search" id="he-refr-q" class="he-filtre-input"
+               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit ou lot">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-refr-tri">Tri</label>
+        <select id="he-refr-tri" class="he-filtre-input">
+          <option value="date_desc">📅 Plus récent</option>
+          <option value="date_asc">📅 Plus ancien</option>
+          <option value="dlc_asc">⏰ DLC ↑</option>
+          <option value="nom_asc">🔤 Nom A→Z</option>
+          <option value="nom_desc">🔤 Nom Z→A</option>
+        </select>
+      </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-refr-debut">Du</label>
         <input type="date" id="he-refr-debut" class="he-filtre-input">
@@ -1251,6 +1302,22 @@
   <!-- 🗑️ Devenir DLC -->
   <div id="he-content-dlcdev" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-dlcdev">
     <div class="he-filtres">
+      <div class="he-filtre-groupe" style="flex:2;min-width:200px;">
+        <label class="he-filtre-label" for="he-dlcdev-q">Recherche</label>
+        <input type="search" id="he-dlcdev-q" class="he-filtre-input"
+               placeholder="Produit ou N° de lot…" autocomplete="off" inputmode="search"
+               aria-label="Rechercher par produit ou lot">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-dlcdev-tri">Tri</label>
+        <select id="he-dlcdev-tri" class="he-filtre-input">
+          <option value="date_desc">📅 Plus récent</option>
+          <option value="date_asc">📅 Plus ancien</option>
+          <option value="dlc_asc">⏰ DLC ↑</option>
+          <option value="nom_asc">🔤 Nom A→Z</option>
+          <option value="nom_desc">🔤 Nom Z→A</option>
+        </select>
+      </div>
       <div class="he-filtre-groupe">
         <label class="he-filtre-label" for="he-dlcdev-statut">Devenir</label>
         <select id="he-dlcdev-statut" class="he-filtre-input">

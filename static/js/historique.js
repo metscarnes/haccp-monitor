@@ -87,6 +87,7 @@ const fabState = {
   offset: 0,
   totalCharges: 0,
   charge: false,   // true une fois le 1er chargement effectué
+  rows: [],        // toutes les lignes accumulées (pour filtrage/tri client)
 };
 
 const LIMIT = 50;
@@ -929,6 +930,7 @@ async function fabCharger() {
   fabState.offset = 0;
   fabState.totalCharges = 0;
   fabState.charge = true;
+  fabState.rows = [];
   fabRefs.liste.innerHTML = '';
   fabRefs.plus.hidden = true;
   fabRefs.compteur.textContent = '';
@@ -962,11 +964,12 @@ function fabAjouterResultats(rows) {
     return;
   }
 
-  rows.forEach(fab => fabRefs.liste.appendChild(fabCreerCarte(fab)));
-
+  // Accumuler dans le cache (pour permettre filtre/tri client)
+  fabState.rows.push(...rows);
   fabState.offset       += rows.length;
   fabState.totalCharges += rows.length;
-  fabMajCompteur();
+
+  fabRendre();
 
   if (rows.length === LIMIT) {
     fabRefs.plus.hidden = false;
@@ -977,10 +980,47 @@ function fabAjouterResultats(rows) {
   }
 }
 
-function fabMajCompteur() {
-  fabRefs.compteur.textContent = fabState.totalCharges === 1
-    ? '1 fabrication'
-    : `${fabState.totalCharges} fabrications`;
+function fabFiltrerEtTrier(rows) {
+  const inQ = document.getElementById('he-fab-q');
+  const inTri = document.getElementById('he-fab-tri');
+  const q = inQ ? _normaliserHist(inQ.value).trim() : '';
+  const tri = inTri ? inTri.value : 'date_desc';
+
+  let liste = rows;
+  if (q) {
+    liste = liste.filter(f =>
+      _normaliserHist(f.recette_nom).includes(q) ||
+      _normaliserHist(f.lot_interne).includes(q)
+    );
+  }
+  return _trierLignes(liste, tri, { date: 'date', dlc: 'dlc_finale', nom: 'recette_nom' });
+}
+
+function fabRendre() {
+  const filtres = fabFiltrerEtTrier(fabState.rows);
+  fabRefs.liste.innerHTML = '';
+
+  if (filtres.length === 0) {
+    if (fabState.rows.length === 0) {
+      fabAfficherMessage('🔍', 'Aucune fabrication trouvée.');
+    } else {
+      fabAfficherMessage('🔍', 'Aucun résultat pour cette recherche.');
+    }
+    fabRefs.compteur.textContent = '';
+    return;
+  }
+  fabMasquerMessage();
+  filtres.forEach(fab => fabRefs.liste.appendChild(fabCreerCarte(fab)));
+  fabMajCompteur(filtres.length);
+}
+
+function fabMajCompteur(visible) {
+  const total = fabState.totalCharges;
+  if (visible != null && visible !== total) {
+    fabRefs.compteur.textContent = `${visible} sur ${total} fabrication${total > 1 ? 's' : ''}`;
+  } else {
+    fabRefs.compteur.textContent = total === 1 ? '1 fabrication' : `${total} fabrications`;
+  }
 }
 
 function fabAfficherMessage(icone, texte) {
@@ -1326,9 +1366,27 @@ function fabReimprimer(fab) {
 fabRefs.filtrer.addEventListener('click', fabCharger);
 fabRefs.reset.addEventListener('click', () => {
   initDates(fabRefs);
+  const fq = document.getElementById('he-fab-q');
+  const ft = document.getElementById('he-fab-tri');
+  if (fq) fq.value = '';
+  if (ft) ft.value = 'date_desc';
   fabCharger();
 });
 fabRefs.plus.addEventListener('click', fabChargerSuite);
+
+// Filtre/tri client (instantané, sans rechargement)
+(function bindFabClientFiltres() {
+  const fq = document.getElementById('he-fab-q');
+  const ft = document.getElementById('he-fab-tri');
+  if (fq) {
+    let deb;
+    fq.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(() => { if (fabState.rows.length) fabRendre(); }, 150);
+    });
+  }
+  if (ft) ft.addEventListener('change', () => { if (fabState.rows.length) fabRendre(); });
+})();
 
 // ── Bouton retour ────────────────────────────────────────────
 elBtnRetour.addEventListener('click', () => { window.location.href = '/hub.html'; });
@@ -1644,8 +1702,116 @@ function creerCarteSimple({ titre, sousTitre, meta, chips, badge, variant }) {
   return d;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   FILTRE/TRI CLIENT — applicable à toute liste cachée
+   ══════════════════════════════════════════════════════════════ */
+
+function _normaliserHist(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+// Cache des lignes par onglet : permet ré-application instantanée du filtre/tri
+const histCache = {};
+
+function _trierLignes(rows, tri, fields) {
+  const dateF = fields?.date || 'date';
+  const dlcF  = fields?.dlc  || 'dlc';
+  const nomF  = fields?.nom  || 'produit_nom';
+  const arr = [...rows];
+  switch (tri) {
+    case 'date_asc':
+      arr.sort((a, b) => String(a[dateF] || '').localeCompare(String(b[dateF] || '')));
+      break;
+    case 'dlc_asc':
+      arr.sort((a, b) => {
+        const da = a[dlcF] || '', db = b[dlcF] || '';
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da.localeCompare(db);
+      });
+      break;
+    case 'dlc_desc':
+      arr.sort((a, b) => {
+        const da = a[dlcF] || '', db = b[dlcF] || '';
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return db.localeCompare(da);
+      });
+      break;
+    case 'nom_asc':
+      arr.sort((a, b) => String(a[nomF] || '').localeCompare(String(b[nomF] || ''), 'fr', { sensitivity: 'base' }));
+      break;
+    case 'nom_desc':
+      arr.sort((a, b) => String(b[nomF] || '').localeCompare(String(a[nomF] || ''), 'fr', { sensitivity: 'base' }));
+      break;
+    case 'date_desc':
+    default:
+      arr.sort((a, b) => String(b[dateF] || '').localeCompare(String(a[dateF] || '')));
+      break;
+  }
+  return arr;
+}
+
+function _appliquerFiltresHist(key) {
+  const c = histCache[key];
+  if (!c) return;
+  const liste = $(`he-${key}-liste`);
+  if (!liste) return;
+
+  const inQ = $(`he-${key}-q`);
+  const inTri = $(`he-${key}-tri`);
+  const q = inQ ? _normaliserHist(inQ.value).trim() : '';
+  const tri = inTri ? inTri.value : 'date_desc';
+
+  let rows = c.rows;
+  if (q && c.searchFields?.length) {
+    rows = rows.filter(r => c.searchFields.some(f => _normaliserHist(r[f]).includes(q)));
+  }
+  rows = _trierLignes(rows, tri, c.triFields);
+
+  liste.innerHTML = '';
+  if (!rows.length) {
+    const msg = (c.rows.length === 0)
+      ? `Aucun ${c.singulier} trouvé.`
+      : 'Aucun résultat pour cette recherche.';
+    afficherMessage(key, '🔍', msg);
+    majCompteur(key, 0, c.singulier, c.pluriel);
+    return;
+  }
+  masquerMessage(key);
+  rows.forEach(r => {
+    const carte = c.render(r);
+    if (carte) liste.appendChild(carte);
+  });
+  majCompteur(key, rows.length, c.singulier, c.pluriel);
+}
+
+function _bindFiltresHist(key) {
+  if (histCache[`__bound_${key}`]) return;
+  histCache[`__bound_${key}`] = true;
+  const inQ = $(`he-${key}-q`);
+  const inTri = $(`he-${key}-tri`);
+  if (inQ) {
+    let deb;
+    inQ.addEventListener('input', () => {
+      clearTimeout(deb);
+      deb = setTimeout(() => _appliquerFiltresHist(key), 150);
+    });
+  }
+  if (inTri) inTri.addEventListener('change', () => _appliquerFiltresHist(key));
+}
+
 /* ── Helper de chargement générique (liste simple) ─────────────── */
-async function chargerListe(key, url, render, { singulier = 'élément', pluriel = 'éléments' } = {}) {
+async function chargerListe(key, url, render, {
+  singulier = 'élément',
+  pluriel = 'éléments',
+  searchFields = null,        // ex: ['produit_nom', 'numero_lot']
+  triFields = null,           // ex: { date: 'date_cuisson', dlc: 'dlc_finale', nom: 'produit_nom' }
+} = {}) {
   const liste = $(`he-${key}-liste`);
   if (!liste) return;
   liste.innerHTML = '';
@@ -1653,16 +1819,16 @@ async function chargerListe(key, url, render, { singulier = 'élément', pluriel
   try {
     const rows = await apiFetch(url);
     masquerMessage(key);
-    if (!rows || rows.length === 0) {
-      afficherMessage(key, '🔍', `Aucun ${singulier} trouvé.`);
-      majCompteur(key, 0, singulier, pluriel);
-      return;
-    }
-    rows.forEach(r => {
-      const carte = render(r);
-      if (carte) liste.appendChild(carte);
-    });
-    majCompteur(key, rows.length, singulier, pluriel);
+    histCache[key] = {
+      rows: rows || [],
+      render,
+      singulier,
+      pluriel,
+      searchFields,
+      triFields,
+    };
+    _bindFiltresHist(key);
+    _appliquerFiltresHist(key);
   } catch (err) {
     afficherMessage(key, '⚠️', `Erreur : ${err.message}`);
   }
@@ -1705,7 +1871,12 @@ async function cuisLister() {
       ajouterBoutonEtiquette(carte, 'cuisson', c.id, c.personnel_id);
       return carte;
     },
-    { singulier: 'cuisson', pluriel: 'cuissons' }
+    {
+      singulier: 'cuisson',
+      pluriel: 'cuissons',
+      searchFields: ['produit_nom', 'numero_lot'],
+      triFields: { date: 'date_cuisson', dlc: 'dlc_finale', nom: 'produit_nom' },
+    }
   );
 }
 _onReady(() => {
@@ -1713,6 +1884,8 @@ _onReady(() => {
   $('he-cuis-type')   ?.addEventListener('change', cuisLister);
   $('he-cuis-reset')  ?.addEventListener('click', () => {
     $('he-cuis-debut').value = ''; $('he-cuis-fin').value = '';
+    if ($('he-cuis-q'))   $('he-cuis-q').value = '';
+    if ($('he-cuis-tri')) $('he-cuis-tri').value = 'date_desc';
     dateDefaut30j($('he-cuis-debut'), $('he-cuis-fin'));
     cuisLister();
   });
@@ -1750,13 +1923,20 @@ async function refrLister() {
       }
       return carte;
     },
-    { singulier: 'refroidissement', pluriel: 'refroidissements' }
+    {
+      singulier: 'refroidissement',
+      pluriel: 'refroidissements',
+      searchFields: ['produit_nom', 'numero_lot', 'reception_numero_lot'],
+      triFields: { date: 'date_refroidissement', dlc: 'dlc_finale', nom: 'produit_nom' },
+    }
   );
 }
 _onReady(() => {
   $('he-refr-filtrer')?.addEventListener('click', refrLister);
   $('he-refr-reset')  ?.addEventListener('click', () => {
     $('he-refr-debut').value = ''; $('he-refr-fin').value = '';
+    if ($('he-refr-q'))   $('he-refr-q').value = '';
+    if ($('he-refr-tri')) $('he-refr-tri').value = 'date_desc';
     dateDefaut30j($('he-refr-debut'), $('he-refr-fin'));
     refrLister();
   });
@@ -1823,7 +2003,12 @@ async function dlcdevLister() {
         variant: label.variant,
       });
     },
-    { singulier: 'enregistrement', pluriel: 'enregistrements' }
+    {
+      singulier: 'enregistrement',
+      pluriel: 'enregistrements',
+      searchFields: ['produit_nom', 'numero_lot'],
+      triFields: { date: 'created_at', dlc: 'dlc', nom: 'produit_nom' },
+    }
   );
 }
 _onReady(() => {
@@ -1835,6 +2020,8 @@ _onReady(() => {
     $('he-dlcdev-source').value = '';
     $('he-dlcdev-debut').value  = '';
     $('he-dlcdev-fin').value    = '';
+    if ($('he-dlcdev-q'))   $('he-dlcdev-q').value = '';
+    if ($('he-dlcdev-tri')) $('he-dlcdev-tri').value = 'date_desc';
     dateDefaut30j($('he-dlcdev-debut'), $('he-dlcdev-fin'));
     dlcdevLister();
   });

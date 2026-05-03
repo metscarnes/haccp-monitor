@@ -59,6 +59,19 @@
 
   <!-- Filtres -->
   <section class="inv-filtres">
+    <label class="inv-filtre inv-filtre--search">
+      <span>Recherche</span>
+      <input type="search" id="inv-filtre-recherche"
+             placeholder="Nom du produit ou N° de lot…"
+             autocomplete="off" inputmode="search"
+             aria-label="Rechercher un produit par nom ou numéro de lot">
+    </label>
+    <label class="inv-filtre">
+      <span>Espèce</span>
+      <select id="inv-filtre-espece">
+        <option value="">Toutes</option>
+      </select>
+    </label>
     <label class="inv-filtre">
       <span>Type</span>
       <select id="inv-filtre-type">
@@ -79,6 +92,17 @@
         <option value="plat_cuisine">Plat cuisiné</option>
         <option value="produit_deconge">Produit décongelé</option>
         <option value="produit_congele">Produit congelé</option>
+      </select>
+    </label>
+    <label class="inv-filtre">
+      <span>Tri</span>
+      <select id="inv-filtre-tri">
+        <option value="dlc_asc">DLC ↑ (urgent en premier)</option>
+        <option value="dlc_desc">DLC ↓</option>
+        <option value="nom_asc">Nom A→Z</option>
+        <option value="nom_desc">Nom Z→A</option>
+        <option value="origine_desc">Plus récent</option>
+        <option value="origine_asc">Plus ancien</option>
       </select>
     </label>
     <label class="inv-filtre">

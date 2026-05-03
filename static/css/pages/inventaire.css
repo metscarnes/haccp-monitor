@@ -107,7 +107,8 @@
 }
 .inv-filtre--check input { width: 18px; height: 18px; }
 .inv-filtre select,
-.inv-filtre input[type="date"] {
+.inv-filtre input[type="date"],
+.inv-filtre input[type="search"] {
   min-height: var(--btn-min-sm);
   padding: .5rem .75rem;
   border: 1px solid #d4c5af;
@@ -115,6 +116,13 @@
   font-size: var(--text-base);
   background: #fff;
   color: var(--color-text);
+}
+.inv-filtre--search {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+.inv-filtre--search input[type="search"] {
+  width: 100%;
 }
 .inv-reset {
   min-height: var(--btn-min-sm);

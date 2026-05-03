@@ -41,7 +41,12 @@ const state = {
   categorie: '',
   dlc_max: '',
   inclure_expires: false,
-  items: [],           // liste courante du stock
+  // Filtres client (appliqués sans rechargement réseau)
+  recherche: '',       // texte (nom OU N° de lot, insensible à la casse/accents)
+  espece: '',          // espèce sélectionnée (vide = toutes)
+  tri: 'dlc_asc',      // dlc_asc | dlc_desc | nom_asc | nom_desc | origine_desc | origine_asc
+  itemsRaw: [],        // données brutes renvoyées par /api/stock
+  items: [],           // données filtrées+triées affichées
   personnel: [],       // chargé une fois
 };
 
@@ -144,6 +149,90 @@ function renderItems() {
   });
 }
 
+// ── Filtre/tri client ────────────────────────────────────────
+function normaliser(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function majSelectEspeces() {
+  const sel = $('inv-filtre-espece');
+  if (!sel) return;
+  const especes = [...new Set(
+    state.itemsRaw.map(it => (it.espece || '').trim()).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+  const valeurCourante = state.espece;
+  sel.innerHTML = '<option value="">Toutes</option>' +
+    especes.map(e => `<option value="${escHtml(e)}">${escHtml(e)}</option>`).join('');
+  // Préserver la sélection si toujours présente
+  if (especes.includes(valeurCourante)) {
+    sel.value = valeurCourante;
+  } else {
+    state.espece = '';
+    sel.value = '';
+  }
+}
+
+function comparer(a, b) {
+  switch (state.tri) {
+    case 'dlc_desc': {
+      const da = a.dlc || '';
+      const db_ = b.dlc || '';
+      if (!da && !db_) return 0;
+      if (!da) return 1;
+      if (!db_) return -1;
+      return db_.localeCompare(da);
+    }
+    case 'nom_asc':
+      return String(a.produit_nom || '').localeCompare(b.produit_nom || '', 'fr', { sensitivity: 'base' });
+    case 'nom_desc':
+      return String(b.produit_nom || '').localeCompare(a.produit_nom || '', 'fr', { sensitivity: 'base' });
+    case 'origine_desc':
+      return String(b.date_origine || '').localeCompare(a.date_origine || '');
+    case 'origine_asc':
+      return String(a.date_origine || '').localeCompare(b.date_origine || '');
+    case 'dlc_asc':
+    default: {
+      const da = a.dlc || '';
+      const db_ = b.dlc || '';
+      // null/vide en dernier
+      if (!da && !db_) return 0;
+      if (!da) return 1;
+      if (!db_) return -1;
+      return da.localeCompare(db_);
+    }
+  }
+}
+
+function appliquerFiltresClient() {
+  const q = normaliser(state.recherche).trim();
+  const esp = state.espece;
+  let liste = state.itemsRaw;
+
+  if (q) {
+    liste = liste.filter(it =>
+      normaliser(it.produit_nom).includes(q) ||
+      normaliser(it.numero_lot).includes(q)
+    );
+  }
+  if (esp) {
+    liste = liste.filter(it => (it.espece || '') === esp);
+  }
+  liste = [...liste].sort(comparer);
+  state.items = liste;
+
+  // Purger la sélection des items qui ne sont plus visibles
+  const clesVisibles = new Set(state.items.map(clefItem));
+  for (const k of gestionState.selection) {
+    if (!clesVisibles.has(k)) gestionState.selection.delete(k);
+  }
+
+  renderItems();
+  mettreAJourActionBar();
+}
+
 // ── Chargement stock ─────────────────────────────────────────
 async function chargerStock() {
   const params = new URLSearchParams();
@@ -173,16 +262,9 @@ async function chargerStock() {
   $('inv-stat-refroidissement').textContent = data.par_source?.refroidissement ?? 0;
   $('inv-stat-3j').textContent              = data.expirent_3j ?? 0;
 
-  state.items = data.items ?? [];
-
-  // Purger la sélection des items qui ne sont plus visibles
-  const clesVisibles = new Set(state.items.map(clefItem));
-  for (const k of gestionState.selection) {
-    if (!clesVisibles.has(k)) gestionState.selection.delete(k);
-  }
-
-  renderItems();
-  mettreAJourActionBar();
+  state.itemsRaw = data.items ?? [];
+  majSelectEspeces();
+  appliquerFiltresClient();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -462,6 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════
 
 function bindFiltres() {
+  // Filtres serveur (déclenchent un rechargement)
   $('inv-filtre-type').addEventListener('change', (e) => {
     state.type = e.target.value;
     chargerStock();
@@ -478,15 +561,40 @@ function bindFiltres() {
     state.inclure_expires = e.target.checked;
     chargerStock();
   });
+
+  // Filtres client (instantanés, sans rechargement réseau)
+  let debounceRecherche;
+  $('inv-filtre-recherche').addEventListener('input', (e) => {
+    clearTimeout(debounceRecherche);
+    debounceRecherche = setTimeout(() => {
+      state.recherche = e.target.value;
+      appliquerFiltresClient();
+    }, 150);
+  });
+  $('inv-filtre-espece').addEventListener('change', (e) => {
+    state.espece = e.target.value;
+    appliquerFiltresClient();
+  });
+  $('inv-filtre-tri').addEventListener('change', (e) => {
+    state.tri = e.target.value;
+    appliquerFiltresClient();
+  });
+
   $('inv-reset').addEventListener('click', () => {
     state.type = 'tous';
     state.categorie = '';
     state.dlc_max = '';
     state.inclure_expires = false;
+    state.recherche = '';
+    state.espece = '';
+    state.tri = 'dlc_asc';
     $('inv-filtre-type').value = 'tous';
     $('inv-filtre-categorie').value = '';
     $('inv-filtre-dlc-max').value = '';
     $('inv-filtre-expires').checked = false;
+    $('inv-filtre-recherche').value = '';
+    $('inv-filtre-espece').value = '';
+    $('inv-filtre-tri').value = 'dlc_asc';
     chargerStock();
   });
   $('inv-btn-gestion').addEventListener('click', toggleGestionMode);
