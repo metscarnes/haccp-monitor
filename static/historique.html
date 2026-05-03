@@ -1147,9 +1147,14 @@
 
       <div class="he-filtre-groupe he-search-wrap">
         <label class="he-filtre-label" for="he-rec-fourn">Fournisseur</label>
-        <input type="search" id="he-rec-fourn" class="he-filtre-input"
-               placeholder="Tous les fournisseurs" autocomplete="off" inputmode="search"
-               aria-label="Filtrer par fournisseur" aria-autocomplete="list" aria-controls="he-rec-auto">
+        <div class="he-search-input-wrap">
+          <input type="search" id="he-rec-fourn" class="he-filtre-input"
+                 placeholder="Tous les fournisseurs" autocomplete="off" inputmode="search"
+                 aria-label="Filtrer par fournisseur"
+                 aria-autocomplete="list" aria-controls="he-rec-auto">
+          <button type="button" class="he-search-chev" data-ac-target="he-rec-auto"
+                  aria-label="Voir tous les fournisseurs" title="Voir tous les fournisseurs">▾</button>
+        </div>
         <div id="he-rec-auto" class="he-autocomplete" hidden role="listbox"></div>
       </div>
 

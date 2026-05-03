@@ -841,32 +841,63 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
 }
 
 // ── Autocomplete réceptions (fournisseurs avec cross-filter) ─
+let _fournisseursCache = null;
+async function _chargerFournisseurs() {
+  if (_fournisseursCache) return _fournisseursCache;
+  try {
+    _fournisseursCache = await apiFetch('/api/fournisseurs');
+  } catch {
+    _fournisseursCache = [];
+  }
+  return _fournisseursCache;
+}
+
+async function _suggererFournisseurs() {
+  const q = recRefs.input.value.trim().toLowerCase();
+  const liste = await _chargerFournisseurs();
+  let filtres = q ? liste.filter(f => f.nom.toLowerCase().includes(q)) : [...liste];
+  // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés
+  if (recState.fournisseursLies && recState.fournisseursLies.size > 0) {
+    filtres = filtres.filter(f => recState.fournisseursLies.has(f.nom));
+  }
+  filtres.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
+  recAfficherAuto(filtres);
+}
+
 recRefs.input.addEventListener('input', () => {
   recState.fournisseurId = null;
-  const q = recRefs.input.value.trim();
-  if (!q) { recRefs.auto.hidden = true; recRefs.auto.innerHTML = ''; return; }
-
   clearTimeout(recState.debounce);
-  recState.debounce = setTimeout(async () => {
-    try {
-      const liste = await apiFetch('/api/fournisseurs');
-      const ql = q.toLowerCase();
-      let filtres = liste.filter(f => f.nom.toLowerCase().includes(ql));
-      // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés
-      if (recState.fournisseursLies && recState.fournisseursLies.size > 0) {
-        filtres = filtres.filter(f => recState.fournisseursLies.has(f.nom));
-      }
-      recAfficherAuto(filtres.slice(0, 10));
-    } catch { /* silencieux */ }
-  }, 300);
+  recState.debounce = setTimeout(_suggererFournisseurs, 200);
 });
+
+recRefs.input.addEventListener('focus', () => {
+  _suggererFournisseurs();
+});
+recRefs.input.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === 'Enter') recRefs.auto.hidden = true;
+});
+
+// Chevron fournisseur : déroule toute la liste (avec cross-filter si actif)
+(function bindRecFournChev() {
+  const chev = recRefs.input.parentElement?.querySelector('.he-search-chev');
+  if (!chev) return;
+  chev.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!recRefs.auto.hidden) {
+      recRefs.auto.hidden = true;
+    } else {
+      _suggererFournisseurs();
+    }
+  });
+})();
 
 function recAfficherAuto(liste) {
   recRefs.auto.innerHTML = '';
   if (!liste.length) {
-    recRefs.auto.innerHTML = recState.fournisseursLies
-      ? '<div class="he-ac-vide">Aucun fournisseur ne correspond au produit recherché.</div>'
-      : '<div class="he-ac-vide">Aucun fournisseur trouvé.</div>';
+    const msg = (recState.fournisseursLies && recState.fournisseursLies.size > 0)
+      ? 'Aucun fournisseur n\'a livré le produit recherché.'
+      : 'Aucun fournisseur trouvé.';
+    recRefs.auto.innerHTML = `<div class="he-ac-vide">${msg}</div>`;
     recRefs.auto.hidden = false;
     return;
   }
