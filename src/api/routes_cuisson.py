@@ -159,7 +159,8 @@ async def lister_cuissons(
                    p.nom       AS produit_nom,
                    p.espece    AS espece,
                    pers.prenom AS personnel_prenom,
-                   rl.numero_lot
+                   rl.numero_lot,
+                   rl.reception_id AS reception_id
             FROM   cuissons c
             LEFT   JOIN produits        p    ON p.id    = c.produit_id
             LEFT   JOIN personnel       pers ON pers.id = c.personnel_id

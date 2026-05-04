@@ -286,7 +286,8 @@ async def lister_refroidissements(
                    p.nom        AS produit_nom,
                    p.espece     AS espece,
                    pers.prenom  AS personnel_prenom,
-                   rl.numero_lot AS reception_numero_lot
+                   rl.numero_lot AS reception_numero_lot,
+                   rl.reception_id AS reception_id
             FROM   refroidissements r
             LEFT   JOIN produits  p    ON p.id    = r.produit_id
             LEFT   JOIN personnel pers ON pers.id = r.personnel_id

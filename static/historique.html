@@ -728,6 +728,34 @@
       box-shadow: 0 2px 6px rgba(61,32,8,.10);
       overflow: hidden;
     }
+    .he-carte-fab--warn { border-left-color: var(--attention); }
+    .he-carte-fab--nc   { border-left-color: var(--alerte); }
+
+    .he-traca-det {
+      padding: 12px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .he-traca-info {
+      font-size: 14px;
+      color: #555;
+    }
+    .he-traca-lien {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+      padding: 8px 12px;
+      background: var(--fond);
+      border: 1px solid var(--secondaire);
+      border-radius: 8px;
+      align-self: flex-start;
+    }
+    .he-traca-lien:hover { background: rgba(45,125,70,.1); }
 
     .he-carte-fab-resume {
       display: flex;

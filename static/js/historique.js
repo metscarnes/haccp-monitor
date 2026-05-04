@@ -1886,6 +1886,114 @@ function creerCarteSimple({ titre, sousTitre, meta, chips, badge, variant }) {
   return d;
 }
 
+/* ── Carte accordéon avec traçabilité (cuissons / refroidissements) ── */
+function creerCarteTraca({ icone, titre, lot, dlc, meta, chips, variant, etiquette, remplirDetail }) {
+  const carte = document.createElement('div');
+  carte.className = 'he-carte-fab' + (variant ? ` he-carte-fab--${variant}` : '');
+  carte.setAttribute('role', 'listitem');
+
+  const resume = document.createElement('div');
+  resume.className = 'he-carte-fab-resume';
+
+  const iconeEl = document.createElement('div');
+  iconeEl.className = 'he-fab-icone';
+  iconeEl.setAttribute('aria-hidden', 'true');
+  iconeEl.textContent = icone || '📋';
+  resume.appendChild(iconeEl);
+
+  const info = document.createElement('div');
+  info.className = 'he-carte-fab-info';
+
+  const entete = document.createElement('div');
+  entete.className = 'he-fab-entete';
+  const nom = document.createElement('div');
+  nom.className = 'he-fab-nom';
+  nom.textContent = titre || '—';
+  entete.appendChild(nom);
+  if (lot) {
+    const lotEl = document.createElement('span');
+    lotEl.className = 'he-fab-lot';
+    lotEl.textContent = `Lot ${lot}`;
+    entete.appendChild(lotEl);
+  }
+  if (dlc) {
+    const dlcBadge = document.createElement('span');
+    dlcBadge.style.cssText = 'display:inline-block;margin-left:.5rem;font-size:.7rem;font-weight:700;color:#dc2626;background:#fee2e2;padding:2px 8px;border-radius:4px;flex-shrink:0;';
+    dlcBadge.textContent = `DLC: ${formatDateFR(dlc)}`;
+    entete.appendChild(dlcBadge);
+  }
+  info.appendChild(entete);
+
+  if (meta) {
+    const metaEl = document.createElement('div');
+    metaEl.className = 'he-fab-meta';
+    metaEl.textContent = meta;
+    info.appendChild(metaEl);
+  }
+
+  const chipsEl = document.createElement('div');
+  chipsEl.className = 'he-fab-chips';
+  (chips || []).forEach(txt => {
+    const chip = document.createElement('span');
+    chip.className = 'he-fab-chip';
+    chip.textContent = txt;
+    chipsEl.appendChild(chip);
+  });
+  if (etiquette) {
+    const btn = document.createElement('button');
+    btn.className = 'he-btn-reimprimer';
+    btn.type = 'button';
+    btn.textContent = '🖨 Étiquette';
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      transformeReimprimer(etiquette.type, etiquette.id, etiquette.personnelId, btn);
+    });
+    chipsEl.appendChild(btn);
+  }
+  info.appendChild(chipsEl);
+
+  resume.appendChild(info);
+
+  const chev = document.createElement('span');
+  chev.className = 'he-chevron';
+  chev.textContent = '▾';
+  chev.setAttribute('aria-hidden', 'true');
+  resume.appendChild(chev);
+
+  carte.appendChild(resume);
+
+  const detail = document.createElement('div');
+  detail.className = 'he-fab-detail';
+  carte.appendChild(detail);
+
+  resume.addEventListener('click', () => {
+    carte.classList.toggle('ouvert');
+    if (carte.classList.contains('ouvert') && !detail.dataset.charge) {
+      detail.dataset.charge = '1';
+      remplirDetail && remplirDetail(detail);
+    }
+  });
+
+  return carte;
+}
+
+function _tracaLienReception(reception_id) {
+  const lien = document.createElement('a');
+  lien.href = `/reception-detail.html?id=${reception_id}`;
+  lien.textContent = '🔗 Voir la réception d\'origine';
+  lien.className = 'he-traca-lien';
+  lien.title = 'Voir la fiche de réception';
+  lien.addEventListener('click', e => e.stopPropagation());
+  return lien;
+}
+
+function _tracaInfo(texte) {
+  const p = document.createElement('div');
+  p.className = 'he-traca-info';
+  p.textContent = texte;
+  return p;
+}
+
 /* ══════════════════════════════════════════════════════════════
    FILTRE/TRI CLIENT — applicable à toute liste cachée
    ══════════════════════════════════════════════════════════════ */
@@ -2154,20 +2262,32 @@ async function cuisLister() {
   if (fin)   p.set('date_fin',   fin);
   await chargerListe('cuis',
     `/api/cuisson/enregistrements?${p.toString()}`,
-    c => {
-      const carte = creerCarteSimple({
-        titre: c.produit_nom || '—',
-        meta : `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_sortie)}`,
-        sousTitre: c.type_cuisson ? `Cuisson ${c.type_cuisson}` : null,
-        chips: [
-          c.duree_minutes ? `${c.duree_minutes} min` : null,
-          c.numero_lot    ? `Lot ${c.numero_lot}`     : null,
-        ].filter(Boolean),
-        variant: (c.temperature_sortie >= 75) ? 'ok' : 'warn',
-      });
-      ajouterBoutonEtiquette(carte, 'cuisson', c.id, c.personnel_id);
-      return carte;
-    },
+    c => creerCarteTraca({
+      icone: '🔥',
+      titre: c.produit_nom || '—',
+      lot:   c.numero_lot || null,
+      dlc:   c.dlc_finale || null,
+      meta:  `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_sortie)}`,
+      chips: [
+        c.duree_minutes ? `${c.duree_minutes} min` : null,
+        c.type_cuisson  ? `Cuisson ${c.type_cuisson}` : null,
+      ].filter(Boolean),
+      variant:   (c.temperature_sortie >= 75) ? null : 'warn',
+      etiquette: { type: 'cuisson', id: c.id, personnelId: c.personnel_id },
+      remplirDetail: el => {
+        const wrap = document.createElement('div');
+        wrap.className = 'he-traca-det';
+        if (c.temperature_sortie != null) {
+          const ok = c.temperature_sortie >= 75;
+          wrap.appendChild(_tracaInfo(`T° à cœur : ${formatTemp(c.temperature_sortie)} ${ok ? '✓ conforme' : '⚠ < 75 °C'}`));
+        }
+        if (c.duree_minutes) wrap.appendChild(_tracaInfo(`Durée : ${c.duree_minutes} min`));
+        if (c.type_cuisson)  wrap.appendChild(_tracaInfo(`Type : Cuisson ${c.type_cuisson}`));
+        if (c.reception_id)  wrap.appendChild(_tracaLienReception(c.reception_id));
+        else                 wrap.appendChild(_tracaInfo('Réception d\'origine non liée.'));
+        el.appendChild(wrap);
+      },
+    }),
     {
       singulier: 'cuisson',
       pluriel: 'cuissons',
@@ -2204,23 +2324,32 @@ async function refrLister() {
   if (fin)   p.set('date_fin',   fin);
   await chargerListe('refr',
     `/api/refroidissement/enregistrements?${p.toString()}`,
-    r => {
-      const carte = creerCarteSimple({
-        titre: r.produit_nom || '—',
-        meta : `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — Lot : ${r.numero_lot || r.reception_numero_lot || '—'}`,
-        sousTitre: `T° début ${formatTemp(r.temperature_initiale)} → T° fin ${formatTemp(r.temperature_finale)}`,
-        chips: [
-          r.duree_minutes ? `${r.duree_minutes} min` : null,
-          r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
-        ].filter(Boolean),
-        variant: r.conforme === 0 ? 'nc' : 'ok',
-      });
-      // Pas d'étiquette si le produit a été jeté
-      if (!r.jeter) {
-        ajouterBoutonEtiquette(carte, 'refroidissement', r.id, r.personnel_id);
-      }
-      return carte;
-    },
+    r => creerCarteTraca({
+      icone: '❄️',
+      titre: r.produit_nom || '—',
+      lot:   r.numero_lot || r.reception_numero_lot || null,
+      dlc:   r.dlc_finale || null,
+      meta:  `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — T° ${formatTemp(r.temperature_initiale)} → ${formatTemp(r.temperature_finale)}`,
+      chips: [
+        r.duree_minutes ? `${r.duree_minutes} min` : null,
+        r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
+      ].filter(Boolean),
+      variant:   r.conforme === 0 ? 'nc' : null,
+      etiquette: r.jeter ? null : { type: 'refroidissement', id: r.id, personnelId: r.personnel_id },
+      remplirDetail: el => {
+        const wrap = document.createElement('div');
+        wrap.className = 'he-traca-det';
+        if (r.temperature_initiale != null) wrap.appendChild(_tracaInfo(`T° initiale : ${formatTemp(r.temperature_initiale)}`));
+        if (r.temperature_finale   != null) wrap.appendChild(_tracaInfo(`T° finale : ${formatTemp(r.temperature_finale)}`));
+        if (r.duree_minutes) wrap.appendChild(_tracaInfo(`Durée : ${r.duree_minutes} min`));
+        wrap.appendChild(_tracaInfo(r.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme'));
+        if (r.action_corrective) wrap.appendChild(_tracaInfo(`Action corrective : ${r.action_corrective}`));
+        if (r.jeter) wrap.appendChild(_tracaInfo('⚠ Produit jeté'));
+        if (r.reception_id) wrap.appendChild(_tracaLienReception(r.reception_id));
+        else                wrap.appendChild(_tracaInfo('Réception d\'origine non liée.'));
+        el.appendChild(wrap);
+      },
+    }),
     {
       singulier: 'refroidissement',
       pluriel: 'refroidissements',
