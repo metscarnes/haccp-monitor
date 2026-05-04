@@ -390,6 +390,7 @@ async def historique_receptions(
     date_debut:    Optional[str] = Query(None, description="YYYY-MM-DD"),
     date_fin:      Optional[str] = Query(None, description="YYYY-MM-DD"),
     fournisseur_id: Optional[int] = Query(None),
+    fournisseur_nom: Optional[str] = Query(None, description="Filtre par nom de fournisseur (exact, insensible casse/accents)"),
     q:             Optional[str] = Query(None, description="Recherche produit ou N° de lot dans les lignes"),
     limit:         int            = Query(50, ge=1, le=500),
     offset:        int            = Query(0, ge=0),
@@ -400,10 +401,79 @@ async def historique_receptions(
             date_debut=date_debut,
             date_fin=date_fin,
             fournisseur_id=fournisseur_id,
+            fournisseur_nom=fournisseur_nom,
             q=q,
             limit=limit,
             offset=offset,
         )
+
+
+@router.get("/receptions/fournisseurs-suggestions")
+async def suggestions_fournisseurs_receptions(
+    q_produit: Optional[str] = Query(None, description="Filtre les fournisseurs aux livraisons d'un produit/lot précis"),
+    limit: int = Query(200, ge=1, le=500),
+):
+    """
+    Liste des fournisseurs vus en réception (déduplication par nom normalisé).
+    Si `q_produit` est fourni, ne renvoie que les fournisseurs ayant livré ce produit/lot.
+    Source : COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)
+    afin de capturer aussi les fournisseurs renseignés en texte libre.
+    """
+    where_q = ""
+    params: list = []
+    if q_produit and q_produit.strip():
+        like = f"%{q_produit.strip()}%"
+        where_q = "AND (p.nom LIKE ? COLLATE NOCASE OR rl.numero_lot LIKE ? COLLATE NOCASE)"
+        params.extend([like, like])
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            f"""
+            SELECT
+                COALESCE(fl.id, fr.id)                                            AS id,
+                COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)   AS nom,
+                MAX(r.date_reception)                                             AS derniere_reception
+            FROM reception_lignes rl
+            JOIN receptions   r ON r.id = rl.reception_id
+            JOIN produits     p ON p.id = rl.produit_id
+            LEFT JOIN fournisseurs fl ON fl.id = rl.fournisseur_id
+            LEFT JOIN fournisseurs fr ON fr.id = r.fournisseur_principal_id
+            WHERE 1=1
+              {where_q}
+            GROUP BY COALESCE(fl.id, fr.id),
+                     COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)
+            HAVING nom IS NOT NULL AND TRIM(nom) <> ''
+            ORDER BY derniere_reception DESC
+            LIMIT ?
+            """,
+            tuple(params) + (limit,),
+        )
+        rows = await cursor.fetchall()
+
+    # Déduplication finale par nom normalisé (sans accents, casse) — couvre les cas
+    # où un même fournisseur apparaît à la fois lié par id et en texte libre.
+    import unicodedata
+    def _norm(s: str) -> str:
+        s = (s or "").strip().lower()
+        return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+    vus: dict[str, dict] = {}
+    for r in rows:
+        d = dict(r)
+        k = _norm(d["nom"])
+        if not k:
+            continue
+        existant = vus.get(k)
+        if existant is None:
+            vus[k] = d
+        elif existant.get("id") is None and d.get("id") is not None:
+            d["derniere_reception"] = max(
+                filter(None, [existant.get("derniere_reception"), d.get("derniere_reception")]),
+                default=d.get("derniere_reception"),
+            )
+            vus[k] = d
+
+    return list(vus.values())
 
 
 @router.get("/receptions/produits-suggestions")

@@ -2175,6 +2175,7 @@ async def get_receptions(
     date_debut: Optional[str] = None,
     date_fin: Optional[str] = None,
     fournisseur_id: Optional[int] = None,
+    fournisseur_nom: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -2191,6 +2192,25 @@ async def get_receptions(
     if fournisseur_id is not None:
         conditions.append("r.fournisseur_principal_id = ?")
         params.append(fournisseur_id)
+    if fournisseur_nom and fournisseur_nom.strip():
+        # Match les réceptions liées à ce fournisseur via id ou champs texte libre,
+        # côté en-tête (receptions) ou côté lignes (reception_lignes).
+        nom = fournisseur_nom.strip()
+        conditions.append(
+            "("
+            "  COALESCE("
+            "    (SELECT f1.nom FROM fournisseurs f1 WHERE f1.id = r.fournisseur_principal_id),"
+            "    r.fournisseur_nom"
+            "  ) LIKE ? COLLATE NOCASE"
+            "  OR EXISTS ("
+            "    SELECT 1 FROM reception_lignes rl3"
+            "    LEFT JOIN fournisseurs f3 ON f3.id = rl3.fournisseur_id"
+            "    WHERE rl3.reception_id = r.id"
+            "      AND COALESCE(f3.nom, rl3.fournisseur_nom) LIKE ? COLLATE NOCASE"
+            "  )"
+            ")"
+        )
+        params.extend([nom, nom])
     if q:
         # Filtre les réceptions dont au moins une ligne contient un produit
         # ou un N° de lot correspondant (recherche insensible à la casse, sous-chaîne).

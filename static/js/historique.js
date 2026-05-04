@@ -77,13 +77,11 @@ const ouvState = {
 
 const recState = {
   fournisseurId: null,
+  fournisseurNom: null,   // utilisé quand le fournisseur sélectionné n'a pas d'id (texte libre)
   offset: 0,
   totalCharges: 0,
   debounce: null,
   inactivite: null,
-  // Cross-filter : ensemble des fournisseurs liés au produit recherché
-  // (rempli par l'autocomplete produit, utilisé par l'autocomplete fournisseur).
-  fournisseursLies: null,   // Set<string> ou null si pas de filtre produit actif
 };
 
 const fabState = {
@@ -468,7 +466,11 @@ function recBuildUrl(offset = 0) {
   const p = new URLSearchParams();
   p.set('limit', String(LIMIT));
   p.set('offset', String(offset));
-  if (recState.fournisseurId !== null) p.set('fournisseur_id', String(recState.fournisseurId));
+  if (recState.fournisseurId !== null) {
+    p.set('fournisseur_id', String(recState.fournisseurId));
+  } else if (recState.fournisseurNom) {
+    p.set('fournisseur_nom', recState.fournisseurNom);
+  }
   if (recRefs.debut.value) p.set('date_debut', recRefs.debut.value);
   if (recRefs.fin.value) p.set('date_fin', recRefs.fin.value);
   const elQ = document.getElementById('he-rec-q');
@@ -840,50 +842,44 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
   return div;
 }
 
-// ── Autocomplete réceptions (fournisseurs avec cross-filter) ─
-let _fournisseursCache = null;
-let _fournisseursPending = null;
-async function _chargerFournisseurs() {
-  // On ne cache QUE les résultats non-vides : un cache vide signifie probablement
-  // une erreur transitoire au 1er appel. Réessaye à chaque ouverture du dropdown.
-  if (Array.isArray(_fournisseursCache) && _fournisseursCache.length) {
-    return _fournisseursCache;
-  }
-  if (_fournisseursPending) return _fournisseursPending;
-  _fournisseursPending = (async () => {
-    try {
-      const data = await apiFetch('/api/fournisseurs');
-      if (Array.isArray(data) && data.length) _fournisseursCache = data;
-      return Array.isArray(data) ? data : [];
-    } catch (err) {
-      console.warn('Impossible de charger les fournisseurs :', err);
-      return [];
-    } finally {
-      _fournisseursPending = null;
-    }
-  })();
-  return _fournisseursPending;
-}
+// ── Autocomplete réceptions (fournisseurs dérivés des réceptions) ─
+// La liste est dérivée des réceptions réelles, pas de la table `fournisseurs`,
+// pour couvrir aussi les fournisseurs saisis en texte libre. Le cross-filter par
+// produit est appliqué côté serveur via le paramètre q_produit.
+let _recFrnFetchSeq = 0;
 
-function _frnKey(s) {
-  return _normaliserHist(s).trim();
+function _recProduitQ() {
+  const elQ = document.getElementById('he-rec-q');
+  return elQ ? elQ.value.trim() : '';
 }
 
 async function _suggererFournisseurs() {
-  const q = recRefs.input.value.trim().toLowerCase();
-  const liste = await _chargerFournisseurs();
-  let filtres = q ? liste.filter(f => f.nom.toLowerCase().includes(q)) : [...liste];
-  // Cross-filter : si un produit est recherché, restreindre aux fournisseurs liés.
-  // Comparaison normalisée (sans accents, sans casse, trim) pour éviter les ratés.
-  if (recState.fournisseursLies && recState.fournisseursLies.size > 0) {
-    filtres = filtres.filter(f => recState.fournisseursLies.has(_frnKey(f.nom)));
+  const myFetch = ++_recFrnFetchSeq;
+  const qFrn = recRefs.input.value.trim().toLowerCase();
+  const qProduit = _recProduitQ();
+  const url = qProduit
+    ? `/api/receptions/fournisseurs-suggestions?q_produit=${encodeURIComponent(qProduit)}`
+    : `/api/receptions/fournisseurs-suggestions`;
+  let liste;
+  try {
+    liste = await apiFetch(url);
+  } catch (err) {
+    console.warn('Impossible de charger les fournisseurs :', err);
+    liste = [];
   }
-  filtres.sort((a, b) => a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' }));
-  recAfficherAuto(filtres);
+  if (myFetch !== _recFrnFetchSeq) return; // requête obsolète
+  if (!Array.isArray(liste)) liste = [];
+  // Filtrage local par texte saisi dans le champ fournisseur
+  let filtres = qFrn
+    ? liste.filter(f => (f.nom || '').toLowerCase().includes(qFrn))
+    : [...liste];
+  filtres.sort((a, b) => (a.nom || '').localeCompare(b.nom || '', 'fr', { sensitivity: 'base' }));
+  recAfficherAuto(filtres, { aProduit: !!qProduit });
 }
 
 recRefs.input.addEventListener('input', () => {
   recState.fournisseurId = null;
+  recState.fournisseurNom = null;
   clearTimeout(recState.debounce);
   recState.debounce = setTimeout(_suggererFournisseurs, 200);
 });
@@ -895,7 +891,6 @@ recRefs.input.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Enter') recRefs.auto.hidden = true;
 });
 
-// Chevron fournisseur : déroule toute la liste (avec cross-filter si actif)
 (function bindRecFournChev() {
   const chev = recRefs.input.parentElement?.querySelector('.he-search-chev');
   if (!chev) return;
@@ -909,10 +904,10 @@ recRefs.input.addEventListener('keydown', (e) => {
   });
 })();
 
-function recAfficherAuto(liste) {
+function recAfficherAuto(liste, { aProduit = false } = {}) {
   recRefs.auto.innerHTML = '';
   if (!liste.length) {
-    const msg = (recState.fournisseursLies && recState.fournisseursLies.size > 0)
+    const msg = aProduit
       ? 'Aucun fournisseur n\'a livré le produit recherché.'
       : 'Aucun fournisseur trouvé.';
     recRefs.auto.innerHTML = `<div class="he-ac-vide">${msg}</div>`;
@@ -925,7 +920,8 @@ function recAfficherAuto(liste) {
     item.setAttribute('role', 'option');
     item.textContent = f.nom;
     item.addEventListener('click', () => {
-      recState.fournisseurId = f.id;
+      recState.fournisseurId = (f.id != null) ? f.id : null;
+      recState.fournisseurNom = (f.id == null) ? f.nom : null;
       recRefs.input.value = f.nom;
       recRefs.auto.hidden = true;
       recRefs.auto.innerHTML = '';
@@ -952,15 +948,6 @@ function recAfficherAuto(liste) {
         : `/api/receptions/produits-suggestions?limit=50`;
       const liste = await apiFetch(url);
       if (myFetch !== dernierFetch) return; // requête obsolète
-      // Mettre à jour le set des fournisseurs liés (pour cross-filter)
-      // Stocké en clé normalisée (sans accents, sans casse) pour fiabiliser la comparaison.
-      const setFrn = new Set();
-      liste.forEach(p => (p.fournisseurs || []).forEach(f => {
-        const k = _frnKey(f);
-        if (k) setFrn.add(k);
-      }));
-      recState.fournisseursLies = (q && setFrn.size > 0) ? setFrn : null;
-
       _renderHistAC(auto, liste, (nom) => {
         inQ.value = nom;
         auto.hidden = true;
@@ -1001,10 +988,6 @@ function recAfficherAuto(liste) {
     if (wrap && !wrap.contains(e.target)) fermer();
   });
 
-  // Quand l'utilisateur efface le champ → drop le cross-filter
-  inQ.addEventListener('input', () => {
-    if (!inQ.value.trim()) recState.fournisseursLies = null;
-  });
 })();
 
 document.addEventListener('click', e => {
@@ -1020,7 +1003,7 @@ document.addEventListener('click', e => {
 recRefs.filtrer.addEventListener('click', recCharger);
 recRefs.reset.addEventListener('click', () => {
   recState.fournisseurId = null;
-  recState.fournisseursLies = null;
+  recState.fournisseurNom = null;
   recRefs.input.value = '';
   recRefs.auto.hidden = true;
   const elQ = document.getElementById('he-rec-q');

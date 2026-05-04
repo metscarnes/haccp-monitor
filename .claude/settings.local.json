@@ -115,7 +115,13 @@
       "Bash(node --check \"c:/Users/campi/OneDrive/Création d'entreprise/Boucherie/SoftWare/haccp-monitor/static/js/inventaire.js\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(r'c:/Users/campi/OneDrive/Création d\\\\'entreprise/Boucherie/SoftWare/haccp-monitor/src/database.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK db'\\); ast.parse\\(open\\(r'c:/Users/campi/OneDrive/Création d\\\\'entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_reception.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK rec'\\); ast.parse\\(open\\(r'c:/Users/campi/OneDrive/Création d\\\\'entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_cuisson.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK cuis'\\); ast.parse\\(open\\(r'c:/Users/campi/OneDrive/Création d\\\\'entreprise/Boucherie/SoftWare/haccp-monitor/src/api/routes_refroidissement.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK refr'\\)\")",
       "Bash(python -m py_compile \"src/database.py\" \"src/api/routes_reception.py\" \"src/api/routes_cuisson.py\" \"src/api/routes_refroidissement.py\")",
-      "Bash(python -m py_compile \"src/api/routes_reception.py\")"
+      "Bash(python -m py_compile \"src/api/routes_reception.py\")",
+      "Bash(curl -s http://localhost:8000/api/fournisseurs)",
+      "Bash(curl -v http://localhost:8000/api/fournisseurs)",
+      "Bash(sqlite3 \"c:\\\\Users\\\\campi\\\\OneDrive\\\\Création d'entreprise\\\\Boucherie\\\\SoftWare\\\\haccp-monitor\\\\haccp.db\" \"SELECT COUNT\\(*\\), boutique_id FROM fournisseurs GROUP BY boutique_id;\")",
+      "Bash(python _inspect.py)",
+      "Bash(node --check static/js/historique.js)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/api/routes_reception.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('src/database.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }
