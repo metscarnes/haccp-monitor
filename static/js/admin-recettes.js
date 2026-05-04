@@ -255,7 +255,7 @@ let _pendingIngredient = null; // { nom, quantite, unite } en attente de confirm
 function ouvrirModalNouvelIngredient(nom, quantite, unite) {
   _pendingIngredient = { nom, quantite, unite };
   $('ar-modal-nom').value        = nom;
-  $('ar-modal-categorie').value  = 'Ingrédient';
+  $('ar-modal-categorie').value  = 'matiere_premiere';
   $('ar-modal-dlc').value        = '0';
   $('ar-modal-temp').value       = 'Ambiant';
   $('ar-modal-overlay').hidden   = false;
@@ -376,7 +376,7 @@ async function enregistrerRecette() {
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({
             nom:                      ing.nom,
-            categorie:                ing.categorie                || 'Ingrédient',
+            categorie:                ing.categorie                || 'matiere_premiere',
             dlc_jours:                ing.dlc_jours                ?? 0,
             temperature_conservation: ing.temperature_conservation || 'Ambiant',
           })
