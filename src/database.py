@@ -197,6 +197,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     livraison_refusee        INTEGER DEFAULT 0,
     information_ddpp         INTEGER DEFAULT 0,
     commentaire_nc           TEXT,
+    statut                   TEXT    DEFAULT 'en_cours',
     created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
     FOREIGN KEY (fournisseur_principal_id) REFERENCES fournisseurs(id)
@@ -710,6 +711,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     livraison_refusee        INTEGER DEFAULT 0,
     information_ddpp         INTEGER DEFAULT 0,
     commentaire_nc           TEXT,
+    statut                   TEXT    DEFAULT 'en_cours',
     created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
     FOREIGN KEY (fournisseur_principal_id) REFERENCES fournisseurs(id)
@@ -866,6 +868,11 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v3.4 — Étiquettes des produits transformés (cuisson / refroidissement / fabrication)
             "ALTER TABLE etiquettes_generees ADD COLUMN source_type TEXT",
             "ALTER TABLE etiquettes_generees ADD COLUMN source_id INTEGER",
+            # v3.5 — Statut réception : produits visibles en stock uniquement après clôture
+            "ALTER TABLE receptions ADD COLUMN statut TEXT DEFAULT 'en_cours'",
+            # Réceptions historiques (NULL physique = avant migration) → clôturées
+            # Idempotent : les nouvelles lignes ont 'en_cours' stocké explicitement
+            "UPDATE receptions SET statut = 'cloturee' WHERE statut IS NULL",
         ]
         for sql in migrations:
             try:
@@ -2034,7 +2041,8 @@ async def cloturer_reception(
         """
         UPDATE receptions
         SET conformite_globale = ?, livraison_refusee = ?,
-            information_ddpp = ?, commentaire_nc = ?
+            information_ddpp = ?, commentaire_nc = ?,
+            statut = 'cloturee'
         WHERE id = ?
         """,
         (conformite_globale, int(livraison_refusee),
@@ -3407,6 +3415,9 @@ async def get_stock_unifie(
             JOIN produits     p ON p.id = rl.produit_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             WHERE p.boutique_id = ?
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               {extra_sql}
               AND NOT EXISTS (
                   SELECT 1 FROM dlc_devenir dd
