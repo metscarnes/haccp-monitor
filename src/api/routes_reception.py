@@ -414,52 +414,54 @@ async def suggestions_fournisseurs_receptions(
     limit: int = Query(200, ge=1, le=500),
 ):
     """
-    Liste des fournisseurs vus en réception (déduplication par nom normalisé).
+    Liste des fournisseurs vus en réception (dérivée des données réelles, pas de la table fournisseurs).
     Si `q_produit` est fourni, ne renvoie que les fournisseurs ayant livré ce produit/lot.
-    Source : COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)
-    afin de capturer aussi les fournisseurs renseignés en texte libre.
+    Capture les fournisseurs renseignés en texte libre ET ceux liés par FK.
     """
-    where_q = ""
-    params: list = []
+    import unicodedata
+
+    _C = "COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)"
+
     if q_produit and q_produit.strip():
         like = f"%{q_produit.strip()}%"
-        where_q = "AND (p.nom LIKE ? COLLATE NOCASE OR rl.numero_lot LIKE ? COLLATE NOCASE)"
-        params.extend([like, like])
+        produits_join = "LEFT JOIN produits p ON p.id = rl.produit_id"
+        where = (
+            f"(p.nom LIKE ? COLLATE NOCASE OR rl.numero_lot LIKE ? COLLATE NOCASE)"
+            f" AND {_C} IS NOT NULL AND TRIM({_C}) <> ''"
+        )
+        params: list = [like, like]
+    else:
+        produits_join = ""
+        where = f"{_C} IS NOT NULL AND TRIM({_C}) <> ''"
+        params = []
+
+    sql = f"""
+        SELECT
+            COALESCE(fl.id, fr.id) AS id,
+            {_C}                   AS nom,
+            MAX(r.date_reception)  AS derniere_reception
+        FROM reception_lignes rl
+        JOIN receptions   r  ON r.id  = rl.reception_id
+        {produits_join}
+        LEFT JOIN fournisseurs fl ON fl.id = rl.fournisseur_id
+        LEFT JOIN fournisseurs fr ON fr.id = r.fournisseur_principal_id
+        WHERE {where}
+        GROUP BY COALESCE(fl.id, fr.id), {_C}
+        ORDER BY derniere_reception DESC
+        LIMIT ?
+    """
 
     async with get_db() as db:
-        cursor = await db.execute(
-            f"""
-            SELECT
-                COALESCE(fl.id, fr.id)                                            AS id,
-                COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)   AS nom,
-                MAX(r.date_reception)                                             AS derniere_reception
-            FROM reception_lignes rl
-            JOIN receptions   r ON r.id = rl.reception_id
-            JOIN produits     p ON p.id = rl.produit_id
-            LEFT JOIN fournisseurs fl ON fl.id = rl.fournisseur_id
-            LEFT JOIN fournisseurs fr ON fr.id = r.fournisseur_principal_id
-            WHERE 1=1
-              {where_q}
-            GROUP BY COALESCE(fl.id, fr.id),
-                     COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom)
-            HAVING nom IS NOT NULL AND TRIM(nom) <> ''
-            ORDER BY derniere_reception DESC
-            LIMIT ?
-            """,
-            tuple(params) + (limit,),
-        )
+        cursor = await db.execute(sql, params + [limit])
         rows = await cursor.fetchall()
 
-    # Déduplication finale par nom normalisé (sans accents, casse) — couvre les cas
-    # où un même fournisseur apparaît à la fois lié par id et en texte libre.
-    import unicodedata
     def _norm(s: str) -> str:
         s = (s or "").strip().lower()
         return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
     vus: dict[str, dict] = {}
-    for r in rows:
-        d = dict(r)
+    for row in rows:
+        d = dict(row)
         k = _norm(d["nom"])
         if not k:
             continue
@@ -467,10 +469,6 @@ async def suggestions_fournisseurs_receptions(
         if existant is None:
             vus[k] = d
         elif existant.get("id") is None and d.get("id") is not None:
-            d["derniere_reception"] = max(
-                filter(None, [existant.get("derniere_reception"), d.get("derniere_reception")]),
-                default=d.get("derniere_reception"),
-            )
             vus[k] = d
 
     return list(vus.values())
