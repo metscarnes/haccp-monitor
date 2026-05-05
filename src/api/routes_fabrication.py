@@ -156,6 +156,9 @@ async def fifo_produit(produit_id: int):
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
             WHERE  rl.produit_id = ?
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               AND (COALESCE(rl.dlc, rl.dluo) IS NULL
                    OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND NOT EXISTS (

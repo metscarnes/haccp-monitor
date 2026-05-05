@@ -870,15 +870,39 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE etiquettes_generees ADD COLUMN source_id INTEGER",
             # v3.5 — Statut réception : produits visibles en stock uniquement après clôture
             "ALTER TABLE receptions ADD COLUMN statut TEXT DEFAULT 'en_cours'",
-            # Réceptions historiques (NULL physique = avant migration) → clôturées
-            # Idempotent : les nouvelles lignes ont 'en_cours' stocké explicitement
-            "UPDATE receptions SET statut = 'cloturee' WHERE statut IS NULL",
         ]
         for sql in migrations:
             try:
                 await db.execute(sql)
             except Exception:
                 pass
+
+        # Migration v3.5 — baseline historique du statut réception
+        # ALTER TABLE remplit les lignes existantes avec 'en_cours' (default),
+        # mais ces réceptions sont historiques et doivent être considérées clôturées.
+        # Heuristique idempotente : si aucune réception n'a encore le statut 'cloturee',
+        # on suppose qu'on vient d'ajouter la colonne → on marque tout le baseline.
+        # Une fois exécutée, la condition est fausse et la migration ne tourne plus.
+        try:
+            cur_check = await db.execute("PRAGMA table_info(receptions)")
+            cols_check = {row[1] for row in await cur_check.fetchall()}
+            if 'statut' in cols_check:
+                cur_count = await db.execute(
+                    "SELECT "
+                    "  (SELECT COUNT(*) FROM receptions) AS total, "
+                    "  (SELECT COUNT(*) FROM receptions WHERE statut = 'cloturee') AS cloturee"
+                )
+                counts = await cur_count.fetchone()
+                if counts and counts[0] > 0 and counts[1] == 0:
+                    await db.execute("UPDATE receptions SET statut = 'cloturee'")
+                    await db.commit()
+                    logger.info(
+                        "Migration v3.5 : %d réception(s) historique(s) "
+                        "marquée(s) comme clôturée(s)",
+                        counts[0],
+                    )
+        except Exception as e:
+            logger.warning("Migration v3.5 statut réception : %s", e)
 
         # Migration v2.4 : rendre fournisseur_id nullable dans fiches_incident
         # (nécessaire quand le fournisseur est saisi manuellement sans ID BDD)
@@ -2865,6 +2889,9 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
             WHERE  rl.produit_id = ?
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               AND (COALESCE(rl.dlc, rl.dluo) IS NULL
                    OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND NOT EXISTS (
@@ -3159,6 +3186,9 @@ async def get_dlc_calendrier(
             WHERE rl.dlc IS NOT NULL
               AND rl.dlc BETWEEN ? AND ?
               AND p.boutique_id = ?
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               {cat_filter}
             """,
             (date_debut, date_fin, boutique_id, *cat_params),

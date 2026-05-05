@@ -244,6 +244,9 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             JOIN   receptions  r ON r.id = rl.reception_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             WHERE  rl.produit_id = ?
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               AND (COALESCE(rl.dlc, rl.dluo) IS NULL
                    OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND NOT EXISTS (

@@ -160,6 +160,9 @@ async def suggestions_ouvertures(
         FROM reception_lignes rl2
         JOIN receptions r2 ON r2.id = rl2.reception_id
         WHERE rl2.produit_id = p.id
+          AND r2.statut = 'cloturee'
+          AND rl2.conforme = 1
+          AND r2.livraison_refusee = 0
           AND (COALESCE(rl2.dlc, rl2.dluo) IS NULL
                OR COALESCE(rl2.dlc, rl2.dluo) >= DATE('now'))
           AND NOT EXISTS (
@@ -195,6 +198,9 @@ async def suggestions_ouvertures(
             JOIN produits p   ON p.id = rl.produit_id
             WHERE r.date_reception >= ?
               AND p.categorie = 'matiere_premiere'
+              AND r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
               AND (COALESCE(rl.dlc, rl.dluo) IS NULL
                    OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND NOT EXISTS (

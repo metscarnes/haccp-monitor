@@ -86,6 +86,9 @@ async def lister_produits(
             # pour exposer numero_lot, dlc et reception_ligne_id.
             _fifo_where = """
                 rl2.produit_id = p.id
+                AND r2.statut = 'cloturee'
+                AND rl2.conforme = 1
+                AND r2.livraison_refusee = 0
                 AND (COALESCE(rl2.dlc, rl2.dluo) IS NULL
                      OR COALESCE(rl2.dlc, rl2.dluo) >= DATE('now'))
                 AND NOT EXISTS (
@@ -120,7 +123,11 @@ async def lister_produits(
             _exists_dispo = """
                 EXISTS (
                     SELECT 1 FROM reception_lignes rl
+                    JOIN receptions r ON r.id = rl.reception_id
                     WHERE rl.produit_id = p.id
+                      AND r.statut = 'cloturee'
+                      AND rl.conforme = 1
+                      AND r.livraison_refusee = 0
                       AND (COALESCE(rl.dlc, rl.dluo) IS NULL
                            OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
                       AND NOT EXISTS (
