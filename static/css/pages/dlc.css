@@ -404,6 +404,34 @@
 }
 .dlc-item-btn-devenir:active { filter: brightness(.9); }
 
+.dlc-item-btn-modifier {
+  background: #f0e8dc;
+  color: var(--color-accent);
+  border: 1.5px solid var(--color-accent);
+  padding: .55rem 1rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+  font-size: var(--text-sm);
+}
+.dlc-item-btn-modifier:hover { background: var(--color-accent); color: #fff; }
+.dlc-item-btn-modifier:active { filter: brightness(.9); }
+
+.dlc-item-btn-supprimer {
+  background: #fff5f5;
+  color: #c0392b;
+  border: 1.5px solid #c0392b;
+  padding: .55rem 1rem;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 40px;
+  font-size: var(--text-sm);
+}
+.dlc-item-btn-supprimer:hover { background: #c0392b; color: #fff; }
+.dlc-item-btn-supprimer:active { filter: brightness(.9); }
+
 /* Bouton déroulé ingrédients (fabrication) */
 .dlc-item-btn-ingredients {
   display: inline-flex;

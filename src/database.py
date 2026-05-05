@@ -3706,3 +3706,26 @@ async def create_dlc_devenir(
     await _cascade_dlc_aval(db, source_type, source_id, statut, personnel_id, commentaire)
     await db.commit()
     return nouveau_id
+
+
+_DLC_SOURCE_TABLE_FIELD = {
+    "reception_ligne":  ("reception_lignes",   "dlc"),
+    "fabrication":      ("fabrications",        "dlc_finale"),
+    "cuisson":          ("cuissons",            "dlc_finale"),
+    "refroidissement":  ("refroidissements",    "dlc_finale"),
+}
+
+
+async def update_dlc_source_date(
+    db: aiosqlite.Connection,
+    source_type: str,
+    source_id: int,
+    nouvelle_dlc: str,
+) -> None:
+    """Met à jour la date DLC d'un enregistrement source (toute table)."""
+    table, field = _DLC_SOURCE_TABLE_FIELD[source_type]
+    await db.execute(
+        f"UPDATE {table} SET {field} = ? WHERE id = ?",
+        (nouvelle_dlc, source_id),
+    )
+    await db.commit()

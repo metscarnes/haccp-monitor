@@ -131,6 +131,28 @@
     </div>
   </div>
 
+  <!-- Modal modifier la date DLC d'un produit -->
+  <div class="dlc-modal" id="modifier-modal" hidden role="dialog" aria-modal="true">
+    <div class="dlc-modal-backdrop" data-close-modifier></div>
+    <div class="dlc-modal-panel dlc-modal-panel--small">
+      <header class="dlc-modal-header">
+        <h2>Modifier la DLC</h2>
+        <button class="dlc-modal-close" data-close-modifier aria-label="Fermer">✕</button>
+      </header>
+      <div class="dlc-modal-body">
+        <div class="devenir-produit" id="modifier-produit-nom">—</div>
+        <div class="devenir-info" id="modifier-dlc-courante"></div>
+
+        <label class="devenir-label">Nouvelle date DLC *</label>
+        <input type="date" id="modifier-nouvelle-dlc" class="devenir-select" required>
+
+        <button class="btn btn-primaire devenir-valider" id="modifier-valider" disabled>
+          Confirmer
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal traitement en masse des DLC dépassées -->
   <div class="dlc-modal" id="batch-modal" hidden role="dialog" aria-modal="true">
     <div class="dlc-modal-backdrop" data-close-batch></div>

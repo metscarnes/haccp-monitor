@@ -64,6 +64,7 @@ const state = {
   personnel: [],
   devenirCible: null,
   devenirStatut: null,
+  modifierCible: null,
 };
 
 // ── Horloge ─────────────────────────────────────────────
@@ -431,15 +432,32 @@ function ouvrirModalJour(dateStr, items) {
          </div>`
       : '';
 
-    // Bouton devenir : "Actualiser" si déjà traité, "Correction" si expiré non traité
+    // Bouton devenir : toujours visible, label selon état
     const btnLabel = it.devenir_statut ? '✏️ Actualiser' : '✏️ Correction';
-    const btnHtml = (aTraiter || it.devenir_statut)
-      ? `<button class="dlc-item-btn-devenir ${it.devenir_statut ? 'dlc-item-btn-devenir--update' : ''}"
+    const btnHtml = `<button class="dlc-item-btn-devenir ${it.devenir_statut ? 'dlc-item-btn-devenir--update' : ''}"
+               data-src-type="${escHtml(it.source_type)}"
+               data-src-id="${it.source_id}"
+               data-nom="${escHtml(it.produit_nom)}"
+               data-dlc="${escHtml(it.dlc)}">
+         ${btnLabel}
+       </button>`;
+
+    // Boutons modifier DLC et supprimer : uniquement si pas encore traité
+    const btnModifierHtml = !it.devenir_statut
+      ? `<button class="dlc-item-btn-modifier"
                  data-src-type="${escHtml(it.source_type)}"
                  data-src-id="${it.source_id}"
                  data-nom="${escHtml(it.produit_nom)}"
                  data-dlc="${escHtml(it.dlc)}">
-           ${btnLabel}
+           📅 Modifier DLC
+         </button>`
+      : '';
+    const btnSupprimerHtml = !it.devenir_statut
+      ? `<button class="dlc-item-btn-supprimer"
+                 data-src-type="${escHtml(it.source_type)}"
+                 data-src-id="${it.source_id}"
+                 data-nom="${escHtml(it.produit_nom)}">
+           🗑️ Supprimer
          </button>`
       : '';
 
@@ -469,6 +487,8 @@ function ouvrirModalJour(dateStr, items) {
       ${devenirHtml}
       <div class="dlc-item-actions">
         ${actionPrimaireHtml}
+        ${btnModifierHtml}
+        ${btnSupprimerHtml}
         ${btnHtml}
       </div>
       ${it.source_type === 'fabrication' ? '<div class="dlc-item-ingredients" hidden></div>' : ''}
@@ -508,11 +528,28 @@ function ouvrirModalJour(dateStr, items) {
     }));
   });
 
+  body.querySelectorAll('.dlc-item-btn-modifier').forEach(btn => {
+    btn.addEventListener('click', () => ouvrirModalModifier({
+      source_type: btn.dataset.srcType,
+      source_id:   parseInt(btn.dataset.srcId, 10),
+      produit_nom: btn.dataset.nom,
+      dlc:         btn.dataset.dlc,
+    }));
+  });
+
+  body.querySelectorAll('.dlc-item-btn-supprimer').forEach(btn => {
+    btn.addEventListener('click', () => supprimerProduitDlc({
+      source_type: btn.dataset.srcType,
+      source_id:   parseInt(btn.dataset.srcId, 10),
+      produit_nom: btn.dataset.nom,
+    }));
+  });
+
   $('dlc-modal').hidden = false;
 }
 
 function statutLabel(s) {
-  return { jete: 'Jeté', vendu: 'Vendu', consomme: 'Consommé', autre: 'Autre' }[s] || s;
+  return { jete: 'Jeté', vendu: 'Vendu', consomme: 'Consommé', autre: 'Autre', annule: 'Annulé' }[s] || s;
 }
 
 // ── Ingrédients d'une fabrication (réutilise la présentation historique) ──
@@ -597,6 +634,78 @@ function remplirIngredientsDlc(el, ingredients, fab) {
 
 function fermerModal() { $('dlc-modal').hidden = true; }
 document.querySelectorAll('#dlc-modal [data-close]').forEach(e => e.addEventListener('click', fermerModal));
+
+// ── Modal Modifier DLC ──────────────────────────────────
+function ouvrirModalModifier(cible) {
+  state.modifierCible = cible;
+  $('modifier-produit-nom').textContent  = cible.produit_nom;
+  $('modifier-dlc-courante').textContent = `DLC actuelle : ${formatDateFr(cible.dlc)}`;
+  $('modifier-nouvelle-dlc').value = cible.dlc || '';
+  $('modifier-valider').disabled = !cible.dlc;
+  $('modifier-modal').hidden = false;
+}
+
+function fermerModalModifier() {
+  $('modifier-modal').hidden = true;
+  state.modifierCible = null;
+}
+
+document.querySelectorAll('#modifier-modal [data-close-modifier]').forEach(e =>
+  e.addEventListener('click', fermerModalModifier)
+);
+
+$('modifier-nouvelle-dlc').addEventListener('input', () => {
+  $('modifier-valider').disabled = !$('modifier-nouvelle-dlc').value;
+});
+
+$('modifier-valider').addEventListener('click', async () => {
+  const btn = $('modifier-valider');
+  btn.disabled = true;
+  btn.textContent = 'Enregistrement...';
+  try {
+    const res = await fetch('/api/dlc/modifier-dlc', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_type:  state.modifierCible.source_type,
+        source_id:    state.modifierCible.source_id,
+        nouvelle_dlc: $('modifier-nouvelle-dlc').value,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    fermerModalModifier();
+    fermerModal();
+    await chargerCalendrier();
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    btn.textContent = 'Confirmer';
+    btn.disabled = false;
+  }
+});
+
+// ── Supprimer (marquer annulé sans personnel) ───────────
+async function supprimerProduitDlc(cible) {
+  if (!confirm(`Supprimer « ${cible.produit_nom} » du calendrier DLC ?\nCette action est réversible via le bouton Correction.`)) return;
+  try {
+    const res = await fetch('/api/dlc/devenir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_type:  cible.source_type,
+        source_id:    cible.source_id,
+        statut:       'annule',
+        personnel_id: null,
+        commentaire:  null,
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    fermerModal();
+    await chargerCalendrier();
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  }
+}
 
 // ── Modal Devenir ───────────────────────────────────────
 function ouvrirModalDevenir(cible) {

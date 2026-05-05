@@ -13,10 +13,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+import re
+
 from src.database import (
     get_db,
     get_dlc_calendrier,
     create_dlc_devenir,
+    update_dlc_source_date,
     get_parametres_prefix,
     set_parametre,
 )
@@ -25,7 +28,7 @@ router = APIRouter(prefix="/api/dlc", tags=["dlc"])
 
 BOUTIQUE_ID = 1
 
-STATUTS_DEVENIR = {"jete", "vendu", "consomme", "autre"}
+STATUTS_DEVENIR = {"jete", "vendu", "consomme", "autre", "annule"}
 SOURCES_VALIDES = {"reception_ligne", "fabrication", "cuisson", "refroidissement"}
 
 
@@ -51,6 +54,12 @@ class DevenirBatchCreate(BaseModel):
     statut: str
     personnel_id: Optional[int] = None
     commentaire: Optional[str] = None
+
+
+class ModifierDlcCreate(BaseModel):
+    source_type: str
+    source_id: int
+    nouvelle_dlc: str  # YYYY-MM-DD
 
 
 class ParametresDlc(BaseModel):
@@ -134,6 +143,18 @@ async def enregistrer_devenir_batch(body: DevenirBatchCreate):
             )
             traites += 1
     return {"ok": True, "traites": traites}
+
+
+@router.put("/modifier-dlc")
+async def modifier_dlc(body: ModifierDlcCreate):
+    """Corrige la date DLC d'un enregistrement source (réception, fabrication, cuisson, refroidissement)."""
+    if body.source_type not in SOURCES_VALIDES:
+        raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", body.nouvelle_dlc):
+        raise HTTPException(400, "nouvelle_dlc invalide (format attendu : YYYY-MM-DD)")
+    async with get_db() as db:
+        await update_dlc_source_date(db, body.source_type, body.source_id, body.nouvelle_dlc)
+    return {"ok": True}
 
 
 @router.get("/devenir")
