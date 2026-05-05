@@ -1606,17 +1606,17 @@ async def get_produits(
     db: aiosqlite.Connection,
     boutique_id: int,
     type_produit: Optional[str] = None,
+    inclure_inactifs: bool = False,
 ) -> list[dict]:
+    where = ["boutique_id = ?"]
+    params: list = [boutique_id]
+    if not inclure_inactifs:
+        where.append("actif = 1")
     if type_produit:
-        cursor = await db.execute(
-            "SELECT * FROM produits WHERE boutique_id = ? AND actif = 1 AND type_produit = ? ORDER BY nom",
-            (boutique_id, type_produit),
-        )
-    else:
-        cursor = await db.execute(
-            "SELECT * FROM produits WHERE boutique_id = ? AND actif = 1 ORDER BY nom",
-            (boutique_id,),
-        )
+        where.append("type_produit = ?")
+        params.append(type_produit)
+    sql = f"SELECT * FROM produits WHERE {' AND '.join(where)} ORDER BY nom"
+    cursor = await db.execute(sql, params)
     rows = await cursor.fetchall()
     return [dict(r) for r in rows]
 
@@ -1627,31 +1627,27 @@ async def get_produit(db: aiosqlite.Connection, produit_id: int) -> Optional[dic
     return dict(row) if row else None
 
 
+PRODUIT_COLONNES_EDITABLES = (
+    "nom", "code_unique", "espece", "etape", "coupe_niveau",
+    "conditionnement", "categorie", "dlc_jours", "temperature_conservation",
+    "format_etiquette", "type_produit", "actif",
+)
+
+
 async def create_produit(db: aiosqlite.Connection, data: dict) -> int:
+    colonnes = ["boutique_id"] + [c for c in PRODUIT_COLONNES_EDITABLES if c in data]
+    valeurs = [data["boutique_id"]] + [data[c] for c in colonnes if c != "boutique_id"]
+    placeholders = ", ".join("?" for _ in colonnes)
     cursor = await db.execute(
-        """
-        INSERT INTO produits
-            (boutique_id, nom, categorie, dlc_jours, temperature_conservation, format_etiquette)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            data["boutique_id"],
-            data["nom"],
-            data["categorie"],
-            data["dlc_jours"],
-            data["temperature_conservation"],
-            data.get("format_etiquette", "standard_60x40"),
-        ),
+        f"INSERT INTO produits ({', '.join(colonnes)}) VALUES ({placeholders})",
+        valeurs,
     )
     await db.commit()
     return cursor.lastrowid
 
 
 async def update_produit(db: aiosqlite.Connection, produit_id: int, data: dict) -> bool:
-    fields = {
-        k: v for k, v in data.items()
-        if k in ("nom", "categorie", "dlc_jours", "temperature_conservation", "format_etiquette", "actif")
-    }
+    fields = {k: v for k, v in data.items() if k in PRODUIT_COLONNES_EDITABLES}
     if not fields:
         return False
     set_clause = ", ".join(f"{k} = ?" for k in fields)

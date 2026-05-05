@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Catalogue produits — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/catalogue.css">
+</head>
+<body class="cat-body">
+
+  <header class="cat-bar">
+    <a href="/hub.html" class="cat-retour" aria-label="Retour accueil">← Accueil</a>
+    <div class="cat-bar-titre">📚 Catalogue produits</div>
+    <div class="cat-bar-actions">
+      <button type="button" id="cat-btn-nouveau" class="cat-btn cat-btn--primary">+ Nouveau</button>
+      <button type="button" id="cat-btn-import" class="cat-btn">📥 Importer Excel</button>
+      <a id="cat-btn-export" class="cat-btn" href="/api/produits/export/xlsx">📤 Exporter Excel</a>
+    </div>
+  </header>
+
+  <!-- Statistiques -->
+  <section class="cat-stats" aria-live="polite">
+    <div class="cat-stat"><div class="cat-stat-num" id="cat-stat-total">—</div><div class="cat-stat-lbl">Total</div></div>
+    <div class="cat-stat cat-stat--brut"><div class="cat-stat-num" id="cat-stat-brut">—</div><div class="cat-stat-lbl">Bruts</div></div>
+    <div class="cat-stat cat-stat--fini"><div class="cat-stat-num" id="cat-stat-fini">—</div><div class="cat-stat-lbl">Finis</div></div>
+    <div class="cat-stat cat-stat--archive"><div class="cat-stat-num" id="cat-stat-archive">—</div><div class="cat-stat-lbl">Archivés</div></div>
+    <div class="cat-stat cat-stat--alerte"><div class="cat-stat-num" id="cat-stat-incomplet">—</div><div class="cat-stat-lbl">Incomplets</div></div>
+  </section>
+
+  <!-- Filtres -->
+  <section class="cat-filtres">
+    <label class="cat-filtre cat-filtre--search">
+      <span>Recherche</span>
+      <input type="search" id="cat-search" placeholder="nom, code, espèce…" autocomplete="off">
+    </label>
+    <label class="cat-filtre">
+      <span>Type</span>
+      <select id="cat-filtre-type">
+        <option value="">Tous</option>
+        <option value="brut">Brut</option>
+        <option value="fini">Fini</option>
+      </select>
+    </label>
+    <label class="cat-filtre">
+      <span>Catégorie</span>
+      <select id="cat-filtre-categorie"><option value="">Toutes</option></select>
+    </label>
+    <label class="cat-filtre">
+      <span>Conditionnement</span>
+      <select id="cat-filtre-cond"><option value="">Tous</option></select>
+    </label>
+    <label class="cat-filtre cat-filtre--check">
+      <input type="checkbox" id="cat-filtre-archives">
+      <span>Voir archivés</span>
+    </label>
+    <label class="cat-filtre cat-filtre--check">
+      <input type="checkbox" id="cat-filtre-incomplets">
+      <span>Incomplets uniquement</span>
+    </label>
+    <div class="cat-filtre-spacer"></div>
+    <div class="cat-resultat" id="cat-resultat">—</div>
+  </section>
+
+  <!-- Tableau -->
+  <main class="cat-table-wrap">
+    <table class="cat-table">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Code</th>
+          <th>Catégorie</th>
+          <th>Type</th>
+          <th>Cond.</th>
+          <th class="cat-col-num">DLC (j)</th>
+          <th>Temp.</th>
+          <th>Statut</th>
+          <th class="cat-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cat-tbody"></tbody>
+    </table>
+    <div id="cat-vide" class="cat-vide" hidden>Aucun produit trouvé</div>
+  </main>
+
+  <!-- ============================================================
+       MODAL — Édition / création
+  ============================================================ -->
+  <div id="cat-modal" class="cat-modal" hidden role="dialog" aria-modal="true" aria-labelledby="cat-modal-titre">
+    <div class="cat-modal-card">
+      <header class="cat-modal-header">
+        <h2 id="cat-modal-titre" class="cat-modal-titre">Nouveau produit</h2>
+        <button type="button" id="cat-modal-fermer" class="cat-modal-fermer" aria-label="Fermer">✕</button>
+      </header>
+
+      <form id="cat-form" class="cat-form">
+        <input type="hidden" id="cat-f-id">
+
+        <label class="cat-champ cat-champ--full">
+          <span>Nom <span class="cat-req">*</span></span>
+          <input type="text" id="cat-f-nom" required autocomplete="off">
+        </label>
+
+        <label class="cat-champ">
+          <span>Code unique</span>
+          <input type="text" id="cat-f-code" autocomplete="off" placeholder="ex. BOEUF, AGN01…">
+        </label>
+
+        <label class="cat-champ">
+          <span>Catégorie <span class="cat-req">*</span></span>
+          <input type="text" id="cat-f-categorie" required list="cat-categories-datalist" autocomplete="off">
+          <datalist id="cat-categories-datalist"></datalist>
+        </label>
+
+        <label class="cat-champ">
+          <span>Espèce</span>
+          <input type="text" id="cat-f-espece" autocomplete="off" placeholder="bovin, ovin, porcin…">
+        </label>
+
+        <label class="cat-champ">
+          <span>Niveau de coupe</span>
+          <input type="text" id="cat-f-coupe" autocomplete="off">
+        </label>
+
+        <label class="cat-champ">
+          <span>Étape</span>
+          <input type="number" id="cat-f-etape" min="0" step="1">
+        </label>
+
+        <label class="cat-champ">
+          <span>Conditionnement</span>
+          <select id="cat-f-cond">
+            <option value="SOUS_VIDE">SOUS_VIDE</option>
+            <option value="VRAC">VRAC</option>
+            <option value="CARTON">CARTON</option>
+            <option value="BARQUETTE">BARQUETTE</option>
+            <option value="AUTRE">AUTRE</option>
+          </select>
+        </label>
+
+        <label class="cat-champ">
+          <span>Type produit</span>
+          <select id="cat-f-type">
+            <option value="brut">Brut (matière première)</option>
+            <option value="fini">Fini (transformé)</option>
+          </select>
+        </label>
+
+        <label class="cat-champ">
+          <span>DLC (jours)</span>
+          <input type="number" id="cat-f-dlc" min="0" step="1" value="0">
+        </label>
+
+        <label class="cat-champ">
+          <span>Température conservation</span>
+          <input type="text" id="cat-f-temp" value="0°C à +4°C">
+        </label>
+
+        <label class="cat-champ">
+          <span>Format étiquette</span>
+          <select id="cat-f-format">
+            <option value="standard_60x40">standard_60x40</option>
+            <option value="petit_30x20">petit_30x20</option>
+            <option value="grand_90x60">grand_90x60</option>
+          </select>
+        </label>
+
+        <label class="cat-champ cat-champ--check">
+          <input type="checkbox" id="cat-f-actif" checked>
+          <span>Actif (non archivé)</span>
+        </label>
+
+        <div id="cat-form-erreur" class="cat-form-erreur" hidden></div>
+
+        <footer class="cat-modal-footer">
+          <button type="button" id="cat-btn-supprimer" class="cat-btn cat-btn--danger" hidden>🗑 Archiver</button>
+          <div class="cat-modal-footer-droite">
+            <button type="button" id="cat-btn-annuler" class="cat-btn">Annuler</button>
+            <button type="submit" id="cat-btn-valider" class="cat-btn cat-btn--primary">Enregistrer</button>
+          </div>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       MODAL — Import Excel
+  ============================================================ -->
+  <div id="cat-import-modal" class="cat-modal" hidden role="dialog" aria-modal="true">
+    <div class="cat-modal-card cat-modal-card--small">
+      <header class="cat-modal-header">
+        <h2 class="cat-modal-titre">Importer un fichier Excel</h2>
+        <button type="button" id="cat-import-fermer" class="cat-modal-fermer" aria-label="Fermer">✕</button>
+      </header>
+      <div class="cat-import-corps">
+        <p class="cat-import-info">
+          Le fichier doit contenir une ligne d'en-tête avec au minimum la colonne
+          <code>nom</code>. Les autres colonnes reconnues : <code>code_unique, espece, etape,
+          coupe_niveau, conditionnement, categorie, dlc_jours, temperature_conservation,
+          format_etiquette, type_produit, actif</code>.
+        </p>
+        <label class="cat-champ">
+          <span>Fichier .xlsx</span>
+          <input type="file" id="cat-import-fichier" accept=".xlsx">
+        </label>
+        <label class="cat-champ">
+          <span>Mode</span>
+          <select id="cat-import-mode">
+            <option value="merge">Fusionner (créer/mettre à jour par code_unique)</option>
+            <option value="replace">Remplacer (archive tout puis ré-importe)</option>
+          </select>
+        </label>
+        <div id="cat-import-resultat" class="cat-import-resultat" hidden></div>
+        <footer class="cat-modal-footer">
+          <div class="cat-modal-footer-droite">
+            <button type="button" id="cat-import-annuler" class="cat-btn">Fermer</button>
+            <button type="button" id="cat-import-lancer" class="cat-btn cat-btn--primary">Lancer l'import</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/catalogue.js"></script>
+</body>
+</html>

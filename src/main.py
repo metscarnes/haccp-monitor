@@ -26,6 +26,7 @@ from src.api.routes_releves    import router as router_releves
 from src.api.routes_alertes    import router as router_alertes
 from src.api.routes_rapports   import router as router_rapports
 from src.api.routes_etiquettes import router as router_etiquettes
+from src.api.routes_produits   import router as router_produits
 from src.api.routes_reception  import router as router_reception
 from src.api.routes_taches     import router as router_taches
 from src.api.routes_admin      import router as router_admin
@@ -110,6 +111,7 @@ app.include_router(router_alertes)
 app.include_router(router_rapports)
 
 # Routes API — Phase 2
+app.include_router(router_produits)   # CRUD catalogue produits (avant etiquettes pour priorité)
 app.include_router(router_etiquettes)
 app.include_router(router_reception)
 app.include_router(router_taches)

@@ -1,27 +1,25 @@
 """
 routes_etiquettes.py — Module DLC / Étiquettes
 
-GET    /api/produits                    → liste catalogue
-POST   /api/produits                    → créer produit
-PUT    /api/produits/{id}               → modifier produit
-DELETE /api/produits/{id}               → désactiver produit
 GET    /api/regles-dlc                  → règles DLC par catégorie
 PUT    /api/regles-dlc/{categorie}      → modifier une règle
 POST   /api/etiquettes/generer          → générer + imprimer étiquette
 POST   /api/etiquettes/transformes      → étiquette produit transformé (cuisson / refroidissement)
 GET    /api/etiquettes                  → historique
 GET    /api/etiquettes/alertes-dlc      → produits DLC proche
+
+Note : le CRUD `/api/produits` est défini dans routes_produits.py.
 """
 
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.database import (
     get_db,
-    get_produits, get_produit, create_produit, update_produit,
+    get_produit,
     get_regles_dlc, update_regle_dlc,
     get_next_numero_lot, create_etiquette, get_etiquettes, get_alertes_dlc,
     calculer_dlc,
@@ -35,23 +33,6 @@ BOUTIQUE_ID = 1  # mono-boutique Phase 2
 # ---------------------------------------------------------------------------
 # Schémas Pydantic
 # ---------------------------------------------------------------------------
-
-class ProduitCreate(BaseModel):
-    nom: str
-    categorie: str
-    dlc_jours: int
-    temperature_conservation: str
-    format_etiquette: str = "standard_60x40"
-
-
-class ProduitUpdate(BaseModel):
-    nom: Optional[str] = None
-    categorie: Optional[str] = None
-    dlc_jours: Optional[int] = None
-    temperature_conservation: Optional[str] = None
-    format_etiquette: Optional[str] = None
-    actif: Optional[bool] = None
-
 
 class RegleDLCUpdate(BaseModel):
     dlc_jours: int
@@ -69,126 +50,6 @@ class EtiquetteGenerer(BaseModel):
     info_complementaire: Optional[str] = None
     temperature_conservation: Optional[str] = None
     dlc_jours: Optional[int] = None     # override si pas de produit_id
-
-
-# ---------------------------------------------------------------------------
-# Produits
-# ---------------------------------------------------------------------------
-
-@router.get("/produits")
-async def lister_produits(
-    type: Optional[str] = Query(None, description="Filtrer par type : 'brut' ou 'fini'"),
-    en_stock: bool = Query(False, description="Si True, retourne uniquement les produits ayant une réception enregistrée"),
-):
-    async with get_db() as db:
-        if en_stock:
-            # Filtre stock réel : produit doit avoir au moins une ligne de réception.
-            # On joint le lot FIFO (DLC la plus courte → date réception la plus ancienne)
-            # pour exposer numero_lot, dlc et reception_ligne_id sur chaque produit.
-            # Lot disponible = non périmé (dlc >= today ou null) ET non traité
-            # via le module calendrier (absent de dlc_devenir).
-            _fifo_where = """
-                rl2.produit_id = p.id
-                AND (COALESCE(rl2.dlc, rl2.dluo) IS NULL
-                     OR COALESCE(rl2.dlc, rl2.dluo) >= DATE('now'))
-                AND NOT EXISTS (
-                    SELECT 1 FROM dlc_devenir d
-                    WHERE d.source_type = 'reception_ligne' AND d.source_id = rl2.id
-                )
-            """
-            _fifo_order = """
-                ORDER BY CASE WHEN COALESCE(rl2.dlc, rl2.dluo) IS NOT NULL THEN 0 ELSE 1 END,
-                         COALESCE(rl2.dlc, rl2.dluo) ASC, r2.date_reception ASC LIMIT 1
-            """
-            _fifo_sub = f"""
-                (SELECT rl2.numero_lot FROM reception_lignes rl2
-                 JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where} {_fifo_order})
-            """
-            _fifo_dlc = f"""
-                (SELECT rl2.dlc FROM reception_lignes rl2
-                 JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where} {_fifo_order})
-            """
-            _fifo_dluo = f"""
-                (SELECT rl2.dluo FROM reception_lignes rl2
-                 JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where} {_fifo_order})
-            """
-            _fifo_id = f"""
-                (SELECT rl2.id FROM reception_lignes rl2
-                 JOIN receptions r2 ON r2.id = rl2.reception_id
-                 WHERE {_fifo_where} {_fifo_order})
-            """
-            _exists_dispo = """
-                EXISTS (
-                    SELECT 1 FROM reception_lignes rl
-                    WHERE rl.produit_id = p.id
-                      AND (COALESCE(rl.dlc, rl.dluo) IS NULL
-                           OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
-                      AND NOT EXISTS (
-                          SELECT 1 FROM dlc_devenir d
-                          WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
-                      )
-                )
-            """
-            if type:
-                cursor = await db.execute(
-                    f"""
-                    SELECT p.*, {_fifo_sub} AS numero_lot,
-                           {_fifo_dlc} AS dlc,
-                           {_fifo_dluo} AS dluo,
-                           {_fifo_id}  AS reception_ligne_id
-                    FROM produits p
-                    WHERE p.boutique_id = ? AND p.actif = 1 AND p.type_produit = ?
-                      AND {_exists_dispo}
-                    ORDER BY p.nom
-                    """,
-                    (BOUTIQUE_ID, type),
-                )
-            else:
-                cursor = await db.execute(
-                    f"""
-                    SELECT p.*, {_fifo_sub} AS numero_lot,
-                           {_fifo_dlc} AS dlc,
-                           {_fifo_dluo} AS dluo,
-                           {_fifo_id}  AS reception_ligne_id
-                    FROM produits p
-                    WHERE p.boutique_id = ? AND p.actif = 1
-                      AND {_exists_dispo}
-                    ORDER BY p.nom
-                    """,
-                    (BOUTIQUE_ID,),
-                )
-            rows = await cursor.fetchall()
-            produits = [dict(r) for r in rows]
-        else:
-            produits = await get_produits(db, BOUTIQUE_ID, type_produit=type)
-    return produits
-
-
-@router.post("/produits", status_code=201)
-async def nouveau_produit(body: ProduitCreate):
-    async with get_db() as db:
-        produit_id = await create_produit(db, {"boutique_id": BOUTIQUE_ID, **body.model_dump()})
-        produit = await get_produit(db, produit_id)
-    return produit
-
-
-@router.put("/produits/{produit_id}")
-async def modifier_produit(produit_id: int, body: ProduitUpdate):
-    async with get_db() as db:
-        ok = await update_produit(db, produit_id, body.model_dump(exclude_none=True))
-        if not ok:
-            raise HTTPException(404, "Produit non trouvé ou aucun champ à modifier")
-        produit = await get_produit(db, produit_id)
-    return produit
-
-
-@router.delete("/produits/{produit_id}", status_code=204)
-async def supprimer_produit(produit_id: int):
-    async with get_db() as db:
-        await update_produit(db, produit_id, {"actif": False})
 
 
 # ---------------------------------------------------------------------------
