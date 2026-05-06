@@ -189,13 +189,24 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
   });
   const heureStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-  const motifsTxt = traduireMotif(fiche.nature_probleme || '')
-    + (fiche.description && fiche.description !== fiche.nature_probleme
-        ? ` — ${fiche.description}` : '');
+  const estCamion = fiche.action_immediate === 'refus_livraison';
 
-  const actionTxt = fiche.temperature_coeur != null
-    ? `Contrôle à cœur effectué — NC confirmé (T° cœur : ${fiche.temperature_coeur}°C)`
-    : 'Contrôle à cœur effectué — NC confirmé';
+  // Mode camion : pas de produit / lot / DLC, on utilise un libellé générique
+  const produitNom = estCamion
+    ? 'Livraison refusée — Propreté camion'
+    : (fiche.produit_nom || '—');
+
+  const motifsTxt = estCamion
+    ? (fiche.description || 'Propreté du camion non satisfaisante')
+    : traduireMotif(fiche.nature_probleme || '')
+        + (fiche.description && fiche.description !== fiche.nature_probleme
+            ? ` — ${fiche.description}` : '');
+
+  const actionTxt = estCamion
+    ? (fiche.action_corrective || 'Livraison refusée pour propreté du camion non satisfaisante')
+    : (fiche.temperature_coeur != null
+        ? `Contrôle à cœur effectué — NC confirmé (T° cœur : ${fiche.temperature_coeur}°C)`
+        : 'Contrôle à cœur effectué — NC confirmé');
 
   function set(id, val) {
     const el = document.getElementById(id);
@@ -216,13 +227,14 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
   const heureOrig = fiche.heure_incident || heureStr;
   const operateurStr = `${operateurPrenom} à ${heureOrig} (réimpression)`;
   set('print-nc-datetime', `${dateStr} — ${operateurStr}`);
-  set('print-nc-produit',  fiche.produit_nom || '—');
+  set('print-nc-produit',  produitNom);
   setRow('print-nc-fournisseur-row', 'print-nc-fournisseur', null,
-         fiche.fournisseur_nom, null);
+         estCamion ? null : fiche.fournisseur_nom, null);
   setRow('print-nc-lot-row', 'print-nc-lot', 'print-nc-lot-label',
-         fiche.numero_lot, lotInterne ? 'N° lot interne' : 'N° lot');
+         estCamion ? null : fiche.numero_lot,
+         lotInterne ? 'N° lot interne' : 'N° lot');
   setRow('print-nc-dlc-row', 'print-nc-dlc', 'print-nc-dlc-label',
-         dlc || dluo, dluo ? 'DLUO' : 'DLC');
+         estCamion ? null : (dlc || dluo), dluo ? 'DLUO' : 'DLC');
   set('print-nc-motifs', motifsTxt || 'non-conformité');
   set('print-nc-action', actionTxt);
 
@@ -333,17 +345,18 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
   elMain.appendChild(blocLivreur);
 
   // ── Réimpression étiquette À RETOURNER ───────────────
-  // Visible pour toute fiche produit NC (hors refus camion complet).
-  if (fiche.action_immediate !== 'refus_livraison') {
+  {
+    const estCamion = fiche.action_immediate === 'refus_livraison';
     const blocEtiq = creerBloc();
     blocEtiq.appendChild(creerTitre('Étiquette À RETOURNER'));
     const corpsEtiq = creerCorps();
     corpsEtiq.style.textAlign = 'center';
 
+    const labelBtn = estCamion ? 'Camion' : (fiche.produit_nom || 'produit');
     const btnReimp = document.createElement('button');
     btnReimp.type = 'button';
     btnReimp.className = 'pcr-etiq-reprise-btn';
-    btnReimp.innerHTML = `🖨️ Réimprimer l'étiquette — ${fiche.produit_nom || 'produit'}`;
+    btnReimp.innerHTML = `🖨️ Réimprimer l'étiquette — ${labelBtn}`;
     btnReimp.addEventListener('click', () => {
       imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne);
     });
