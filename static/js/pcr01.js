@@ -528,12 +528,26 @@ function dataUrlToBlob(dataUrl) {
 // ── Enregistrer la fiche courante via API ───────────────────
 elBtnEnreg.addEventListener('click', enregistrerFiche);
 
+function isSignatureVide() {
+  if (!elSigCanvas || !sigCtx) return true;
+  const data = sigCtx.getImageData(0, 0, elSigCanvas.width, elSigCanvas.height).data;
+  return !data.some(v => v !== 0);
+}
+
 async function enregistrerFiche() {
   const corrective = elCorrective.value.trim();
   if (!corrective) {
     elErreur.textContent = "L'action corrective est obligatoire.";
     elErreur.hidden = false;
     elCorrective.focus();
+    return;
+  }
+
+  const livreurEstPresent = modeCamion ? livreurCamionPresent === true : livreurPresent === true;
+  if (livreurEstPresent && isSignatureVide()) {
+    elErreur.textContent = 'La signature du livreur est obligatoire.';
+    elErreur.hidden = false;
+    elSigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
 
