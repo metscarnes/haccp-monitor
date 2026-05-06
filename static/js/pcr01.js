@@ -114,9 +114,10 @@ if (elLivreurCamionOui) {
     livreurPresent = true;
     elLivreurCamionOui.classList.add('sel');
     elLivreurCamionNon.classList.remove('sel');
-    // Montrer la signature
+    // Montrer la signature, cacher étiquette retour (sera gérée par majUILivreur si refus)
     if (elSigBloc) { elSigBloc.hidden = false; initSigCanvas(); }
     if (elEtiqBloc) elEtiqBloc.hidden = true;
+    if (elEtiqRepriseBloc) elEtiqRepriseBloc.hidden = true;
     // Rafraîchir corrective + étapes
     if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
     construireEtapesCamion();
@@ -126,11 +127,13 @@ if (elLivreurCamionNon) {
   elLivreurCamionNon.addEventListener('click', () => {
     livreurCamionPresent = false;
     livreurPresent = false;
+    livreurAccepte = null;
     elLivreurCamionNon.classList.add('sel');
     elLivreurCamionOui.classList.remove('sel');
-    // Cacher signature
+    // Cacher signature et bloc attestation, montrer étiquette retour (livreur absent)
     if (elSigBloc) elSigBloc.hidden = true;
     if (elEtiqBloc) elEtiqBloc.hidden = true;
+    if (elEtiqRepriseBloc) elEtiqRepriseBloc.hidden = false;
     // Rafraîchir
     if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
     construireEtapesCamion();
