@@ -313,12 +313,12 @@ function genererActionCorrectiveCamion() {
     if (livreurAccepte === true) {
       txt += "\n\nLe livreur étant présent, la non-conformité est attestée et le retour accepté. La feuille de reprise avec retour marchandise a été signée par le livreur.";
     } else if (livreurAccepte === false) {
-      txt += "\n\nLe livreur étant présent, la non-conformité n'est pas attestée par le livreur et le retour n'est pas accepté. La feuille de reprise a été signée par le livreur. Le dossier est transmis pour résolution de litige.";
+      txt += "\n\nLe livreur étant présent, la non-conformité n'est pas attestée par le livreur et le retour n'est pas accepté. La feuille de reprise a été signée par le livreur. Le lot a été isolé avec apposition de l'étiquette À RETOURNER en attente de retour fournisseur.";
     } else {
       txt += "\n\nLe livreur étant présent, la feuille de reprise a été signée.";
     }
   } else if (livreurCamionPresent === false) {
-    txt += "\n\nLe livreur étant absent, l'incident a été enregistré pour suivi et résolution avec le fournisseur.";
+    txt += "\n\nLe livreur étant absent, le lot a été isolé avec apposition de l'étiquette À RETOURNER en attente de retour fournisseur.";
   }
 
   return txt;
