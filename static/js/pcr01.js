@@ -220,9 +220,6 @@ if (elEtiqRepriseBtn) {
     let l;
     if (modeCamion) {
       // Pas de produit en mode camion → objet synthétique pour l'étiquette
-      const problemsTxt = problemesPropreteList.length
-        ? problemesPropreteList.join(', ')
-        : 'Propreté du camion non satisfaisante';
       l = {
         produit_nom: 'Livraison refusée — Propreté camion',
         motifs: problemesPropreteList.length ? problemesPropreteList : ['Propreté du camion non satisfaisante'],
@@ -231,7 +228,7 @@ if (elEtiqRepriseBtn) {
         dlc: null,
         dluo: null,
         id: null,
-        actionTxt: `Livraison refusée — ${problemsTxt}. Litige en cours de résolution avec le fournisseur.`,
+        actionTxt: elCorrective ? elCorrective.value.trim() : '',
       };
     } else {
       l = ncProduits[ncFicheIndex];
