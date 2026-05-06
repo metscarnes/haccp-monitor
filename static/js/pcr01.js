@@ -296,11 +296,22 @@ function genererActionCorrective(produit) {
 
 
 // ── Mode camion : action corrective ────────────────────────
+function tempCamionEstNc() {
+  return tempCamion !== null && tempCamion !== undefined && tempCamion > 4;
+}
+
 function genererActionCorrectiveCamion() {
-  let txt = 'Non-conformité constatée à la réception : Propreté du camion.';
+  const tempNc = tempCamionEstNc();
+  let txt = tempNc
+    ? 'Non-conformités constatées à la réception : Propreté du camion et Température du camion.'
+    : 'Non-conformité constatée à la réception : Propreté du camion.';
 
   if (problemesPropreteList.length > 0) {
     txt += '\nProblèmes relevés :\n— ' + problemesPropreteList.join('\n— ');
+  }
+
+  if (tempNc) {
+    txt += `\nTempérature camion relevée : ${tempCamion}°C — non conforme (seuil ≤ 4°C).`;
   }
 
   txt += `\nPhoto du bon de livraison : ${photoBlPrise ? 'oui' : 'non'}.`;
@@ -326,12 +337,17 @@ function construireEtapesCamion() {
   const problemsTxt = problemesPropreteList.length
     ? problemesPropreteList.join(', ')
     : 'propreté non satisfaisante';
+  const tempNc = tempCamionEstNc();
   const tempTxt = tempCamion !== null && tempCamion !== undefined
-    ? ` (température camion : ${tempCamion}°C)`
+    ? ` (température camion : ${tempCamion}°C${tempNc ? ' — non conforme' : ''})`
     : '';
 
+  const detailNc = tempNc
+    ? `${problemsTxt} + température camion ${tempCamion}°C (seuil ≤ 4°C)`
+    : problemsTxt;
+
   const etapes = [
-    `Contrôle du camion à la réception → Non-conformité détectée : ${problemsTxt}${tempTxt}.`,
+    `Contrôle du camion à la réception → Non-conformité détectée : ${detailNc}${tempNc ? '' : tempTxt}.`,
     `Photo du bon de livraison prise : ${photoBlPrise ? 'oui' : 'non'}.`,
     'Livraison refusée.',
   ];
@@ -586,10 +602,15 @@ async function enregistrerFiche() {
     fd.append('action_immediate', 'refus_livraison');
     const livreurVal = livreurCamionPresent !== null ? (livreurCamionPresent ? 1 : 0) : 0;
     fd.append('livreur_present', livreurVal);
-    const description = problemesPropreteList.length
-      ? problemesPropreteList.join(', ')
-      : 'propreté du camion non satisfaisante';
-    fd.append('description', description);
+    const partsDescription = [
+      problemesPropreteList.length
+        ? problemesPropreteList.join(', ')
+        : 'propreté du camion non satisfaisante',
+    ];
+    if (tempCamionEstNc()) {
+      partsDescription.push(`température camion ${tempCamion}°C (seuil ≤ 4°C)`);
+    }
+    fd.append('description', partsDescription.join(' — '));
     if (tempCamion !== null && tempCamion !== undefined) fd.append('temperature_camion', tempCamion);
     // Signature si livreur présent
     if (livreurCamionPresent && sigCtx) {
@@ -629,9 +650,14 @@ async function enregistrerFiche() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             livraison_refusee: true,
-            commentaire_nc: problemesPropreteList.length
-              ? `Propreté camion NC : ${problemesPropreteList.join(', ')}`
-              : 'Propreté du camion non satisfaisante',
+            commentaire_nc: (() => {
+              const base = problemesPropreteList.length
+                ? `Propreté camion NC : ${problemesPropreteList.join(', ')}`
+                : 'Propreté du camion non satisfaisante';
+              return tempCamionEstNc()
+                ? `${base} — Température camion NC : ${tempCamion}°C (seuil ≤ 4°C)`
+                : base;
+            })(),
           }),
         });
       } catch (e) {
