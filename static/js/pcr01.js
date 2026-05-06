@@ -622,7 +622,21 @@ async function enregistrerFiche() {
     await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
 
     if (modeCamion) {
-      // Mode camion → retour hub (la réception est terminée / refusée)
+      // Mode camion → clôturer la réception (livraison refusée pour propreté NC)
+      try {
+        await apiFetch(`/api/receptions/${receptionId}/cloturer`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            livraison_refusee: true,
+            commentaire_nc: problemesPropreteList.length
+              ? `Propreté camion NC : ${problemesPropreteList.join(', ')}`
+              : 'Propreté du camion non satisfaisante',
+          }),
+        });
+      } catch (e) {
+        console.warn('Clôture réception camion NC échouée :', e);
+      }
       sessionStorage.removeItem('haccp_pcr01_data');
       sessionStorage.removeItem('haccp_pcr01_signature');
       window.location.href = '/hub.html';

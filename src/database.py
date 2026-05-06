@@ -2055,7 +2055,18 @@ async def cloturer_reception(
     )
     row = await cur.fetchone()
     nb_nc = row[0] if row else 0
-    conformite_globale = "non_conforme" if nb_nc > 0 else "conforme"
+
+    # Une NC propreté camion rend la réception non conforme même sans NC produit
+    cur_cam = await db.execute(
+        "SELECT camion_conforme, proprete_camion FROM receptions WHERE id = ?",
+        (reception_id,),
+    )
+    row_cam = await cur_cam.fetchone()
+    camion_nc = bool(row_cam) and (
+        row_cam[0] == 0 or (row_cam[1] and row_cam[1] != "satisfaisant")
+    )
+
+    conformite_globale = "non_conforme" if (nb_nc > 0 or camion_nc) else "conforme"
 
     await db.execute(
         """
