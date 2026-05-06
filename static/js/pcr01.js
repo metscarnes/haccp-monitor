@@ -217,6 +217,9 @@ if (elEtiqRepriseBtn) {
     let l;
     if (modeCamion) {
       // Pas de produit en mode camion → objet synthétique pour l'étiquette
+      const problemsTxt = problemesPropreteList.length
+        ? problemesPropreteList.join(', ')
+        : 'Propreté du camion non satisfaisante';
       l = {
         produit_nom: 'Livraison refusée — Propreté camion',
         motifs: problemesPropreteList.length ? problemesPropreteList : ['Propreté du camion non satisfaisante'],
@@ -225,6 +228,7 @@ if (elEtiqRepriseBtn) {
         dlc: null,
         dluo: null,
         id: null,
+        actionTxt: `Livraison refusée — ${problemsTxt}. Litige en cours de résolution avec le fournisseur.`,
       };
     } else {
       l = ncProduits[ncFicheIndex];
@@ -480,10 +484,12 @@ function imprimerEtiquetteRetour(produit) {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
   const heureStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const coeur    = ncCoeurResultats[produit.id] || ncCoeurResultats[String(produit.id)];
-  const actionTxt = coeur
+  const coeur    = produit.id != null
+    ? (ncCoeurResultats[produit.id] || ncCoeurResultats[String(produit.id)])
+    : null;
+  const actionTxt = produit.actionTxt || (coeur
     ? `Contrôle à cœur effectué — NC confirmé (T° cœur : ${coeur.temp_coeur}°C)`
-    : 'Contrôle à cœur effectué — NC confirmé';
+    : 'Contrôle à cœur effectué — NC confirmé');
 
   function set(id, val) {
     const el = document.getElementById(id);
