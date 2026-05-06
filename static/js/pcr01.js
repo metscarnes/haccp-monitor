@@ -214,10 +214,24 @@ if (elLivreurRefuse) {
 // Bouton impression étiquette (si refus)
 if (elEtiqRepriseBtn) {
   elEtiqRepriseBtn.addEventListener('click', () => {
-    const l = ncProduits[ncFicheIndex];
+    let l;
+    if (modeCamion) {
+      // Pas de produit en mode camion → objet synthétique pour l'étiquette
+      l = {
+        produit_nom: 'Livraison refusée — Propreté camion',
+        motifs: problemesPropreteList.length ? problemesPropreteList : ['Propreté du camion non satisfaisante'],
+        fournisseur_nom: null,
+        numero_lot: null,
+        dlc: null,
+        dluo: null,
+        id: null,
+      };
+    } else {
+      l = ncProduits[ncFicheIndex];
+    }
     imprimerEtiquetteRetour(l);
     elEtiqRepriseBtn.classList.add('imprime');
-    elEtiqRepriseBtn.innerHTML = `✓ Imprimé — ${l.produit_nom}`;
+    elEtiqRepriseBtn.innerHTML = modeCamion ? '✓ Imprimé — Camion' : `✓ Imprimé — ${l.produit_nom}`;
   });
 }
 
