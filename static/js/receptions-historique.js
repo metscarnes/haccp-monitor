@@ -239,6 +239,14 @@ function creerCarte(rec) {
     cf.textContent = rec.fournisseur_nom;
     chips.appendChild(cf);
   }
+  // Fournisseurs supplémentaires (BL refus livraison multi)
+  (rec.bls_supplementaires_noms || []).forEach(nom => {
+    if (!nom) return;
+    const cf = document.createElement('span');
+    cf.className = 'rh-chip';
+    cf.textContent = nom;
+    chips.appendChild(cf);
+  });
 
   const cp = document.createElement('span');
   cp.className = 'rh-chip';
@@ -312,17 +320,31 @@ function remplirDetail(el, rec) {
     el.appendChild(btnPcr);
   }
 
-  // Bouton photo BL grande
+  // Boutons photos BL (principal + supplémentaires multi-fournisseur)
+  const blsSupp = Array.isArray(rec.bls_supplementaires) ? rec.bls_supplementaires : [];
   if (rec.photo_bl_filename) {
     const btnBl = document.createElement('button');
     btnBl.className = 'rh-detail-bl-btn';
-    btnBl.textContent = '📋 Voir le bon de livraison';
+    btnBl.textContent = blsSupp.length
+      ? `📋 BL — ${rec.fournisseur_nom || 'Fournisseur principal'}`
+      : '📋 Voir le bon de livraison';
     btnBl.addEventListener('click', e => {
       e.stopPropagation();
       ouvrirModal(`/api/receptions/${rec.id}/photo-bl`, 'Bon de livraison');
     });
     el.appendChild(btnBl);
   }
+  blsSupp.forEach(b => {
+    if (!b.photo_bl_filename) return;
+    const btn = document.createElement('button');
+    btn.className = 'rh-detail-bl-btn';
+    btn.textContent = `📋 BL — ${b.fournisseur_nom || 'Fournisseur'}`;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      ouvrirModal(`/api/receptions/${rec.id}/bls-supplementaires/${b.id}/photo`, btn.textContent);
+    });
+    el.appendChild(btn);
+  });
 
   // Camion
   const titreCamion = document.createElement('div');

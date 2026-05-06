@@ -870,6 +870,19 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE etiquettes_generees ADD COLUMN source_id INTEGER",
             # v3.5 — Statut réception : produits visibles en stock uniquement après clôture
             "ALTER TABLE receptions ADD COLUMN statut TEXT DEFAULT 'en_cours'",
+            # v3.6 — Refus livraison multi-BL : 1 BL par fournisseur (au-delà du fournisseur principal)
+            """CREATE TABLE IF NOT EXISTS reception_bls_supplementaires (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                reception_id      INTEGER NOT NULL,
+                fournisseur_id    INTEGER,
+                fournisseur_nom   TEXT,
+                photo_bl_filename TEXT,
+                ordre             INTEGER DEFAULT 0,
+                created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (reception_id)   REFERENCES receptions(id),
+                FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_reception_bls_reception ON reception_bls_supplementaires(reception_id)",
         ]
         for sql in migrations:
             try:
@@ -2274,7 +2287,17 @@ async def get_receptions(
             p.prenom            AS personnel_prenom,
             COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
             COUNT(rl.id)        AS nb_lignes,
-            SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc
+            SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc,
+            (
+                SELECT GROUP_CONCAT(COALESCE(fs.nom, rb.fournisseur_nom), '||')
+                FROM reception_bls_supplementaires rb
+                LEFT JOIN fournisseurs fs ON fs.id = rb.fournisseur_id
+                WHERE rb.reception_id = r.id
+            ) AS bls_supp_noms_concat,
+            (
+                SELECT COUNT(*) FROM reception_bls_supplementaires rb2
+                WHERE rb2.reception_id = r.id
+            ) AS nb_bls_supp
         FROM receptions r
         LEFT JOIN personnel         p  ON p.id  = r.personnel_id
         LEFT JOIN fournisseurs      f  ON f.id  = r.fournisseur_principal_id
@@ -2287,7 +2310,15 @@ async def get_receptions(
         params + [limit, offset],
     )
     rows = await cursor.fetchall()
-    return [dict(r) for r in rows]
+    out = []
+    for r in rows:
+        d = dict(r)
+        concat = d.pop("bls_supp_noms_concat", None)
+        d["bls_supplementaires_noms"] = (
+            [n for n in concat.split("||") if n] if concat else []
+        )
+        out.append(d)
+    return out
 
 
 async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional[dict]:
@@ -2324,7 +2355,52 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
     )
     lignes = await cur2.fetchall()
     reception["lignes"] = [dict(l) for l in lignes]
+
+    # BLs supplémentaires (cas refus livraison multi-fournisseur)
+    cur3 = await db.execute(
+        """
+        SELECT b.id, b.reception_id, b.fournisseur_id, b.photo_bl_filename, b.ordre,
+               COALESCE(f.nom, b.fournisseur_nom) AS fournisseur_nom
+        FROM reception_bls_supplementaires b
+        LEFT JOIN fournisseurs f ON f.id = b.fournisseur_id
+        WHERE b.reception_id = ?
+        ORDER BY b.ordre, b.id
+        """,
+        (reception_id,),
+    )
+    bls = await cur3.fetchall()
+    reception["bls_supplementaires"] = [dict(b) for b in bls]
     return reception
+
+
+async def add_reception_bl_supplementaire(
+    db: aiosqlite.Connection,
+    reception_id: int,
+    data: dict,
+) -> int:
+    """Ajoute un BL supplémentaire à une réception (refus livraison multi-fournisseur)."""
+    cur = await db.execute(
+        "SELECT COALESCE(MAX(ordre), 0) + 1 AS o FROM reception_bls_supplementaires WHERE reception_id = ?",
+        (reception_id,),
+    )
+    row = await cur.fetchone()
+    ordre = row["o"] if row else 1
+    cursor = await db.execute(
+        """
+        INSERT INTO reception_bls_supplementaires
+            (reception_id, fournisseur_id, fournisseur_nom, photo_bl_filename, ordre)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            reception_id,
+            data.get("fournisseur_id"),
+            data.get("fournisseur_nom"),
+            data.get("photo_bl_filename"),
+            ordre,
+        ),
+    )
+    await db.commit()
+    return cursor.lastrowid
 
 
 # ---------------------------------------------------------------------------

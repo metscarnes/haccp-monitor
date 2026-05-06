@@ -128,13 +128,10 @@ const elDialogLivraison      = document.getElementById('rec-dialog-livraison');
 const elDialogLivraisonOui   = document.getElementById('rec-dialog-livraison-oui');
 const elDialogLivraisonNon   = document.getElementById('rec-dialog-livraison-non');
 
-// Dialog "Refus BL"
+// Dialog "Refus BL" (multi-BL : 1 photo + 1 fournisseur par BL)
 const elDialogRefusBl        = document.getElementById('rec-dialog-refus-bl');
-const elRefusBlPhotoZone     = document.getElementById('rec-refus-bl-photo-zone');
-const elRefusBlPhotoInput    = document.getElementById('rec-refus-bl-photo-input');
-const elRefusBlPhotoIcone    = document.getElementById('rec-refus-bl-photo-icone');
-const elRefusBlPhotoTitre    = document.getElementById('rec-refus-bl-photo-titre');
-const elRefusBlPhotoVignette = document.getElementById('rec-refus-bl-photo-vignette');
+const elRefusBlListe         = document.getElementById('rec-refus-bl-liste');
+const elRefusBlAdd           = document.getElementById('rec-refus-bl-add');
 const elErreurRefusBl        = document.getElementById('rec-erreur-refus-bl');
 const elDialogRefusAnnuler   = document.getElementById('rec-dialog-refus-annuler');
 const elDialogRefusValider   = document.getElementById('rec-dialog-refus-valider');
@@ -165,7 +162,9 @@ let textesAide         = {};
 // NC propreté camion state
 let propreteProblemes  = [];      // labels des cases cochées
 let propretePhotoFile  = null;    // photo du problème de propreté
-let refusBlPhotoFile   = null;    // photo BL prise lors d'un refus livraison
+// Refus livraison : liste des BL refusés (1 par fournisseur)
+// [{photoFile, photoUrl, fournisseurId, fournisseurNom}]
+let refusBlList        = [];
 
 // NC procedure state
 let ncProduits         = [];      // produits NC confirmés (après contrôle à cœur)
@@ -465,68 +464,267 @@ elDialogLivraisonOui.addEventListener('click', () => {
 
 elDialogLivraisonNon.addEventListener('click', () => {
   elDialogLivraison.hidden = true;
-  // Réinitialiser l'état de la photo BL refus
-  refusBlPhotoFile = null;
-  elRefusBlPhotoVignette.hidden = true;
-  elRefusBlPhotoIcone.textContent = '📋';
-  elRefusBlPhotoTitre.textContent = 'Photo du bon de livraison';
+  // Réinitialiser la liste des BL refusés
+  refusBlList.forEach(b => { if (b.photoUrl) URL.revokeObjectURL(b.photoUrl); });
+  refusBlList = [];
+  elRefusBlListe.innerHTML = '';
+  ajouterBlocRefusBl();   // toujours au moins 1 bloc
   elDialogRefusValider.disabled = true;
   if (elErreurRefusBl) elErreurRefusBl.hidden = true;
   elDialogRefusBl.hidden = false;
 });
 
-// ── Dialog "Refus BL — photo obligatoire" ─────────────────
+// ── Dialog "Refus BL — photo + fournisseur obligatoires" ──
 elDialogRefusAnnuler.addEventListener('click', () => {
   elDialogRefusBl.hidden = true;
 });
 
-elRefusBlPhotoZone.addEventListener('click', () => elRefusBlPhotoInput.click());
-elRefusBlPhotoZone.addEventListener('keydown', e => {
-  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elRefusBlPhotoInput.click(); }
-});
-elRefusBlPhotoInput.addEventListener('change', () => {
-  const file = elRefusBlPhotoInput.files[0];
-  if (!file) return;
-  refusBlPhotoFile = file;
-  const url = URL.createObjectURL(file);
-  elRefusBlPhotoVignette.src = url;
-  elRefusBlPhotoVignette.hidden = false;
-  elRefusBlPhotoIcone.textContent = '✅';
-  elRefusBlPhotoTitre.textContent = 'Photo prise';
-  elDialogRefusValider.disabled = false;
-});
+function majBoutonRefusValider() {
+  // Activé seulement si chaque BL a une photo ET un fournisseur (id ou nom)
+  const ok = refusBlList.length > 0 && refusBlList.every(b => {
+    const hasPhoto = !!b.photoFile;
+    const hasFourn = !!b.fournisseurId || (b.fournisseurNom && b.fournisseurNom.trim().length > 0);
+    return hasPhoto && hasFourn;
+  });
+  elDialogRefusValider.disabled = !ok;
+}
+
+function ajouterBlocRefusBl() {
+  const idx = refusBlList.length;
+  refusBlList.push({ photoFile: null, photoUrl: null, fournisseurId: null, fournisseurNom: '' });
+
+  const bloc = document.createElement('div');
+  bloc.className = 'rec-refus-bl-bloc';
+  bloc.dataset.idx = String(idx);
+  bloc.innerHTML = `
+    <div class="rec-fourn-bloc-titre" id="rec-refus-bl-titre-${idx}">
+      Bon de livraison ${idx + 1}
+      <button class="rec-fourn-sup-btn" type="button" data-sup="${idx}" aria-label="Supprimer ce BL"
+              ${idx === 0 ? 'hidden' : ''}>✕</button>
+    </div>
+    <div class="rec-photo-zone" id="rec-refus-bl-photo-zone-${idx}" role="button" tabindex="0"
+         aria-label="Photo obligatoire du bon de livraison" style="margin:.5rem 0;">
+      <span class="rec-photo-icone" id="rec-refus-bl-photo-icone-${idx}">📋</span>
+      <div class="rec-photo-texte">
+        <div class="rec-photo-texte-titre" id="rec-refus-bl-photo-titre-${idx}">Photo du bon de livraison</div>
+        <div class="rec-photo-texte-sous">Obligatoire</div>
+      </div>
+      <img id="rec-refus-bl-photo-vignette-${idx}" class="rec-photo-vignette" alt="Aperçu BL" hidden>
+    </div>
+    <input type="file" accept="image/*" capture="environment"
+           id="rec-refus-bl-photo-input-${idx}" hidden aria-hidden="true">
+
+    <div class="rec-fourn-search-group">
+      <div id="rec-refus-bl-fourn-sel-wrap-${idx}" hidden>
+        <div class="rec-fourn-sel">
+          <span>✓</span>
+          <span id="rec-refus-bl-fourn-sel-nom-${idx}"></span>
+          <button class="rec-fourn-clear" id="rec-refus-bl-fourn-clear-${idx}" type="button"
+                  aria-label="Effacer le fournisseur">✕</button>
+        </div>
+      </div>
+      <div id="rec-refus-bl-fourn-search-wrap-${idx}">
+        <input type="search" id="rec-refus-bl-fourn-search-${idx}" class="rec-input"
+               placeholder="Nom du fournisseur (obligatoire)…"
+               autocomplete="off" aria-label="Fournisseur du BL">
+        <div class="rec-fourn-results" id="rec-refus-bl-fourn-results-${idx}" hidden></div>
+      </div>
+    </div>
+  `;
+  elRefusBlListe.appendChild(bloc);
+  initBlocRefusBl(idx);
+
+  // Bouton suppression
+  const supBtn = bloc.querySelector('.rec-fourn-sup-btn');
+  if (supBtn) {
+    supBtn.addEventListener('click', () => {
+      const i = Number(supBtn.dataset.sup);
+      const item = refusBlList[i];
+      if (item && item.photoUrl) URL.revokeObjectURL(item.photoUrl);
+      refusBlList.splice(i, 1);
+      // Reconstruire entièrement la liste pour réindexer proprement
+      const snapshot = refusBlList.slice();
+      refusBlList = [];
+      elRefusBlListe.innerHTML = '';
+      snapshot.forEach(item => {
+        ajouterBlocRefusBl();
+        const newIdx = refusBlList.length - 1;
+        refusBlList[newIdx] = item;
+        // Restaurer la photo
+        if (item.photoFile) {
+          const z = document.getElementById(`rec-refus-bl-photo-zone-${newIdx}`);
+          const v = document.getElementById(`rec-refus-bl-photo-vignette-${newIdx}`);
+          const ic = document.getElementById(`rec-refus-bl-photo-icone-${newIdx}`);
+          const tt = document.getElementById(`rec-refus-bl-photo-titre-${newIdx}`);
+          if (v && item.photoUrl) { v.src = item.photoUrl; v.hidden = false; }
+          if (ic) ic.textContent = '✅';
+          if (tt) tt.textContent = 'Photo prise';
+        }
+        // Restaurer le fournisseur
+        if (item.fournisseurNom) {
+          const selWrap   = document.getElementById(`rec-refus-bl-fourn-sel-wrap-${newIdx}`);
+          const selNom    = document.getElementById(`rec-refus-bl-fourn-sel-nom-${newIdx}`);
+          const searchWrap = document.getElementById(`rec-refus-bl-fourn-search-wrap-${newIdx}`);
+          if (selNom) selNom.textContent = item.fournisseurNom;
+          if (selWrap) selWrap.hidden = false;
+          if (searchWrap) searchWrap.hidden = true;
+        }
+      });
+      majBoutonRefusValider();
+    });
+  }
+
+  majBoutonRefusValider();
+}
+
+function initBlocRefusBl(idx) {
+  const photoZone  = document.getElementById(`rec-refus-bl-photo-zone-${idx}`);
+  const photoInput = document.getElementById(`rec-refus-bl-photo-input-${idx}`);
+  const photoIcone = document.getElementById(`rec-refus-bl-photo-icone-${idx}`);
+  const photoTitre = document.getElementById(`rec-refus-bl-photo-titre-${idx}`);
+  const photoVign  = document.getElementById(`rec-refus-bl-photo-vignette-${idx}`);
+  const selWrap    = document.getElementById(`rec-refus-bl-fourn-sel-wrap-${idx}`);
+  const selNom     = document.getElementById(`rec-refus-bl-fourn-sel-nom-${idx}`);
+  const searchWrap = document.getElementById(`rec-refus-bl-fourn-search-wrap-${idx}`);
+  const searchInp  = document.getElementById(`rec-refus-bl-fourn-search-${idx}`);
+  const results    = document.getElementById(`rec-refus-bl-fourn-results-${idx}`);
+  const clearBtn   = document.getElementById(`rec-refus-bl-fourn-clear-${idx}`);
+
+  // Photo
+  photoZone.addEventListener('click', () => photoInput.click());
+  photoZone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); photoInput.click(); }
+  });
+  photoInput.addEventListener('change', () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    if (refusBlList[idx].photoUrl) URL.revokeObjectURL(refusBlList[idx].photoUrl);
+    refusBlList[idx].photoFile = file;
+    refusBlList[idx].photoUrl  = URL.createObjectURL(file);
+    photoVign.src = refusBlList[idx].photoUrl;
+    photoVign.hidden = false;
+    photoIcone.textContent = '✅';
+    photoTitre.textContent = 'Photo prise';
+    majBoutonRefusValider();
+  });
+
+  // Fournisseur — recherche
+  function afficherResultats(liste) {
+    results.innerHTML = '';
+    if (!liste.length) { results.hidden = true; return; }
+    liste.slice(0, 10).forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'rec-fourn-item';
+      div.textContent = f.nom;
+      div.addEventListener('click', () => {
+        refusBlList[idx].fournisseurId  = f.id;
+        refusBlList[idx].fournisseurNom = f.nom;
+        selNom.textContent = f.nom;
+        selWrap.hidden     = false;
+        searchWrap.hidden  = true;
+        results.hidden     = true;
+        majBoutonRefusValider();
+      });
+      results.appendChild(div);
+    });
+    results.hidden = false;
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      refusBlList[idx].fournisseurId  = null;
+      refusBlList[idx].fournisseurNom = '';
+      selWrap.hidden     = true;
+      searchWrap.hidden  = false;
+      searchInp.value    = '';
+      results.hidden     = true;
+      majBoutonRefusValider();
+    });
+  }
+
+  searchInp.addEventListener('input', () => {
+    const q = searchInp.value.trim().toLowerCase();
+    refusBlList[idx].fournisseurNom = searchInp.value.trim();
+    refusBlList[idx].fournisseurId  = null; // saisie libre, plus d'ID tant que pas re-sélectionné
+    if (!q) { results.hidden = true; majBoutonRefusValider(); return; }
+    afficherResultats((tousFournisseurs || []).filter(f => f.nom.toLowerCase().includes(q)));
+    majBoutonRefusValider();
+  });
+
+  document.addEventListener('click', e => {
+    if (!results.contains(e.target) && e.target !== searchInp) results.hidden = true;
+  }, true);
+}
+
+if (elRefusBlAdd) elRefusBlAdd.addEventListener('click', () => ajouterBlocRefusBl());
 
 elDialogRefusValider.addEventListener('click', allerVersPcr01Camion);
 
 async function allerVersPcr01Camion() {
-  if (!refusBlPhotoFile) return;
+  // Validation finale
+  if (!refusBlList.length) return;
+  for (const b of refusBlList) {
+    if (!b.photoFile || (!b.fournisseurId && !(b.fournisseurNom && b.fournisseurNom.trim()))) {
+      if (elErreurRefusBl) {
+        elErreurRefusBl.textContent = 'Chaque BL doit avoir une photo ET un fournisseur.';
+        elErreurRefusBl.hidden = false;
+      }
+      return;
+    }
+  }
+
   elDialogRefusValider.disabled = true;
   elDialogRefusValider.textContent = 'Création…';
   if (elErreurRefusBl) elErreurRefusBl.hidden = true;
 
   try {
     // Créer une réception minimale (sans produits — livraison refusée)
+    // Le 1er BL renseigne fournisseur principal + photo BL principale.
+    const premier = refusBlList[0];
+
     const fd = new FormData();
     fd.append('personnel_id',    personnelId);
     fd.append('heure_reception', elHeure.value || new Date().toTimeString().slice(0, 5));
     if (elDateReception.value) fd.append('date_reception', elDateReception.value);
     if (elTempCamion.value !== '') fd.append('temperature_camion', elTempCamion.value);
     fd.append('proprete_camion', 'non_satisfaisant');
-    fd.append('photo_bl', refusBlPhotoFile, refusBlPhotoFile.name);
-    if (propretePhotoFile) fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
+    if (premier.fournisseurId)  fd.append('fournisseur_principal_id', premier.fournisseurId);
+    else if (premier.fournisseurNom) fd.append('fournisseur_nom', premier.fournisseurNom);
+    fd.append('photo_bl', premier.photoFile, premier.photoFile.name);
 
     const rec = await apiFetch('/api/receptions', { method: 'POST', body: fd });
 
-    // Stocker les données pour PCR01 mode camion
+    // BLs supplémentaires (idx >= 1)
+    for (let i = 1; i < refusBlList.length; i++) {
+      const b = refusBlList[i];
+      const fd2 = new FormData();
+      if (b.fournisseurId)  fd2.append('fournisseur_id',  b.fournisseurId);
+      if (b.fournisseurNom) fd2.append('fournisseur_nom', b.fournisseurNom);
+      fd2.append('photo', b.photoFile, b.photoFile.name);
+      try {
+        await apiFetch(`/api/receptions/${rec.id}/bls-supplementaires`, { method: 'POST', body: fd2 });
+      } catch (e) {
+        console.warn('BL supplémentaire échoué :', e);
+      }
+    }
+
+    // Données PCR01 : 1 fiche par fournisseur concerné
+    const fournisseursRefus = refusBlList.map(b => ({
+      fournisseurId:  b.fournisseurId  || null,
+      fournisseurNom: b.fournisseurNom || null,
+    }));
+
     const pcrData = {
-      modeCamion:           true,
-      receptionId:          rec.id,
+      modeCamion:            true,
+      receptionId:           rec.id,
       personnelPrenom,
-      livreurPresent:       null,   // sera demandé dans PCR01
+      livreurPresent:        null,
       problemesPropreteList: propreteProblemes,
-      photoBlPrise:         true,
-      tempCamion:           parseFloat(elTempCamion.value) || null,
-      heureReception:       elHeure.value,
+      photoBlPrise:          true,
+      tempCamion:            parseFloat(elTempCamion.value) || null,
+      heureReception:        elHeure.value,
+      fournisseursRefus,
+      ncFicheIndex:          0,
     };
     sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
     sessionStorage.removeItem('haccp_pcr01_signature');

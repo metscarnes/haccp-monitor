@@ -590,26 +590,24 @@
     </div>
   </div>
 
-  <!-- Dialog "Refus livraison — Photo BL obligatoire" -->
+  <!-- Dialog "Refus livraison — Photo BL + fournisseur obligatoires (multi)" -->
   <div class="rec-dialog-overlay" id="rec-dialog-refus-bl" hidden
        role="alertdialog" aria-modal="true"
        aria-labelledby="rec-dlg-refus-titre">
-    <div class="rec-dialog rec-dialog-tall">
+    <div class="rec-dialog rec-dialog-tall rec-dialog-refus">
       <div class="rec-dialog-titre" id="rec-dlg-refus-titre">Refus de livraison</div>
       <div class="rec-dialog-texte">
-        Photographiez le <strong>bon de livraison</strong> avant de continuer vers la fiche incident.
+        Pour chaque <strong>bon de livraison</strong>, photographiez-le et indiquez
+        le <strong>fournisseur</strong> concerné (1 BL par fournisseur).
       </div>
-      <div class="rec-photo-zone" id="rec-refus-bl-photo-zone" role="button" tabindex="0"
-           aria-label="Photo obligatoire du bon de livraison" style="margin:.75rem 0;">
-        <span class="rec-photo-icone" id="rec-refus-bl-photo-icone">📋</span>
-        <div class="rec-photo-texte">
-          <div class="rec-photo-texte-titre" id="rec-refus-bl-photo-titre">Photo du bon de livraison</div>
-          <div class="rec-photo-texte-sous">Obligatoire</div>
-        </div>
-        <img id="rec-refus-bl-photo-vignette" class="rec-photo-vignette" alt="Aperçu BL" hidden>
-      </div>
-      <input type="file" accept="image/*" capture="environment"
-             id="rec-refus-bl-photo-input" hidden aria-hidden="true">
+
+      <!-- Liste des BL refusés (1 bloc par fournisseur) -->
+      <div id="rec-refus-bl-liste"></div>
+
+      <button class="rec-btn-add-fourn" id="rec-refus-bl-add" type="button">
+        + Ajouter un autre bon de livraison
+      </button>
+
       <div class="rec-erreur" id="rec-erreur-refus-bl" hidden role="alert"></div>
       <div class="rec-dialog-actions">
         <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-dialog-refus-annuler">

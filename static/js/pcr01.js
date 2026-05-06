@@ -72,6 +72,9 @@ ncCoeurResultats = ncCoeurResultats || {};
 const modeCamion          = !!pcrData.modeCamion;
 const problemesPropreteList = pcrData.problemesPropreteList || [];
 const photoBlPrise        = !!pcrData.photoBlPrise;
+// Fournisseurs concernés (refus livraison) — 1 fiche par fournisseur
+const fournisseursRefus   = Array.isArray(pcrData.fournisseursRefus) ? pcrData.fournisseursRefus : [];
+ncFicheIndex = pcrData.ncFicheIndex || 0;
 
 // État signature livreur (si présent)
 let livreurAccepte       = null; // null (pas de choix), true (accepte), false (refuse)
@@ -91,13 +94,30 @@ let sigCtx  = null;
 let sigDraw = false;
 
 if (modeCamion) {
-  // Masquer le bloc produit NC (inutile en mode camion)
+  // En mode camion : on conserve le bloc-produit mais on n'affiche
+  // que la ligne "Fournisseur concerné" (le reste n'a pas de sens).
   const blocProduit = document.querySelector('.pcr-bloc-produit');
-  if (blocProduit) blocProduit.hidden = true;
+  if (blocProduit) {
+    const titre = blocProduit.querySelector('.pcr-bloc-titre');
+    if (titre) titre.textContent = 'Fournisseur concerné';
+    blocProduit.querySelectorAll('.pcr-champ-ligne').forEach(r => { r.hidden = true; });
+  }
   // Afficher la question livreur
   if (elLivreurCamionBloc) elLivreurCamionBloc.hidden = false;
-  elHeaderBadge.textContent = 'Camion';
-  if (elPagination) elPagination.hidden = true;
+  // Pagination si plusieurs fournisseurs
+  const totalFourn = Math.max(fournisseursRefus.length, 1);
+  if (totalFourn > 1) {
+    elHeaderBadge.textContent = `Camion ${ncFicheIndex + 1}/${totalFourn}`;
+    if (elPagination) {
+      elPagination.hidden = false;
+      if (elPaginLbl) elPaginLbl.textContent = `Fournisseur ${ncFicheIndex + 1} sur ${totalFourn}`;
+    }
+  } else {
+    elHeaderBadge.textContent = 'Camion';
+    if (elPagination) elPagination.hidden = true;
+  }
+  // Afficher fournisseur concerné dans l'en-tête bloc-produit
+  majAffichageFournisseurCamion();
 } else if (livreurPresent) {
   elSigBloc.hidden = false;
   initSigCanvas();
@@ -223,7 +243,7 @@ if (elEtiqRepriseBtn) {
       l = {
         produit_nom: 'Livraison refusée — Propreté camion',
         motifs: problemesPropreteList.length ? problemesPropreteList : ['Propreté du camion non satisfaisante'],
-        fournisseur_nom: null,
+        fournisseur_nom: nomFournisseurCamion(),
         numero_lot: null,
         dlc: null,
         dluo: null,
@@ -295,16 +315,45 @@ function genererActionCorrective(produit) {
 }
 
 
-// ── Mode camion : action corrective ────────────────────────
+// ── Mode camion : helpers ──────────────────────────────────
+function fournisseurCamionCourant() {
+  if (!fournisseursRefus.length) return null;
+  return fournisseursRefus[ncFicheIndex] || null;
+}
+
+function nomFournisseurCamion() {
+  const f = fournisseurCamionCourant();
+  if (f && (f.fournisseurNom || f.fournisseurId)) {
+    return f.fournisseurNom || `Fournisseur #${f.fournisseurId}`;
+  }
+  return null;
+}
+
+function majAffichageFournisseurCamion() {
+  if (!modeCamion) return;
+  const nom = nomFournisseurCamion();
+  if (nom && elFournisseur && elFournisseurRow) {
+    elFournisseur.textContent = nom;
+    elFournisseurRow.hidden = false;
+    const blocProduit = document.querySelector('.pcr-bloc-produit');
+    if (blocProduit) blocProduit.hidden = false;
+  }
+}
+
 function tempCamionEstNc() {
   return tempCamion !== null && tempCamion !== undefined && tempCamion > 4;
 }
 
 function genererActionCorrectiveCamion() {
   const tempNc = tempCamionEstNc();
+  const fournNom = nomFournisseurCamion();
   let txt = tempNc
     ? 'Non-conformités constatées à la réception : Propreté du camion et Température du camion.'
     : 'Non-conformité constatée à la réception : Propreté du camion.';
+
+  if (fournNom) {
+    txt += `\nFournisseur concerné : ${fournNom}.`;
+  }
 
   if (problemesPropreteList.length > 0) {
     txt += '\nProblèmes relevés :\n— ' + problemesPropreteList.join('\n— ');
@@ -346,11 +395,13 @@ function construireEtapesCamion() {
     ? `${problemsTxt} + température camion ${tempCamion}°C (seuil ≤ 4°C)`
     : problemsTxt;
 
+  const fournNom = nomFournisseurCamion();
   const etapes = [
     `Contrôle du camion à la réception → Non-conformité détectée : ${detailNc}${tempNc ? '' : tempTxt}.`,
+    fournNom ? `Fournisseur concerné : ${fournNom}.` : null,
     `Photo du bon de livraison prise : ${photoBlPrise ? 'oui' : 'non'}.`,
     'Livraison refusée.',
-  ];
+  ].filter(Boolean);
 
   if (livreurCamionPresent === true) {
     etapes.push('Livreur présent : feuille de reprise avec retour marchandise signée par le livreur.');
@@ -416,7 +467,26 @@ function construireEtapes(produit) {
 
 // ── Initialiser la fiche mode camion ───────────────────────
 function chargerFicheCamion() {
-  elHeaderBadge.textContent = 'Camion';
+  const totalFourn = Math.max(fournisseursRefus.length, 1);
+  if (totalFourn > 1) {
+    elHeaderBadge.textContent = `Camion ${ncFicheIndex + 1}/${totalFourn}`;
+    if (elPagination) {
+      elPagination.hidden = false;
+      if (elPaginLbl) elPaginLbl.textContent = `Fournisseur ${ncFicheIndex + 1} sur ${totalFourn}`;
+    }
+  } else {
+    elHeaderBadge.textContent = 'Camion';
+    if (elPagination) elPagination.hidden = true;
+  }
+  majAffichageFournisseurCamion();
+  // Réinitialiser le choix livreur entre deux fiches
+  livreurCamionPresent = null;
+  livreurAccepte = null;
+  if (elLivreurCamionOui) elLivreurCamionOui.classList.remove('sel');
+  if (elLivreurCamionNon) elLivreurCamionNon.classList.remove('sel');
+  if (elSigBloc) elSigBloc.hidden = true;
+  if (elEtiqRepriseBloc) elEtiqRepriseBloc.hidden = true;
+  if (elSigCanvas && sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
   construireEtapesCamion();
   if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
   if (elCommentaire) elCommentaire.value = '';
@@ -602,6 +672,12 @@ async function enregistrerFiche() {
     fd.append('action_immediate', 'refus_livraison');
     const livreurVal = livreurCamionPresent !== null ? (livreurCamionPresent ? 1 : 0) : 0;
     fd.append('livreur_present', livreurVal);
+    // Fournisseur concerné (1 fiche par fournisseur)
+    const fournCourant = fournisseurCamionCourant();
+    if (fournCourant) {
+      if (fournCourant.fournisseurId)  fd.append('fournisseur_id',  fournCourant.fournisseurId);
+      if (fournCourant.fournisseurNom) fd.append('fournisseur_nom', fournCourant.fournisseurNom);
+    }
     const partsDescription = [
       problemesPropreteList.length
         ? problemesPropreteList.join(', ')
@@ -643,7 +719,18 @@ async function enregistrerFiche() {
     await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
 
     if (modeCamion) {
-      // Mode camion → clôturer la réception (livraison refusée pour propreté NC)
+      // En multi-fournisseur, avancer à la fiche suivante AVANT de clôturer
+      const totalFourn = fournisseursRefus.length;
+      if (totalFourn > 1 && ncFicheIndex < totalFourn - 1) {
+        ncFicheIndex++;
+        pcrData.ncFicheIndex = ncFicheIndex;
+        sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
+        chargerFicheCamion();
+        elBtnEnreg.disabled = false;
+        elBtnEnreg.textContent = '💾 Enregistrer cette fiche';
+        return;
+      }
+      // Dernière (ou unique) fiche → clôturer la réception
       try {
         await apiFetch(`/api/receptions/${receptionId}/cloturer`, {
           method: 'PUT',

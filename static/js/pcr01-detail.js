@@ -83,8 +83,9 @@ function construireEtapes(fiche) {
   if (estCamion) {
     etapes = [
       `Contrôle du camion à la réception → Non-conformité détectée : ${motifs}.`,
-      'Livraison refusée.',
     ];
+    if (fiche.fournisseur_nom) etapes.push(`Fournisseur concerné : ${fiche.fournisseur_nom}.`);
+    etapes.push('Livraison refusée.');
     if (fiche.livreur_present) {
       etapes.push('Livreur présent : feuille de reprise avec retour marchandise signée par le livreur.');
     } else {
@@ -229,7 +230,7 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
   set('print-nc-datetime', `${dateStr} — ${operateurStr}`);
   set('print-nc-produit',  produitNom);
   setRow('print-nc-fournisseur-row', 'print-nc-fournisseur', null,
-         estCamion ? null : fiche.fournisseur_nom, null);
+         fiche.fournisseur_nom || null, null);
   setRow('print-nc-lot-row', 'print-nc-lot', 'print-nc-lot-label',
          estCamion ? null : fiche.numero_lot,
          lotInterne ? 'N° lot interne' : 'N° lot');
@@ -266,17 +267,18 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
 
   elMain.appendChild(docHeader);
 
-  // ── Produit non conforme ──────────────────────────────
+  // ── Produit non conforme ou Fournisseur concerné (mode camion) ──
+  const estCamionFiche = fiche.action_immediate === 'refus_livraison';
   const blocProduit = creerBloc('pcr-bloc-produit');
-  blocProduit.appendChild(creerTitre('Produit non conforme'));
+  blocProduit.appendChild(creerTitre(estCamionFiche ? 'Fournisseur concerné' : 'Produit non conforme'));
   const corpsProduit = creerCorps();
 
-  // Produit
-  if (fiche.produit_nom) {
+  // Produit (sauf mode camion)
+  if (!estCamionFiche && fiche.produit_nom) {
     corpsProduit.appendChild(creerChampLigne('Produit', fiche.produit_nom));
   }
 
-  // Fournisseur
+  // Fournisseur (toujours affiché — y compris en mode camion)
   const fourn = fiche.fournisseur_nom || '—';
   corpsProduit.appendChild(creerChampLigne('Fournisseur', fourn));
 

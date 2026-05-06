@@ -31,6 +31,7 @@ from src.database import (
     get_receptions, get_reception,
     get_non_conformites, create_non_conformite,
     generer_lot_interne, update_reception_ligne,
+    add_reception_bl_supplementaire,
 )
 
 logger = logging.getLogger(__name__)
@@ -567,6 +568,64 @@ async def get_photo_bl(reception_id: int):
         row = await cur.fetchone()
     if not row or not row["photo_bl_filename"]:
         raise HTTPException(404, "Pas de photo BL pour cette réception")
+    filepath = PHOTOS_BL_DIR / row["photo_bl_filename"]
+    if not filepath.exists():
+        raise HTTPException(404, "Fichier photo introuvable")
+    return FileResponse(str(filepath), media_type="image/jpeg")
+
+
+# ---------------------------------------------------------------------------
+# BLs supplémentaires (refus livraison multi-fournisseur)
+# ---------------------------------------------------------------------------
+
+@router.post("/receptions/{reception_id}/bls-supplementaires", status_code=201)
+async def ajouter_bl_supplementaire(
+    reception_id:    int,
+    fournisseur_id:  Optional[int] = Form(None),
+    fournisseur_nom: Optional[str] = Form(None),
+    photo:           Optional[UploadFile] = File(None),
+):
+    """Ajoute un BL supplémentaire à une réception (refus livraison multi-fournisseur).
+    1 BL par fournisseur. Le 1er BL/fournisseur reste sur la table `receptions`.
+    """
+    if not fournisseur_id and not (fournisseur_nom and fournisseur_nom.strip()):
+        raise HTTPException(400, "fournisseur_id ou fournisseur_nom requis")
+
+    photo_filename = None
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM receptions WHERE id = ?", (reception_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Réception non trouvée")
+
+        if photo and photo.filename:
+            from datetime import datetime, timezone
+            raw = await photo.read()
+            jpeg = _compress_photo(raw)
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            photo_filename = f"BL-{now_str}-{reception_id}-supp.jpg"
+            (PHOTOS_BL_DIR / photo_filename).write_bytes(jpeg)
+
+        bl_id = await add_reception_bl_supplementaire(db, reception_id, {
+            "fournisseur_id":    fournisseur_id,
+            "fournisseur_nom":   (fournisseur_nom or "").strip() or None,
+            "photo_bl_filename": photo_filename,
+        })
+    return {"id": bl_id, "photo_bl_filename": photo_filename}
+
+
+@router.get("/receptions/{reception_id}/bls-supplementaires/{bl_id}/photo")
+async def get_photo_bl_supplementaire(reception_id: int, bl_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT photo_bl_filename FROM reception_bls_supplementaires
+            WHERE id = ? AND reception_id = ?
+            """,
+            (bl_id, reception_id),
+        )
+        row = await cur.fetchone()
+    if not row or not row["photo_bl_filename"]:
+        raise HTTPException(404, "Pas de photo pour ce BL")
     filepath = PHOTOS_BL_DIR / row["photo_bl_filename"]
     if not filepath.exists():
         raise HTTPException(404, "Fichier photo introuvable")

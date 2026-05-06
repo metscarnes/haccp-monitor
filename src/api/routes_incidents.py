@@ -82,16 +82,19 @@ async def creer_fiche(
 
     # Si pas d'ID fournisseur, tenter de le récupérer depuis la réception
     fourn_id = fournisseur_id
-    fourn_nom = fournisseur_nom
-    if not fourn_id:
+    fourn_nom = (fournisseur_nom or "").strip() or None
+    if not fourn_id and not fourn_nom:
         async with get_db() as _db:
             cur = await _db.execute(
-                "SELECT fournisseur_principal_id FROM receptions WHERE id = ?",
+                "SELECT fournisseur_principal_id, fournisseur_nom FROM receptions WHERE id = ?",
                 (reception_id,),
             )
             row = await cur.fetchone()
-            if row and row[0]:
-                fourn_id = row[0]
+            if row:
+                if row[0]:
+                    fourn_id = row[0]
+                if row[1] and not fourn_nom:
+                    fourn_nom = row[1]
 
     data = {
         "reception_id":      reception_id,

@@ -104,11 +104,21 @@ function afficherReception(rec) {
     return { ch, val };
   }
 
-  // Ligne 1 : Fournisseur (pleine largeur)
+  // Ligne 1 : Fournisseur (pleine largeur) — ou Fournisseurs si multi-BL
+  const blsSupp = Array.isArray(rec.bls_supplementaires) ? rec.bls_supplementaires : [];
+  const tousFourn = [];
+  if (rec.fournisseur_nom) tousFourn.push(rec.fournisseur_nom);
+  blsSupp.forEach(b => { if (b.fournisseur_nom) tousFourn.push(b.fournisseur_nom); });
+
   const rowFourn = document.createElement('div');
   rowFourn.className = 'rd-row full';
-  const { ch: chFourn, val: valFourn } = creerChamp('Fournisseur', 'detail-fournisseur');
-  valFourn.textContent = rec.fournisseur_nom || 'Non renseigné';
+  const labelFourn = tousFourn.length > 1 ? 'Fournisseurs' : 'Fournisseur';
+  const { ch: chFourn, val: valFourn } = creerChamp(labelFourn, 'detail-fournisseur');
+  if (tousFourn.length > 1) {
+    valFourn.textContent = tousFourn.join(' + ');
+  } else {
+    valFourn.textContent = tousFourn[0] || 'Non renseigné';
+  }
   rowFourn.appendChild(chFourn);
   secGen.appendChild(rowFourn);
 
@@ -183,22 +193,38 @@ function afficherReception(rec) {
 
   elMain.appendChild(secCamion);
 
-  // Photo BL
-  if (rec.photo_bl_filename) {
-    const btnBL = document.createElement('div');
-    btnBL.style.cssText = 'margin-bottom:16px;';
-    const btnBLClick = document.createElement('button');
-    btnBLClick.style.cssText = 'background:var(--secondaire);color:var(--texte);border:none;border-radius:8px;padding:10px 14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;';
-    btnBLClick.textContent = '📋 Voir le bon de livraison';
-    btnBLClick.addEventListener('click', () => {
-      elModalImg.src = `/api/receptions/${receptionId}/photo-bl`;
-      elModalImg.alt = 'Bon de livraison';
+  // Photo BL principale + BLs supplémentaires (refus livraison multi-fournisseur)
+  const btnsBL = document.createElement('div');
+  btnsBL.style.cssText = 'margin-bottom:16px;display:flex;flex-direction:column;gap:8px;';
+  let aBls = false;
+
+  function ajouterBoutonPhotoBl(label, url, alt) {
+    aBls = true;
+    const btn = document.createElement('button');
+    btn.style.cssText = 'background:var(--secondaire);color:var(--texte);border:none;border-radius:8px;padding:10px 14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;text-align:left;';
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      elModalImg.src = url;
+      elModalImg.alt = alt;
       elModal.hidden = false;
       document.body.style.overflow = 'hidden';
     });
-    btnBL.appendChild(btnBLClick);
-    elMain.appendChild(btnBL);
+    btnsBL.appendChild(btn);
   }
+
+  if (rec.photo_bl_filename) {
+    const labelPrincipal = blsSupp.length
+      ? `📋 BL — ${rec.fournisseur_nom || 'Fournisseur principal'}`
+      : '📋 Voir le bon de livraison';
+    ajouterBoutonPhotoBl(labelPrincipal, `/api/receptions/${receptionId}/photo-bl`, 'Bon de livraison');
+  }
+  blsSupp.forEach(b => {
+    if (b.photo_bl_filename) {
+      const lbl = `📋 BL — ${b.fournisseur_nom || 'Fournisseur'}`;
+      ajouterBoutonPhotoBl(lbl, `/api/receptions/${receptionId}/bls-supplementaires/${b.id}/photo`, lbl);
+    }
+  });
+  if (aBls) elMain.appendChild(btnsBL);
 
   // ── Section Produits ────────────────────────────────────
   const secProd = document.createElement('div');
