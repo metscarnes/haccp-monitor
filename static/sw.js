@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'haccp-v6';
+const CACHE_VERSION = 'haccp-v7';
 const STATIC_ASSETS = [
   '/',
   '/hub.html',
