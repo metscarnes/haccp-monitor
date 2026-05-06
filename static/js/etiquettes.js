@@ -472,10 +472,20 @@ function htmlLigneManquante(ingId, ingNom) {
 }
 
 // ── Substitution produit — logique modale ─────────────────────
-let subPidCourant  = null;
+let subPidCourant  = null;   // recette_ingredient_id de la ligne en cours
 let subNomCourant  = null;
-let subAllProduits = [];   // cache produits bruts chargés
-let subModeManuel  = false; // true = catalogue complet déverrouillé (Niveau 4)
+let subLotCourant  = null;   // lot FIFO actuel (pour exclure la même ligne de réception)
+let subAllProduits = [];     // cache produits bruts chargés
+let subModeManuel  = false;  // true = catalogue complet déverrouillé (Niveau 4)
+
+/** Exclut le lot actuellement sélectionné (même ligne de réception) du choix. */
+function exclureLotCourant(produits) {
+  const ridCourant = subLotCourant?.lot_fifo?.reception_ligne_id;
+  if (!ridCourant) return produits;
+  return produits.filter(p =>
+    p.reception_ligne_id == null || Number(p.reception_ligne_id) !== Number(ridCourant)
+  );
+}
 
 /** Détecte le code viande en tête du nom (ex: "VB-COLLIER" → "VB") */
 function extraireCode(nom) {
@@ -571,6 +581,9 @@ elLots.addEventListener('click', async e => {
   if (!btn) return;
   subPidCourant = btn.dataset.pid;
   subNomCourant = btn.dataset.nom;
+  subLotCourant = (state.fifoLots ?? []).find(l =>
+    String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
+  ) ?? null;
   await ouvrirModalSubstitution(subNomCourant);
 });
 
@@ -585,7 +598,8 @@ async function ouvrirModalSubstitution(ingNom) {
 
   try {
     // Niveau 3 : uniquement produits ayant une réception active
-    subAllProduits = await apiFetch('/api/produits?en_stock=true&type=brut');
+    const brut = await apiFetch('/api/produits?en_stock=true&type=brut');
+    subAllProduits = exclureLotCourant(brut);
     const filtres = filtrerProduitsIntelligent(subAllProduits, ingNom);
     afficherSubProduits(filtres);
   } catch (err) {
@@ -639,71 +653,40 @@ elSubGrid.addEventListener('keydown', e => {
 });
 
 function validerSubstitution(produitId, produitNom) {
-  // Étape finale : affiche la modale de saisie DLC avec pré-remplissage FIFO
-  function demanderDlc() {
-    elSubOverlay.hidden = true;
-    apiFetch(`/api/fabrications/produit-fifo/${produitId}`)
-      .then(fifoData  => ouvrirSaisieDlc(fifoData))
-      .catch(() => ouvrirSaisieDlc(null));
-  }
-
-  // Étape finale bis : ouvre la modale de saisie DLC
-  function ouvrirSaisieDlc(fifoData) {
-    const overlay    = document.getElementById('fab-dlc-saisie-overlay');
-    const inputDlc   = document.getElementById('fab-dlc-saisie-input');
-    const elTypeDlc  = document.getElementById('fab-dlc-saisie-type');
-    const elLot      = document.getElementById('fab-dlc-saisie-lot');
-    const btnOk      = document.getElementById('fab-dlc-saisie-ok');
-    const btnAnnuler = document.getElementById('fab-dlc-saisie-annuler');
-    const elErreur   = document.getElementById('fab-dlc-saisie-erreur');
-
-    // Pré-remplissage depuis le lot FIFO (dlc ou dluo)
-    const prefill = fifoData ? (fifoData.dlc || fifoData.dluo || '') : '';
-    const isDluo  = fifoData ? (!fifoData.dlc && !!fifoData.dluo) : false;
-    inputDlc.value   = prefill;
-    elTypeDlc.textContent = isDluo ? 'DLUO' : 'DLC';
-    elLot.textContent = fifoData?.numero_lot ? `Lot : ${fifoData.numero_lot}` : '';
-    elErreur.hidden   = true;
-    overlay.hidden    = false;
-    inputDlc.focus();
-
-    function fermer() {
-      overlay.hidden = true;
-      btnOk.removeEventListener('click', onOk);
-      btnAnnuler.removeEventListener('click', fermer);
+  // Application directe : la DLC vient TOUJOURS de la réception FIFO,
+  // jamais d'une saisie manuelle (règle HACCP : stock unifié).
+  function appliquerSubstitution(fifoData) {
+    if (!fifoData || !fifoData.id) {
+      afficherToast(
+        '⚠️ Aucun lot en stock pour ce produit. Substitution impossible.',
+        'error'
+      );
+      return;
     }
+    const isDluo  = !fifoData.dlc && !!fifoData.dluo;
+    const dateVal = isDluo ? fifoData.dluo : fifoData.dlc;
 
-    function onOk() {
-      const valeur = inputDlc.value;
-      if (!valeur) {
-        elErreur.hidden = false;
-        inputDlc.focus();
-        return;
-      }
-      fermer();
-      appliquerSubstitution(fifoData, valeur, isDluo);
-    }
-
-    btnOk.addEventListener('click', onOk);
-    btnAnnuler.addEventListener('click', fermer);
-  }
-
-  // Application effective de la substitution avec la date saisie par l'utilisateur
-  function appliquerSubstitution(fifoData, dateSaisie, isDluo) {
     const lot = state.fifoLots.find(l =>
       String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
     );
     if (lot) {
       lot.lot_fifo = {
-        reception_ligne_id: fifoData?.id ?? null,
-        numero_lot:         fifoData?.numero_lot ?? null,
-        dlc:  isDluo ? null : dateSaisie,
-        dluo: isDluo ? dateSaisie : null,
+        reception_ligne_id: fifoData.id,
+        numero_lot:         fifoData.numero_lot ?? null,
+        dlc:  isDluo ? null : dateVal,
+        dluo: isDluo ? dateVal : null,
       };
+      lot.produit_id     = Number(produitId);
       lot.produit_nom    = produitNom + ' (substitut)';
       lot.ingredient_nom = produitNom + ' (substitut)';
     }
-    state.lotsSubstitues[subPidCourant] = { produit_id: produitId, nom: produitNom };
+    state.lotsSubstitues[subPidCourant] = {
+      produit_id: produitId,
+      nom:        produitNom,
+      numero_lot: fifoData.numero_lot ?? null,
+    };
+
+    elSubOverlay.hidden = true;
 
     const dateLabel = isDluo ? 'DLUO' : 'DLC';
     const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
@@ -714,31 +697,37 @@ function validerSubstitution(produitId, produitNom) {
           <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
           <div class="fab-lot-info fab-lot-sub-badge">
             → ${escHtml(produitNom)} (substitut)
-            | Lot ${escHtml(fifoData?.numero_lot ?? '—')}
-            | ${dateLabel} ${formatDate(dateSaisie)}
+            | Lot ${escHtml(fifoData.numero_lot ?? '—')}
+            | ${dateLabel} ${formatDate(dateVal)}
           </div>
         </div>`;
     }
     verifierLotsComplets();
   }
 
-  // Demande de confirmation selon le niveau actif, puis saisie DLC
+  function recupererFifoEtAppliquer() {
+    apiFetch(`/api/fabrications/produit-fifo/${produitId}`)
+      .then(appliquerSubstitution)
+      .catch(() => appliquerSubstitution(null));
+  }
+
+  // Demande de confirmation selon le niveau actif, puis application directe
   if (subModeManuel) {
     afficherCustomConfirm(
       '🚨 ALERTE CRITIQUE',
       `Ce produit n'est pas issu du filtrage recommandé.\n\n` +
       `Vous sélectionnez "${produitNom}" en mode manuel.\n\n` +
       `Confirmez-vous ce choix sous votre responsabilité ?`,
-      demanderDlc
+      recupererFifoEtAppliquer
     );
   } else if (produitNom !== subNomCourant) {
     afficherCustomConfirm(
       '⚠️ Substitution',
       `Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`,
-      demanderDlc
+      recupererFifoEtAppliquer
     );
   } else {
-    demanderDlc();
+    recupererFifoEtAppliquer();
   }
 }
 
@@ -825,15 +814,16 @@ function afficherRecap() {
     ? `${state.productionCiblee} ${state.rendementUnite}`
     : '—';
 
-  // Map lot par recette_ingredient_id
+  // Map lot par recette_ingredient_id — le numero_lot est toujours préservé,
+  // même en cas de substitution (la DLC vient de la réception FIFO du substitut).
   const lotsMap = {};
   (state.fifoLots ?? []).forEach(lot => {
-    const riId = lot.recette_ingredient_id ?? lot.ingredient_id;
-    const numLot = lot.lot_fifo?.numero_lot;
-    if (numLot) lotsMap[String(riId)] = numLot;
-  });
-  Object.entries(state.lotsSubstitues).forEach(([riId, v]) => {
-    lotsMap[String(riId)] = `Substitut : ${v.nom}`;
+    const riId   = String(lot.recette_ingredient_id ?? lot.ingredient_id);
+    const numLot = lot.lot_fifo?.numero_lot ?? '—';
+    const sub    = state.lotsSubstitues[riId];
+    lotsMap[riId] = sub
+      ? `${numLot} (Substitut : ${sub.nom})`
+      : numLot;
   });
 
   const linesHtml = state.ingredients.map(ing => {
