@@ -158,12 +158,13 @@ function majCompteur() {
 function badgeConformite(rec) {
   if (rec.livraison_refusee) return { cls: 'rh-badge--refusee', texte: '✗ Refusée' };
   if (rec.nb_nc > 0) return { cls: 'rh-badge--nc', texte: `⚠ ${rec.nb_nc} NC` };
+  if (rec.camion_conforme === 0) return { cls: 'rh-badge--nc', texte: '⚠ Camion NC' };
   return { cls: 'rh-badge--ok', texte: '✓ Conforme' };
 }
 
 function classeCarte(rec) {
   if (rec.livraison_refusee) return 'rh-carte--refusee';
-  if (rec.nb_nc > 0) return 'rh-carte--nc';
+  if (rec.nb_nc > 0 || rec.camion_conforme === 0) return 'rh-carte--nc';
   return 'rh-carte--conforme';
 }
 
@@ -293,9 +294,9 @@ function creerCarte(rec) {
 function remplirDetail(el, rec) {
   el.innerHTML = '';
 
-  // ── Bouton PCR01 (seulement s'il y a des NC, calculé depuis les lignes chargées) ──
+  // ── Bouton PCR01 (NC produit ou NC propreté camion) ──
   const nbNc = (rec.lignes || []).filter(l => l.conforme === 0).length;
-  if (nbNc > 0) {
+  if (nbNc > 0 || rec.camion_conforme === 0) {
     const btnPcr = document.createElement('button');
     btnPcr.style.cssText = 'display:block;width:100%;background:var(--alerte,#C93030);color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px;';
     btnPcr.textContent = '⚠️ Voir les fiches PCR01';
