@@ -22,6 +22,13 @@ const elStep4          = document.getElementById('rec-step-4');
 const elStepConfirm    = document.getElementById('rec-step-confirm');
 const STEPS            = [elStep0, elStep1, elStep2, elStep3, elStep4, elStepConfirm];
 
+// Si retour depuis pcr01.html, masquer step-0 immédiatement pour éviter le
+// flash de l'écran sélection opérateur avant que restaurerDepuisPcr01()
+// ne saute à l'étape 4 (init() awaite plusieurs référentiels avant).
+if (sessionStorage.getItem('haccp_rec_state') && elStep0) {
+  elStep0.classList.remove('actif');
+}
+
 // Étape 0
 const elPersonnelGrille   = document.getElementById('rec-personnel-grille');
 const elChargementPerso   = document.getElementById('rec-chargement-personnel');
