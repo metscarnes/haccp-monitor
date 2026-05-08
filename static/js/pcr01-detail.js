@@ -24,6 +24,23 @@ elBtnRetour.addEventListener('click', () => {
   window.history.back();
 });
 
+// ── Overlay image plein écran ───────────────────────────────
+function ouvrirOverlayImage(url, alt) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;cursor:zoom-out;padding:16px;';
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = alt || '';
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;';
+  overlay.appendChild(img);
+  overlay.addEventListener('click', () => {
+    overlay.remove();
+    document.body.style.overflow = '';
+  });
+  document.body.appendChild(overlay);
+  document.body.style.overflow = 'hidden';
+}
+
 // ── Fetch ───────────────────────────────────────────────────
 async function apiFetch(url) {
   const res = await fetch(url, { cache: 'no-store' });
@@ -360,17 +377,12 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprieteP
     blocPhoto.appendChild(creerTitre('Photo de la non-conformité — propreté camion'));
     const corpsPhoto = creerCorps();
     corpsPhoto.style.textAlign = 'center';
-    const img = document.createElement('img');
-    img.src = proprietePhotoUrl;
-    img.alt = 'Photo NC propreté camion';
-    img.style.maxWidth = '100%';
-    img.style.maxHeight = '400px';
-    img.style.borderRadius = '8px';
-    img.style.cursor = 'zoom-in';
-    img.addEventListener('click', () => {
-      window.open(proprietePhotoUrl, '_blank');
-    });
-    corpsPhoto.appendChild(img);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '📸 Voir la photo';
+    btn.style.cssText = 'background:var(--secondaire);color:var(--texte);border:none;border-radius:8px;padding:10px 14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;text-align:left;';
+    btn.addEventListener('click', () => ouvrirOverlayImage(proprietePhotoUrl, 'Photo NC propreté camion'));
+    corpsPhoto.appendChild(btn);
     blocPhoto.appendChild(corpsPhoto);
     elMain.appendChild(blocPhoto);
   }
