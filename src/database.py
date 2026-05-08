@@ -3426,7 +3426,7 @@ async def get_dlc_calendrier(
                 c.id                 AS source_id,
                 'cuisson'            AS source_type,
                 c.dlc_finale         AS dlc,
-                COALESCE(rl.numero_lot, 'C-' || c.id) AS numero_lot,
+                COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
                 c.quantite           AS quantite,
                 COALESCE(c.unite, 'kg') AS unite,
                 p.id                 AS produit_id,
@@ -3434,6 +3434,7 @@ async def get_dlc_calendrier(
                 p.categorie          AS categorie,
                 NULL                 AS fournisseur_nom,
                 c.date_cuisson       AS date_origine,
+                c.heure_fin          AS heure_origine,
                 NULL                 AS reception_id,
                 c.type_cuisson       AS type_cuisson,
                 c.temperature_sortie AS temperature_sortie,
@@ -3444,6 +3445,7 @@ async def get_dlc_calendrier(
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
             LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
+            LEFT JOIN fabrications     fab ON fab.id = c.fabrication_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'cuisson' AND dd.source_id = c.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
@@ -3470,7 +3472,7 @@ async def get_dlc_calendrier(
                 rf.id                  AS source_id,
                 'refroidissement'      AS source_type,
                 rf.dlc_finale          AS dlc,
-                COALESCE(rl.numero_lot, 'R-' || rf.id) AS numero_lot,
+                COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 p.id                   AS produit_id,
@@ -3478,6 +3480,7 @@ async def get_dlc_calendrier(
                 p.categorie            AS categorie,
                 NULL                   AS fournisseur_nom,
                 rf.date_refroidissement AS date_origine,
+                rf.heure_fin           AS heure_origine,
                 NULL                   AS reception_id,
                 rf.cuisson_id          AS cuisson_id,
                 rf.temperature_finale  AS temperature_finale,
@@ -3490,6 +3493,7 @@ async def get_dlc_calendrier(
             JOIN produits p ON p.id = rf.produit_id
             LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
             LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
+            LEFT JOIN fabrications     fab ON fab.id = c2.fabrication_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'refroidissement' AND dd.source_id = rf.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
