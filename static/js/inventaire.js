@@ -565,6 +565,15 @@ function imprimerEtiquetteInv(it) {
   $('pinv-lot').textContent = `N° Lot : ${it.numero_lot || '—'}`;
   $('pinv-dlc').textContent = `DLC : ${formatDateLabelInv(it.dlc)}`;
 
+  const elTag = $('pinv-tag');
+  const tag = tagFromSourceTypeInv(it.source_type);
+  if (tag) {
+    elTag.textContent = `[${tag}]`;
+    elTag.hidden = false;
+  } else {
+    elTag.hidden = true;
+  }
+
   const elFab = $('pinv-fab');
   const ligneOrigine = construireLigneOrigineInv(it);
   if (ligneOrigine) {
@@ -575,6 +584,13 @@ function imprimerEtiquetteInv(it) {
   }
 
   setTimeout(() => window.print(), 100);
+}
+
+function tagFromSourceTypeInv(srcType) {
+  if (srcType === 'fabrication')     return 'FABRIQUÉ';
+  if (srcType === 'cuisson')         return 'CUIT';
+  if (srcType === 'refroidissement') return 'REFROIDI';
+  return null;
 }
 
 // Format DD/MM/YY pour gabarit étiquette thermique (compact).
