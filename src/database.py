@@ -3368,6 +3368,7 @@ async def get_dlc_calendrier(
                 p.categorie          AS categorie,
                 NULL                 AS fournisseur_nom,
                 fab.date             AS date_origine,
+                fab.created_at       AS fabrication_created_at,
                 NULL                 AS reception_id,
                 dd.statut            AS devenir_statut,
                 dd.commentaire       AS devenir_commentaire,

@@ -446,7 +446,10 @@ function ouvrirModalJour(dateStr, items) {
     const btnImprimerHtml = `<button class="dlc-item-btn-imprimer"
                data-nom="${escHtml(it.produit_nom)}"
                data-lot="${escHtml(it.numero_lot || '')}"
-               data-dlc="${escHtml(it.dlc)}">
+               data-dlc="${escHtml(it.dlc)}"
+               data-source="${escHtml(it.source_type)}"
+               data-date-origine="${escHtml(it.date_origine || '')}"
+               data-fab-created="${escHtml(it.fabrication_created_at || '')}">
          🖨️ Imprimer
        </button>`;
 
@@ -548,9 +551,12 @@ function ouvrirModalJour(dateStr, items) {
 
   body.querySelectorAll('.dlc-item-btn-imprimer').forEach(btn => {
     btn.addEventListener('click', () => imprimerEtiquetteDlc({
-      produit_nom: btn.dataset.nom,
-      numero_lot:  btn.dataset.lot || null,
-      dlc:         btn.dataset.dlc,
+      produit_nom:           btn.dataset.nom,
+      numero_lot:            btn.dataset.lot || null,
+      dlc:                   btn.dataset.dlc,
+      source_type:           btn.dataset.source,
+      date_origine:          btn.dataset.dateOrigine || null,
+      fabrication_created_at: btn.dataset.fabCreated || null,
     }));
   });
 
@@ -733,9 +739,29 @@ function imprimerEtiquetteDlc(cible) {
     const [y, m, d] = iso.split('-');
     return `${d}/${m}/${(y || '').slice(-2)}`;
   };
+  // Heure HHhMM extraite d'un timestamp SQLite "YYYY-MM-DD HH:MM:SS"
+  const fmtHeureFromTs = (ts) => {
+    if (!ts) return '';
+    const m = String(ts).match(/(\d{2}):(\d{2})/);
+    return m ? `${m[1]}h${m[2]}` : '';
+  };
+
   $('pdlc-nom').textContent = cible.produit_nom || '—';
   $('pdlc-lot').textContent = `N° Lot : ${cible.numero_lot || '—'}`;
   $('pdlc-dlc').textContent = `DLC : ${fmtDate(cible.dlc)}`;
+
+  const elFab = $('pdlc-fab');
+  if (cible.source_type === 'fabrication' && cible.date_origine) {
+    const dateFab  = fmtDate(cible.date_origine);
+    const heureFab = fmtHeureFromTs(cible.fabrication_created_at);
+    elFab.textContent = heureFab
+      ? `Fabriqué le ${dateFab} à ${heureFab}`
+      : `Fabriqué le ${dateFab}`;
+    elFab.hidden = false;
+  } else {
+    elFab.hidden = true;
+  }
+
   setTimeout(() => window.print(), 100);
 }
 
