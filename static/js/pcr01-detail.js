@@ -84,8 +84,14 @@ function construireEtapes(fiche) {
     etapes = [
       `Contrôle du camion à la réception → Non-conformité détectée : ${motifs}.`,
     ];
-    if (fiche.fournisseur_nom) etapes.push(`Fournisseur concerné : ${fiche.fournisseur_nom}.`);
-    etapes.push('Livraison refusée.');
+    if (fiche.fournisseur_nom) {
+      const noms = fiche.fournisseur_nom.split(/\s*\+\s*/).filter(Boolean);
+      const lbl = noms.length > 1
+        ? `Fournisseurs concernés (${noms.length}) : ${noms.join(', ')}.`
+        : `Fournisseur concerné : ${fiche.fournisseur_nom}.`;
+      etapes.push(lbl);
+    }
+    etapes.push('Livraison refusée pour l\'ensemble du camion.');
     if (fiche.livreur_present) {
       etapes.push('Livreur présent : feuille de reprise avec retour marchandise signée par le livreur.');
     } else {
@@ -267,10 +273,14 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
 
   elMain.appendChild(docHeader);
 
-  // ── Produit non conforme ou Fournisseur concerné (mode camion) ──
+  // ── Produit non conforme ou Fournisseur(s) concerné(s) (mode camion) ──
   const estCamionFiche = fiche.action_immediate === 'refus_livraison';
+  const fournNoms = (fiche.fournisseur_nom || '').split(/\s*\+\s*/).filter(Boolean);
+  const titreBloc = estCamionFiche
+    ? (fournNoms.length > 1 ? 'Fournisseurs concernés' : 'Fournisseur concerné')
+    : 'Produit non conforme';
   const blocProduit = creerBloc('pcr-bloc-produit');
-  blocProduit.appendChild(creerTitre(estCamionFiche ? 'Fournisseur concerné' : 'Produit non conforme'));
+  blocProduit.appendChild(creerTitre(titreBloc));
   const corpsProduit = creerCorps();
 
   // Produit (sauf mode camion)
@@ -278,9 +288,12 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
     corpsProduit.appendChild(creerChampLigne('Produit', fiche.produit_nom));
   }
 
-  // Fournisseur (toujours affiché — y compris en mode camion)
-  const fourn = fiche.fournisseur_nom || '—';
-  corpsProduit.appendChild(creerChampLigne('Fournisseur', fourn));
+  // Fournisseur(s) — toujours affiché, y compris en mode camion
+  const fournLabel = (estCamionFiche && fournNoms.length > 1) ? 'Fournisseurs' : 'Fournisseur';
+  const fournVal = (estCamionFiche && fournNoms.length > 1)
+    ? fournNoms.join(', ')
+    : (fiche.fournisseur_nom || '—');
+  corpsProduit.appendChild(creerChampLigne(fournLabel, fournVal));
 
   // N° lot (avec label interne si applicable)
   if (fiche.numero_lot) {

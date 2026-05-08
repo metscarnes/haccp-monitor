@@ -469,7 +469,7 @@ elDialogLivraisonNon.addEventListener('click', () => {
   refusBlList = [];
   elRefusBlListe.innerHTML = '';
   ajouterBlocRefusBl();   // toujours au moins 1 bloc
-  elDialogRefusValider.disabled = true;
+  elDialogRefusValider.disabled = false;   // validation à la soumission
   if (elErreurRefusBl) elErreurRefusBl.hidden = true;
   elDialogRefusBl.hidden = false;
 });
@@ -480,13 +480,9 @@ elDialogRefusAnnuler.addEventListener('click', () => {
 });
 
 function majBoutonRefusValider() {
-  // Activé seulement si chaque BL a une photo ET un fournisseur (id ou nom)
-  const ok = refusBlList.length > 0 && refusBlList.every(b => {
-    const hasPhoto = !!b.photoFile;
-    const hasFourn = !!b.fournisseurId || (b.fournisseurNom && b.fournisseurNom.trim().length > 0);
-    return hasPhoto && hasFourn;
-  });
-  elDialogRefusValider.disabled = !ok;
+  // Bouton toujours actif : la validation se fait au clic, avec retour visuel
+  // sur les blocs incomplets.
+  elDialogRefusValider.disabled = false;
 }
 
 function ajouterBlocRefusBl() {
@@ -605,6 +601,8 @@ function initBlocRefusBl(idx) {
     photoVign.hidden = false;
     photoIcone.textContent = '✅';
     photoTitre.textContent = 'Photo prise';
+    photoZone.classList.remove('photo-requise');
+    if (elErreurRefusBl) elErreurRefusBl.hidden = true;
     majBoutonRefusValider();
   });
 
@@ -646,6 +644,8 @@ function initBlocRefusBl(idx) {
     const q = searchInp.value.trim().toLowerCase();
     refusBlList[idx].fournisseurNom = searchInp.value.trim();
     refusBlList[idx].fournisseurId  = null; // saisie libre, plus d'ID tant que pas re-sélectionné
+    if (q) searchInp.classList.remove('rec-champ-invalide');
+    if (elErreurRefusBl) elErreurRefusBl.hidden = true;
     if (!q) { results.hidden = true; majBoutonRefusValider(); return; }
     afficherResultats((tousFournisseurs || []).filter(f => f.nom.toLowerCase().includes(q)));
     majBoutonRefusValider();
@@ -661,16 +661,47 @@ if (elRefusBlAdd) elRefusBlAdd.addEventListener('click', () => ajouterBlocRefusB
 elDialogRefusValider.addEventListener('click', allerVersPcr01Camion);
 
 async function allerVersPcr01Camion() {
-  // Validation finale
+  // Validation finale avec retour visuel : highlight bloc(s) incomplet(s)
   if (!refusBlList.length) return;
-  for (const b of refusBlList) {
-    if (!b.photoFile || (!b.fournisseurId && !(b.fournisseurNom && b.fournisseurNom.trim()))) {
-      if (elErreurRefusBl) {
-        elErreurRefusBl.textContent = 'Chaque BL doit avoir une photo ET un fournisseur.';
-        elErreurRefusBl.hidden = false;
+
+  // Reset des marqueurs avant validation
+  refusBlList.forEach((_, idx) => {
+    document.getElementById(`rec-refus-bl-photo-zone-${idx}`)?.classList.remove('photo-requise');
+    document.getElementById(`rec-refus-bl-fourn-search-${idx}`)?.classList.remove('rec-champ-invalide');
+  });
+
+  let firstError = null;
+  let manquePhoto = false, manqueFourn = false;
+  refusBlList.forEach((b, idx) => {
+    if (!b.photoFile) {
+      manquePhoto = true;
+      const z = document.getElementById(`rec-refus-bl-photo-zone-${idx}`);
+      if (z) {
+        z.classList.add('photo-requise');
+        if (!firstError) firstError = z;
       }
-      return;
     }
+    if (!b.fournisseurId && !(b.fournisseurNom && b.fournisseurNom.trim())) {
+      manqueFourn = true;
+      const s = document.getElementById(`rec-refus-bl-fourn-search-${idx}`);
+      if (s) {
+        s.classList.add('rec-champ-invalide');
+        if (!firstError) firstError = s;
+      }
+    }
+  });
+
+  if (firstError) {
+    if (elErreurRefusBl) {
+      const parts = [];
+      if (manquePhoto) parts.push('photo du bon de livraison');
+      if (manqueFourn) parts.push('nom du fournisseur');
+      elErreurRefusBl.textContent =
+        `⚠️ Manquant : ${parts.join(' et ')}. Chaque BL doit avoir une photo ET un fournisseur.`;
+      elErreurRefusBl.hidden = false;
+    }
+    firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
   }
 
   elDialogRefusValider.disabled = true;

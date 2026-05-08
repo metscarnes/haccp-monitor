@@ -94,29 +94,18 @@ let sigCtx  = null;
 let sigDraw = false;
 
 if (modeCamion) {
-  // En mode camion : on conserve le bloc-produit mais on n'affiche
-  // que la ligne "Fournisseur concerné" (le reste n'a pas de sens).
+  // 1 SEULE fiche PCR01 pour le refus camion : tous les fournisseurs sont
+  // concernés ; on les liste sans paginer.
   const blocProduit = document.querySelector('.pcr-bloc-produit');
   if (blocProduit) {
     const titre = blocProduit.querySelector('.pcr-bloc-titre');
-    if (titre) titre.textContent = 'Fournisseur concerné';
+    const totalF = fournisseursRefus.length;
+    if (titre) titre.textContent = totalF > 1 ? 'Fournisseurs concernés' : 'Fournisseur concerné';
     blocProduit.querySelectorAll('.pcr-champ-ligne').forEach(r => { r.hidden = true; });
   }
-  // Afficher la question livreur
   if (elLivreurCamionBloc) elLivreurCamionBloc.hidden = false;
-  // Pagination si plusieurs fournisseurs
-  const totalFourn = Math.max(fournisseursRefus.length, 1);
-  if (totalFourn > 1) {
-    elHeaderBadge.textContent = `Camion ${ncFicheIndex + 1}/${totalFourn}`;
-    if (elPagination) {
-      elPagination.hidden = false;
-      if (elPaginLbl) elPaginLbl.textContent = `Fournisseur ${ncFicheIndex + 1} sur ${totalFourn}`;
-    }
-  } else {
-    elHeaderBadge.textContent = 'Camion';
-    if (elPagination) elPagination.hidden = true;
-  }
-  // Afficher fournisseur concerné dans l'en-tête bloc-produit
+  elHeaderBadge.textContent = 'Camion';
+  if (elPagination) elPagination.hidden = true;
   majAffichageFournisseurCamion();
 } else if (livreurPresent) {
   elSigBloc.hidden = false;
@@ -243,7 +232,7 @@ if (elEtiqRepriseBtn) {
       l = {
         produit_nom: 'Livraison refusée — Propreté camion',
         motifs: problemesPropreteList.length ? problemesPropreteList : ['Propreté du camion non satisfaisante'],
-        fournisseur_nom: nomFournisseurCamion(),
+        fournisseur_nom: fournisseursCamionTexte(' + '),
         numero_lot: null,
         dlc: null,
         dluo: null,
@@ -316,24 +305,24 @@ function genererActionCorrective(produit) {
 
 
 // ── Mode camion : helpers ──────────────────────────────────
-function fournisseurCamionCourant() {
-  if (!fournisseursRefus.length) return null;
-  return fournisseursRefus[ncFicheIndex] || null;
+function nomsFournisseursCamion() {
+  // Liste tous les fournisseurs concernés par le refus camion.
+  return (fournisseursRefus || [])
+    .map(f => (f.fournisseurNom && f.fournisseurNom.trim())
+      || (f.fournisseurId ? `Fournisseur #${f.fournisseurId}` : null))
+    .filter(Boolean);
 }
 
-function nomFournisseurCamion() {
-  const f = fournisseurCamionCourant();
-  if (f && (f.fournisseurNom || f.fournisseurId)) {
-    return f.fournisseurNom || `Fournisseur #${f.fournisseurId}`;
-  }
-  return null;
+function fournisseursCamionTexte(separator = ' + ') {
+  const noms = nomsFournisseursCamion();
+  return noms.length ? noms.join(separator) : null;
 }
 
 function majAffichageFournisseurCamion() {
   if (!modeCamion) return;
-  const nom = nomFournisseurCamion();
-  if (nom && elFournisseur && elFournisseurRow) {
-    elFournisseur.textContent = nom;
+  const txt = fournisseursCamionTexte(', ');
+  if (txt && elFournisseur && elFournisseurRow) {
+    elFournisseur.textContent = txt;
     elFournisseurRow.hidden = false;
     const blocProduit = document.querySelector('.pcr-bloc-produit');
     if (blocProduit) blocProduit.hidden = false;
@@ -346,13 +335,15 @@ function tempCamionEstNc() {
 
 function genererActionCorrectiveCamion() {
   const tempNc = tempCamionEstNc();
-  const fournNom = nomFournisseurCamion();
+  const noms = nomsFournisseursCamion();
   let txt = tempNc
     ? 'Non-conformités constatées à la réception : Propreté du camion et Température du camion.'
     : 'Non-conformité constatée à la réception : Propreté du camion.';
 
-  if (fournNom) {
-    txt += `\nFournisseur concerné : ${fournNom}.`;
+  if (noms.length === 1) {
+    txt += `\nFournisseur concerné : ${noms[0]}.`;
+  } else if (noms.length > 1) {
+    txt += `\nFournisseurs concernés (${noms.length}) :\n— ` + noms.join('\n— ');
   }
 
   if (problemesPropreteList.length > 0) {
@@ -363,8 +354,8 @@ function genererActionCorrectiveCamion() {
     txt += `\nTempérature camion relevée : ${tempCamion}°C — non conforme (seuil ≤ 4°C).`;
   }
 
-  txt += `\nPhoto du bon de livraison : ${photoBlPrise ? 'oui' : 'non'}.`;
-  txt += '\nLivraison refusée.';
+  txt += `\nPhoto du bon de livraison : ${photoBlPrise ? 'oui (1 par fournisseur)' : 'non'}.`;
+  txt += '\nLivraison refusée pour l\'ensemble du camion.';
 
   if (livreurCamionPresent === true) {
     if (livreurAccepte === true) {
@@ -395,12 +386,16 @@ function construireEtapesCamion() {
     ? `${problemsTxt} + température camion ${tempCamion}°C (seuil ≤ 4°C)`
     : problemsTxt;
 
-  const fournNom = nomFournisseurCamion();
+  const noms = nomsFournisseursCamion();
+  let fournEtape = null;
+  if (noms.length === 1) fournEtape = `Fournisseur concerné : ${noms[0]}.`;
+  else if (noms.length > 1) fournEtape = `Fournisseurs concernés (${noms.length}) : ${noms.join(', ')}.`;
+
   const etapes = [
     `Contrôle du camion à la réception → Non-conformité détectée : ${detailNc}${tempNc ? '' : tempTxt}.`,
-    fournNom ? `Fournisseur concerné : ${fournNom}.` : null,
-    `Photo du bon de livraison prise : ${photoBlPrise ? 'oui' : 'non'}.`,
-    'Livraison refusée.',
+    fournEtape,
+    `Photo du bon de livraison prise : ${photoBlPrise ? 'oui (1 par fournisseur)' : 'non'}.`,
+    'Livraison refusée pour l\'ensemble du camion.',
   ].filter(Boolean);
 
   if (livreurCamionPresent === true) {
@@ -465,28 +460,11 @@ function construireEtapes(produit) {
 }
 
 
-// ── Initialiser la fiche mode camion ───────────────────────
+// ── Initialiser la fiche mode camion (1 fiche unique) ──────
 function chargerFicheCamion() {
-  const totalFourn = Math.max(fournisseursRefus.length, 1);
-  if (totalFourn > 1) {
-    elHeaderBadge.textContent = `Camion ${ncFicheIndex + 1}/${totalFourn}`;
-    if (elPagination) {
-      elPagination.hidden = false;
-      if (elPaginLbl) elPaginLbl.textContent = `Fournisseur ${ncFicheIndex + 1} sur ${totalFourn}`;
-    }
-  } else {
-    elHeaderBadge.textContent = 'Camion';
-    if (elPagination) elPagination.hidden = true;
-  }
+  elHeaderBadge.textContent = 'Camion';
+  if (elPagination) elPagination.hidden = true;
   majAffichageFournisseurCamion();
-  // Réinitialiser le choix livreur entre deux fiches
-  livreurCamionPresent = null;
-  livreurAccepte = null;
-  if (elLivreurCamionOui) elLivreurCamionOui.classList.remove('sel');
-  if (elLivreurCamionNon) elLivreurCamionNon.classList.remove('sel');
-  if (elSigBloc) elSigBloc.hidden = true;
-  if (elEtiqRepriseBloc) elEtiqRepriseBloc.hidden = true;
-  if (elSigCanvas && sigCtx) sigCtx.clearRect(0, 0, elSigCanvas.width, elSigCanvas.height);
   construireEtapesCamion();
   if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
   if (elCommentaire) elCommentaire.value = '';
@@ -667,17 +645,16 @@ async function enregistrerFiche() {
   if (elCommentaire && elCommentaire.value.trim()) fd.append('commentaire', elCommentaire.value.trim());
 
   if (modeCamion) {
-    // Mode camion — refus livraison pour propreté NC
+    // Mode camion — refus livraison : 1 SEULE fiche listant tous les fournisseurs
     fd.append('nature_probleme',  'proprete_camion');
     fd.append('action_immediate', 'refus_livraison');
     const livreurVal = livreurCamionPresent !== null ? (livreurCamionPresent ? 1 : 0) : 0;
     fd.append('livreur_present', livreurVal);
-    // Fournisseur concerné (1 fiche par fournisseur)
-    const fournCourant = fournisseurCamionCourant();
-    if (fournCourant) {
-      if (fournCourant.fournisseurId)  fd.append('fournisseur_id',  fournCourant.fournisseurId);
-      if (fournCourant.fournisseurNom) fd.append('fournisseur_nom', fournCourant.fournisseurNom);
-    }
+    // Tous les fournisseurs concernés (concaténés). Le 1er id sert de FK indicative.
+    const noms = nomsFournisseursCamion();
+    if (noms.length) fd.append('fournisseur_nom', noms.join(' + '));
+    const premierAvecId = (fournisseursRefus || []).find(f => f.fournisseurId);
+    if (premierAvecId) fd.append('fournisseur_id', premierAvecId.fournisseurId);
     const partsDescription = [
       problemesPropreteList.length
         ? problemesPropreteList.join(', ')
@@ -685,6 +662,9 @@ async function enregistrerFiche() {
     ];
     if (tempCamionEstNc()) {
       partsDescription.push(`température camion ${tempCamion}°C (seuil ≤ 4°C)`);
+    }
+    if (noms.length) {
+      partsDescription.push(`fournisseurs concernés : ${noms.join(', ')}`);
     }
     fd.append('description', partsDescription.join(' — '));
     if (tempCamion !== null && tempCamion !== undefined) fd.append('temperature_camion', tempCamion);
@@ -719,18 +699,7 @@ async function enregistrerFiche() {
     await apiFetch('/api/fiches-incident', { method: 'POST', body: fd });
 
     if (modeCamion) {
-      // En multi-fournisseur, avancer à la fiche suivante AVANT de clôturer
-      const totalFourn = fournisseursRefus.length;
-      if (totalFourn > 1 && ncFicheIndex < totalFourn - 1) {
-        ncFicheIndex++;
-        pcrData.ncFicheIndex = ncFicheIndex;
-        sessionStorage.setItem('haccp_pcr01_data', JSON.stringify(pcrData));
-        chargerFicheCamion();
-        elBtnEnreg.disabled = false;
-        elBtnEnreg.textContent = '💾 Enregistrer cette fiche';
-        return;
-      }
-      // Dernière (ou unique) fiche → clôturer la réception
+      // 1 SEULE fiche pour le refus camion → clôturer la réception
       try {
         await apiFetch(`/api/receptions/${receptionId}/cloturer`, {
           method: 'PUT',
