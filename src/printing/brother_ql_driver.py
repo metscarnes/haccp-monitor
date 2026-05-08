@@ -222,6 +222,61 @@ def generer_image_etiquette_transforme(data: dict) -> "Image":
     return img
 
 
+def generer_image_etiquette_simple(data: dict) -> "Image":
+    """
+    Étiquette minimaliste pour réimpression depuis le calendrier DLC :
+
+      PRODUIT
+      <Nom du produit>             (gros)
+      ─────────────────────────────
+      N° LOT : ...     DLC : jj/mm/aa
+
+    Champs attendus dans data :
+      - produit_nom   str
+      - numero_lot    str
+      - dlc           str  (YYYY-MM-DD)
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    from datetime import date
+
+    img = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font_label   = ImageFont.truetype("DejaVuSans.ttf", 24)
+        font_produit = ImageFont.truetype("DejaVuSans-Bold.ttf", 56)
+        font_value   = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+    except (IOError, OSError):
+        font_label = font_produit = font_value = ImageFont.load_default()
+
+    def fmt_date(d_str: str) -> str:
+        try:
+            return date.fromisoformat(d_str).strftime("%d/%m/%y")
+        except Exception:
+            return d_str or ""
+
+    mx, my = 18, 18
+    y = my
+
+    draw.text((mx, y), "PRODUIT", font=font_label, fill="black")
+    y += 32
+    draw.text((mx, y), str(data.get("produit_nom", "") or ""), font=font_produit, fill="black")
+    y += 80
+
+    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=2)
+    y += 18
+
+    lot = data.get("numero_lot", "") or "—"
+    dlc = fmt_date(data.get("dlc", ""))
+    draw.text((mx, y), "N° LOT", font=font_label, fill="black")
+    draw.text((mx + 360, y), "DLC", font=font_label, fill="black")
+    y += 32
+    draw.text((mx, y), str(lot), font=font_value, fill="black")
+    draw.text((mx + 360, y), dlc, font=font_value, fill="black")
+
+    return img
+
+
 def imprimer_etiquette(data: dict) -> bool:
     """
     Génère et envoie l'étiquette à l'imprimante Brother QL via USB.
@@ -231,6 +286,8 @@ def imprimer_etiquette(data: dict) -> bool:
 
     Si data["template"] == "transforme", utilise le rendu compact pour produit
     transformé (cuisson / refroidissement / fabrication).
+    Si data["template"] == "simple", utilise le rendu minimal (nom / lot / DLC)
+    pour réimpression depuis le calendrier DLC.
     """
     try:
         from brother_ql.conversion import convert
@@ -241,8 +298,11 @@ def imprimer_etiquette(data: dict) -> bool:
         return False
 
     try:
-        if data.get("template") == "transforme":
+        template = data.get("template")
+        if template == "transforme":
             image = generer_image_etiquette_transforme(data)
+        elif template == "simple":
+            image = generer_image_etiquette_simple(data)
         else:
             image = generer_image_etiquette(data)
 

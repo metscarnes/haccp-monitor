@@ -442,6 +442,14 @@ function ouvrirModalJour(dateStr, items) {
          ${btnLabel}
        </button>`;
 
+    // Bouton imprimer étiquette : toujours disponible
+    const btnImprimerHtml = `<button class="dlc-item-btn-imprimer"
+               data-nom="${escHtml(it.produit_nom)}"
+               data-lot="${escHtml(it.numero_lot || '')}"
+               data-dlc="${escHtml(it.dlc)}">
+         🖨️ Imprimer
+       </button>`;
+
     // Boutons modifier DLC et supprimer : uniquement si pas encore traité
     const btnModifierHtml = !it.devenir_statut
       ? `<button class="dlc-item-btn-modifier"
@@ -487,6 +495,7 @@ function ouvrirModalJour(dateStr, items) {
       ${devenirHtml}
       <div class="dlc-item-actions">
         ${actionPrimaireHtml}
+        ${btnImprimerHtml}
         ${btnModifierHtml}
         ${btnSupprimerHtml}
         ${btnHtml}
@@ -535,6 +544,14 @@ function ouvrirModalJour(dateStr, items) {
       produit_nom: btn.dataset.nom,
       dlc:         btn.dataset.dlc,
     }));
+  });
+
+  body.querySelectorAll('.dlc-item-btn-imprimer').forEach(btn => {
+    btn.addEventListener('click', () => imprimerEtiquetteDlc({
+      produit_nom: btn.dataset.nom,
+      numero_lot:  btn.dataset.lot || null,
+      dlc:         btn.dataset.dlc,
+    }, btn));
   });
 
   body.querySelectorAll('.dlc-item-btn-supprimer').forEach(btn => {
@@ -704,6 +721,28 @@ async function supprimerProduitDlc(cible) {
     await chargerCalendrier();
   } catch (e) {
     alert(`Erreur : ${e.message}`);
+  }
+}
+
+// ── Impression étiquette simple (nom / lot / DLC) ───────
+async function imprimerEtiquetteDlc(cible, btn) {
+  const labelInitial = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '🖨️ Impression...'; }
+  try {
+    const res = await fetch('/api/dlc/imprimer-etiquette', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cible),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.impression_ok) {
+      alert(`Impression échouée : ${data.impression_erreur || 'erreur inconnue'}`);
+    }
+  } catch (e) {
+    alert(`Erreur : ${e.message}`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = labelInitial; }
   }
 }
 
