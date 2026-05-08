@@ -276,7 +276,7 @@ async def imprimer_etiquette_dlc(body: ImprimerEtiquetteSimple):
     impression_ok = False
     impression_erreur = None
     try:
-        from src.printing.brother_ql_driver import imprimer_etiquette
+        from src.printing.brother_ql_driver import imprimer_etiquette, verifier_imprimante
         impression_ok = imprimer_etiquette({
             "template":    "simple",
             "produit_nom": body.produit_nom,
@@ -284,7 +284,8 @@ async def imprimer_etiquette_dlc(body: ImprimerEtiquetteSimple):
             "dlc":         body.dlc,
         })
         if not impression_ok:
-            impression_erreur = "Imprimante indisponible ou erreur d'impression"
+            statut = verifier_imprimante()
+            impression_erreur = statut.get("message") or "Erreur d'impression inconnue"
     except ImportError:
         impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
     except Exception as e:
