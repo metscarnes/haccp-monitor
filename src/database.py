@@ -2236,7 +2236,7 @@ async def get_receptions(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    conditions = []
+    conditions = ["r.statut = 'cloturee'"]
     params: list = []
 
     if date_debut:
