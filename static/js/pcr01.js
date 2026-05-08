@@ -130,6 +130,7 @@ if (elLivreurCamionOui) {
     // Rafraîchir corrective + étapes
     if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
     construireEtapesCamion();
+    majEtatBoutonEnreg();
   });
 }
 if (elLivreurCamionNon) {
@@ -146,6 +147,7 @@ if (elLivreurCamionNon) {
     // Rafraîchir
     if (elCorrective) elCorrective.value = genererActionCorrectiveCamion();
     construireEtapesCamion();
+    majEtatBoutonEnreg();
   });
 }
 
@@ -213,6 +215,7 @@ if (elLivreurAccepte) {
   elLivreurAccepte.addEventListener('click', () => {
     livreurAccepte = true;
     majUILivreur();
+    majEtatBoutonEnreg();
   });
 }
 
@@ -220,7 +223,24 @@ if (elLivreurRefuse) {
   elLivreurRefuse.addEventListener('click', () => {
     livreurAccepte = false;
     majUILivreur();
+    majEtatBoutonEnreg();
   });
+}
+
+// ── Mise à jour de l'état du bouton Enregistrer ─────────────
+function majEtatBoutonEnreg() {
+  if (!elBtnEnreg) return;
+  let bloque = false;
+  if (modeCamion && livreurCamionPresent === null) {
+    bloque = true;
+  } else {
+    const livreurEstPresent = modeCamion ? livreurCamionPresent === true : livreurPresent === true;
+    if (livreurEstPresent && livreurAccepte === null) bloque = true;
+  }
+  elBtnEnreg.disabled = bloque;
+  elBtnEnreg.title = bloque
+    ? 'Veuillez compléter le choix livreur (présence et/ou attestation) avant d\'enregistrer.'
+    : '';
 }
 
 // Bouton impression étiquette (si refus)
@@ -538,6 +558,13 @@ function chargerFiche(idx) {
 
   // Masquer l'erreur
   elErreur.hidden = true;
+
+  // Réinit choix livreur attestation pour la nouvelle fiche
+  livreurAccepte = null;
+  if (elLivreurAccepte) elLivreurAccepte.classList.remove('sel');
+  if (elLivreurRefuse)  elLivreurRefuse.classList.remove('sel');
+  if (elEtiqRepriseBloc) elEtiqRepriseBloc.hidden = true;
+  majEtatBoutonEnreg();
 }
 
 
@@ -772,3 +799,4 @@ elBtnRetour.addEventListener('click', () => {
 
 // ── Initialisation ──────────────────────────────────────────
 chargerFiche(ncFicheIndex);
+majEtatBoutonEnreg();
