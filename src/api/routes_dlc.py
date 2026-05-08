@@ -68,12 +68,6 @@ class ParametresDlc(BaseModel):
     jaune_jours: int = Field(ge=0, le=365)
 
 
-class ImprimerEtiquetteSimple(BaseModel):
-    produit_nom: str
-    numero_lot: Optional[str] = None
-    dlc: str  # YYYY-MM-DD
-
-
 # ---------------------------------------------------------------------------
 # Calendrier
 # ---------------------------------------------------------------------------
@@ -265,33 +259,6 @@ async def get_parametres():
         "orange_jours": int(params.get("dlc_alerte_orange_jours", "3")),
         "jaune_jours":  int(params.get("dlc_alerte_jaune_jours",  "7")),
     }
-
-
-@router.post("/imprimer-etiquette")
-async def imprimer_etiquette_dlc(body: ImprimerEtiquetteSimple):
-    """Réimprime une étiquette minimaliste (nom / lot / DLC) depuis le calendrier DLC."""
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", body.dlc):
-        raise HTTPException(400, "dlc invalide (format attendu : YYYY-MM-DD)")
-
-    impression_ok = False
-    impression_erreur = None
-    try:
-        from src.printing.brother_ql_driver import imprimer_etiquette, verifier_imprimante
-        impression_ok = imprimer_etiquette({
-            "template":    "simple",
-            "produit_nom": body.produit_nom,
-            "numero_lot":  body.numero_lot or "",
-            "dlc":         body.dlc,
-        })
-        if not impression_ok:
-            statut = verifier_imprimante()
-            impression_erreur = statut.get("message") or "Erreur d'impression inconnue"
-    except ImportError:
-        impression_erreur = "Driver imprimante non disponible (brother_ql non installé)"
-    except Exception as e:
-        impression_erreur = str(e)
-
-    return {"impression_ok": impression_ok, "impression_erreur": impression_erreur}
 
 
 @router.put("/parametres")

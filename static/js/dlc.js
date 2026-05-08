@@ -551,7 +551,7 @@ function ouvrirModalJour(dateStr, items) {
       produit_nom: btn.dataset.nom,
       numero_lot:  btn.dataset.lot || null,
       dlc:         btn.dataset.dlc,
-    }, btn));
+    }));
   });
 
   body.querySelectorAll('.dlc-item-btn-supprimer').forEach(btn => {
@@ -725,25 +725,18 @@ async function supprimerProduitDlc(cible) {
 }
 
 // ── Impression étiquette simple (nom / lot / DLC) ───────
-async function imprimerEtiquetteDlc(cible, btn) {
-  const labelInitial = btn ? btn.textContent : '';
-  if (btn) { btn.disabled = true; btn.textContent = '🖨️ Impression...'; }
-  try {
-    const res = await fetch('/api/dlc/imprimer-etiquette', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cible),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data.impression_ok) {
-      alert(`Impression échouée : ${data.impression_erreur || 'erreur inconnue'}`);
-    }
-  } catch (e) {
-    alert(`Erreur : ${e.message}`);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = labelInitial; }
-  }
+// Remplit le gabarit caché #print-label-dlc puis lance window.print().
+// Même pattern que cuisson / refroidissement (impression côté navigateur).
+function imprimerEtiquetteDlc(cible) {
+  const fmtDate = (iso) => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+  $('pdlc-nom').textContent = cible.produit_nom || '—';
+  $('pdlc-lot').textContent = cible.numero_lot || '—';
+  $('pdlc-dlc').textContent = fmtDate(cible.dlc);
+  setTimeout(() => window.print(), 100);
 }
 
 // ── Modal Devenir ───────────────────────────────────────

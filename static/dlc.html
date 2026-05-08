@@ -13,6 +13,28 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/dlc.css">
+  <style>
+    /* ── Gabarit impression thermique Brother 62mm — étiquette DLC simple ── */
+    #print-label-dlc { display: none; }
+    @media print {
+      @page { size: 62mm auto; margin: 0; }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
+      body > *:not(#print-label-dlc) { display: none !important; }
+      #print-label-dlc {
+        display: block;
+        position: static;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 3mm;
+        margin: 0;
+        color: black;
+        background: white;
+        font-family: sans-serif;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
 </head>
 <body class="dlc-body">
 
@@ -191,6 +213,23 @@
         <button class="btn btn-primaire devenir-valider" id="batch-valider" disabled>
           Confirmer le traitement
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Gabarit étiquette DLC (invisible à l'écran, imprimé via @media print) ── -->
+  <div id="print-label-dlc">
+    <div style="font-size:.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2mm;">Produit</div>
+    <h1 id="pdlc-nom" style="font-size:1.2rem;font-weight:900;margin:0 0 4mm;text-transform:uppercase;line-height:1.1;">—</h1>
+    <div style="border-top:1.5px solid black;margin:2mm 0;"></div>
+    <div style="display:flex;justify-content:space-between;gap:4mm;">
+      <div style="flex:1;">
+        <div style="font-size:.65rem;font-weight:bold;text-transform:uppercase;">N° Lot</div>
+        <div id="pdlc-lot" style="font-size:1rem;font-weight:900;">—</div>
+      </div>
+      <div style="flex:1;text-align:right;">
+        <div style="font-size:.65rem;font-weight:bold;text-transform:uppercase;">DLC</div>
+        <div id="pdlc-dlc" style="font-size:1rem;font-weight:900;">—</div>
       </div>
     </div>
   </div>
