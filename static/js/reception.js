@@ -1048,6 +1048,20 @@ async function creerFiche() {
     });
     receptionId = rec.id;
 
+    // BLs supplémentaires (idx >= 1) : 1 requête par fournisseur additionnel
+    for (let i = 1; i < fournisseursListe.length; i++) {
+      const fi = fournisseursListe[i];
+      const fd2 = new FormData();
+      if (fi.id)  fd2.append('fournisseur_id',  fi.id);
+      if (fi.nom) fd2.append('fournisseur_nom', fi.nom);
+      if (fi.photoFile) fd2.append('photo', fi.photoFile, fi.photoFile.name);
+      try {
+        await apiFetch(`/api/receptions/${rec.id}/bls-supplementaires`, { method: 'POST', body: fd2 });
+      } catch (e) {
+        console.warn('BL supplémentaire échoué :', e);
+      }
+    }
+
     // Réinitialiser le formulaire produit et passer à l'étape 3
     reinitFormProduit();
     majListeLignes();
