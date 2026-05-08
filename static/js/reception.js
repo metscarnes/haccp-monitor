@@ -1742,6 +1742,8 @@ async function ajouterLigne() {
 /** Affiche le modal "Même fournisseur ?" pour le prochain produit. */
 function afficherModalFournisseur() {
   if (!dernierFournisseurProduit) return;
+  // En mono-fournisseur, inutile de demander : c'est forcément le même.
+  if (!modeMultiFourn) return;
 
   // Nom à afficher : déjà porté par l'objet, sinon résolution par id
   let nomFourn = dernierFournisseurProduit.nom || null;
