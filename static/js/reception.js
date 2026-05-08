@@ -1079,7 +1079,6 @@ async function creerFiche() {
     majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
 
     // Pré-remplir le fournisseur principal pour le premier produit
-    const fourn0 = fournisseursListe[0];
     if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
       fournisseurProduitSelected = {
         id: fourn0.id || null,
