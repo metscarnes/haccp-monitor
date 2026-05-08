@@ -142,7 +142,8 @@
       "Bash(curl -s \"http://ulyssetest.ddns.net/static/js/receptions-historique.js\")",
       "Bash(node --check static/js/pcr01-detail.js)",
       "Bash(git update-index *)",
-      "Bash(git reset *)"
+      "Bash(git reset *)",
+      "PowerShell(python -m py_compile src\\\\api\\\\routes_cuisson.py src\\\\database.py)"
     ]
   }
 }

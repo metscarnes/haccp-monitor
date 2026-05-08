@@ -35,7 +35,8 @@ class CuissonCreate(BaseModel):
     date_cuisson:       str   = Field(..., description="YYYY-MM-DD")
     personnel_id:       int
     produit_id:         int
-    reception_ligne_id: Optional[int]   = None
+    reception_ligne_id: Optional[int]   = None     # source = lot de réception (brut)
+    fabrication_id:     Optional[int]   = None     # source = lot de fabrication (fini cru)
     quantite:           Optional[float] = None
     unite:              Optional[str]   = "kg"
     heure_debut:        str   = Field(..., description="HH:MM")
@@ -57,6 +58,13 @@ async def creer_cuisson(body: CuissonCreate):
             detail="Action corrective obligatoire si température < 75 °C",
         )
 
+    # Une cuisson ne peut pas avoir deux sources amont en même temps
+    if body.reception_ligne_id and body.fabrication_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Une cuisson ne peut pas être liée simultanément à une réception et à une fabrication.",
+        )
+
     # DLC J+3 calculée côté serveur (règle HACCP transformation)
     try:
         dlc_calculee = (datetime.strptime(body.date_cuisson, "%Y-%m-%d").date()
@@ -65,10 +73,12 @@ async def creer_cuisson(body: CuissonCreate):
         raise HTTPException(status_code=422, detail="date_cuisson invalide (YYYY-MM-DD attendu).")
 
     async with get_db() as db:
-        # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
+        # Règle métier absolue : la DLC ne peut pas dépasser la DLC du lot d'origine
+        # (réception OU fabrication, selon la source amont sélectionnée).
         dlc_finale = dlc_calculee
         dlc_origine = None
         dlc_ajustee = False
+
         if body.reception_ligne_id:
             cur_rl = await db.execute(
                 "SELECT dlc FROM reception_lignes WHERE id = ?",
@@ -77,22 +87,30 @@ async def creer_cuisson(body: CuissonCreate):
             rl = await cur_rl.fetchone()
             if rl and rl["dlc"]:
                 dlc_origine = datetime.strptime(rl["dlc"], "%Y-%m-%d").date()
-                if dlc_calculee > dlc_origine:
-                    dlc_finale = dlc_origine
-                    dlc_ajustee = True
-                else:
-                    dlc_finale = dlc_calculee
+        elif body.fabrication_id:
+            cur_fab = await db.execute(
+                "SELECT dlc_finale FROM fabrications WHERE id = ?",
+                (body.fabrication_id,),
+            )
+            fab = await cur_fab.fetchone()
+            if fab and fab["dlc_finale"]:
+                dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
+
+        if dlc_origine and dlc_calculee > dlc_origine:
+            dlc_finale = dlc_origine
+            dlc_ajustee = True
+
         dlc_finale_iso = dlc_finale.isoformat()
 
         cur = await db.execute(
             """
             INSERT INTO cuissons (
                 type_cuisson, date_cuisson, personnel_id, produit_id,
-                reception_ligne_id, quantite, unite,
+                reception_ligne_id, fabrication_id, quantite, unite,
                 heure_debut, heure_fin,
                 temperature_sortie, temperature_cible,
                 conforme, action_corrective, dlc_finale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.type_cuisson.lower(),
@@ -100,6 +118,7 @@ async def creer_cuisson(body: CuissonCreate):
                 body.personnel_id,
                 body.produit_id,
                 body.reception_ligne_id,
+                body.fabrication_id,
                 body.quantite,
                 body.unite or "kg",
                 body.heure_debut,
@@ -194,8 +213,8 @@ async def produits_disponibles_pour_cuisson():
     async with get_db() as db:
         stock = await get_stock_unifie(
             db, BOUTIQUE_ID,
-            type_produit="brut",
-            sources=["reception_ligne"],
+            type_produit="tous",
+            sources=["reception_ligne", "fabrication"],
         )
 
     # get_stock_unifie est déjà trié par DLC croissante, date_origine croissante.
@@ -205,6 +224,8 @@ async def produits_disponibles_pour_cuisson():
         pid = lot["produit_id"]
         if pid in par_produit:
             continue
+        src_type = lot["source_type"]
+        src_id   = lot["source_id"]
         par_produit[pid] = {
             "id":                 pid,
             "nom":                lot["produit_nom"],
@@ -214,7 +235,10 @@ async def produits_disponibles_pour_cuisson():
             "en_stock":           True,
             "numero_lot":         lot.get("numero_lot"),
             "dlc":                lot.get("dlc"),
-            "reception_ligne_id": lot["source_id"],
+            "source_type":        src_type,
+            "source_id":          src_id,
+            "reception_ligne_id": src_id if src_type == "reception_ligne" else None,
+            "fabrication_id":     src_id if src_type == "fabrication"     else None,
         }
 
     return sorted(par_produit.values(), key=lambda p: (p["nom"] or "").lower())
@@ -227,14 +251,26 @@ async def produits_disponibles_pour_cuisson():
 
 @router.get("/produits/{produit_id}/receptions")
 async def historique_receptions_produit(produit_id: int, limit: int = Query(20, ge=1, le=100)):
-    """Lots disponibles pour cuisson : DLC non dépassée ET non traitée via le calendrier DLC."""
+    """
+    Lots disponibles pour cuisson : DLC non dépassée ET non traitée via le calendrier DLC.
+
+    Inclut deux sources :
+      • réceptions (produits bruts livrés)         — source_type='reception_ligne'
+      • fabrications (produits finis crus)         — source_type='fabrication'
+
+    Chaque lot expose `source_type` + `source_id` (à privilégier) ainsi que
+    `reception_ligne_id` (legacy, conservé pour l'affichage).
+    """
     async with get_db() as db:
+        # ── Lots issus de réception ───────────────────────────────────────────
         cur = await db.execute(
             """
-            SELECT rl.id                AS reception_ligne_id,
+            SELECT 'reception_ligne'   AS source_type,
+                   rl.id                AS source_id,
+                   rl.id                AS reception_ligne_id,
                    rl.reception_id      AS reception_id,
                    rl.numero_lot,
-                   rl.dlc,
+                   COALESCE(rl.dlc, rl.dluo) AS dlc,
                    rl.poids_kg,
                    rl.temperature_reception,
                    r.date_reception,
@@ -258,6 +294,36 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             """,
             (produit_id, limit),
         )
-        rows = await cur.fetchall()
+        receptions = [dict(r) for r in await cur.fetchall()]
 
-    return [dict(r) for r in rows]
+        # ── Lots issus de fabrication ─────────────────────────────────────────
+        cur = await db.execute(
+            """
+            SELECT 'fabrication'        AS source_type,
+                   fab.id               AS source_id,
+                   NULL                 AS reception_ligne_id,
+                   NULL                 AS reception_id,
+                   fab.lot_interne      AS numero_lot,
+                   fab.dlc_finale       AS dlc,
+                   fab.poids_fabrique   AS poids_kg,
+                   NULL                 AS temperature_reception,
+                   fab.date             AS date_reception,
+                   NULL                 AS heure_reception,
+                   'Fabrication maison' AS fournisseur_nom
+            FROM   fabrications fab
+            JOIN   recettes rec ON rec.id = fab.recette_id
+            WHERE  rec.produit_fini_id = ?
+              AND  fab.dlc_finale IS NOT NULL
+              AND  fab.dlc_finale >= DATE('now')
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir d
+                  WHERE d.source_type = 'fabrication' AND d.source_id = fab.id
+              )
+            ORDER BY fab.date DESC, fab.id DESC
+            LIMIT ?
+            """,
+            (produit_id, limit),
+        )
+        fabrications = [dict(r) for r in await cur.fetchall()]
+
+    return receptions + fabrications

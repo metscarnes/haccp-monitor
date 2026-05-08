@@ -491,7 +491,8 @@ CREATE TABLE IF NOT EXISTS cuissons (
     date_cuisson        DATE    NOT NULL,
     personnel_id        INTEGER NOT NULL,
     produit_id          INTEGER NOT NULL,
-    reception_ligne_id  INTEGER,
+    reception_ligne_id  INTEGER,                     -- source = lot de réception (brut)
+    fabrication_id      INTEGER,                     -- source = lot de fabrication (produit fini cru)
     quantite            REAL,
     unite               TEXT    DEFAULT 'kg',
     heure_debut         TEXT    NOT NULL,
@@ -505,7 +506,8 @@ CREATE TABLE IF NOT EXISTS cuissons (
     FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
     FOREIGN KEY (produit_id)         REFERENCES produits(id),
-    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
+    FOREIGN KEY (fabrication_id)     REFERENCES fabrications(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cuissons_type_date
@@ -887,6 +889,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "CREATE INDEX IF NOT EXISTS idx_reception_bls_reception ON reception_bls_supplementaires(reception_id)",
             # v3.7 — Photo du problème de propreté camion (NC propreté)
             "ALTER TABLE receptions ADD COLUMN proprete_photo_filename TEXT",
+            # v3.8 — Cuisson depuis une fabrication (produit fini cru → cuisson)
+            "ALTER TABLE cuissons ADD COLUMN fabrication_id INTEGER",
         ]
         for sql in migrations:
             try:

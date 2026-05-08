@@ -149,9 +149,9 @@ const state = {
   personnel:         [],
   produits:          [],
   operateurChoisi:   null,   // { id, prenom }
-  produitChoisi:     null,   // { id, nom, numero_lot, dlc, reception_ligne_id }
+  produitChoisi:     null,   // { id, nom, numero_lot, dlc, source_type, source_id, reception_ligne_id, fabrication_id }
   lotsProduit:       [],
-  fifoLotId:         null,
+  fifoLotKey:        null,   // clé composite "source_type:source_id" du lot FIFO
   especeFiltre:      null,   // null = toutes
   derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
 };
@@ -393,10 +393,26 @@ elProduitsGrid.addEventListener('click', e => {
   selectionnerProduit(id, nom);
 });
 
+function lotKey(lot) {
+  if (!lot) return null;
+  // Préfère source_type/source_id (nouveau contrat) ; fallback reception_ligne_id (legacy).
+  const t = lot.source_type ?? (lot.reception_ligne_id ? 'reception_ligne' : null);
+  const i = lot.source_id   ?? lot.reception_ligne_id ?? null;
+  return (t && i != null) ? `${t}:${i}` : null;
+}
+
 async function selectionnerProduit(id, nom) {
-  state.produitChoisi = { id, nom, numero_lot: null, dlc: null, reception_ligne_id: null };
+  state.produitChoisi = {
+    id, nom,
+    numero_lot:         null,
+    dlc:                null,
+    source_type:        null,
+    source_id:          null,
+    reception_ligne_id: null,
+    fabrication_id:     null,
+  };
   state.lotsProduit = [];
-  state.fifoLotId   = null;
+  state.fifoLotKey  = null;
 
   // MAJ visuelle des tuiles
   elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t => {
@@ -420,7 +436,7 @@ async function selectionnerProduit(id, nom) {
       return;
     }
 
-    // FIFO : DLC la plus courte, puis réception la plus ancienne
+    // FIFO : DLC la plus courte, puis date d'origine la plus ancienne
     const lotsAvecIdx = state.lotsProduit.map((lot, idx) => ({ lot, idx }));
     lotsAvecIdx.sort((a, b) => {
       const da = a.lot.dlc ? new Date(a.lot.dlc).getTime() : Infinity;
@@ -430,7 +446,7 @@ async function selectionnerProduit(id, nom) {
       const rb = b.lot.date_reception ? new Date(b.lot.date_reception).getTime() : Infinity;
       return ra - rb;
     });
-    state.fifoLotId = lotsAvecIdx[0].lot.reception_ligne_id;
+    state.fifoLotKey = lotKey(lotsAvecIdx[0].lot);
 
     if (state.lotsProduit.length === 1) {
       appliquerLotChoisi(state.lotsProduit[0]);
@@ -439,19 +455,21 @@ async function selectionnerProduit(id, nom) {
     } else {
       // Plusieurs lots → on affiche le sélecteur, l'utilisateur clique "Suivant"
       elLotWrap.hidden = false;
-      elLotCompteur.textContent = `(${state.lotsProduit.length} réceptions)`;
+      elLotCompteur.textContent = `(${state.lotsProduit.length} lots)`;
       elLotSelect.innerHTML = lotsAvecIdx.map(({ lot }) => {
-        const estFifo = lot.reception_ligne_id === state.fifoLotId;
+        const key = lotKey(lot);
+        const estFifo = key === state.fifoLotKey;
+        const origine = lot.source_type === 'fabrication' ? 'fabriqué' : 'reçu';
         const label = [
           estFifo ? '⭐ FIFO —' : '',
           `Lot ${lot.numero_lot ?? '—'}`,
           `· DLC ${formatDate(lot.dlc)}`,
-          `· reçu ${formatDate(lot.date_reception)}`,
+          `· ${origine} ${formatDate(lot.date_reception)}`,
           lot.fournisseur_nom ? `· ${lot.fournisseur_nom}` : '',
         ].filter(Boolean).join(' ');
-        return `<option value="${lot.reception_ligne_id}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
+        return `<option value="${escHtml(key)}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
       }).join('');
-      const lotFifo = state.lotsProduit.find(l => l.reception_ligne_id === state.fifoLotId);
+      const lotFifo = state.lotsProduit.find(l => lotKey(l) === state.fifoLotKey);
       appliquerLotChoisi(lotFifo);
       majBandeau();
       elLotWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -465,23 +483,31 @@ async function selectionnerProduit(id, nom) {
 
 function appliquerLotChoisi(lot) {
   if (!lot) return;
+  const srcType = lot.source_type ?? (lot.reception_ligne_id ? 'reception_ligne' : null);
+  const srcId   = lot.source_id   ?? lot.reception_ligne_id ?? null;
   state.produitChoisi.numero_lot         = lot.numero_lot ?? null;
   state.produitChoisi.dlc                = lot.dlc ?? null;
-  state.produitChoisi.reception_ligne_id = lot.reception_ligne_id ?? null;
+  state.produitChoisi.source_type        = srcType;
+  state.produitChoisi.source_id          = srcId;
+  state.produitChoisi.reception_ligne_id = srcType === 'reception_ligne' ? srcId : null;
+  state.produitChoisi.fabrication_id     = srcType === 'fabrication'     ? srcId : null;
 
-  const estFifo = lot.reception_ligne_id === state.fifoLotId;
+  const estFifo = lotKey(lot) === state.fifoLotKey;
   const badgeFifo = estFifo && state.lotsProduit.length > 1
     ? ' <span class="cu-fifo-badge">⭐ FIFO</span>'
     : '';
+  const badgeFab = srcType === 'fabrication'
+    ? ' <span class="cu-fifo-badge">🔪 Fabrication</span>'
+    : '';
   elProdLot.innerHTML = lot.numero_lot
-    ? `Lot : ${escHtml(lot.numero_lot)}${badgeFifo}`
+    ? `Lot : ${escHtml(lot.numero_lot)}${badgeFifo}${badgeFab}`
     : '';
   elProdDlc.textContent = lot.dlc ? `DLC : ${formatDate(lot.dlc)}` : '';
 }
 
 elLotSelect.addEventListener('change', () => {
-  const recId = Number(elLotSelect.value);
-  const lot = state.lotsProduit.find(l => l.reception_ligne_id === recId);
+  const key = elLotSelect.value;
+  const lot = state.lotsProduit.find(l => lotKey(l) === key);
   if (lot) appliquerLotChoisi(lot);
 });
 
@@ -752,6 +778,8 @@ elForm.addEventListener('submit', async e => {
     produit_id:         Number(state.produitChoisi.id),
     reception_ligne_id: state.produitChoisi.reception_ligne_id
                          ? Number(state.produitChoisi.reception_ligne_id) : null,
+    fabrication_id:     state.produitChoisi.fabrication_id
+                         ? Number(state.produitChoisi.fabrication_id) : null,
     quantite:           qte,
     unite:              elUnite.value || 'kg',
     heure_debut:        elHeureDebut.value,
@@ -817,7 +845,7 @@ function resetWizard() {
   state.operateurChoisi = null;
   state.produitChoisi   = null;
   state.lotsProduit     = [];
-  state.fifoLotId       = null;
+  state.fifoLotKey      = null;
 
   elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
     t.classList.remove('cu-tuile--selected'));
