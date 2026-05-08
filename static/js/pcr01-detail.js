@@ -132,10 +132,14 @@ async function charger() {
     let lotInterne = false;
     let dlc  = null;
     let dluo = null;
+    let proprietePhoto = null;
     if (fiche.reception_id) {
       try {
         const rec = await apiFetch(`/api/receptions/${fiche.reception_id}`);
         operateurPrenom = rec.personnel_prenom || '—';
+        if (rec.proprete_photo_filename) {
+          proprietePhoto = `/api/receptions/${fiche.reception_id}/photo-proprete`;
+        }
         // Trouver la ligne correspondante pour savoir si c'est un lot interne
         if (fiche.reception_ligne_id && rec.lignes) {
           const ligne = rec.lignes.find(l => l.id === fiche.reception_ligne_id);
@@ -148,7 +152,7 @@ async function charger() {
       } catch { /* opérateur inconnu */ }
     }
 
-    afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo);
+    afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhoto);
   } catch (err) {
     elMain.innerHTML = `<div style="padding:24px;text-align:center;color:#C93030;"><div style="font-size:48px;margin-bottom:12px;">⚠️</div><div>Erreur : ${err.message}</div></div>`;
   }
@@ -249,7 +253,7 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
 }
 
 // ── Affichage ────────────────────────────────────────────────
-function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
+function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhotoUrl) {
   elMain.innerHTML = '';
 
   // ── En-tête ──────────────────────────────────────────
@@ -348,6 +352,27 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo) {
 
     blocEtapes.appendChild(liste);
     elMain.appendChild(blocEtapes);
+  }
+
+  // ── Photo NC propreté camion ─────────────────────────
+  if (proprietePhotoUrl) {
+    const blocPhoto = creerBloc();
+    blocPhoto.appendChild(creerTitre('Photo de la non-conformité — propreté camion'));
+    const corpsPhoto = creerCorps();
+    corpsPhoto.style.textAlign = 'center';
+    const img = document.createElement('img');
+    img.src = proprietePhotoUrl;
+    img.alt = 'Photo NC propreté camion';
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '400px';
+    img.style.borderRadius = '8px';
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', () => {
+      window.open(proprietePhotoUrl, '_blank');
+    });
+    corpsPhoto.appendChild(img);
+    blocPhoto.appendChild(corpsPhoto);
+    elMain.appendChild(blocPhoto);
   }
 
   // ── Livreur ───────────────────────────────────────────

@@ -139,7 +139,8 @@
       "Bash(curl -sI \"http://ulyssetest.ddns.net/api/receptions/145/photo-proprete\")",
       "Bash(curl -sI \"http://ulyssetest.ddns.net/api/receptions/145/photo-proprete\" -X GET)",
       "Bash(curl -s \"http://ulyssetest.ddns.net/static/js/reception-detail.js\")",
-      "Bash(curl -s \"http://ulyssetest.ddns.net/static/js/receptions-historique.js\")"
+      "Bash(curl -s \"http://ulyssetest.ddns.net/static/js/receptions-historique.js\")",
+      "Bash(node --check static/js/pcr01-detail.js)"
     ]
   }
 }
