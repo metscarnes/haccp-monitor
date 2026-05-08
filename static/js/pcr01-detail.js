@@ -146,6 +146,7 @@ async function charger() {
 
     // Récupérer la réception liée pour : opérateur + lot_interne
     let operateurPrenom = '—';
+    let heureReception  = null;
     let lotInterne = false;
     let dlc  = null;
     let dluo = null;
@@ -154,6 +155,7 @@ async function charger() {
       try {
         const rec = await apiFetch(`/api/receptions/${fiche.reception_id}`);
         operateurPrenom = rec.personnel_prenom || '—';
+        heureReception  = rec.heure_reception  || null;
         if (rec.proprete_photo_filename) {
           proprietePhoto = `/api/receptions/${fiche.reception_id}/photo-proprete`;
         }
@@ -169,7 +171,7 @@ async function charger() {
       } catch { /* opérateur inconnu */ }
     }
 
-    afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhoto);
+    afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhoto, heureReception);
   } catch (err) {
     elMain.innerHTML = `<div style="padding:24px;text-align:center;color:#C93030;"><div style="font-size:48px;margin-bottom:12px;">⚠️</div><div>Erreur : ${err.message}</div></div>`;
   }
@@ -210,12 +212,9 @@ function creerChampLigne(label, valeur, extraClass) {
 }
 
 // ── Impression étiquette À RETOURNER (réimpression) ─────────
-function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) {
-  const now      = new Date();
-  const dateStr  = now.toLocaleDateString('fr-FR', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  });
-  const heureStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne, heureReception) {
+  const dateStr = new Date((fiche.date_incident || new Date().toISOString().slice(0, 10)) + 'T12:00:00')
+    .toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const estCamion = fiche.action_immediate === 'refus_livraison';
 
@@ -252,8 +251,10 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
     }
   }
 
-  const heureOrig = fiche.heure_incident || heureStr;
-  const operateurStr = `${operateurPrenom} à ${heureOrig} (réimpression)`;
+  const heureOrig = heureReception || fiche.heure_incident || '';
+  const operateurStr = heureOrig
+    ? `${operateurPrenom} à ${heureOrig} (réimpression)`
+    : `${operateurPrenom} (réimpression)`;
   set('print-nc-datetime', `${dateStr} — ${operateurStr}`);
   set('print-nc-produit',  produitNom);
   setRow('print-nc-fournisseur-row', 'print-nc-fournisseur', null,
@@ -270,7 +271,7 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne) 
 }
 
 // ── Affichage ────────────────────────────────────────────────
-function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhotoUrl) {
+function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprietePhotoUrl, heureReception) {
   elMain.innerHTML = '';
 
   // ── En-tête ──────────────────────────────────────────
@@ -410,7 +411,7 @@ function afficherFiche(fiche, operateurPrenom, lotInterne, dlc, dluo, proprieteP
     btnReimp.className = 'pcr-etiq-reprise-btn';
     btnReimp.innerHTML = `🖨️ Réimprimer l'étiquette — ${labelBtn}`;
     btnReimp.addEventListener('click', () => {
-      imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne);
+      imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne, heureReception);
     });
     corpsEtiq.appendChild(btnReimp);
     blocEtiq.appendChild(corpsEtiq);
