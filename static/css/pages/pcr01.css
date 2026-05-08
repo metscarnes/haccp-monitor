@@ -556,10 +556,38 @@ body.pcr-body {
   z-index: 100;
   font-family: var(--font);
 }
-.pcr-btn-enreg:disabled {
+.pcr-btn-enreg:disabled,
+.pcr-btn-enreg.pcr-btn-bloque {
   opacity: .42;
   cursor: not-allowed;
 }
-.pcr-btn-enreg:not(:disabled):active {
+.pcr-btn-enreg:not(:disabled):not(.pcr-btn-bloque):active {
   opacity: .82;
+}
+
+/* ── Feedback visuel champ manquant (shake + bord rouge) ──── */
+@keyframes pcr-shake {
+  0%, 100% { transform: translateX(0); }
+  15%      { transform: translateX(-8px); }
+  30%      { transform: translateX(8px); }
+  45%      { transform: translateX(-6px); }
+  60%      { transform: translateX(6px); }
+  75%      { transform: translateX(-3px); }
+  90%      { transform: translateX(3px); }
+}
+.pcr-invalid {
+  animation: pcr-shake .55s cubic-bezier(.36,.07,.19,.97) both;
+  outline: 3px solid var(--color-alert);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+.pcr-livreur-btn.pcr-invalid {
+  outline: 3px solid var(--color-alert);
+  outline-offset: 2px;
+  background: #FFF0F0;
+}
+.pcr-textarea.pcr-invalid {
+  outline: none;
+  border-color: var(--color-alert) !important;
+  box-shadow: 0 0 0 3px rgba(201,48,48,.25);
 }

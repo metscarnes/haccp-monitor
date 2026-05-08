@@ -121,6 +121,8 @@ if (elLivreurCamionOui) {
   elLivreurCamionOui.addEventListener('click', () => {
     livreurCamionPresent = true;
     livreurPresent = true;
+    elLivreurCamionOui.classList.remove('pcr-invalid');
+    elLivreurCamionNon.classList.remove('pcr-invalid');
     elLivreurCamionOui.classList.add('sel');
     elLivreurCamionNon.classList.remove('sel');
     // Montrer la signature, cacher étiquette retour (sera gérée par majUILivreur si refus)
@@ -138,6 +140,8 @@ if (elLivreurCamionNon) {
     livreurCamionPresent = false;
     livreurPresent = false;
     livreurAccepte = null;
+    elLivreurCamionOui.classList.remove('pcr-invalid');
+    elLivreurCamionNon.classList.remove('pcr-invalid');
     elLivreurCamionNon.classList.add('sel');
     elLivreurCamionOui.classList.remove('sel');
     // Cacher signature et bloc attestation, montrer étiquette retour (livreur absent)
@@ -169,10 +173,10 @@ function initSigCanvas() {
     const src = e.touches ? e.touches[0] : e;
     return { x: src.clientX - r.left, y: src.clientY - r.top };
   }
-  elSigCanvas.addEventListener('mousedown',  e => { sigDraw = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
+  elSigCanvas.addEventListener('mousedown',  e => { sigDraw = true; elSigCanvas.classList.remove('pcr-invalid'); const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); });
   elSigCanvas.addEventListener('mousemove',  e => { if (!sigDraw) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); });
   elSigCanvas.addEventListener('mouseup',    () => sigDraw = false);
-  elSigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDraw = true; const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
+  elSigCanvas.addEventListener('touchstart', e => { e.preventDefault(); sigDraw = true; elSigCanvas.classList.remove('pcr-invalid'); const p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }, { passive: false });
   elSigCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (!sigDraw) return; const p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); }, { passive: false });
   elSigCanvas.addEventListener('touchend',   () => sigDraw = false);
 }
@@ -214,6 +218,8 @@ function majUILivreur() {
 if (elLivreurAccepte) {
   elLivreurAccepte.addEventListener('click', () => {
     livreurAccepte = true;
+    elLivreurAccepte.classList.remove('pcr-invalid');
+    if (elLivreurRefuse) elLivreurRefuse.classList.remove('pcr-invalid');
     majUILivreur();
     majEtatBoutonEnreg();
   });
@@ -222,6 +228,8 @@ if (elLivreurAccepte) {
 if (elLivreurRefuse) {
   elLivreurRefuse.addEventListener('click', () => {
     livreurAccepte = false;
+    elLivreurRefuse.classList.remove('pcr-invalid');
+    if (elLivreurAccepte) elLivreurAccepte.classList.remove('pcr-invalid');
     majUILivreur();
     majEtatBoutonEnreg();
   });
@@ -237,10 +245,33 @@ function majEtatBoutonEnreg() {
     const livreurEstPresent = modeCamion ? livreurCamionPresent === true : livreurPresent === true;
     if (livreurEstPresent && livreurAccepte === null) bloque = true;
   }
-  elBtnEnreg.disabled = bloque;
+  // Pas de `disabled` natif : on garde le bouton clickable pour pouvoir
+  // afficher un feedback visuel sur les champs manquants.
+  if (bloque) elBtnEnreg.classList.add('pcr-btn-bloque');
+  else        elBtnEnreg.classList.remove('pcr-btn-bloque');
   elBtnEnreg.title = bloque
     ? 'Veuillez compléter le choix livreur (présence et/ou attestation) avant d\'enregistrer.'
     : '';
+}
+
+// ── Feedback visuel : shake + bord rouge + vibration ────────
+function flashInvalide(elements) {
+  const list = Array.isArray(elements) ? elements.filter(Boolean) : [elements].filter(Boolean);
+  if (!list.length) return;
+  list.forEach(el => {
+    el.classList.remove('pcr-invalid');
+    void el.offsetWidth; // force reflow pour rejouer l'animation
+    el.classList.add('pcr-invalid');
+  });
+  if (navigator.vibrate) {
+    try { navigator.vibrate([60, 40, 60]); } catch { /* noop */ }
+  }
+  // Faire défiler vers le premier élément en erreur
+  list[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearInvalide() {
+  document.querySelectorAll('.pcr-invalid').forEach(el => el.classList.remove('pcr-invalid'));
 }
 
 // Bouton impression étiquette (si refus)
@@ -638,6 +669,9 @@ function dataUrlToBlob(dataUrl) {
 
 // ── Enregistrer la fiche courante via API ───────────────────
 elBtnEnreg.addEventListener('click', enregistrerFiche);
+if (elCorrective) {
+  elCorrective.addEventListener('input', () => elCorrective.classList.remove('pcr-invalid'));
+}
 
 function isSignatureVide() {
   if (!elSigCanvas || !sigCtx) return true;
@@ -646,10 +680,12 @@ function isSignatureVide() {
 }
 
 async function enregistrerFiche() {
+  clearInvalide();
   const corrective = elCorrective.value.trim();
   if (!corrective) {
     elErreur.textContent = "L'action corrective est obligatoire.";
     elErreur.hidden = false;
+    flashInvalide(elCorrective);
     elCorrective.focus();
     return;
   }
@@ -657,7 +693,7 @@ async function enregistrerFiche() {
   if (modeCamion && livreurCamionPresent === null) {
     elErreur.textContent = 'Veuillez indiquer si le livreur est présent ou absent.';
     elErreur.hidden = false;
-    if (elLivreurCamionBloc) elLivreurCamionBloc.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    flashInvalide([elLivreurCamionOui, elLivreurCamionNon]);
     return;
   }
 
@@ -665,13 +701,13 @@ async function enregistrerFiche() {
   if (livreurEstPresent && livreurAccepte === null) {
     elErreur.textContent = 'Veuillez indiquer si le livreur atteste ou n\'atteste pas la NC.';
     elErreur.hidden = false;
-    if (elLivreurAccepte) elLivreurAccepte.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    flashInvalide([elLivreurAccepte, elLivreurRefuse]);
     return;
   }
   if (livreurEstPresent && isSignatureVide()) {
     elErreur.textContent = 'La signature du livreur est obligatoire.';
     elErreur.hidden = false;
-    elSigCanvas.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    flashInvalide(elSigCanvas);
     return;
   }
 
