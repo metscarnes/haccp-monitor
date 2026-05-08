@@ -560,6 +560,22 @@
 }
 .inv-m-valider:disabled { background: #bbb; cursor: not-allowed; }
 
+.inv-m-imprimer {
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: .8rem 1rem;
+  background: #eaf3ff;
+  color: #1a5fb4;
+  border: 1.5px solid #1a5fb4;
+  border-radius: var(--radius);
+  font-size: var(--text-md);
+  font-weight: 700;
+  cursor: pointer;
+  min-height: var(--btn-min);
+}
+.inv-m-imprimer:hover { background: #1a5fb4; color: #fff; }
+.inv-m-imprimer:active { filter: brightness(.9); }
+
 /* ── Modal modification ───────────────────────────────────── */
 .inv-edit-nom {
   font-size: var(--text-lg);

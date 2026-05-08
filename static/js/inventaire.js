@@ -555,9 +555,48 @@ function fermerEditModal() {
   editState.cible = null;
 }
 
+// ── Impression étiquette simple (nom / lot / DLC [+ fab]) ───
+// Remplit le gabarit caché #print-label-inv puis lance window.print().
+// Même pattern que cuisson / refroidissement / DLC.
+function imprimerEtiquetteInv(it) {
+  if (!it) return;
+  const fmtDate = (iso) => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+  const fmtHeureFromTs = (ts) => {
+    if (!ts) return '';
+    const m = String(ts).match(/(\d{2}):(\d{2})/);
+    return m ? `${m[1]}h${m[2]}` : '';
+  };
+
+  $('pinv-nom').textContent = it.produit_nom || '—';
+  $('pinv-lot').textContent = `N° Lot : ${it.numero_lot || '—'}`;
+  $('pinv-dlc').textContent = `DLC : ${fmtDate(it.dlc)}`;
+
+  const elFab = $('pinv-fab');
+  if (it.source_type === 'fabrication' && it.date_origine) {
+    const dateFab  = fmtDate(it.date_origine);
+    const heureFab = fmtHeureFromTs(it.fabrication_created_at);
+    elFab.textContent = heureFab
+      ? `Fabriqué le ${dateFab} à ${heureFab}`
+      : `Fabriqué le ${dateFab}`;
+    elFab.hidden = false;
+  } else {
+    elFab.hidden = true;
+  }
+
+  setTimeout(() => window.print(), 100);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   $('inv-edit-close').addEventListener('click', fermerEditModal);
   $('inv-edit-backdrop').addEventListener('click', fermerEditModal);
+
+  $('inv-edit-imprimer').addEventListener('click', () => {
+    imprimerEtiquetteInv(editState.cible);
+  });
 
   $('inv-edit-valider').addEventListener('click', async () => {
     const it  = editState.cible;

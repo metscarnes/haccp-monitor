@@ -3626,6 +3626,7 @@ async def get_stock_unifie(
                 fab.poids_fabrique AS quantite,
                 'kg'               AS unite,
                 fab.date           AS date_origine,
+                fab.created_at     AS fabrication_created_at,
                 NULL               AS fournisseur_nom
             FROM fabrications fab
             JOIN recettes rec ON rec.id = fab.recette_id

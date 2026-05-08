@@ -15,6 +15,28 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/inventaire.css">
+  <style>
+    /* ── Gabarit impression thermique Brother 62mm — étiquette inventaire ── */
+    #print-label-inv { display: none; }
+    @media print {
+      @page { size: 62mm auto; margin: 0; }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
+      body > *:not(#print-label-inv) { display: none !important; }
+      #print-label-inv {
+        display: block;
+        position: static;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 2mm;
+        margin: 0;
+        color: black;
+        background: white;
+        font-family: sans-serif;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+    }
+  </style>
 </head>
 <body class="inv-body">
 
@@ -229,8 +251,20 @@
         <button class="inv-m-valider" id="inv-edit-valider">
           Enregistrer les modifications
         </button>
+
+        <button type="button" class="inv-m-imprimer" id="inv-edit-imprimer">
+          🖨️ Imprimer étiquette
+        </button>
       </div>
     </div>
+  </div>
+
+  <!-- ── Gabarit étiquette inventaire (invisible à l'écran, imprimé via @media print) ── -->
+  <div id="print-label-inv">
+    <div id="pinv-nom" style="font-size:.85rem;font-weight:900;text-transform:uppercase;line-height:1.1;margin:0;">—</div>
+    <div id="pinv-lot" style="font-size:.75rem;font-weight:bold;line-height:1.1;margin-top:1mm;">N° Lot : —</div>
+    <div id="pinv-dlc" style="font-size:.75rem;font-weight:bold;line-height:1.1;margin-top:1mm;">DLC : —</div>
+    <div id="pinv-fab" style="font-size:.7rem;line-height:1.1;margin-top:1mm;" hidden>Fabriqué le —</div>
   </div>
 
   <script src="/static/js/inventaire.js"></script>
