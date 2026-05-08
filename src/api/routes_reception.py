@@ -32,6 +32,7 @@ from src.database import (
     get_receptions, get_reception,
     get_non_conformites, create_non_conformite,
     generer_lot_interne, update_reception_ligne,
+    update_reception_temperature_camion,
     add_reception_bl_supplementaire,
 )
 
@@ -375,6 +376,22 @@ async def modifier_ligne(reception_id: int, ligne_id: int, body: LigneUpdate):
     if not updated:
         raise HTTPException(404, "Ligne non trouvée")
     return updated
+
+
+class TempCamionBody(BaseModel):
+    temperature_camion: Optional[float] = None
+
+
+@router.put("/receptions/{reception_id}/temperature-camion")
+async def maj_temperature_camion(reception_id: int, body: TempCamionBody):
+    """Met à jour la temp camion + recalcule la conformité de toutes les lignes."""
+    async with get_db() as db:
+        lignes = await update_reception_temperature_camion(
+            db, reception_id, body.temperature_camion
+        )
+    if lignes is None:
+        raise HTTPException(404, "Réception non trouvée")
+    return {"lignes": lignes}
 
 
 @router.put("/receptions/{reception_id}/cloturer")

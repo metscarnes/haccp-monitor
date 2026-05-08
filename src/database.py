@@ -2226,6 +2226,68 @@ async def update_reception_ligne(
     return dict(updated) if updated else None
 
 
+async def update_reception_temperature_camion(
+    db: aiosqlite.Connection,
+    reception_id: int,
+    new_temp: Optional[float],
+) -> Optional[list[dict]]:
+    """Met à jour la temp camion ET propage aux lignes (recalcule conformité).
+
+    Renvoie la liste des lignes mises à jour, ou None si la réception n'existe pas.
+    """
+    cur = await db.execute("SELECT id FROM receptions WHERE id = ?", (reception_id,))
+    if not await cur.fetchone():
+        return None
+
+    await db.execute(
+        "UPDATE receptions SET temperature_camion = ? WHERE id = ?",
+        (new_temp, reception_id),
+    )
+
+    cur2 = await db.execute(
+        """
+        SELECT rl.id, rl.produit_id, rl.ph_conforme,
+               rl.couleur_conforme, rl.consistance_conforme,
+               rl.exsudat_conforme, rl.odeur_conforme,
+               p.temperature_conservation
+        FROM reception_lignes rl
+        LEFT JOIN produits p ON p.id = rl.produit_id
+        WHERE rl.reception_id = ?
+        """,
+        (reception_id,),
+    )
+    rows = await cur2.fetchall()
+
+    for r in rows:
+        temp_conforme = _calc_temperature_conforme(new_temp, r["temperature_conservation"])
+        conforme = 1
+        for flag in (temp_conforme, r["ph_conforme"],
+                     r["couleur_conforme"], r["consistance_conforme"],
+                     r["exsudat_conforme"], r["odeur_conforme"]):
+            if flag is not None and flag == 0:
+                conforme = 0
+                break
+        await db.execute(
+            """
+            UPDATE reception_lignes
+               SET temperature_reception = ?,
+                   temperature_conforme  = ?,
+                   conforme              = ?
+             WHERE id = ?
+            """,
+            (new_temp, temp_conforme, conforme, r["id"]),
+        )
+
+    await db.commit()
+
+    cur3 = await db.execute(
+        "SELECT * FROM reception_lignes WHERE reception_id = ? ORDER BY id",
+        (reception_id,),
+    )
+    updated = await cur3.fetchall()
+    return [dict(row) for row in updated]
+
+
 async def get_receptions(
     db: aiosqlite.Connection,
     date_debut: Optional[str] = None,

@@ -156,6 +156,7 @@ let photoBlFile        = null;
 let photoBlObjectUrl   = null;
 let fournisseurId      = null;
 let receptionId        = null;
+let dernierTempCamionEnvoye = null; // dernière temp camion envoyée au serveur
 let lignesAjoutees     = [];      // [{id, produit_nom, conforme, motifs, temp, lot, produit_id, fournisseur_id}]
 let produitSelectionne = null;    // objet produit complet
 let criteres           = {};      // {couleur:1, consistance:1, exsudat:1, odeur:1}
@@ -403,7 +404,7 @@ elDateReception.addEventListener('input', () => {
   }
 });
 
-elBtnCamionSuivant.addEventListener('click', () => {
+elBtnCamionSuivant.addEventListener('click', async () => {
   const today = new Date().toISOString().slice(0, 10);
   if (!elDateReception.value || elDateReception.value < today) {
     elDateReception.classList.add('rec-champ-invalide');
@@ -432,8 +433,55 @@ elBtnCamionSuivant.addEventListener('click', () => {
     return;
   }
 
+  // Si la fiche existe déjà et la temp a changé : propager aux lignes (recalcul conformité)
+  await propagerTempCamionSiModifiee();
+
   allerEtape(2);
 });
+
+/**
+ * Si une fiche est en cours et que la température camion a été modifiée
+ * depuis la dernière sauvegarde serveur, propager le changement à toutes
+ * les lignes pour recalculer leur conformité.
+ */
+async function propagerTempCamionSiModifiee() {
+  if (!receptionId) return;
+  const tempCourante = parseFloat(elTempCamion.value);
+  const tempEffective = isNaN(tempCourante) ? null : tempCourante;
+  if (tempEffective === dernierTempCamionEnvoye) return;
+
+  try {
+    const res = await apiFetch(`/api/receptions/${receptionId}/temperature-camion`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temperature_camion: tempEffective }),
+    });
+    dernierTempCamionEnvoye = tempEffective;
+
+    // Rafraîchir lignesAjoutees avec les nouveaux flags de conformité
+    // (on patche en place pour préserver fournisseur_nom etc. côté local)
+    if (res && Array.isArray(res.lignes)) {
+      const parId = new Map(res.lignes.map(l => [l.id, l]));
+      lignesAjoutees.forEach(local => {
+        const fresh = parId.get(local.id);
+        if (!fresh) return;
+        local.conforme              = fresh.conforme;
+        local.temperature_reception = fresh.temperature_reception;
+        const motifs = [];
+        if (fresh.temperature_conforme === 0) motifs.push('température');
+        if (fresh.couleur_conforme     === 0) motifs.push('couleur');
+        if (fresh.consistance_conforme === 0) motifs.push('consistance');
+        if (fresh.exsudat_conforme     === 0) motifs.push('exsudat');
+        if (fresh.odeur_conforme       === 0) motifs.push('odeur');
+        if (fresh.ph_conforme          === 0) motifs.push('pH');
+        local.motifs = motifs;
+      });
+      majListeLignes();
+    }
+  } catch (err) {
+    console.error('[haccp] Propagation temp camion échouée :', err);
+  }
+}
 
 // ── Checkboxes NC propreté ──────────────────────────────────
 elPropreteCheckboxes.forEach(cb => {
@@ -740,6 +788,9 @@ async function allerVersPcr01Camion() {
     fd.append('photo_bl', premier.photoFile, premier.photoFile.name);
 
     const rec = await apiFetch('/api/receptions', { method: 'POST', body: fd });
+    receptionId = rec.id;
+    const tempEnvoyeeRefus = parseFloat(elTempCamion.value);
+    dernierTempCamionEnvoye = isNaN(tempEnvoyeeRefus) ? null : tempEnvoyeeRefus;
 
     // BLs supplémentaires (idx >= 1)
     for (let i = 1; i < refusBlList.length; i++) {
@@ -1003,6 +1054,15 @@ elBtnCreerFiche.addEventListener('click', creerFiche);
 async function creerFiche() {
   elErreur2.hidden = true;
 
+  // Fiche déjà créée (retour arrière puis avant) : ne pas re-POSTer.
+  // On se contente de propager une éventuelle modif de temp camion puis
+  // de revenir à l'écran produits.
+  if (receptionId) {
+    await propagerTempCamionSiModifiee();
+    allerEtape(3);
+    return;
+  }
+
   // Valider : au moins le nom du fournisseur principal
   const fourn0 = fournisseursListe[0];
   const searchInp = document.getElementById('rec-fourn-search-0');
@@ -1071,6 +1131,8 @@ async function creerFiche() {
       body: fd,
     });
     receptionId = rec.id;
+    const tempEnvoyee = parseFloat(elTempCamion.value);
+    dernierTempCamionEnvoye = isNaN(tempEnvoyee) ? null : tempEnvoyee;
 
     // BLs supplémentaires (idx >= 1) : 1 requête par fournisseur additionnel
     for (let i = 1; i < fournisseursListe.length; i++) {
@@ -2167,6 +2229,7 @@ function restaurerDepuisPcr01() {
     // Restaurer les inputs DOM nécessaires à remplirRecap()
     if (state.tempCamion !== null && state.tempCamion !== undefined) {
       elTempCamion.value = state.tempCamion;
+      dernierTempCamionEnvoye = state.tempCamion;
     }
 
     // Restaurer ncCoeurResultats depuis les données pcr01 (pour la clôture)
