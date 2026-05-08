@@ -619,6 +619,7 @@ function formatHeureFromHHMMInv(hhmm) {
 }
 
 // "Fabriqué/Cuit/Refroidi le DD/MM/YY à HHhMM" selon source_type.
+// Réception : "Réceptionné le DD/MM/YY à HHhMM par <prénom>".
 function construireLigneOrigineInv(it) {
   if (!it || !it.date_origine) return '';
   const dateFmt = formatDateLabelInv(it.date_origine);
@@ -633,6 +634,12 @@ function construireLigneOrigineInv(it) {
   } else if (it.source_type === 'refroidissement') {
     verbe = 'Refroidi';
     heure = formatHeureFromHHMMInv(it.heure_origine);
+  } else if (it.source_type === 'reception_ligne') {
+    verbe = 'Réceptionné';
+    heure = formatHeureFromHHMMInv(it.heure_origine);
+    let ligne = heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;
+    if (it.receveur_prenom) ligne += ` par ${it.receveur_prenom}`;
+    return ligne;
   }
   if (!verbe) return '';
   return heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;

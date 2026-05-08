@@ -450,7 +450,8 @@ function ouvrirModalJour(dateStr, items) {
                data-source="${escHtml(it.source_type)}"
                data-date-origine="${escHtml(it.date_origine || '')}"
                data-heure-origine="${escHtml(it.heure_origine || '')}"
-               data-fab-created="${escHtml(it.fabrication_created_at || '')}">
+               data-fab-created="${escHtml(it.fabrication_created_at || '')}"
+               data-receveur="${escHtml(it.receveur_prenom || '')}">
          🖨️ Imprimer
        </button>`;
 
@@ -559,6 +560,7 @@ function ouvrirModalJour(dateStr, items) {
       date_origine:          btn.dataset.dateOrigine || null,
       heure_origine:         btn.dataset.heureOrigine || null,
       fabrication_created_at: btn.dataset.fabCreated || null,
+      receveur_prenom:       btn.dataset.receveur || null,
     }));
   });
 
@@ -795,6 +797,7 @@ function formatHeureFromHHMM(hhmm) {
 }
 
 // "Fabriqué/Cuit/Refroidi le DD/MM/YY à HHhMM" selon source_type.
+// Réception : "Réceptionné le DD/MM/YY à HHhMM par <prénom>".
 // Renvoie une string vide si la source ne porte pas d'origine pertinente.
 function construireLigneOrigine(cible) {
   if (!cible || !cible.date_origine) return '';
@@ -810,6 +813,12 @@ function construireLigneOrigine(cible) {
   } else if (cible.source_type === 'refroidissement') {
     verbe = 'Refroidi';
     heure = formatHeureFromHHMM(cible.heure_origine);
+  } else if (cible.source_type === 'reception_ligne') {
+    verbe = 'Réceptionné';
+    heure = formatHeureFromHHMM(cible.heure_origine);
+    let ligne = heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;
+    if (cible.receveur_prenom) ligne += ` par ${cible.receveur_prenom}`;
+    return ligne;
   }
   if (!verbe) return '';
   return heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;

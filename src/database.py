@@ -3328,6 +3328,8 @@ async def get_dlc_calendrier(
                 p.categorie          AS categorie,
                 f.nom                AS fournisseur_nom,
                 r.date_reception     AS date_origine,
+                r.heure_reception    AS heure_origine,
+                pers_recep.prenom    AS receveur_prenom,
                 r.id                 AS reception_id,
                 dd.statut            AS devenir_statut,
                 dd.commentaire       AS devenir_commentaire,
@@ -3337,6 +3339,7 @@ async def get_dlc_calendrier(
             JOIN receptions r       ON r.id  = rl.reception_id
             JOIN produits   p       ON p.id  = rl.produit_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            LEFT JOIN personnel pers_recep ON pers_recep.id = r.personnel_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'reception_ligne' AND dd.source_id = rl.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
@@ -3597,11 +3600,14 @@ async def get_stock_unifie(
                 rl.poids_kg        AS quantite,
                 'kg'               AS unite,
                 r.date_reception   AS date_origine,
+                r.heure_reception  AS heure_origine,
+                pers_recep.prenom  AS receveur_prenom,
                 f.nom              AS fournisseur_nom
             FROM reception_lignes rl
             JOIN receptions   r ON r.id = rl.reception_id
             JOIN produits     p ON p.id = rl.produit_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            LEFT JOIN personnel pers_recep ON pers_recep.id = r.personnel_id
             WHERE p.boutique_id = ?
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
