@@ -195,10 +195,15 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
             temp_select = "s.temperature_finale AS temperature"
             extra_join = "LEFT JOIN cuissons c ON c.id = s.cuisson_id"
         else:
-            lot_select = "rl.numero_lot AS lot_origine"
+            # Cuisson : le lot d'origine peut venir d'une réception (brut)
+            # ou d'une fabrication (produit fini cru). On essaie les deux.
+            lot_select = "COALESCE(rl.numero_lot, fab.lot_interne) AS lot_origine"
             qte_select = "s.quantite AS quantite, s.unite AS unite"
             temp_select = "s.temperature_sortie AS temperature"
-            extra_join = "LEFT JOIN reception_lignes rl ON rl.id = s.reception_ligne_id"
+            extra_join = (
+                "LEFT JOIN reception_lignes rl ON rl.id = s.reception_ligne_id "
+                "LEFT JOIN fabrications fab    ON fab.id = s.fabrication_id"
+            )
 
         cur = await db.execute(
             f"""

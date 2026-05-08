@@ -144,7 +144,8 @@
       "Bash(git update-index *)",
       "Bash(git reset *)",
       "PowerShell(python -m py_compile src\\\\api\\\\routes_cuisson.py src\\\\database.py)",
-      "PowerShell(python -m py_compile src\\\\database.py src\\\\api\\\\routes_refroidissement.py)"
+      "PowerShell(python -m py_compile src\\\\database.py src\\\\api\\\\routes_refroidissement.py)",
+      "PowerShell(python -m py_compile src\\\\api\\\\routes_cuisson.py src\\\\api\\\\routes_etiquettes.py)"
     ]
   }
 }

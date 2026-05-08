@@ -178,12 +178,13 @@ async def lister_cuissons(
                    p.nom       AS produit_nom,
                    p.espece    AS espece,
                    pers.prenom AS personnel_prenom,
-                   rl.numero_lot,
+                   COALESCE(rl.numero_lot, fab.lot_interne) AS numero_lot,
                    rl.reception_id AS reception_id
             FROM   cuissons c
             LEFT   JOIN produits        p    ON p.id    = c.produit_id
             LEFT   JOIN personnel       pers ON pers.id = c.personnel_id
             LEFT   JOIN reception_lignes rl  ON rl.id   = c.reception_ligne_id
+            LEFT   JOIN fabrications    fab  ON fab.id  = c.fabrication_id
             WHERE  {where_sql}
             ORDER BY c.date_cuisson DESC, c.id DESC
             LIMIT ?
