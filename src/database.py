@@ -3661,7 +3661,7 @@ async def get_stock_unifie(
                 p.type_produit        AS type_produit,
                 p.espece              AS espece,
                 c.dlc_finale          AS dlc,
-                COALESCE(rl.numero_lot, 'C-' || c.id) AS numero_lot,
+                COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
                 c.quantite            AS quantite,
                 COALESCE(c.unite,'kg') AS unite,
                 c.date_cuisson        AS date_origine,
@@ -3669,6 +3669,7 @@ async def get_stock_unifie(
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
             LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
+            LEFT JOIN fabrications fab ON fab.id = c.fabrication_id
             WHERE c.boutique_id = ?
               AND c.dlc_finale IS NOT NULL
               {extra_sql}
@@ -3698,7 +3699,7 @@ async def get_stock_unifie(
                 p.type_produit         AS type_produit,
                 p.espece               AS espece,
                 rf.dlc_finale          AS dlc,
-                COALESCE(rl.numero_lot, 'R-' || rf.id) AS numero_lot,
+                COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 rf.date_refroidissement AS date_origine,
@@ -3707,6 +3708,7 @@ async def get_stock_unifie(
             JOIN produits p ON p.id = rf.produit_id
             LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
             LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
+            LEFT JOIN fabrications fab ON fab.id = c2.fabrication_id
             WHERE rf.boutique_id = ?
               AND rf.dlc_finale IS NOT NULL
               AND rf.jeter = 0

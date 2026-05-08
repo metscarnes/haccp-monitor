@@ -152,42 +152,48 @@ async def creer_refroidissement(body: RefroidissementCreate):
     async with get_db() as db:
         numero_lot = None
         reception_ligne_id = None
+        dlc_origine = None  # DLC du lot amont (réception OU fabrication)
 
         # Récupérer la traçabilité depuis la cuisson
         if body.cuisson_id:
             cur_cuisson = await db.execute(
                 """
-                SELECT c.reception_ligne_id
+                SELECT c.reception_ligne_id, c.fabrication_id
                 FROM cuissons c
                 WHERE c.id = ?
                 """,
                 (body.cuisson_id,),
             )
             cuisson = await cur_cuisson.fetchone()
-            if cuisson and cuisson["reception_ligne_id"]:
-                reception_ligne_id = cuisson["reception_ligne_id"]
-                # Récupérer le numéro de lot et la DLC d'origine depuis reception_lignes
-                cur_reception = await db.execute(
-                    """
-                    SELECT numero_lot, dlc FROM reception_lignes WHERE id = ?
-                    """,
-                    (reception_ligne_id,),
-                )
-                reception_ligne = await cur_reception.fetchone()
-                if reception_ligne:
-                    numero_lot = reception_ligne["numero_lot"]
+            if cuisson:
+                if cuisson["reception_ligne_id"]:
+                    reception_ligne_id = cuisson["reception_ligne_id"]
+                    cur_reception = await db.execute(
+                        "SELECT numero_lot, dlc FROM reception_lignes WHERE id = ?",
+                        (reception_ligne_id,),
+                    )
+                    reception_ligne = await cur_reception.fetchone()
+                    if reception_ligne:
+                        numero_lot = reception_ligne["numero_lot"]
+                        if reception_ligne["dlc"]:
+                            dlc_origine = datetime.strptime(reception_ligne["dlc"], "%Y-%m-%d").date()
+                elif cuisson["fabrication_id"]:
+                    cur_fab = await db.execute(
+                        "SELECT lot_interne, dlc_finale FROM fabrications WHERE id = ?",
+                        (cuisson["fabrication_id"],),
+                    )
+                    fab = await cur_fab.fetchone()
+                    if fab:
+                        numero_lot = fab["lot_interne"]
+                        if fab["dlc_finale"]:
+                            dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
 
-        # Règle métier absolue : la DLC ne peut pas dépasser la DLC de réception d'origine
+        # Règle métier absolue : la DLC ne peut pas dépasser la DLC du lot d'origine
         dlc_finale = dlc_calculee
-        dlc_origine = None
         dlc_ajustee = False
-        if reception_ligne_id and reception_ligne and reception_ligne["dlc"]:
-            dlc_origine = datetime.strptime(reception_ligne["dlc"], "%Y-%m-%d").date()
-            if dlc_calculee > dlc_origine:
-                dlc_finale = dlc_origine
-                dlc_ajustee = True
-            else:
-                dlc_finale = dlc_calculee
+        if dlc_origine and dlc_calculee > dlc_origine:
+            dlc_finale = dlc_origine
+            dlc_ajustee = True
         dlc_finale_iso = dlc_finale.isoformat()
 
         cur = await db.execute(
