@@ -734,8 +734,8 @@ function imprimerEtiquetteDlc(cible) {
     return `${d}/${m}/${(y || '').slice(-2)}`;
   };
   $('pdlc-nom').textContent = cible.produit_nom || '—';
-  $('pdlc-lot').textContent = cible.numero_lot || '—';
-  $('pdlc-dlc').textContent = fmtDate(cible.dlc);
+  $('pdlc-lot').textContent = `N° Lot : ${cible.numero_lot || '—'}`;
+  $('pdlc-dlc').textContent = `DLC : ${fmtDate(cible.dlc)}`;
   setTimeout(() => window.print(), 100);
 }
 

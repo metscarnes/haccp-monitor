@@ -25,7 +25,7 @@
         position: static;
         width: 100%;
         box-sizing: border-box;
-        padding: 3mm;
+        padding: 2mm;
         margin: 0;
         color: black;
         background: white;
@@ -219,19 +219,9 @@
 
   <!-- ── Gabarit étiquette DLC (invisible à l'écran, imprimé via @media print) ── -->
   <div id="print-label-dlc">
-    <div style="font-size:.7rem;font-weight:bold;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2mm;">Produit</div>
-    <h1 id="pdlc-nom" style="font-size:1.2rem;font-weight:900;margin:0 0 4mm;text-transform:uppercase;line-height:1.1;">—</h1>
-    <div style="border-top:1.5px solid black;margin:2mm 0;"></div>
-    <div style="display:flex;justify-content:space-between;gap:4mm;">
-      <div style="flex:1;">
-        <div style="font-size:.65rem;font-weight:bold;text-transform:uppercase;">N° Lot</div>
-        <div id="pdlc-lot" style="font-size:1rem;font-weight:900;">—</div>
-      </div>
-      <div style="flex:1;text-align:right;">
-        <div style="font-size:.65rem;font-weight:bold;text-transform:uppercase;">DLC</div>
-        <div id="pdlc-dlc" style="font-size:1rem;font-weight:900;">—</div>
-      </div>
-    </div>
+    <div id="pdlc-nom" style="font-size:.85rem;font-weight:900;text-transform:uppercase;line-height:1.1;margin:0;">—</div>
+    <div id="pdlc-lot" style="font-size:.75rem;font-weight:bold;line-height:1.1;margin-top:1mm;">N° Lot : —</div>
+    <div id="pdlc-dlc" style="font-size:.75rem;font-weight:bold;line-height:1.1;margin-top:1mm;">DLC : —</div>
   </div>
 
   <script src="/static/js/dlc.js"></script>
