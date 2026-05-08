@@ -177,8 +177,8 @@ let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
 let dlcMode            = 'dlc';   // 'dlc' ou 'dluo'
 let lotInterneGenere   = false;   // true quand lot interne auto-généré
 let ligneEnEdition     = null;    // {id, index} — null = mode ajout
-let fournisseurProduitSelected = null; // fournisseur sélectionné pour le produit courant
-let dernierFournisseurProduit = null; // dernier fournisseur utilisé pour dialog
+let fournisseurProduitSelected = null; // {id, nom} fournisseur sélectionné pour le produit courant
+let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé pour dialog
 
 
 // ── Horloge ────────────────────────────────────────────────
@@ -224,10 +224,16 @@ elDialogQuitter.addEventListener('click', () => {
 elDialogFournOui.addEventListener('click', () => {
   elDialogFourn.hidden = true;
   if (dernierFournisseurProduit) {
-    fournisseurProduitSelected = dernierFournisseurProduit;
-    // Mettre à jour le sélecteur visible (mode multi)
+    fournisseurProduitSelected = { ...dernierFournisseurProduit };
+    // Mettre à jour le sélecteur visible (mode multi) : match par id si dispo, sinon par nom
     if (modeMultiFourn && elFournProduitSel) {
-      const idx = fournisseursListe.findIndex(f => f.id === dernierFournisseurProduit);
+      let idx = -1;
+      if (dernierFournisseurProduit.id) {
+        idx = fournisseursListe.findIndex(f => f.id === dernierFournisseurProduit.id);
+      }
+      if (idx < 0 && dernierFournisseurProduit.nom) {
+        idx = fournisseursListe.findIndex(f => (f.nom || '') === dernierFournisseurProduit.nom);
+      }
       if (idx >= 0) elFournProduitSel.value = idx;
     }
   }
@@ -888,7 +894,12 @@ function majSelectorFournisseur() {
 if (elFournProduitSel) {
   elFournProduitSel.addEventListener('change', () => {
     const idx = parseInt(elFournProduitSel.value, 10);
-    fournisseurProduitSelected = !isNaN(idx) ? fournisseursListe[idx].id : null;
+    if (!isNaN(idx) && fournisseursListe[idx]) {
+      const f = fournisseursListe[idx];
+      fournisseurProduitSelected = { id: f.id || null, nom: (f.nom || '').trim() || null };
+    } else {
+      fournisseurProduitSelected = null;
+    }
   });
 }
 
@@ -1068,9 +1079,12 @@ async function creerFiche() {
     majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
 
     // Pré-remplir le fournisseur principal pour le premier produit
-    const fourn0Id = fournisseursListe[0]?.id || null;
-    if (fourn0Id) {
-      fournisseurProduitSelected = fourn0Id;
+    const fourn0 = fournisseursListe[0];
+    if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
+      fournisseurProduitSelected = {
+        id: fourn0.id || null,
+        nom: (fourn0.nom || '').trim() || null,
+      };
       if (modeMultiFourn && elFournProduitSel && fournisseursListe.length > 0) {
         elFournProduitSel.value = '0';
       }
@@ -1523,6 +1537,24 @@ function chargerLigneEnEdition(l, idx) {
   const produit = tousProduits.find(p => p.id === l.produit_id);
   if (produit) selectionnerProduit(produit);
 
+  // Restaurer le fournisseur de la ligne (id et/ou nom) + sélecteur
+  if (l.fournisseur_id || l.fournisseur_nom) {
+    fournisseurProduitSelected = {
+      id: l.fournisseur_id || null,
+      nom: (l.fournisseur_nom || '').trim() || null,
+    };
+    if (modeMultiFourn && elFournProduitSel) {
+      let fIdx = -1;
+      if (l.fournisseur_id) {
+        fIdx = fournisseursListe.findIndex(f => f.id === l.fournisseur_id);
+      }
+      if (fIdx < 0 && l.fournisseur_nom) {
+        fIdx = fournisseursListe.findIndex(f => (f.nom || '') === l.fournisseur_nom);
+      }
+      elFournProduitSel.value = fIdx >= 0 ? String(fIdx) : '';
+    }
+  }
+
   // Restaurer lot
   elLot.readOnly = false;
   elLot.style.background = '';
@@ -1582,11 +1614,16 @@ function _buildPayload() {
     odeur_conforme:       criteres.odeur,
     lot_interne:          lotInterneGenere ? 1 : 0,
   };
-  // Fournisseur du produit (si mode multi-fournisseur)
-  if (fournisseurProduitSelected) {
-    payload.fournisseur_id = fournisseurProduitSelected;
-  } else if (fournisseurId) {
-    payload.fournisseur_id = fournisseurId;
+  // Fournisseur du produit : envoyer id (si lié à la table fournisseurs) ET nom (toujours)
+  // pour que les fournisseurs en texte libre soient aussi associés à la ligne.
+  const fSel = fournisseurProduitSelected
+    || (fournisseursListe[0] && (fournisseursListe[0].id || fournisseursListe[0].nom)
+        ? { id: fournisseursListe[0].id || null,
+            nom: (fournisseursListe[0].nom || '').trim() || null }
+        : null);
+  if (fSel) {
+    if (fSel.id)  payload.fournisseur_id  = fSel.id;
+    if (fSel.nom) payload.fournisseur_nom = fSel.nom;
   }
   // La température du camion sert d'évaluation thermique pour chaque produit
   const tempCamion = parseFloat(elTempCamion.value);
@@ -1620,16 +1657,25 @@ function _ligneToLocal(ligne, produit) {
   if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
   if (ligne.ph_conforme          === 0) motifsNc.push('pH');
 
-  // Résoudre le nom du fournisseur actif pour ce produit
-  const fournId = fournisseurProduitSelected || fournisseurId || null;
-  const fournObj = tousFournisseurs.find(f => f.id === fournId);
+  // Résoudre le fournisseur actif pour ce produit (id + nom)
+  const fSel = fournisseurProduitSelected
+    || (fournisseursListe[0] && (fournisseursListe[0].id || fournisseursListe[0].nom)
+        ? { id: fournisseursListe[0].id || null,
+            nom: (fournisseursListe[0].nom || '').trim() || null }
+        : null);
+  const fournId = fSel ? fSel.id : null;
+  let fournNom = fSel ? fSel.nom : null;
+  if (!fournNom && fournId) {
+    const fObj = tousFournisseurs.find(f => f.id === fournId);
+    if (fObj) fournNom = fObj.nom;
+  }
 
   return {
     id:                  ligne.id,
     produit_id:          produit.id,
     produit_nom:         produit.nom,
     fournisseur_id:      fournId,
-    fournisseur_nom:     fournObj ? fournObj.nom : (fournisseursListe[0]?.nom || null),
+    fournisseur_nom:     fournNom,
     conforme:            ligne.conforme,
     temperature_reception: ligne.temperature_reception,
     numero_lot:          ligne.numero_lot,
@@ -1653,8 +1699,17 @@ async function ajouterLigne() {
       body: JSON.stringify(_buildPayload()),
     });
 
-    // Sauvegarder le fournisseur avant le reinit
-    dernierFournisseurProduit = fournisseurProduitSelected || fournisseurId || null;
+    // Sauvegarder le fournisseur avant le reinit (objet {id, nom})
+    if (fournisseurProduitSelected) {
+      dernierFournisseurProduit = { ...fournisseurProduitSelected };
+    } else if (fournisseursListe[0] && (fournisseursListe[0].id || fournisseursListe[0].nom)) {
+      dernierFournisseurProduit = {
+        id: fournisseursListe[0].id || null,
+        nom: (fournisseursListe[0].nom || '').trim() || null,
+      };
+    } else {
+      dernierFournisseurProduit = null;
+    }
 
     lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
     majListeLignes();
@@ -1676,10 +1731,13 @@ async function ajouterLigne() {
 function afficherModalFournisseur() {
   if (!dernierFournisseurProduit) return;
 
-  // Retrouver le nom : d'abord dans fournisseursListe, sinon dans tousFournisseurs
-  const fournObj = fournisseursListe.find(f => f.id === dernierFournisseurProduit)
-    || tousFournisseurs.find(f => f.id === dernierFournisseurProduit);
-  const nomFourn = fournObj ? fournObj.nom : null;
+  // Nom à afficher : déjà porté par l'objet, sinon résolution par id
+  let nomFourn = dernierFournisseurProduit.nom || null;
+  if (!nomFourn && dernierFournisseurProduit.id) {
+    const fournObj = fournisseursListe.find(f => f.id === dernierFournisseurProduit.id)
+      || tousFournisseurs.find(f => f.id === dernierFournisseurProduit.id);
+    if (fournObj) nomFourn = fournObj.nom;
+  }
   if (!nomFourn) return;
 
   elDialogFournTexte.textContent =
