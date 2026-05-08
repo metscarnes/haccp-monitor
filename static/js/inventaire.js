@@ -560,34 +560,66 @@ function fermerEditModal() {
 // Même pattern que cuisson / refroidissement / DLC.
 function imprimerEtiquetteInv(it) {
   if (!it) return;
-  const fmtDate = (iso) => {
-    if (!iso) return '--/--/--';
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${(y || '').slice(-2)}`;
-  };
-  const fmtHeureFromTs = (ts) => {
-    if (!ts) return '';
-    const m = String(ts).match(/(\d{2}):(\d{2})/);
-    return m ? `${m[1]}h${m[2]}` : '';
-  };
 
   $('pinv-nom').textContent = it.produit_nom || '—';
   $('pinv-lot').textContent = `N° Lot : ${it.numero_lot || '—'}`;
-  $('pinv-dlc').textContent = `DLC : ${fmtDate(it.dlc)}`;
+  $('pinv-dlc').textContent = `DLC : ${formatDateLabelInv(it.dlc)}`;
 
   const elFab = $('pinv-fab');
-  if (it.source_type === 'fabrication' && it.date_origine) {
-    const dateFab  = fmtDate(it.date_origine);
-    const heureFab = fmtHeureFromTs(it.fabrication_created_at);
-    elFab.textContent = heureFab
-      ? `Fabriqué le ${dateFab} à ${heureFab}`
-      : `Fabriqué le ${dateFab}`;
+  const ligneOrigine = construireLigneOrigineInv(it);
+  if (ligneOrigine) {
+    elFab.textContent = ligneOrigine;
     elFab.hidden = false;
   } else {
     elFab.hidden = true;
   }
 
   setTimeout(() => window.print(), 100);
+}
+
+// Format DD/MM/YY pour gabarit étiquette thermique (compact).
+function formatDateLabelInv(iso) {
+  if (!iso) return '--/--/--';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${(y || '').slice(-2)}`;
+}
+
+// Heure locale HHhMM depuis un timestamp SQLite UTC "YYYY-MM-DD HH:MM:SS".
+function formatHeureFromTimestampInv(ts) {
+  if (!ts) return '';
+  const s = String(ts).trim().replace(' ', 'T');
+  const iso = /Z|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}h${p(d.getMinutes())}`;
+}
+
+// Heure HHhMM depuis "HH:MM" (déjà locale).
+function formatHeureFromHHMMInv(hhmm) {
+  if (!hhmm) return '';
+  const m = String(hhmm).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}h${m[2]}` : '';
+}
+
+// "Fabriqué/Cuit/Refroidi le DD/MM/YY à HHhMM" selon source_type.
+function construireLigneOrigineInv(it) {
+  if (!it || !it.date_origine) return '';
+  const dateFmt = formatDateLabelInv(it.date_origine);
+  let verbe = '';
+  let heure = '';
+  if (it.source_type === 'fabrication') {
+    verbe = 'Fabriqué';
+    heure = formatHeureFromTimestampInv(it.fabrication_created_at);
+  } else if (it.source_type === 'cuisson') {
+    verbe = 'Cuit';
+    heure = formatHeureFromHHMMInv(it.heure_origine);
+  } else if (it.source_type === 'refroidissement') {
+    verbe = 'Refroidi';
+    heure = formatHeureFromHHMMInv(it.heure_origine);
+  }
+  if (!verbe) return '';
+  return heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;
 }
 
 document.addEventListener('DOMContentLoaded', () => {

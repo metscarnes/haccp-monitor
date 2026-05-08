@@ -449,6 +449,7 @@ function ouvrirModalJour(dateStr, items) {
                data-dlc="${escHtml(it.dlc)}"
                data-source="${escHtml(it.source_type)}"
                data-date-origine="${escHtml(it.date_origine || '')}"
+               data-heure-origine="${escHtml(it.heure_origine || '')}"
                data-fab-created="${escHtml(it.fabrication_created_at || '')}">
          🖨️ Imprimer
        </button>`;
@@ -556,6 +557,7 @@ function ouvrirModalJour(dateStr, items) {
       dlc:                   btn.dataset.dlc,
       source_type:           btn.dataset.source,
       date_origine:          btn.dataset.dateOrigine || null,
+      heure_origine:         btn.dataset.heureOrigine || null,
       fabrication_created_at: btn.dataset.fabCreated || null,
     }));
   });
@@ -734,35 +736,67 @@ async function supprimerProduitDlc(cible) {
 // Remplit le gabarit caché #print-label-dlc puis lance window.print().
 // Même pattern que cuisson / refroidissement (impression côté navigateur).
 function imprimerEtiquetteDlc(cible) {
-  const fmtDate = (iso) => {
-    if (!iso) return '--/--/--';
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${(y || '').slice(-2)}`;
-  };
-  // Heure HHhMM extraite d'un timestamp SQLite "YYYY-MM-DD HH:MM:SS"
-  const fmtHeureFromTs = (ts) => {
-    if (!ts) return '';
-    const m = String(ts).match(/(\d{2}):(\d{2})/);
-    return m ? `${m[1]}h${m[2]}` : '';
-  };
-
   $('pdlc-nom').textContent = cible.produit_nom || '—';
   $('pdlc-lot').textContent = `N° Lot : ${cible.numero_lot || '—'}`;
-  $('pdlc-dlc').textContent = `DLC : ${fmtDate(cible.dlc)}`;
+  $('pdlc-dlc').textContent = `DLC : ${formatDateLabel(cible.dlc)}`;
 
   const elFab = $('pdlc-fab');
-  if (cible.source_type === 'fabrication' && cible.date_origine) {
-    const dateFab  = fmtDate(cible.date_origine);
-    const heureFab = fmtHeureFromTs(cible.fabrication_created_at);
-    elFab.textContent = heureFab
-      ? `Fabriqué le ${dateFab} à ${heureFab}`
-      : `Fabriqué le ${dateFab}`;
+  const ligneOrigine = construireLigneOrigine(cible);
+  if (ligneOrigine) {
+    elFab.textContent = ligneOrigine;
     elFab.hidden = false;
   } else {
     elFab.hidden = true;
   }
 
   setTimeout(() => window.print(), 100);
+}
+
+// Format DD/MM/YY pour gabarit étiquette thermique (compact).
+function formatDateLabel(iso) {
+  if (!iso) return '--/--/--';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${(y || '').slice(-2)}`;
+}
+
+// Heure locale HHhMM depuis un timestamp SQLite "YYYY-MM-DD HH:MM:SS" (UTC).
+// SQLite CURRENT_TIMESTAMP est en UTC : on parse comme tel et on convertit local.
+function formatHeureFromTimestamp(ts) {
+  if (!ts) return '';
+  const s = String(ts).trim().replace(' ', 'T');
+  const iso = /Z|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + 'Z';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}h${p(d.getMinutes())}`;
+}
+
+// Heure HHhMM depuis "HH:MM" (déjà locale, saisie par l'opérateur).
+function formatHeureFromHHMM(hhmm) {
+  if (!hhmm) return '';
+  const m = String(hhmm).match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}h${m[2]}` : '';
+}
+
+// "Fabriqué/Cuit/Refroidi le DD/MM/YY à HHhMM" selon source_type.
+// Renvoie une string vide si la source ne porte pas d'origine pertinente.
+function construireLigneOrigine(cible) {
+  if (!cible || !cible.date_origine) return '';
+  const dateFmt = formatDateLabel(cible.date_origine);
+  let verbe = '';
+  let heure = '';
+  if (cible.source_type === 'fabrication') {
+    verbe = 'Fabriqué';
+    heure = formatHeureFromTimestamp(cible.fabrication_created_at);
+  } else if (cible.source_type === 'cuisson') {
+    verbe = 'Cuit';
+    heure = formatHeureFromHHMM(cible.heure_origine);
+  } else if (cible.source_type === 'refroidissement') {
+    verbe = 'Refroidi';
+    heure = formatHeureFromHHMM(cible.heure_origine);
+  }
+  if (!verbe) return '';
+  return heure ? `${verbe} le ${dateFmt} à ${heure}` : `${verbe} le ${dateFmt}`;
 }
 
 // ── Modal Devenir ───────────────────────────────────────

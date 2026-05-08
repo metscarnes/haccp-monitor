@@ -3665,6 +3665,7 @@ async def get_stock_unifie(
                 c.quantite            AS quantite,
                 COALESCE(c.unite,'kg') AS unite,
                 c.date_cuisson        AS date_origine,
+                c.heure_fin           AS heure_origine,
                 NULL                  AS fournisseur_nom
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
@@ -3703,6 +3704,7 @@ async def get_stock_unifie(
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 rf.date_refroidissement AS date_origine,
+                rf.heure_fin           AS heure_origine,
                 NULL                   AS fournisseur_nom
             FROM refroidissements rf
             JOIN produits p ON p.id = rf.produit_id
