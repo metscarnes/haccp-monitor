@@ -880,6 +880,7 @@ function initBlocFourn(idx) {
     photoVign.hidden = false;
     photoIcone.textContent = '✅';
     photoTitre.textContent = 'Photo prise';
+    photoZone.classList.remove('photo-requise');
   });
 
   function afficherResultats(liste) {
@@ -1009,7 +1010,7 @@ elBtnAddFourn.addEventListener('click', () => {
       <span class="rec-photo-icone" id="rec-photo-icone-${idx}">📋</span>
       <div class="rec-photo-texte">
         <div class="rec-photo-texte-titre" id="rec-photo-titre-${idx}">Photo du bon de livraison</div>
-        <div class="rec-photo-texte-sous">Optionnel</div>
+        <div class="rec-photo-texte-sous">Obligatoire</div>
       </div>
       <img id="rec-photo-vignette-${idx}" class="rec-photo-vignette" alt="" hidden>
     </div>
@@ -1084,6 +1085,18 @@ async function creerFiche() {
     fourn0.nom = nomSaisi;
   }
 
+  // Valider photo du bon de livraison principal
+  if (!fourn0.photoFile) {
+    const photoZone0 = document.getElementById('rec-photo-zone-0');
+    if (photoZone0) {
+      photoZone0.classList.add('photo-requise');
+      photoZone0.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    elErreur2.textContent = 'La photo du bon de livraison est obligatoire.';
+    elErreur2.hidden = false;
+    return;
+  }
+
   // Valider et sauvegarder les noms des fournisseurs supplémentaires
   for (let i = 1; i < fournisseursListe.length; i++) {
     const fournI = fournisseursListe[i];
@@ -1103,6 +1116,18 @@ async function creerFiche() {
 
     if (nomSaisiI && !fournI.id) {
       fournI.nom = nomSaisiI;
+    }
+
+    // Valider photo du BL supplémentaire
+    if (!fournI.photoFile) {
+      const photoZoneI = document.getElementById(`rec-photo-zone-${i}`);
+      if (photoZoneI) {
+        photoZoneI.classList.add('photo-requise');
+        photoZoneI.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      elErreur2.textContent = `La photo du bon de livraison ${i + 1} est obligatoire.`;
+      elErreur2.hidden = false;
+      return;
     }
   }
 
