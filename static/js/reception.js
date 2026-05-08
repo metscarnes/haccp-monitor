@@ -2211,16 +2211,19 @@ async function init() {
     elDateReception.value = new Date().toISOString().slice(0, 10);
   }
 
-  // Vérifier si retour depuis pcr01.html
-  if (restaurerDepuisPcr01()) return;
-
-  // Charger les données en parallèle
+  // Charger les référentiels en parallèle — toujours nécessaires, y compris
+  // en cas de restauration depuis pcr01.html (initNcProcedure utilise
+  // tousProduits / tousFournisseurs pour calculer les seuils à cœur).
   await Promise.all([
     chargerPersonnel(),
     chargerFournisseurs(),
     chargerProduits(),
     chargerTextesAide(),
   ]);
+
+  // Vérifier si retour depuis pcr01.html
+  if (restaurerDepuisPcr01()) return;
+
   reinitCriteres();
 }
 
