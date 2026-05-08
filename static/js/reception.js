@@ -725,6 +725,9 @@ async function allerVersPcr01Camion() {
     if (elDateReception.value) fd.append('date_reception', elDateReception.value);
     if (elTempCamion.value !== '') fd.append('temperature_camion', elTempCamion.value);
     fd.append('proprete_camion', 'non_satisfaisant');
+    if (propretePhotoFile) {
+      fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
+    }
     if (premier.fournisseurId)  fd.append('fournisseur_principal_id', premier.fournisseurId);
     else if (premier.fournisseurNom) fd.append('fournisseur_nom', premier.fournisseurNom);
     fd.append('photo_bl', premier.photoFile, premier.photoFile.name);
@@ -1048,6 +1051,9 @@ async function creerFiche() {
       fd.append('temperature_camion', elTempCamion.value);
     }
     fd.append('proprete_camion', propreteCamion);
+    if (propreteCamion === 'non_satisfaisant' && propretePhotoFile) {
+      fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
+    }
     const fourn0 = fournisseursListe[0];
     if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
     else if (fourn0.nom) fd.append('fournisseur_nom', fourn0.nom); // Fallback si pas d'ID

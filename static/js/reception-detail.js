@@ -224,6 +224,13 @@ function afficherReception(rec) {
       ajouterBoutonPhotoBl(lbl, `/api/receptions/${receptionId}/bls-supplementaires/${b.id}/photo`, lbl);
     }
   });
+  if (rec.proprete_photo_filename) {
+    ajouterBoutonPhotoBl(
+      '📸 Photo NC propreté camion',
+      `/api/receptions/${receptionId}/photo-proprete`,
+      'Photo NC propreté camion',
+    );
+  }
   if (aBls) elMain.appendChild(btnsBL);
 
   // ── Section Produits ────────────────────────────────────

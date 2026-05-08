@@ -12,6 +12,7 @@ GET    /api/receptions                            → historique (filtres)
 GET    /api/receptions/textes-aide-visuel         → référentiel contrôle visuel
 GET    /api/receptions/{id}                       → détail + lignes
 GET    /api/receptions/{id}/photo-bl              → BL photo (FileResponse)
+GET    /api/receptions/{id}/photo-proprete        → Photo NC propreté camion (FileResponse)
 """
 
 import io
@@ -41,6 +42,8 @@ router = APIRouter(prefix="/api", tags=["reception"])
 BASE_DIR   = Path(__file__).parent.parent.parent
 PHOTOS_BL_DIR = BASE_DIR / "data" / "photos" / "bons_livraison"
 PHOTOS_BL_DIR.mkdir(parents=True, exist_ok=True)
+PHOTOS_PROPRETE_DIR = BASE_DIR / "data" / "photos" / "proprete_camion"
+PHOTOS_PROPRETE_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_SIDE     = 1280
 JPEG_QUALITY = 80
@@ -251,6 +254,7 @@ async def creer_reception(
     fournisseur_nom:         Optional[str]  = Form(None),
     commentaire:             Optional[str]  = Form(None),
     photo_bl:                Optional[UploadFile] = File(None),
+    photo_proprete:          Optional[UploadFile] = File(None),
 ):
     data = {
         "personnel_id":            personnel_id,
@@ -281,6 +285,20 @@ async def creer_reception(
             (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
             await db.execute(
                 "UPDATE receptions SET photo_bl_filename = ? WHERE id = ?",
+                (filename, rid),
+            )
+            await db.commit()
+
+        # Photo NC propreté camion (optionnelle, uniquement si proprete=non_satisfaisant)
+        if photo_proprete and photo_proprete.filename and proprete_camion == "non_satisfaisant":
+            from datetime import datetime, timezone
+            raw = await photo_proprete.read()
+            jpeg = _compress_photo(raw)
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            filename = f"PROPRETE-{now_str}-{rid}.jpg"
+            (PHOTOS_PROPRETE_DIR / filename).write_bytes(jpeg)
+            await db.execute(
+                "UPDATE receptions SET proprete_photo_filename = ? WHERE id = ?",
                 (filename, rid),
             )
             await db.commit()
@@ -569,6 +587,21 @@ async def get_photo_bl(reception_id: int):
     if not row or not row["photo_bl_filename"]:
         raise HTTPException(404, "Pas de photo BL pour cette réception")
     filepath = PHOTOS_BL_DIR / row["photo_bl_filename"]
+    if not filepath.exists():
+        raise HTTPException(404, "Fichier photo introuvable")
+    return FileResponse(str(filepath), media_type="image/jpeg")
+
+
+@router.get("/receptions/{reception_id}/photo-proprete")
+async def get_photo_proprete(reception_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT proprete_photo_filename FROM receptions WHERE id = ?", (reception_id,)
+        )
+        row = await cur.fetchone()
+    if not row or not row["proprete_photo_filename"]:
+        raise HTTPException(404, "Pas de photo de propreté pour cette réception")
+    filepath = PHOTOS_PROPRETE_DIR / row["proprete_photo_filename"]
     if not filepath.exists():
         raise HTTPException(404, "Fichier photo introuvable")
     return FileResponse(str(filepath), media_type="image/jpeg")

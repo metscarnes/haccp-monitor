@@ -189,6 +189,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     heure_reception          TEXT    NOT NULL,
     temperature_camion       REAL,
     proprete_camion          TEXT    DEFAULT 'satisfaisant',
+    proprete_photo_filename  TEXT,
     camion_conforme          INTEGER DEFAULT 1,
     fournisseur_principal_id INTEGER,
     photo_bl_filename        TEXT,
@@ -703,6 +704,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     heure_reception          TEXT    NOT NULL,
     temperature_camion       REAL,
     proprete_camion          TEXT    DEFAULT 'satisfaisant',
+    proprete_photo_filename  TEXT,
     camion_conforme          INTEGER DEFAULT 1,
     fournisseur_principal_id INTEGER,
     photo_bl_filename        TEXT,
@@ -883,6 +885,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_reception_bls_reception ON reception_bls_supplementaires(reception_id)",
+            # v3.7 — Photo du problème de propreté camion (NC propreté)
+            "ALTER TABLE receptions ADD COLUMN proprete_photo_filename TEXT",
         ]
         for sql in migrations:
             try:

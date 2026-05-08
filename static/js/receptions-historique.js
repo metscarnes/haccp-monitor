@@ -346,6 +346,17 @@ function remplirDetail(el, rec) {
     el.appendChild(btn);
   });
 
+  if (rec.proprete_photo_filename) {
+    const btnProp = document.createElement('button');
+    btnProp.className = 'rh-detail-bl-btn';
+    btnProp.textContent = '📸 Photo NC propreté camion';
+    btnProp.addEventListener('click', e => {
+      e.stopPropagation();
+      ouvrirModal(`/api/receptions/${rec.id}/photo-proprete`, 'Photo NC propreté camion');
+    });
+    el.appendChild(btnProp);
+  }
+
   // Camion
   const titreCamion = document.createElement('div');
   titreCamion.className = 'rh-detail-section-titre';
