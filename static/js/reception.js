@@ -1743,7 +1743,7 @@ async function ajouterLigne() {
 function afficherModalFournisseur() {
   if (!dernierFournisseurProduit) return;
   // En mono-fournisseur, inutile de demander : c'est forcément le même.
-  if (!modeMultiFourn) return;
+  if (!modeMultiFourn || fournisseursListe.length <= 1) return;
 
   // Nom à afficher : déjà porté par l'objet, sinon résolution par id
   let nomFourn = dernierFournisseurProduit.nom || null;
