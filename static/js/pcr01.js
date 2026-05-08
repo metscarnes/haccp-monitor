@@ -627,7 +627,20 @@ async function enregistrerFiche() {
     return;
   }
 
+  if (modeCamion && livreurCamionPresent === null) {
+    elErreur.textContent = 'Veuillez indiquer si le livreur est présent ou absent.';
+    elErreur.hidden = false;
+    if (elLivreurCamionBloc) elLivreurCamionBloc.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
   const livreurEstPresent = modeCamion ? livreurCamionPresent === true : livreurPresent === true;
+  if (livreurEstPresent && livreurAccepte === null) {
+    elErreur.textContent = 'Veuillez indiquer si le livreur atteste ou n\'atteste pas la NC.';
+    elErreur.hidden = false;
+    if (elLivreurAccepte) elLivreurAccepte.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   if (livreurEstPresent && isSignatureVide()) {
     elErreur.textContent = 'La signature du livreur est obligatoire.';
     elErreur.hidden = false;
