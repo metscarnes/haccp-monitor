@@ -2808,7 +2808,7 @@ async def get_fiches_incident(
         f"""
         SELECT
             fi.*,
-            f.nom  AS fournisseur_nom,
+            COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
             per.prenom AS cloturee_par_prenom
         FROM fiches_incident fi
@@ -2830,7 +2830,7 @@ async def get_fiche_incident(db: aiosqlite.Connection, fiche_id: int) -> Optiona
         """
         SELECT
             fi.*,
-            f.nom  AS fournisseur_nom,
+            COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
             per.prenom AS cloturee_par_prenom
         FROM fiches_incident fi
