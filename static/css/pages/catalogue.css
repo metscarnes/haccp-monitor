@@ -327,6 +327,8 @@
   border-color: var(--color-accent);
 }
 .cat-req { color: #dc2626; }
+.cat-hint { color: #888; font-size: 0.82em; font-weight: 400; }
+.cat-champ input[readonly] { background: #f5f5f5; color: #555; cursor: default; }
 
 .cat-form-erreur {
   grid-column: 1 / -1;

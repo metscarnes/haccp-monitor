@@ -111,8 +111,8 @@
         </label>
 
         <label class="cat-champ">
-          <span>Code unique</span>
-          <input type="text" id="cat-f-code" autocomplete="off" placeholder="ex. BOEUF, AGN01…">
+          <span>Code unique <span class="cat-hint">— généré automatiquement</span></span>
+          <input type="text" id="cat-f-code" readonly placeholder="sélectionnez une espèce…">
         </label>
 
         <label class="cat-champ">
@@ -123,17 +123,61 @@
 
         <label class="cat-champ">
           <span>Espèce</span>
-          <input type="text" id="cat-f-espece" autocomplete="off" placeholder="bovin, ovin, porcin…">
+          <select id="cat-f-espece">
+            <option value="">— Non défini —</option>
+            <option value="bovin">Bovin (VB)</option>
+            <option value="veau">Veau (VX)</option>
+            <option value="agneau">Agneau / ovin (AGN)</option>
+            <option value="porc">Porc (PC)</option>
+            <option value="gibier">Gibier (GIB)</option>
+            <option value="canard">Volaille — canard (VC)</option>
+            <option value="dinde">Volaille — dinde (VD)</option>
+            <option value="lapin">Volaille — lapin (VL)</option>
+            <option value="volaille_autre">Volaille — autre (VP)</option>
+            <option value="cheval">Cheval (CH)</option>
+            <option value="exotique">Viande exotique (VEXOA)</option>
+          </select>
+        </label>
+
+        <label class="cat-champ cat-champ--check">
+          <input type="checkbox" id="cat-f-abats">
+          <span>Abats <span class="cat-hint">(préfixe spécifique : VBA, VXAB, AGNAB, PACAB)</span></span>
         </label>
 
         <label class="cat-champ">
           <span>Niveau de coupe</span>
-          <input type="text" id="cat-f-coupe" autocomplete="off">
+          <select id="cat-f-coupe">
+            <option value="">— Non défini —</option>
+            <option value="carcasse_entiere">Carcasse entière</option>
+            <option value="demi_carcasse">Demi-carcasse</option>
+            <option value="quartier_avant">Quartier avant</option>
+            <option value="quartier_arriere">Quartier arrière</option>
+            <option value="piece_entiere">Pièce entière</option>
+            <option value="roti">Rôti</option>
+            <option value="cote_carre">Côte / Carré</option>
+            <option value="filet">Filet</option>
+            <option value="pave">Pavé</option>
+            <option value="escalope">Escalope</option>
+            <option value="steak_entrecote">Steak / Entrecôte</option>
+            <option value="tranche">Tranche</option>
+            <option value="emince">Émincé</option>
+            <option value="hache">Haché / Farce</option>
+            <option value="abats">Abats</option>
+            <option value="autre">Autre</option>
+          </select>
         </label>
 
         <label class="cat-champ">
-          <span>Étape</span>
-          <input type="number" id="cat-f-etape" min="0" step="1">
+          <span>Étape HACCP</span>
+          <select id="cat-f-etape">
+            <option value="">— Non défini —</option>
+            <option value="0">0 — Réception matière première</option>
+            <option value="1">1 — Stockage / conservation</option>
+            <option value="2">2 — Découpe / préparation</option>
+            <option value="3">3 — Transformation / fabrication</option>
+            <option value="4">4 — Conditionnement</option>
+            <option value="5">5 — Exposition / vente</option>
+          </select>
         </label>
 
         <label class="cat-champ">
@@ -162,7 +206,12 @@
 
         <label class="cat-champ">
           <span>Température conservation</span>
-          <input type="text" id="cat-f-temp" value="0°C à +4°C">
+          <select id="cat-f-temp">
+            <option value="0°C à +4°C">0°C à +4°C (réfrigéré)</option>
+            <option value="+2°C / +4°C">+2°C / +4°C (viande fraîche)</option>
+            <option value="-18°C">-18°C (congelé)</option>
+            <option value="Ambiant">Ambiant</option>
+          </select>
         </label>
 
         <label class="cat-champ">
