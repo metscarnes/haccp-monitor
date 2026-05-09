@@ -545,7 +545,9 @@ function htmlSubTuile(p, index = 0) {
 
   return `
     <div class="fab-sub-tuile${isPriority ? ' tuile-priorite' : ''}" data-produit-id="${p.id}"
-         data-produit-nom="${escHtml(p.nom)}" role="button" tabindex="0"
+         data-produit-nom="${escHtml(p.nom)}"
+         data-reception-ligne-id="${p.reception_ligne_id ?? ''}"
+         role="button" tabindex="0"
          style="position:relative;">
       ${isPriority ? `<div class="badge-fifo">⭐ PRIORITÉ FIFO</div>` : ''}
       <div class="fab-sub-tuile-icon">📦</div>
@@ -591,9 +593,10 @@ async function ouvrirModalSubstitution(ingNom) {
   elSubOverlay.hidden = false;
 
   try {
-    // Niveau 3 : uniquement produits ayant une réception active
-    const brut = await apiFetch('/api/produits?en_stock=true&type=brut');
-    subAllProduits = exclureLotCourant(brut);
+    // Un row par lot disponible (et non par produit) : permet de choisir
+    // un lot spécifique parmi plusieurs lots du même produit.
+    const lots = await apiFetch('/api/produits/lots-disponibles?type=brut');
+    subAllProduits = exclureLotCourant(lots);
     const filtres = filtrerProduitsIntelligent(subAllProduits, ingNom);
     afficherSubProduits(filtres);
   } catch (err) {
@@ -614,16 +617,27 @@ elSubSearch.addEventListener('input', () => {
 elSubGrid.addEventListener('click', e => {
   const tuile = e.target.closest('.fab-sub-tuile');
   if (!tuile) return;
-  validerSubstitution(tuile.dataset.produitId, tuile.dataset.produitNom);
+  validerSubstitution(
+    tuile.dataset.produitId,
+    tuile.dataset.produitNom,
+    tuile.dataset.receptionLigneId,
+  );
 });
 
 elSubGrid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const tuile = e.target.closest('.fab-sub-tuile');
-  if (tuile) { e.preventDefault(); validerSubstitution(tuile.dataset.produitId, tuile.dataset.produitNom); }
+  if (tuile) {
+    e.preventDefault();
+    validerSubstitution(
+      tuile.dataset.produitId,
+      tuile.dataset.produitNom,
+      tuile.dataset.receptionLigneId,
+    );
+  }
 });
 
-function validerSubstitution(produitId, produitNom) {
+function validerSubstitution(produitId, produitNom, receptionLigneId) {
   // Application directe : la DLC vient TOUJOURS de la réception FIFO,
   // jamais d'une saisie manuelle (règle HACCP : stock unifié).
   function appliquerSubstitution(fifoData) {
@@ -636,6 +650,8 @@ function validerSubstitution(produitId, produitNom) {
     }
     const isDluo  = !fifoData.dlc && !!fifoData.dluo;
     const dateVal = isDluo ? fifoData.dluo : fifoData.dlc;
+    const memeProduit = produitNom === subNomCourant;
+    const suffixe = memeProduit ? '' : ' (substitut)';
 
     const lot = state.fifoLots.find(l =>
       String(l.recette_ingredient_id ?? l.ingredient_id) === String(subPidCourant)
@@ -648,8 +664,8 @@ function validerSubstitution(produitId, produitNom) {
         dluo: isDluo ? dateVal : null,
       };
       lot.produit_id     = Number(produitId);
-      lot.produit_nom    = produitNom + ' (substitut)';
-      lot.ingredient_nom = produitNom + ' (substitut)';
+      lot.produit_nom    = produitNom + suffixe;
+      lot.ingredient_nom = produitNom + suffixe;
     }
     state.lotsSubstitues[subPidCourant] = {
       produit_id: produitId,
@@ -662,14 +678,15 @@ function validerSubstitution(produitId, produitNom) {
     const dateLabel = isDluo ? 'DLUO' : 'DLC';
     const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
     if (ligne) {
+      const badgeContenu = memeProduit
+        ? `Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}`
+        : `→ ${escHtml(produitNom)} (substitut) | Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}`;
       ligne.outerHTML = `
         <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
           <span class="fab-lot-check">✓</span>
           <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
           <div class="fab-lot-info fab-lot-sub-badge">
-            → ${escHtml(produitNom)} (substitut)
-            | Lot ${escHtml(fifoData.numero_lot ?? '—')}
-            | ${dateLabel} ${formatDate(dateVal)}
+            ${badgeContenu}
           </div>
         </div>`;
     }
@@ -677,9 +694,22 @@ function validerSubstitution(produitId, produitNom) {
   }
 
   function recupererFifoEtAppliquer() {
-    apiFetch(`/api/fabrications/produit-fifo/${produitId}`)
-      .then(appliquerSubstitution)
-      .catch(() => appliquerSubstitution(null));
+    // Le lot a déjà été récupéré dans subAllProduits — on le retrouve par son
+    // reception_ligne_id, pas besoin de recontacter le serveur.
+    const lotChoisi = (subAllProduits ?? []).find(
+      p => String(p.reception_ligne_id) === String(receptionLigneId)
+    );
+    if (lotChoisi) {
+      appliquerSubstitution({
+        id:         lotChoisi.reception_ligne_id,
+        numero_lot: lotChoisi.numero_lot,
+        dlc:        lotChoisi.dlc,
+        dluo:       lotChoisi.dluo,
+        poids_kg:   lotChoisi.poids_kg,
+      });
+    } else {
+      appliquerSubstitution(null);
+    }
   }
 
   // Confirmation si le produit sélectionné diffère de l'ingrédient d'origine

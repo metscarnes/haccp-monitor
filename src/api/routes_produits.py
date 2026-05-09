@@ -161,6 +161,56 @@ async def lister_produits(
         )
 
 
+@router.get("/produits/lots-disponibles")
+async def lots_disponibles(
+    type: Optional[str] = Query(None, description="Filtrer par type : 'brut' ou 'fini'"),
+):
+    """Retourne UN row par lot disponible en stock (avec infos produit jointes).
+
+    À la différence de /produits?en_stock=true qui agrège un lot FIFO par produit,
+    cet endpoint expose tous les lots éligibles, classés par DLC ascendante.
+    Utilisé par la modale de substitution pour permettre le choix d'un lot précis."""
+    sql = """
+        SELECT
+            p.id           AS id,
+            p.nom          AS nom,
+            p.code_unique  AS code_unique,
+            p.type_produit AS type_produit,
+            rl.id          AS reception_ligne_id,
+            rl.numero_lot  AS numero_lot,
+            rl.dlc         AS dlc,
+            rl.dluo        AS dluo,
+            rl.poids_kg    AS poids_kg,
+            r.date_reception AS date_reception
+        FROM reception_lignes rl
+        JOIN receptions r ON r.id = rl.reception_id
+        JOIN produits   p ON p.id = rl.produit_id
+        WHERE p.boutique_id = ? AND p.actif = 1
+          AND r.statut = 'cloturee'
+          AND rl.conforme = 1
+          AND r.livraison_refusee = 0
+          AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+               OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+          AND NOT EXISTS (
+              SELECT 1 FROM dlc_devenir d
+              WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+          )
+    """
+    params: list = [BOUTIQUE_ID]
+    if type:
+        sql += " AND p.type_produit = ?"
+        params.append(type)
+    sql += """
+        ORDER BY CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                 COALESCE(rl.dlc, rl.dluo) ASC,
+                 r.date_reception ASC
+    """
+    async with get_db() as db:
+        cursor = await db.execute(sql, params)
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
 @router.get("/produits/categories")
 async def lister_categories(inclure_inactifs: bool = Query(False)):
     """Liste les catégories distinctes utilisées dans le catalogue."""
