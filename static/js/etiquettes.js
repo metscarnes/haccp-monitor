@@ -116,9 +116,7 @@ const elSuccesCountdown = document.getElementById('fab-succes-countdown');
 const elCountdownSec    = document.getElementById('fab-countdown-sec');
 const elSubOverlay     = document.getElementById('fab-sub-overlay');
 const elSubTitre       = document.getElementById('fab-sub-titre');
-const elAlertManuel    = document.getElementById('alert-manuel');
 const elSubSearch      = document.getElementById('search-substitut');
-const elBtnModeManuel  = document.getElementById('btn-mode-manuel');
 const elSubGrid        = document.getElementById('fab-sub-grid');
 const elSubCancel      = document.getElementById('fab-sub-cancel');
 
@@ -475,8 +473,7 @@ function htmlLigneManquante(ingId, ingNom) {
 let subPidCourant  = null;   // recette_ingredient_id de la ligne en cours
 let subNomCourant  = null;
 let subLotCourant  = null;   // lot FIFO actuel (pour exclure la même ligne de réception)
-let subAllProduits = [];     // cache produits bruts chargés
-let subModeManuel  = false;  // true = catalogue complet déverrouillé (Niveau 4)
+let subAllProduits = [];     // cache produits bruts en stock chargés
 
 /** Exclut le lot actuellement sélectionné (même ligne de réception) du choix. */
 function exclureLotCourant(produits) {
@@ -588,9 +585,6 @@ elLots.addEventListener('click', async e => {
 });
 
 async function ouvrirModalSubstitution(ingNom) {
-  // Reset au mode Niveau 3 (stock réel + filtre sémantique)
-  subModeManuel = false;
-  elAlertManuel.hidden = true;
   elSubTitre.textContent = `Substitut pour : ${ingNom}`;
   elSubSearch.value = '';
   elSubGrid.innerHTML = `<div class="fab-chargement">Recherche dans le stock réel…</div>`;
@@ -607,37 +601,14 @@ async function ouvrirModalSubstitution(ingNom) {
   }
 }
 
-// Recherche texte — comportement selon le mode actif
+// Recherche texte — filtre sur les produits en stock
 elSubSearch.addEventListener('input', () => {
   const q = elSubSearch.value.trim().toUpperCase();
-  if (subModeManuel) {
-    // Niveau 4 : filtre libre sur le catalogue complet
-    afficherSubProduits(
-      q ? subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)) : subAllProduits
-    );
-  } else {
-    // Niveau 3 : filtre libre sur les résultats sémantiques déjà filtrés
-    if (!q) {
-      afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, subNomCourant));
-      return;
-    }
-    afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
+  if (!q) {
+    afficherSubProduits(filtrerProduitsIntelligent(subAllProduits, subNomCourant));
+    return;
   }
-});
-
-// Niveau 4 : déverrouillage catalogue complet
-elBtnModeManuel.addEventListener('click', async () => {
-  subModeManuel = true;
-  elAlertManuel.hidden = false;
-  elSubSearch.value = '';
-  elSubGrid.innerHTML = `<div class="fab-chargement">Chargement du catalogue complet…</div>`;
-
-  try {
-    subAllProduits = await apiFetch('/api/produits?en_stock=false&type=brut');
-    afficherSubProduits(subAllProduits);
-  } catch (err) {
-    elSubGrid.innerHTML = `<div class="fab-sub-vide">Erreur : ${escHtml(err.message)}</div>`;
-  }
+  afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
 });
 
 elSubGrid.addEventListener('click', e => {
@@ -711,16 +682,8 @@ function validerSubstitution(produitId, produitNom) {
       .catch(() => appliquerSubstitution(null));
   }
 
-  // Demande de confirmation selon le niveau actif, puis application directe
-  if (subModeManuel) {
-    afficherCustomConfirm(
-      '🚨 ALERTE CRITIQUE',
-      `Ce produit n'est pas issu du filtrage recommandé.\n\n` +
-      `Vous sélectionnez "${produitNom}" en mode manuel.\n\n` +
-      `Confirmez-vous ce choix sous votre responsabilité ?`,
-      recupererFifoEtAppliquer
-    );
-  } else if (produitNom !== subNomCourant) {
+  // Confirmation si le produit sélectionné diffère de l'ingrédient d'origine
+  if (produitNom !== subNomCourant) {
     afficherCustomConfirm(
       '⚠️ Substitution',
       `Vous utilisez du "${produitNom}" à la place du "${subNomCourant}".\n\nConfirmer ?`,
