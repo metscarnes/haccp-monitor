@@ -467,6 +467,14 @@
   background: rgba(61,32,8,.04);
 }
 
+.ar-tr-clickable {
+  cursor: pointer;
+}
+.ar-tr-clickable:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
 .ar-table-ingredients td {
   padding: var(--space-2) var(--space-3);
   vertical-align: middle;

@@ -231,6 +231,10 @@ function renderIngredients() {
     const badgeNouv = ing.produit_id === null
       ? ' <span class="ar-badge-nouveau">nouveau</span>'
       : '';
+    tr.className = 'ar-tr-clickable';
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('aria-label', `Modifier ${ing.nom}`);
     tr.innerHTML = `
       <td class="ar-td-nom">${escHtml(ing.nom)}${badgeNouv}</td>
       <td class="ar-td-qte">${escHtml(String(ing.quantite))}</td>
@@ -240,12 +244,71 @@ function renderIngredients() {
         <button type="button" class="ar-btn-suppr" aria-label="Supprimer ${escHtml(ing.nom)}">✕</button>
       </td>
     `;
-    tr.querySelector('.ar-btn-suppr').addEventListener('click', () => {
+    tr.querySelector('.ar-btn-suppr').addEventListener('click', (e) => {
+      e.stopPropagation();
       ingredients.splice(idx, 1);
       renderIngredients();
     });
+    tr.addEventListener('click', () => ouvrirModalEditIngredient(idx));
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        ouvrirModalEditIngredient(idx);
+      }
+    });
     tbody.appendChild(tr);
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Modale — Modifier un ingrédient existant (qty + unité)
+// ─────────────────────────────────────────────────────────────
+let _editIdx = null;
+
+const UNITES_DISPO = ['kg', 'g', 'L', 'ml', 'mL', 'pièce', 'pièces'];
+
+function ouvrirModalEditIngredient(idx) {
+  const ing = ingredients[idx];
+  if (!ing) return;
+  _editIdx = idx;
+
+  $('ar-modal-edit-nom').value = ing.nom;
+  $('ar-modal-edit-qte').value = ing.quantite ?? '';
+
+  // Garantir que l'unité actuelle existe dans le <select>
+  const selectUnite = $('ar-modal-edit-unite');
+  const valeurs = Array.from(selectUnite.options).map(o => o.value);
+  if (ing.unite && !valeurs.includes(ing.unite)) {
+    const opt = document.createElement('option');
+    opt.value = ing.unite;
+    opt.textContent = ing.unite;
+    selectUnite.appendChild(opt);
+  }
+  selectUnite.value = ing.unite || 'g';
+
+  $('ar-modal-edit-overlay').hidden = false;
+  setTimeout(() => $('ar-modal-edit-qte').focus(), 50);
+}
+
+function fermerModalEditIngredient() {
+  $('ar-modal-edit-overlay').hidden = true;
+  _editIdx = null;
+}
+
+function confirmerEditIngredient() {
+  if (_editIdx === null) return;
+  const qte   = parseFloat($('ar-modal-edit-qte').value);
+  const unite = $('ar-modal-edit-unite').value;
+
+  if (!qte || qte <= 0) {
+    flashErreurChamp($('ar-modal-edit-qte'), 'Saisissez une quantité valide.');
+    return;
+  }
+
+  ingredients[_editIdx].quantite = qte;
+  ingredients[_editIdx].unite    = unite;
+  fermerModalEditIngredient();
+  renderIngredients();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -610,8 +673,21 @@ async function init() {
   $('ar-modal-overlay').addEventListener('click', e => {
     if (e.target === $('ar-modal-overlay')) fermerModal();
   });
+
+  // Modale édition d'un ingrédient existant
+  $('ar-modal-edit-annuler').addEventListener('click', fermerModalEditIngredient);
+  $('ar-modal-edit-confirmer').addEventListener('click', confirmerEditIngredient);
+  $('ar-modal-edit-overlay').addEventListener('click', e => {
+    if (e.target === $('ar-modal-edit-overlay')) fermerModalEditIngredient();
+  });
+  $('ar-modal-edit-qte').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmerEditIngredient(); }
+  });
+
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !$('ar-modal-overlay').hidden) fermerModal();
+    if (e.key !== 'Escape') return;
+    if (!$('ar-modal-overlay').hidden) fermerModal();
+    else if (!$('ar-modal-edit-overlay').hidden) fermerModalEditIngredient();
   });
 
   renderIngredients();
