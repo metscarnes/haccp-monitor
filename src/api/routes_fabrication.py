@@ -282,6 +282,134 @@ async def debug_fifo(produit_id: int):
 
 
 # ---------------------------------------------------------------------------
+# B4. Admin : remap d'un ingrédient de recette vers un autre produit
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/remap-produit-recette/{recette_id}/{old_produit_id}/{new_produit_id}")
+async def remap_produit_recette(
+    recette_id: int,
+    old_produit_id: int,
+    new_produit_id: int,
+    confirm: int = Query(0, description="0 = dry-run (preview), 1 = exécution"),
+):
+    """Reroute les recette_ingredients d'une recette : old_produit_id → new_produit_id."""
+    async with get_db() as db:
+        # Aperçu : lignes ciblées
+        cur = await db.execute(
+            """SELECT ri.id, ri.recette_id, ri.produit_id,
+                      p.nom AS produit_nom
+               FROM recette_ingredients ri
+               LEFT JOIN produits p ON p.id = ri.produit_id
+               WHERE ri.recette_id = ? AND ri.produit_id = ?""",
+            (recette_id, old_produit_id),
+        )
+        cibles = [dict(r) for r in await cur.fetchall()]
+
+        # Validation : le nouveau produit existe ?
+        cur2 = await db.execute("SELECT id, nom FROM produits WHERE id = ?", (new_produit_id,))
+        new_prod = await cur2.fetchone()
+        if not new_prod:
+            raise HTTPException(404, f"Nouveau produit {new_produit_id} introuvable")
+
+        if confirm != 1:
+            return {
+                "mode": "dry-run",
+                "recette_id": recette_id,
+                "old_produit_id": old_produit_id,
+                "new_produit_id": new_produit_id,
+                "new_produit_nom": new_prod["nom"],
+                "lignes_concernees": cibles,
+                "info": "Ajoute ?confirm=1 à l'URL pour exécuter.",
+            }
+
+        await db.execute(
+            "UPDATE recette_ingredients SET produit_id = ? WHERE recette_id = ? AND produit_id = ?",
+            (new_produit_id, recette_id, old_produit_id),
+        )
+        await db.commit()
+        return {
+            "mode": "executed",
+            "lignes_modifiees": len(cibles),
+            "details": cibles,
+            "new_produit_nom": new_prod["nom"],
+        }
+
+
+# ---------------------------------------------------------------------------
+# B5. Admin : suppression sécurisée d'un produit orphelin
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/delete-produit/{produit_id}")
+async def delete_produit_orphelin(
+    produit_id: int,
+    confirm: int = Query(0, description="0 = dry-run (vérifie les refs), 1 = DELETE"),
+):
+    """Supprime un produit. Refuse si une autre table le référence."""
+    # Tables avec colonne `produit_id` (FK vers produits.id) — issu du schéma
+    refs_a_verifier = [
+        ("releves",                "produit_id"),
+        ("reception_lignes",       "produit_id"),
+        ("ouvertures",             "produit_id"),
+        ("recette_ingredients",    "produit_id"),
+        ("etiquettes_generees",    "produit_id"),
+        ("alertes",                "produit_id"),
+        ("non_conformites_fournisseur", "produit_id"),
+        ("fiches_incident",        "produit_id"),
+        ("fabrication_lots",       "produit_id"),
+        ("fabrications",           "produit_fini_id"),
+    ]
+
+    async with get_db() as db:
+        # Le produit existe ?
+        cur = await db.execute("SELECT id, nom, code_unique FROM produits WHERE id = ?", (produit_id,))
+        prod = await cur.fetchone()
+        if not prod:
+            raise HTTPException(404, f"Produit {produit_id} introuvable")
+
+        # Compte les références dans chaque table
+        refs_trouvees = []
+        for table, col in refs_a_verifier:
+            try:
+                cur_ref = await db.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (produit_id,)
+                )
+                row = await cur_ref.fetchone()
+                n = row[0] if row else 0
+                if n > 0:
+                    refs_trouvees.append({"table": table, "colonne": col, "nb_lignes": n})
+            except Exception as exc:
+                refs_trouvees.append({"table": table, "colonne": col, "erreur": str(exc)})
+
+        if refs_trouvees:
+            return {
+                "mode": "blocked",
+                "produit_id": produit_id,
+                "produit_nom": prod["nom"],
+                "code_unique": prod["code_unique"],
+                "references_existantes": refs_trouvees,
+                "info": "Suppression refusée — d'autres tables référencent ce produit.",
+            }
+
+        if confirm != 1:
+            return {
+                "mode": "dry-run",
+                "produit_id": produit_id,
+                "produit_nom": prod["nom"],
+                "code_unique": prod["code_unique"],
+                "references_existantes": [],
+                "info": "Aucune référence trouvée. Ajoute ?confirm=1 pour DELETE.",
+            }
+
+        await db.execute("DELETE FROM produits WHERE id = ?", (produit_id,))
+        await db.commit()
+        return {
+            "mode": "deleted",
+            "produit_id": produit_id,
+            "produit_nom": prod["nom"],
+        }
+
+
+# ---------------------------------------------------------------------------
 # C. Historique des fabrications
 # ---------------------------------------------------------------------------
 
