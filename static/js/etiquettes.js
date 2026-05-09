@@ -771,6 +771,12 @@ function validerSubstitution(produitId, produitNom, receptionLigneId) {
           <div class="fab-lot-info fab-lot-sub-badge">
             ${badgeContenu}
           </div>
+          <button class="fab-lot-btn-remplacer fab-lot-btn-personnaliser"
+                  data-pid="${subPidCourant}"
+                  data-nom="${escHtml(subNomCourant)}"
+                  aria-label="Personnaliser à nouveau le lot de ${escHtml(subNomCourant)}">
+            ✏️ Personnaliser
+          </button>
         </div>`;
     }
     verifierLotsComplets();
