@@ -108,13 +108,10 @@ const f = {
   categ:   $('cat-f-categorie'),
   espece:  $('cat-f-espece'),
   abats:   $('cat-f-abats'),
-  coupe:   $('cat-f-coupe'),
-  etape:   $('cat-f-etape'),
   cond:    $('cat-f-cond'),
   type:    $('cat-f-type'),
   dlc:     $('cat-f-dlc'),
   temp:    $('cat-f-temp'),
-  format:  $('cat-f-format'),
   actif:   $('cat-f-actif'),
 };
 
@@ -253,13 +250,10 @@ function ouvrirModalCreation() {
   f.id.value = '';
   f.espece.value = '';
   f.abats.checked = false;
-  f.coupe.value = '';
-  f.etape.value = '';
   f.cond.value = 'SOUS_VIDE';
   f.type.value = 'brut';
   f.dlc.value = 0;
   f.temp.value = '0°C à +4°C';
-  f.format.value = 'standard_60x40';
   f.actif.checked = true;
   rafraichirCodePreview();
   elModal.hidden = false;
@@ -278,13 +272,10 @@ function ouvrirModalEdition(id) {
   f.categ.value = p.categorie || '';
   f.espece.value = p.espece || '';
   f.abats.checked = false;
-  f.coupe.value = p.coupe_niveau || '';
-  f.etape.value = p.etape != null ? String(p.etape) : '';
   f.cond.value = p.conditionnement || 'SOUS_VIDE';
   f.type.value = p.type_produit || 'brut';
   f.dlc.value = p.dlc_jours ?? 0;
   f.temp.value = p.temperature_conservation || '0°C à +4°C';
-  f.format.value = p.format_etiquette || 'standard_60x40';
   f.actif.checked = !!p.actif;
   elModal.hidden = false;
   setTimeout(() => f.nom.focus(), 50);
@@ -300,13 +291,10 @@ function lirePayload() {
     code_unique: f.code.value.trim() || null,
     categorie: f.categ.value.trim(),
     espece: f.espece.value || null,
-    coupe_niveau: f.coupe.value || null,
-    etape: f.etape.value === '' ? null : parseInt(f.etape.value, 10),
     conditionnement: f.cond.value || null,
     type_produit: f.type.value,
     dlc_jours: f.dlc.value === '' ? 0 : parseInt(f.dlc.value, 10),
     temperature_conservation: f.temp.value || null,
-    format_etiquette: f.format.value,
     actif: f.actif.checked,
   };
   // null → champs omis (POST/PUT acceptent omission)
