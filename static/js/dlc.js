@@ -60,7 +60,7 @@ const state = {
   dateRef: new Date(),   // ancre : premier jour mois / lundi semaine / 1 jan année
   items: [],
   seuils: { rouge_jours: 1, orange_jours: 3, jaune_jours: 7 },
-  filtres: { source: '', statut: '' },
+  filtres: { source: '', statut: '', recherche: '' },
   personnel: [],
   devenirCible: null,
   devenirStatut: null,
@@ -160,9 +160,22 @@ function passeFiltreStatut(item) {
   }
 }
 
+function normaliser(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function passeFiltreRecherche(item) {
+  const q = normaliser(state.filtres.recherche || '').trim();
+  if (!q) return true;
+  return normaliser(item.produit_nom).includes(q) ||
+         normaliser(item.numero_lot).includes(q);
+}
+
 function indexParDate(items) {
   const map = {};
-  items.filter(passeFiltreStatut).forEach(it => {
+  items.filter(it => passeFiltreStatut(it) && passeFiltreRecherche(it)).forEach(it => {
     if (!map[it.dlc]) map[it.dlc] = [];
     map[it.dlc].push(it);
   });
@@ -901,7 +914,7 @@ const batchState = { selection: new Set(), statut: null, items: [] };
 function listerExpiresNonTraites() {
   const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
   return state.items
-    .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui)
+    .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui && passeFiltreRecherche(it))
     .sort((a, b) => (a.dlc < b.dlc ? -1 : a.dlc > b.dlc ? 1 : 0));
 }
 
@@ -1100,6 +1113,105 @@ $('dlc-aujourdhui').addEventListener('click', () => {
 
 $('dlc-filtre-source').addEventListener('change', e => { state.filtres.source = e.target.value; chargerCalendrier(); });
 $('dlc-filtre-statut').addEventListener('change', e => { state.filtres.statut = e.target.value; chargerCalendrier(); });
+
+// ── Recherche par nom/lot (filtre client, sans rechargement) ──
+function reRenderVueCourante() {
+  const { debut, fin } = computeRange();
+  renderVue(debut, fin);
+  rafraichirBoutonTraitementMasse();
+}
+
+function _produitsCorrespondants(qNorm) {
+  const map = new Map();
+  for (const it of state.items) {
+    const nom = (it.produit_nom || '').trim();
+    if (!nom) continue;
+    const matchN = !qNorm || normaliser(nom).includes(qNorm);
+    const matchL = !qNorm || normaliser(it.numero_lot).includes(qNorm);
+    if (!matchN && !matchL) continue;
+    const cur = map.get(nom);
+    if (cur) {
+      cur.count += 1;
+      if (it.numero_lot && !cur.lots.includes(it.numero_lot)) cur.lots.push(it.numero_lot);
+    } else {
+      map.set(nom, { nom, count: 1, lots: it.numero_lot ? [it.numero_lot] : [] });
+    }
+  }
+  return [...map.values()].sort((a, b) =>
+    a.nom.localeCompare(b.nom, 'fr', { sensitivity: 'base' })
+  );
+}
+
+function _renderAutocompleteDlc(items) {
+  const ac = $('dlc-ac-recherche');
+  if (!ac) return;
+  if (!items.length) {
+    ac.innerHTML = `<div class="dlc-ac-vide">Aucun produit correspondant.</div>`;
+    ac.hidden = false;
+    return;
+  }
+  ac.innerHTML = items.map(p => {
+    const lotsTxt = p.lots.length
+      ? ` · ${p.lots.length} lot${p.lots.length > 1 ? 's' : ''}`
+      : '';
+    return `
+      <div class="dlc-ac-item" role="option" data-nom="${escHtml(p.nom)}">
+        <span class="dlc-ac-item-nom">${escHtml(p.nom)}</span>
+        <span class="dlc-ac-item-meta">${p.count} entrée${p.count > 1 ? 's' : ''}${lotsTxt}</span>
+      </div>`;
+  }).join('');
+  ac.hidden = false;
+
+  ac.querySelectorAll('.dlc-ac-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const nom = el.dataset.nom;
+      $('dlc-filtre-recherche').value = nom;
+      state.filtres.recherche = nom;
+      ac.hidden = true;
+      reRenderVueCourante();
+    });
+  });
+}
+
+function _ouvrirAutocompleteDlc() {
+  const q = normaliser(state.filtres.recherche).trim();
+  _renderAutocompleteDlc(_produitsCorrespondants(q));
+}
+
+function _fermerAutocompleteDlc() {
+  const ac = $('dlc-ac-recherche');
+  if (ac) ac.hidden = true;
+}
+
+(() => {
+  const inRech = $('dlc-filtre-recherche');
+  if (!inRech) return;
+  let debounceRecherche;
+  inRech.addEventListener('input', (e) => {
+    clearTimeout(debounceRecherche);
+    debounceRecherche = setTimeout(() => {
+      state.filtres.recherche = e.target.value;
+      reRenderVueCourante();
+      _ouvrirAutocompleteDlc();
+    }, 150);
+  });
+  inRech.addEventListener('focus', () => {
+    if (state.items.length) _ouvrirAutocompleteDlc();
+  });
+  inRech.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') _fermerAutocompleteDlc();
+    if (e.key === 'Enter')  _fermerAutocompleteDlc();
+  });
+  $('dlc-ac-toggle').addEventListener('click', () => {
+    const ac = $('dlc-ac-recherche');
+    if (ac && !ac.hidden) _fermerAutocompleteDlc();
+    else _ouvrirAutocompleteDlc();
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = inRech.closest('.dlc-search-wrap');
+    if (wrap && !wrap.contains(e.target)) _fermerAutocompleteDlc();
+  });
+})();
 
 // ── Init ────────────────────────────────────────────────
 (async () => {

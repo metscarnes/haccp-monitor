@@ -65,6 +65,20 @@
 
     <!-- Filtres -->
     <div class="dlc-filtres">
+      <label class="dlc-filtre dlc-filtre--search">
+        <span>Recherche</span>
+        <div class="dlc-search-wrap">
+          <input type="search" id="dlc-filtre-recherche"
+                 placeholder="Nom du produit ou N° de lot…"
+                 autocomplete="off" inputmode="search"
+                 aria-label="Rechercher un produit par nom ou numéro de lot"
+                 aria-autocomplete="list" aria-controls="dlc-ac-recherche">
+          <button type="button" class="dlc-search-chev" id="dlc-ac-toggle"
+                  aria-label="Voir tous les produits"
+                  title="Voir tous les produits">▾</button>
+          <div id="dlc-ac-recherche" class="dlc-autocomplete" hidden role="listbox"></div>
+        </div>
+      </label>
       <label class="dlc-filtre">
         <span>Source</span>
         <select id="dlc-filtre-source">
