@@ -232,6 +232,56 @@ async def fifo_produit(produit_id: int):
 
 
 # ---------------------------------------------------------------------------
+# B3. Diagnostic FIFO : tous les lots d'un produit avec leur statut d'éligibilité
+# ---------------------------------------------------------------------------
+
+@router.get("/fabrications/debug-fifo/{produit_id}")
+async def debug_fifo(produit_id: int):
+    """Retourne TOUS les lots d'un produit avec le détail de leur éligibilité FIFO."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT
+                rl.id,
+                rl.numero_lot,
+                rl.dlc,
+                rl.dluo,
+                rl.conforme,
+                rl.temperature_reception,
+                rl.temperature_conforme,
+                r.statut,
+                r.livraison_refusee,
+                r.date_reception,
+                COALESCE(rl.dlc, rl.dluo)                          AS date_fifo,
+                COALESCE(rl.dlc, rl.dluo) >= DATE('now')           AS date_ok,
+                EXISTS (
+                    SELECT 1 FROM dlc_devenir d
+                    WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+                )                                                   AS has_dlc_devenir,
+                CASE
+                    WHEN r.statut != 'cloturee'          THEN 'statut_non_cloture'
+                    WHEN rl.conforme != 1                THEN 'non_conforme'
+                    WHEN r.livraison_refusee = 1         THEN 'livraison_refusee'
+                    WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL
+                         AND COALESCE(rl.dlc, rl.dluo) < DATE('now') THEN 'perime'
+                    WHEN EXISTS (
+                        SELECT 1 FROM dlc_devenir d
+                        WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+                    )                                    THEN 'dlc_devenir_existe'
+                    ELSE 'eligible_fifo'
+                END AS raison_exclusion
+            FROM reception_lignes rl
+            JOIN receptions r ON r.id = rl.reception_id
+            WHERE rl.produit_id = ?
+            ORDER BY r.date_reception DESC, rl.id DESC
+            """,
+            (produit_id,),
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
 # C. Historique des fabrications
 # ---------------------------------------------------------------------------
 
