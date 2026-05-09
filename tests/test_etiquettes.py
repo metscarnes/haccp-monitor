@@ -74,8 +74,8 @@ async def test_regles_dlc_seed(db):
     regles = await get_regles_dlc(db, 1)
     categories = {r["categorie"] for r in regles}
     assert "viande_hachee" in categories
-    assert "charcuterie_tranchee" in categories
-    assert "produit_deconge" in categories
+    assert "charcuterie" in categories
+    assert "traiteur" in categories
 
 
 @pytest.mark.anyio
@@ -109,7 +109,7 @@ def test_calcul_dlc_decongélation_j3():
 def test_calcul_dlc_charcuterie():
     from src.database import calculer_dlc
     d = date(2026, 3, 29)
-    dlc = calculer_dlc("charcuterie_tranchee", d, 5)
+    dlc = calculer_dlc("charcuterie", d, 5)
     assert dlc == date(2026, 4, 3)
 
 
@@ -205,7 +205,7 @@ async def test_api_lister_produits(app_client):
 async def test_api_creer_produit(app_client):
     r = await app_client.post("/api/produits", json={
         "nom": "Jambon cuit API",
-        "categorie": "charcuterie_tranchee",
+        "categorie": "charcuterie",
         "dlc_jours": 5,
         "temperature_conservation": "0°C à +4°C",
     })
@@ -225,7 +225,7 @@ async def test_api_regles_dlc(app_client):
 
 @pytest.mark.anyio
 async def test_api_modifier_regle_dlc(app_client):
-    r = await app_client.put("/api/regles-dlc/plat_cuisine", json={"dlc_jours": 4})
+    r = await app_client.put("/api/regles-dlc/traiteur", json={"dlc_jours": 4})
     assert r.status_code == 200
     assert r.json()["dlc_jours"] == 4
 

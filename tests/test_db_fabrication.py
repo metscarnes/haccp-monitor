@@ -43,7 +43,7 @@ async def fab_db():
         # Produit fini (ex: saucisse maison)
         await db.execute(
             "INSERT INTO produits (id, boutique_id, nom, categorie, dlc_jours) "
-            "VALUES (1, 1, 'Saucisse maison', 'plat_cuisine', 3)"
+            "VALUES (1, 1, 'Saucisse maison', 'traiteur', 3)"
         )
 
         # Produit ingrédient (ex: porc haché)

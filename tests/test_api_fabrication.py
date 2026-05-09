@@ -29,7 +29,7 @@ async def _seed_base(db) -> dict:
     # --- Produit fini ---
     cur = await db.execute(
         "INSERT INTO produits (boutique_id, nom, categorie, dlc_jours) "
-        "VALUES (1, 'Merguez maison', 'plat_cuisine', 3)"
+        "VALUES (1, 'Merguez maison', 'traiteur', 3)"
     )
     produit_fini_id = cur.lastrowid
 

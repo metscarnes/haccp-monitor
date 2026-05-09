@@ -14,7 +14,7 @@ pytestmark = pytest.mark.anyio
 # Helpers de fabrication de données
 # ---------------------------------------------------------------------------
 
-async def _insert_produit(db, nom, categorie="plat_cuisine", type_produit="brut"):
+async def _insert_produit(db, nom, categorie="traiteur", type_produit="brut"):
     cur = await db.execute(
         "INSERT INTO produits (boutique_id, nom, categorie, type_produit) VALUES (1, ?, ?, ?)",
         (nom, categorie, type_produit),

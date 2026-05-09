@@ -117,8 +117,15 @@
 
         <label class="cat-champ">
           <span>Catégorie <span class="cat-req">*</span></span>
-          <input type="text" id="cat-f-categorie" required list="cat-categories-datalist" autocomplete="off">
-          <datalist id="cat-categories-datalist"></datalist>
+          <select id="cat-f-categorie" required>
+            <option value="">— Sélectionner —</option>
+            <option value="matiere_premiere">Matière première</option>
+            <option value="viande_hachee">Viande hachée</option>
+            <option value="viande_pieces">Pièces de viande</option>
+            <option value="preparation_crue">Préparation crue</option>
+            <option value="charcuterie">Charcuterie</option>
+            <option value="traiteur">Traiteur</option>
+          </select>
         </label>
 
         <label class="cat-champ">

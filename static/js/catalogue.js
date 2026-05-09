@@ -135,7 +135,6 @@ async function chargerCategories() {
     categoriesConnues = await apiFetch('/api/produits/categories');
   } catch { categoriesConnues = []; }
   remplirSelectCategories();
-  remplirDatalistCategories();
 }
 
 function remplirSelectCategories() {
@@ -143,11 +142,6 @@ function remplirSelectCategories() {
   elFCateg.innerHTML = '<option value="">Toutes</option>' +
     categoriesConnues.map(c => `<option value="${escHtml(c)}">${escHtml(c)}</option>`).join('');
   elFCateg.value = courant;
-}
-
-function remplirDatalistCategories() {
-  const dl = $('cat-categories-datalist');
-  dl.innerHTML = categoriesConnues.map(c => `<option value="${escHtml(c)}">`).join('');
 }
 
 function remplirFiltreConditionnement() {
@@ -289,7 +283,7 @@ function lirePayload() {
   const data = {
     nom: f.nom.value.trim(),
     code_unique: f.code.value.trim() || null,
-    categorie: f.categ.value.trim(),
+    categorie: f.categ.value,
     espece: f.espece.value || null,
     conditionnement: f.cond.value || null,
     type_produit: f.type.value,

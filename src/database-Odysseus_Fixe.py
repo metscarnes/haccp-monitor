@@ -308,13 +308,11 @@ VALUES
 SEED_SQL_PHASE2 = """
 -- Règles DLC par défaut (boutique 1)
 INSERT OR IGNORE INTO regles_dlc (boutique_id, categorie, dlc_jours, note) VALUES
-(1, 'viande_hachee',         1, 'Viande hachée fraîche'),
-(1, 'viande_pieces',         3, 'Pièces de viande entières'),
-(1, 'preparation_crue',      2, 'Préparations crues : merguez, saucisses...'),
-(1, 'charcuterie_tranchee',  5, 'Charcuterie tranchée à la coupe'),
-(1, 'plat_cuisine',          3, 'Plats cuisinés maison'),
-(1, 'produit_deconge',       3, 'Calculé depuis date de décongélation (réglementaire)'),
-(1, 'produit_congele',       180, 'Selon DLC initiale — congélation maison');
+(1, 'viande_hachee',    1, 'Viande hachée fraîche'),
+(1, 'viande_pieces',    3, 'Pièces de viande entières'),
+(1, 'preparation_crue', 2, 'Préparations crues : merguez, saucisses...'),
+(1, 'charcuterie',      5, 'Charcuterie'),
+(1, 'traiteur',         3, 'Traiteur');
 
 -- Personnel par défaut (boutique 1)
 INSERT OR IGNORE INTO personnel (boutique_id, prenom) VALUES
