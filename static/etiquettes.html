@@ -309,6 +309,64 @@
       border: 2px solid #D97706 !important;
       background: #fffbf0 !important;
     }
+
+    /* ── Tuile substitution : aperçu + dépliage des lots ── */
+    .fab-sub-tuile-compteur {
+      font-size: .72rem;
+      color: #a16207;
+      font-weight: 600;
+      margin-top: .15rem;
+    }
+    .fab-sub-tuile-aperçu {
+      font-size: .75rem;
+      margin-top: .35rem;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: .4rem;
+      flex-wrap: wrap;
+    }
+    .fab-sub-tuile-chevron {
+      font-size: .7rem;
+      color: #6b7280;
+    }
+    .fab-sub-tuile-lots {
+      margin-top: .5rem;
+      padding-top: .5rem;
+      border-top: 1px dashed #d1d5db;
+      display: flex;
+      flex-direction: column;
+      gap: .35rem;
+    }
+    .fab-sub-lot {
+      background: #f9fafb;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      padding: .5rem .65rem;
+      font-size: .8rem;
+      cursor: pointer;
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      transition: background .12s, border-color .12s;
+    }
+    .fab-sub-lot:hover  { background: #fef3c7; border-color: #d97706; }
+    .fab-sub-lot:active { transform: scale(.98); }
+    .fab-sub-lot--fifo {
+      border-color: #d97706;
+      background: #fffbeb;
+    }
+    .fab-sub-lot-badge {
+      background: #d97706;
+      color: #fff;
+      font-weight: 700;
+      font-size: .68rem;
+      padding: .12rem .4rem;
+      border-radius: 4px;
+    }
+    .fab-sub-lot-num  { font-weight: 600; }
+    .fab-sub-lot-date { color: #4b5563; margin-left: auto; }
     .badge-fifo {
       position: absolute;
       top: -1px;

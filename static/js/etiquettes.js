@@ -522,57 +522,103 @@ function filtrerProduitsIntelligent(produits, ingNom) {
   return resultats.length > 0 ? resultats : produits;
 }
 
-function htmlSubTuile(p, index = 0) {
+/** Compare 2 lots par DLC/DLUO ascendant (sans date → fin de liste). */
+function comparerParDate(a, b) {
+  const da = (a.dlc || a.dluo) ? new Date(a.dlc || a.dluo) : null;
+  const db = (b.dlc || b.dluo) ? new Date(b.dlc || b.dluo) : null;
+  if (!da && !db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da - db;
+}
+
+/** Calcule la classe CSS d'urgence DLC en fonction des jours restants. */
+function classeDlcUrgence(dateVal) {
+  if (!dateVal) return '';
+  const jours = Math.ceil((new Date(dateVal) - new Date()) / (1000 * 60 * 60 * 24));
+  if (jours <= 2) return 'dlc-critique';
+  if (jours <= 5) return 'dlc-attention';
+  return 'dlc-ok';
+}
+
+/** Sous-ligne d'un lot dans la zone dépliable d'une tuile produit. */
+function htmlSubLot(lot, isFifo) {
+  const dateVal   = lot.dlc || lot.dluo;
+  const dateLabel = lot.dluo && !lot.dlc ? 'DLUO' : 'DLC';
+  const dlcClasse = classeDlcUrgence(dateVal);
+  return `
+    <div class="fab-sub-lot${isFifo ? ' fab-sub-lot--fifo' : ''}"
+         data-reception-ligne-id="${lot.reception_ligne_id}"
+         role="button" tabindex="0">
+      ${isFifo ? `<span class="fab-sub-lot-badge">⭐ FIFO</span>` : ''}
+      <span class="fab-sub-lot-num">Lot ${escHtml(lot.numero_lot ?? '—')}</span>
+      <span class="fab-sub-lot-date">${dateLabel} <span class="${dlcClasse}">${formatDate(dateVal)}</span></span>
+    </div>`;
+}
+
+/** Tuile produit (groupe de lots) — dépliable si plusieurs lots. */
+function htmlSubTuile(groupe, index = 0) {
   const isPriority = index === 0;
+  const fifo       = groupe.lots[0];           // déjà trié, premier = plus urgent
+  const dateVal    = fifo.dlc || fifo.dluo;
+  const dateLabel  = fifo.dluo && !fifo.dlc ? 'DLUO' : 'DLC';
+  const dlcClasse  = classeDlcUrgence(dateVal);
+  const nbLots     = groupe.lots.length;
+  const multiLots  = nbLots > 1;
 
-  // Calcul urgence DLC/DLUO
-  const dateVal   = p.dlc || p.dluo;
-  const dateLabel = p.dluo && !p.dlc ? 'DLUO' : 'DLC';
-  let dlcClasse = '';
-  let dlcTexte  = formatDate(dateVal);
-  if (dateVal) {
-    const jours = Math.ceil((new Date(dateVal) - new Date()) / (1000 * 60 * 60 * 24));
-    if (jours <= 2)      dlcClasse = 'dlc-critique';
-    else if (jours <= 5) dlcClasse = 'dlc-attention';
-    else                 dlcClasse = 'dlc-ok';
-  }
-
-  const lotInfo = (p.numero_lot || dateVal)
-    ? `<div style="font-size:.75rem;margin-top:.35rem">
-         Lot&nbsp;: ${escHtml(p.numero_lot ?? '—')} | ${dateLabel}&nbsp;: <span class="${dlcClasse}">${dlcTexte}</span>
+  const lotsExpand = multiLots
+    ? `<div class="fab-sub-tuile-lots" hidden>
+         ${groupe.lots.map((l, i) => htmlSubLot(l, i === 0)).join('')}
        </div>`
     : '';
 
+  const aperçu = `
+    <div class="fab-sub-tuile-aperçu">
+      Lot&nbsp;: ${escHtml(fifo.numero_lot ?? '—')} | ${dateLabel}&nbsp;: <span class="${dlcClasse}">${formatDate(dateVal)}</span>
+      ${multiLots ? `<span class="fab-sub-tuile-chevron">▼</span>` : ''}
+    </div>`;
+
+  const compteur = multiLots
+    ? `<div class="fab-sub-tuile-compteur">${nbLots} lots disponibles</div>`
+    : '';
+
   return `
-    <div class="fab-sub-tuile${isPriority ? ' tuile-priorite' : ''}" data-produit-id="${p.id}"
-         data-produit-nom="${escHtml(p.nom)}"
-         data-reception-ligne-id="${p.reception_ligne_id ?? ''}"
+    <div class="fab-sub-tuile${isPriority ? ' tuile-priorite' : ''}"
+         data-produit-id="${groupe.id}"
+         data-produit-nom="${escHtml(groupe.nom)}"
+         data-reception-ligne-id="${fifo.reception_ligne_id}"
+         data-multi="${multiLots ? '1' : '0'}"
          role="button" tabindex="0"
          style="position:relative;">
       ${isPriority ? `<div class="badge-fifo">⭐ PRIORITÉ FIFO</div>` : ''}
       <div class="fab-sub-tuile-icon">📦</div>
-      <div class="fab-sub-tuile-nom">${escHtml(p.nom)}</div>
-      ${p.stock != null
-        ? `<div class="fab-sub-tuile-stock">${p.stock} ${escHtml(p.unite ?? '')}</div>`
-        : ''}
-      ${lotInfo}
+      <div class="fab-sub-tuile-nom">${escHtml(groupe.nom)}</div>
+      ${compteur}
+      ${aperçu}
+      ${lotsExpand}
     </div>`;
 }
 
-function afficherSubProduits(produits) {
-  if (produits.length === 0) {
+function afficherSubProduits(lots) {
+  if (lots.length === 0) {
     elSubGrid.innerHTML = `<div class="fab-sub-vide">Aucun produit trouvé.</div>`;
     return;
   }
-  const tries = [...produits].sort((a, b) => {
-    const da = (a.dlc || a.dluo) ? new Date(a.dlc || a.dluo) : null;
-    const db = (b.dlc || b.dluo) ? new Date(b.dlc || b.dluo) : null;
-    if (!da && !db) return 0;
-    if (!da) return 1;   // sans date → fin de liste
-    if (!db) return -1;
-    return da - db;
-  });
-  elSubGrid.innerHTML = tries.map((p, i) => htmlSubTuile(p, i)).join('');
+  // Regroupe par produit_id
+  const groupes = new Map();
+  for (const lot of lots) {
+    if (!groupes.has(lot.id)) {
+      groupes.set(lot.id, { id: lot.id, nom: lot.nom, lots: [] });
+    }
+    groupes.get(lot.id).lots.push(lot);
+  }
+  // Trie les lots dans chaque groupe par DLC asc
+  for (const grp of groupes.values()) {
+    grp.lots.sort(comparerParDate);
+  }
+  // Trie les groupes par DLC du lot le plus urgent
+  const tries = [...groupes.values()].sort((a, b) => comparerParDate(a.lots[0], b.lots[0]));
+  elSubGrid.innerHTML = tries.map((grp, i) => htmlSubTuile(grp, i)).join('');
 }
 
 elLots.addEventListener('click', async e => {
@@ -614,26 +660,63 @@ elSubSearch.addEventListener('input', () => {
   afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
 });
 
-elSubGrid.addEventListener('click', e => {
-  const tuile = e.target.closest('.fab-sub-tuile');
+/** Trouve la tuile produit englobant un élément (utile pour récupérer produit_id/nom). */
+function tuileParente(el) {
+  return el?.closest('.fab-sub-tuile');
+}
+
+/** Sélectionne une tuile (mono-lot → valide direct, multi-lots → déplie). */
+function gererClicTuile(tuile) {
   if (!tuile) return;
+  if (tuile.dataset.multi === '1') {
+    const zone = tuile.querySelector('.fab-sub-tuile-lots');
+    if (zone) zone.hidden = !zone.hidden;
+    const chev = tuile.querySelector('.fab-sub-tuile-chevron');
+    if (chev) chev.textContent = zone && !zone.hidden ? '▲' : '▼';
+    return;
+  }
+  // Mono-lot → substitution directe sur le lot FIFO de la tuile
   validerSubstitution(
     tuile.dataset.produitId,
     tuile.dataset.produitNom,
     tuile.dataset.receptionLigneId,
   );
+}
+
+elSubGrid.addEventListener('click', e => {
+  const sousLot = e.target.closest('.fab-sub-lot');
+  if (sousLot) {
+    const tuile = tuileParente(sousLot);
+    if (!tuile) return;
+    validerSubstitution(
+      tuile.dataset.produitId,
+      tuile.dataset.produitNom,
+      sousLot.dataset.receptionLigneId,
+    );
+    return;
+  }
+  gererClicTuile(e.target.closest('.fab-sub-tuile'));
 });
 
 elSubGrid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
+  const sousLot = e.target.closest('.fab-sub-lot');
+  if (sousLot) {
+    e.preventDefault();
+    const tuile = tuileParente(sousLot);
+    if (tuile) {
+      validerSubstitution(
+        tuile.dataset.produitId,
+        tuile.dataset.produitNom,
+        sousLot.dataset.receptionLigneId,
+      );
+    }
+    return;
+  }
   const tuile = e.target.closest('.fab-sub-tuile');
   if (tuile) {
     e.preventDefault();
-    validerSubstitution(
-      tuile.dataset.produitId,
-      tuile.dataset.produitNom,
-      tuile.dataset.receptionLigneId,
-    );
+    gererClicTuile(tuile);
   }
 });
 
