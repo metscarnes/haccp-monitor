@@ -162,11 +162,14 @@ async def lister_produits(
 
 
 @router.get("/produits/categories")
-async def lister_categories():
+async def lister_categories(inclure_inactifs: bool = Query(False)):
     """Liste les catégories distinctes utilisées dans le catalogue."""
+    where = "boutique_id = ? AND categorie IS NOT NULL"
+    if not inclure_inactifs:
+        where += " AND actif = 1"
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT DISTINCT categorie FROM produits WHERE boutique_id = ? AND categorie IS NOT NULL ORDER BY categorie",
+            f"SELECT DISTINCT categorie FROM produits WHERE {where} ORDER BY categorie",
             (BOUTIQUE_ID,),
         )
         rows = await cursor.fetchall()

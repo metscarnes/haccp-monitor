@@ -791,7 +791,7 @@ function bindFiltres() {
 // ── Filtres dynamiques depuis la BDD ─────────────────────────
 async function chargerFiltresCategories() {
   try {
-    const res = await fetch('/api/produits/categories', { cache: 'no-store' });
+    const res = await fetch('/api/produits/categories?inclure_inactifs=false', { cache: 'no-store' });
     if (!res.ok) return;
     const categories = await res.json();
     const sel = $('inv-filtre-categorie');

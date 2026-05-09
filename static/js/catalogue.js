@@ -131,8 +131,9 @@ async function chargerProduits() {
 }
 
 async function chargerCategories() {
+  const inclureInactifs = elFArchives.checked;
   try {
-    categoriesConnues = await apiFetch('/api/produits/categories');
+    categoriesConnues = await apiFetch(`/api/produits/categories?inclure_inactifs=${inclureInactifs}`);
   } catch { categoriesConnues = []; }
   remplirSelectCategories();
 }
@@ -427,7 +428,9 @@ elFType.addEventListener('change', rendre);
 elFCateg.addEventListener('change', rendre);
 elFCond.addEventListener('change', rendre);
 elFIncomplets.addEventListener('change', rendre);
-elFArchives.addEventListener('change', chargerProduits);
+elFArchives.addEventListener('change', async () => {
+  await Promise.all([chargerProduits(), chargerCategories()]);
+});
 
 // Fermer modal au clic hors carte
 [elModal, elImportModal].forEach(m => {
