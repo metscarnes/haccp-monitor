@@ -80,17 +80,19 @@
       <div class="ar-form-group">
         <label class="ar-label" for="ar-dlc-jours">
           DLC (en jours) <span class="ar-requis" aria-hidden="true">*</span>
+          <span class="ar-hint-label">— verrouillée à 3 jours</span>
         </label>
         <input
           type="number"
           id="ar-dlc-jours"
           class="ar-input ar-input-sm"
-          placeholder="ex : 4"
+          value="3"
           inputmode="numeric"
-          min="1"
-          max="365"
-          required
-          aria-required="true"
+          min="3"
+          max="3"
+          readonly
+          aria-readonly="true"
+          tabindex="-1"
         >
       </div>
 
@@ -225,8 +227,18 @@
       <p class="ar-modal-desc">Cet ingrédient n'existe pas encore en base. Complétez les informations pour le créer.</p>
 
       <div class="ar-form-group">
-        <label class="ar-label" for="ar-modal-nom">Nom</label>
+        <label class="ar-label" for="ar-modal-nom">
+          Nom <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
         <input type="text" id="ar-modal-nom" class="ar-input" readonly>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-code">
+          Code unique <span class="ar-hint-label">— généré automatiquement</span>
+        </label>
+        <input type="text" id="ar-modal-code" class="ar-input" readonly
+               placeholder="sélectionnez une espèce…">
       </div>
 
       <div class="ar-form-group">
@@ -242,6 +254,64 @@
           <option value="plat_cuisine">Plat cuisiné</option>
           <option value="produit_deconge">Produit décongelé</option>
           <option value="produit_congele">Produit congelé</option>
+        </select>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-espece">
+          Espèce <span class="ar-requis" aria-hidden="true">*</span>
+        </label>
+        <select id="ar-modal-espece" class="ar-input ar-select">
+          <option value="">— Sélectionner —</option>
+          <option value="bovin">Bovin (VB)</option>
+          <option value="veau">Veau (VX)</option>
+          <option value="agneau">Agneau / ovin (AGN)</option>
+          <option value="porc">Porc (PC)</option>
+          <option value="gibier">Gibier (GIB)</option>
+          <option value="canard">Volaille — canard (VC)</option>
+          <option value="dinde">Volaille — dinde (VD)</option>
+          <option value="lapin">Volaille — lapin (VL)</option>
+          <option value="volaille_autre">Volaille — autre (VP)</option>
+          <option value="cheval">Cheval (CH)</option>
+          <option value="exotique">Viande exotique (VEXOA)</option>
+        </select>
+      </div>
+
+      <div class="ar-form-group ar-form-group--check">
+        <label class="ar-label-check">
+          <input type="checkbox" id="ar-modal-abats">
+          <span>Abats <span class="ar-hint-label">(préfixe spécifique : VBA, VXAB, AGNAB, PACAB)</span></span>
+        </label>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-coupe">Niveau de coupe</label>
+        <input type="text" id="ar-modal-coupe" class="ar-input" autocomplete="off"
+               placeholder="ex : entier, demi, pavé…">
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-etape">Étape</label>
+        <input type="number" id="ar-modal-etape" class="ar-input ar-input-sm"
+               min="0" step="1" inputmode="numeric">
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-cond">Conditionnement</label>
+        <select id="ar-modal-cond" class="ar-input ar-select">
+          <option value="SOUS_VIDE">SOUS_VIDE</option>
+          <option value="VRAC">VRAC</option>
+          <option value="CARTON">CARTON</option>
+          <option value="BARQUETTE">BARQUETTE</option>
+          <option value="AUTRE">AUTRE</option>
+        </select>
+      </div>
+
+      <div class="ar-form-group">
+        <label class="ar-label" for="ar-modal-type">Type produit</label>
+        <select id="ar-modal-type" class="ar-input ar-select">
+          <option value="brut">Brut (matière première)</option>
+          <option value="fini">Fini (transformé)</option>
         </select>
       </div>
 

@@ -156,16 +156,14 @@ function initIngrAutocomplete() {
 // ─────────────────────────────────────────────────────────────
 function onProduitFiniSelect(p) {
   const details  = $('produit-details');
-  const dlcInput = $('ar-dlc-jours');
 
   if (!p) {
     details.hidden    = true;
     details.innerHTML = '';
-    dlcInput.value    = '';
     return;
   }
 
-  if (p.dlc_jours != null) dlcInput.value = p.dlc_jours;
+  // DLC recette verrouillée à 3 jours — pas d'auto-fill depuis le produit fini.
 
   const nomRecetteInput = $('ar-nom-recette');
   if (!nomRecetteInput.value.trim()) nomRecetteInput.value = p.nom;
@@ -329,9 +327,9 @@ async function chargerRecettePourEdition(id) {
     const btnSubmit = $('ar-btn-submit');
     btnSubmit.textContent = '✓ Mettre à jour la recette';
 
-    // Champs principaux
+    // Champs principaux (la DLC est verrouillée à 3 — on ignore l'historique)
     $('ar-nom-recette').value = recette.nom || '';
-    $('ar-dlc-jours').value   = recette.dlc_jours ?? '';
+    $('ar-dlc-jours').value   = '3';
 
     // Préfixe rendement extrait des instructions ("Base pour X unite.\n\n…")
     const m = (recette.instructions || '').match(/^Base pour\s+([\d.,]+)\s+(kg|L|pi[èe]ces?)\b/i);
@@ -352,9 +350,9 @@ async function chargerRecettePourEdition(id) {
         hiddenEl: $('ar-produit-fini-id'),
       });
       onProduitFiniSelect(produitFini);
-      // onProduitFiniSelect a peut-être écrasé la DLC et le nom : on les remet
+      // onProduitFiniSelect peut écraser le nom : on le remet (DLC reste verrouillée à 3)
       $('ar-nom-recette').value = recette.nom || '';
-      $('ar-dlc-jours').value   = recette.dlc_jours ?? '';
+      $('ar-dlc-jours').value   = '3';
     }
 
     // Ingrédients existants (avec leur id BDD pour le diff côté serveur)
@@ -377,14 +375,71 @@ async function chargerRecettePourEdition(id) {
 // ─────────────────────────────────────────────────────────────
 let _pendingIngredient = null; // { nom, quantite, unite } en attente de confirmation
 
+// Mapping espèce → préfixe de code_unique (+ variante abats si définie)
+const PREFIXES_ESPECE = {
+  bovin:          { normal: 'VB',    abats: 'VBA'   },
+  veau:           { normal: 'VX',    abats: 'VXAB'  },
+  agneau:         { normal: 'AGN',   abats: 'AGNAB' },
+  porc:           { normal: 'PC',    abats: 'PACAB' },
+  gibier:         { normal: 'GIB',   abats: null    },
+  canard:         { normal: 'VC',    abats: null    },
+  dinde:          { normal: 'VD',    abats: null    },
+  lapin:          { normal: 'VL',    abats: null    },
+  volaille_autre: { normal: 'VP',    abats: null    },
+  cheval:         { normal: 'CH',    abats: null    },
+  exotique:       { normal: 'VEXOA', abats: null    },
+};
+
+function prefixePourCode(espece, abats) {
+  const m = PREFIXES_ESPECE[espece];
+  if (!m) return null;
+  return (abats && m.abats) ? m.abats : m.normal;
+}
+
+function prochainCodeUnique(prefixe) {
+  // Cherche le plus grand suffixe numérique parmi les codes existants
+  // de la forme PREFIXE + chiffres uniquement (ex : PC + 31, pas PC + 30A).
+  const re = new RegExp(`^${prefixe}(\\d+)$`);
+  let max = 0;
+  for (const p of produits) {
+    const code = (p.code_unique || '').toUpperCase();
+    const m = code.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > max) max = n;
+    }
+  }
+  return `${prefixe}${max + 1}`;
+}
+
+function rafraichirCodePreview() {
+  const espece = $('ar-modal-espece').value;
+  const abats  = $('ar-modal-abats').checked;
+  const codeEl = $('ar-modal-code');
+  const prefixe = prefixePourCode(espece, abats);
+  if (!prefixe) {
+    codeEl.value = '';
+    codeEl.placeholder = 'sélectionnez une espèce…';
+    return;
+  }
+  codeEl.value = prochainCodeUnique(prefixe);
+}
+
 function ouvrirModalNouvelIngredient(nom, quantite, unite) {
   _pendingIngredient = { nom, quantite, unite };
   $('ar-modal-nom').value        = nom;
   $('ar-modal-categorie').value  = 'matiere_premiere';
+  $('ar-modal-espece').value     = '';
+  $('ar-modal-abats').checked    = false;
+  $('ar-modal-coupe').value      = '';
+  $('ar-modal-etape').value      = '';
+  $('ar-modal-cond').value       = 'SOUS_VIDE';
+  $('ar-modal-type').value       = 'brut';
   $('ar-modal-dlc').value        = '0';
   $('ar-modal-temp').value       = 'Ambiant';
+  rafraichirCodePreview();
   $('ar-modal-overlay').hidden   = false;
-  $('ar-modal-categorie').focus();
+  $('ar-modal-espece').focus();
 }
 
 function fermerModal() {
@@ -395,15 +450,28 @@ function fermerModal() {
 function confirmerNouvelIngredient() {
   if (!_pendingIngredient) return;
 
-  const dlcVal = parseInt($('ar-modal-dlc').value);
+  const espece = $('ar-modal-espece').value;
+  if (!espece) {
+    flashErreurChamp($('ar-modal-espece'), 'Sélectionnez une espèce.');
+    return;
+  }
+
+  const dlcVal   = parseInt($('ar-modal-dlc').value);
+  const etapeVal = parseInt($('ar-modal-etape').value);
 
   ingredients.push({
     produit_id:               null,
     nom:                      _pendingIngredient.nom,
     quantite:                 _pendingIngredient.quantite,
     unite:                    _pendingIngredient.unite,
-    // champs pour la création BDD
+    // Champs pour la création BDD (POST /api/produits)
     categorie:                $('ar-modal-categorie').value,
+    espece:                   espece,
+    abats:                    $('ar-modal-abats').checked,
+    coupe_niveau:             $('ar-modal-coupe').value.trim() || null,
+    etape:                    isNaN(etapeVal) ? null : etapeVal,
+    conditionnement:          $('ar-modal-cond').value,
+    type_produit:             $('ar-modal-type').value,
     dlc_jours:                isNaN(dlcVal) ? 0 : dlcVal,
     temperature_conservation: $('ar-modal-temp').value,
   });
@@ -460,7 +528,7 @@ async function enregistrerRecette() {
 
   const nom       = $('ar-nom-recette').value.trim();
   const produitId = $('ar-produit-fini-id').value;
-  const dlcJours  = parseInt($('ar-dlc-jours').value);
+  const dlcJours  = 3; // DLC recette verrouillée à 3 jours
 
   if (!nom) {
     showErreur('Le nom de la recette est obligatoire.');
@@ -469,11 +537,6 @@ async function enregistrerRecette() {
   }
   if (!produitId) {
     showErreur('Sélectionnez un produit fini associé.');
-    return;
-  }
-  if (!dlcJours || dlcJours < 1) {
-    showErreur('Saisissez une DLC valide (en jours).');
-    $('ar-dlc-jours').focus();
     return;
   }
   if (ingredients.length === 0) {
@@ -498,19 +561,34 @@ async function enregistrerRecette() {
     // ── Étape 1 : créer silencieusement les ingrédients libres ──
     for (const ing of ingredients) {
       if (ing.produit_id === null) {
+        // Régénère le code juste avant POST (au cas où d'autres produits ont été
+        // créés entre l'ouverture de la modale et la sauvegarde de la recette).
+        const prefixe   = prefixePourCode(ing.espece, ing.abats);
+        const codeFinal = prefixe ? prochainCodeUnique(prefixe) : null;
+
+        const payload = {
+          nom:                      ing.nom,
+          code_unique:              codeFinal,
+          categorie:                ing.categorie                || 'matiere_premiere',
+          espece:                   ing.espece                   || null,
+          coupe_niveau:             ing.coupe_niveau             || null,
+          etape:                    ing.etape                    ?? null,
+          conditionnement:          ing.conditionnement          || 'SOUS_VIDE',
+          type_produit:             ing.type_produit             || 'brut',
+          dlc_jours:                ing.dlc_jours                ?? 0,
+          temperature_conservation: ing.temperature_conservation || 'Ambiant',
+        };
+        // Nettoie les null (l'API accepte exclude_none côté Pydantic)
+        Object.keys(payload).forEach(k => payload[k] == null && delete payload[k]);
+
         const res = await fetch('/api/produits', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({
-            nom:                      ing.nom,
-            categorie:                ing.categorie                || 'matiere_premiere',
-            dlc_jours:                ing.dlc_jours                ?? 0,
-            temperature_conservation: ing.temperature_conservation || 'Ambiant',
-          })
+          body:    JSON.stringify(payload),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(`Création "${ing.nom}" : ${err.message || `HTTP ${res.status}`}`);
+          throw new Error(`Création "${ing.nom}" : ${err.detail || err.message || `HTTP ${res.status}`}`);
         }
         const nouveau = await res.json();
         ing.produit_id = nouveau.id;
@@ -578,7 +656,7 @@ async function enregistrerRecette() {
 // ─────────────────────────────────────────────────────────────
 function resetFormulaire() {
   $('ar-nom-recette').value  = '';
-  $('ar-dlc-jours').value    = '';
+  $('ar-dlc-jours').value    = '3';
   $('ar-rendement-qte').value = '';
   $('ar-rendement-unite').value = 'kg';
 
@@ -673,6 +751,8 @@ async function init() {
   $('ar-modal-overlay').addEventListener('click', e => {
     if (e.target === $('ar-modal-overlay')) fermerModal();
   });
+  $('ar-modal-espece').addEventListener('change', rafraichirCodePreview);
+  $('ar-modal-abats').addEventListener('change', rafraichirCodePreview);
 
   // Modale édition d'un ingrédient existant
   $('ar-modal-edit-annuler').addEventListener('click', fermerModalEditIngredient);
