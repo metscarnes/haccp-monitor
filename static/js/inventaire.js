@@ -788,9 +788,31 @@ function bindFiltres() {
   });
 }
 
+// ── Filtres dynamiques depuis la BDD ─────────────────────────
+async function chargerFiltresCategories() {
+  try {
+    const res = await fetch('/api/produits/categories', { cache: 'no-store' });
+    if (!res.ok) return;
+    const categories = await res.json();
+    const sel = $('inv-filtre-categorie');
+    if (!sel) return;
+    const labels = {
+      matiere_premiere: 'Matière première',
+      viande_hachee:    'Viande hachée',
+      viande_pieces:    'Pièces de viande',
+      preparation_crue: 'Préparation crue',
+      charcuterie:      'Charcuterie',
+      traiteur:         'Traiteur',
+    };
+    sel.innerHTML = '<option value="">Toutes</option>' +
+      categories.map(c => `<option value="${escHtml(c)}">${escHtml(labels[c] || c)}</option>`).join('');
+  } catch { /* silencieux */ }
+}
+
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   bindFiltres();
   chargerPersonnel();
+  chargerFiltresCategories();
   chargerStock();
 });
