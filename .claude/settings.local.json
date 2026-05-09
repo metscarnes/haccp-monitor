@@ -148,7 +148,8 @@
       "PowerShell(python -m py_compile src\\\\api\\\\routes_cuisson.py src\\\\api\\\\routes_etiquettes.py)",
       "PowerShell(python -m py_compile src\\\\database.py)",
       "Bash(python -m pytest tests/test_stock.py::test_stock_inclut_les_4_sources -x -q)",
-      "Bash(python -c \"import src.database; print\\('OK'\\)\")"
+      "Bash(python -c \"import src.database; print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('src/database.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('src/api/routes_fabrication.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

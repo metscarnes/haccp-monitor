@@ -1058,6 +1058,86 @@ async function chargerPersonnel() {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Modale Gestion des recettes
+// ─────────────────────────────────────────────────────────────
+const elGrModalOverlay = document.getElementById('gr-modal-overlay');
+const elGrModalClose   = document.getElementById('gr-modal-close');
+const elGrModalSearch  = document.getElementById('gr-modal-search');
+const elGrModalListe   = document.getElementById('gr-modal-liste');
+const elGrModalCreer   = document.getElementById('gr-modal-btn-creer');
+const elBtnAdminRec    = document.getElementById('fab-btn-admin-recettes');
+
+function rendreListeGestionRecettes(filtre = '') {
+  if (!elGrModalListe) return;
+  const q = filtre.trim().toLowerCase();
+  const liste = q
+    ? recettes.filter(r => (r.nom || '').toLowerCase().includes(q))
+    : recettes;
+
+  if (liste.length === 0) {
+    elGrModalListe.innerHTML = `<div class="gr-modal-vide">${
+      q ? 'Aucune recette ne correspond.' : 'Aucune recette enregistrée.'
+    }</div>`;
+    return;
+  }
+
+  elGrModalListe.innerHTML = liste.map(r => `
+    <button type="button" class="gr-modal-item" data-id="${r.id}" role="listitem">
+      <span class="gr-modal-item-nom">${escHtml(r.nom)}</span>
+      <span class="gr-modal-item-dlc">DLC J+${r.dlc_jours ?? '?'}</span>
+      <span class="gr-modal-item-fleche" aria-hidden="true">›</span>
+    </button>
+  `).join('');
+}
+
+function ouvrirModaleGestionRecettes() {
+  if (!elGrModalOverlay) return;
+  elGrModalSearch.value = '';
+  rendreListeGestionRecettes('');
+  elGrModalOverlay.hidden = false;
+  setTimeout(() => elGrModalSearch.focus(), 50);
+}
+
+function fermerModaleGestionRecettes() {
+  if (!elGrModalOverlay) return;
+  elGrModalOverlay.hidden = true;
+}
+
+if (elBtnAdminRec) {
+  elBtnAdminRec.addEventListener('click', ouvrirModaleGestionRecettes);
+}
+if (elGrModalClose) {
+  elGrModalClose.addEventListener('click', fermerModaleGestionRecettes);
+}
+if (elGrModalOverlay) {
+  elGrModalOverlay.addEventListener('click', e => {
+    if (e.target === elGrModalOverlay) fermerModaleGestionRecettes();
+  });
+}
+if (elGrModalSearch) {
+  elGrModalSearch.addEventListener('input', e => {
+    rendreListeGestionRecettes(e.target.value);
+  });
+}
+if (elGrModalListe) {
+  elGrModalListe.addEventListener('click', e => {
+    const item = e.target.closest('.gr-modal-item[data-id]');
+    if (!item) return;
+    window.location.href = `/admin-recettes.html?id=${encodeURIComponent(item.dataset.id)}`;
+  });
+}
+if (elGrModalCreer) {
+  elGrModalCreer.addEventListener('click', () => {
+    window.location.href = '/admin-recettes.html';
+  });
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && elGrModalOverlay && !elGrModalOverlay.hidden) {
+    fermerModaleGestionRecettes();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 //  Init
 // ─────────────────────────────────────────────────────────────
 async function init() {

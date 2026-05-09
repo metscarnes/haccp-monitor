@@ -19,6 +19,8 @@ from src.database import (
     get_recettes,
     get_recette,
     create_recette,
+    update_recette,
+    RecetteIngredientEnUsage,
     get_fifo_lots,
     create_fabrication,
     get_fabrications_historique,
@@ -45,6 +47,21 @@ class RecetteCreate(BaseModel):
     dlc_jours: int
     instructions: Optional[str] = None
     ingredients: list[IngredientCreate] = []
+
+
+class IngredientUpdate(BaseModel):
+    id: Optional[int] = None             # présent → mise à jour, absent → nouvel ingrédient
+    produit_id: int
+    quantite: Optional[float] = None
+    unite: Optional[str] = None
+
+
+class RecetteUpdate(BaseModel):
+    nom: str
+    produit_fini_id: int
+    dlc_jours: int
+    instructions: Optional[str] = None
+    ingredients: list[IngredientUpdate] = []
 
 
 class LotValide(BaseModel):
@@ -105,6 +122,41 @@ async def creer_recette(payload: RecetteCreate):
         except Exception as exc:
             logger.error("Erreur création recette : %s", exc)
             raise HTTPException(status_code=422, detail=str(exc))
+    return recette
+
+
+@router.put("/recettes/{recette_id}")
+async def modifier_recette(recette_id: int, payload: RecetteUpdate):
+    """
+    Met à jour une recette existante (champs + ingrédients).
+
+    Les ingrédients référencés par une fabrication ne peuvent pas être supprimés
+    (préservation de la traçabilité HACCP) — un 409 est renvoyé dans ce cas.
+    """
+    async with get_db() as db:
+        try:
+            recette = await update_recette(
+                db,
+                recette_id=recette_id,
+                nom=payload.nom,
+                produit_fini_id=payload.produit_fini_id,
+                dlc_jours=payload.dlc_jours,
+                instructions=payload.instructions,
+                ingredients=[ing.model_dump() for ing in payload.ingredients],
+            )
+        except RecetteIngredientEnUsage as exc:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Impossible de retirer l'ingrédient « {exc.nom} » : "
+                    "il est utilisé dans une fabrication existante (traçabilité HACCP)."
+                ),
+            )
+        except Exception as exc:
+            logger.error("Erreur modification recette : %s", exc)
+            raise HTTPException(status_code=422, detail=str(exc))
+    if not recette:
+        raise HTTPException(status_code=404, detail="Recette introuvable")
     return recette
 
 

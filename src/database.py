@@ -3019,6 +3019,82 @@ async def create_recette(
     return result
 
 
+class RecetteIngredientEnUsage(Exception):
+    """Levée quand on tente de retirer un ingrédient référencé par une fabrication."""
+    def __init__(self, nom: str):
+        super().__init__(nom)
+        self.nom = nom
+
+
+async def update_recette(
+    db: aiosqlite.Connection,
+    recette_id: int,
+    nom: str,
+    produit_fini_id: int,
+    dlc_jours: int,
+    instructions: Optional[str],
+    ingredients: list[dict],
+) -> Optional[dict]:
+    """
+    Met à jour une recette existante (champs + ingrédients).
+
+    Diff intelligent sur les ingrédients (préserve la traçabilité) :
+      - Item avec `id` connu  → UPDATE quantite/unite (le produit_id n'est pas modifiable)
+      - Item sans `id`        → INSERT
+      - Id existant absent du payload → DELETE si non référencé par fabrication_lots,
+        sinon RecetteIngredientEnUsage est levée.
+
+    Retourne la recette mise à jour (via get_recette) ou None si la recette n'existe pas.
+    """
+    cur = await db.execute("SELECT id FROM recettes WHERE id = ?", (recette_id,))
+    if not await cur.fetchone():
+        return None
+
+    await db.execute(
+        "UPDATE recettes SET nom = ?, produit_fini_id = ?, dlc_jours = ?, instructions = ? WHERE id = ?",
+        (nom, produit_fini_id, dlc_jours, instructions, recette_id),
+    )
+
+    cur = await db.execute(
+        """
+        SELECT ri.id, p.nom AS produit_nom
+        FROM recette_ingredients ri
+        JOIN produits p ON p.id = ri.produit_id
+        WHERE ri.recette_id = ?
+        """,
+        (recette_id,),
+    )
+    existants = {row["id"]: row["produit_nom"] for row in await cur.fetchall()}
+
+    ids_payload = {int(ing["id"]) for ing in ingredients if ing.get("id") is not None}
+    a_supprimer = set(existants.keys()) - ids_payload
+
+    for ri_id in a_supprimer:
+        cur = await db.execute(
+            "SELECT 1 FROM fabrication_lots WHERE recette_ingredient_id = ? LIMIT 1",
+            (ri_id,),
+        )
+        if await cur.fetchone():
+            await db.rollback()
+            raise RecetteIngredientEnUsage(existants[ri_id])
+        await db.execute("DELETE FROM recette_ingredients WHERE id = ?", (ri_id,))
+
+    for ing in ingredients:
+        if ing.get("id") is not None and int(ing["id"]) in existants:
+            await db.execute(
+                "UPDATE recette_ingredients SET quantite = ?, unite = ? WHERE id = ?",
+                (ing.get("quantite"), ing.get("unite"), int(ing["id"])),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO recette_ingredients (recette_id, produit_id, quantite, unite) VALUES (?,?,?,?)",
+                (recette_id, ing["produit_id"], ing.get("quantite"), ing.get("unite")),
+            )
+
+    await db.commit()
+    return await get_recette(db, recette_id)
+
+
 async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]:
     """
     Moteur FIFO : pour chaque ingrédient de la recette, retourne le lot de

@@ -4,7 +4,8 @@
 //  État interne
 // ─────────────────────────────────────────────────────────────
 let produits     = [];   // liste complète chargée depuis /api/produits
-let ingredients  = [];   // { produit_id|null, nom, quantite, unite }
+let ingredients  = [];   // { id?, produit_id|null, nom, quantite, unite }
+let recetteId    = null; // null = création, integer = édition
 
 // ─────────────────────────────────────────────────────────────
 //  Utilitaires DOM
@@ -248,6 +249,67 @@ function renderIngredients() {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Mode édition : chargement d'une recette existante
+// ─────────────────────────────────────────────────────────────
+async function chargerRecettePourEdition(id) {
+  try {
+    const res = await fetch(`/api/recettes/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const recette = await res.json();
+
+    recetteId = recette.id;
+
+    // En-tête + bouton submit
+    const titreEl = document.querySelector('.ar-header-titre');
+    if (titreEl) titreEl.textContent = `Modifier : ${recette.nom}`;
+    document.title = `Modifier ${recette.nom} — HACCP Monitor`;
+    const btnSubmit = $('ar-btn-submit');
+    btnSubmit.textContent = '✓ Mettre à jour la recette';
+
+    // Champs principaux
+    $('ar-nom-recette').value = recette.nom || '';
+    $('ar-dlc-jours').value   = recette.dlc_jours ?? '';
+
+    // Préfixe rendement extrait des instructions ("Base pour X unite.\n\n…")
+    const m = (recette.instructions || '').match(/^Base pour\s+([\d.,]+)\s+(kg|L|pi[èe]ces?)\b/i);
+    if (m) {
+      $('ar-rendement-qte').value = m[1].replace(',', '.');
+      const u = m[2].toLowerCase();
+      $('ar-rendement-unite').value = u.startsWith('pi') ? 'pièces' : (u === 'l' ? 'L' : 'kg');
+    }
+
+    // Produit fini (sélectionné via tag)
+    const produitFini = produits.find(p => p.id === recette.produit_fini_id);
+    if (produitFini) {
+      selectProduit(produitFini, {
+        inputEl:  $('ar-produit-fini'),
+        listeEl:  $('ar-produit-fini-liste'),
+        tagEl:    $('ar-produit-fini-tag'),
+        tagNomEl: $('ar-produit-fini-tag-nom'),
+        hiddenEl: $('ar-produit-fini-id'),
+      });
+      onProduitFiniSelect(produitFini);
+      // onProduitFiniSelect a peut-être écrasé la DLC et le nom : on les remet
+      $('ar-nom-recette').value = recette.nom || '';
+      $('ar-dlc-jours').value   = recette.dlc_jours ?? '';
+    }
+
+    // Ingrédients existants (avec leur id BDD pour le diff côté serveur)
+    ingredients = (recette.ingredients || []).map(ing => ({
+      id:         ing.id,
+      produit_id: ing.produit_id,
+      nom:        ing.produit_nom,
+      quantite:   ing.quantite,
+      unite:      ing.unite,
+    }));
+    renderIngredients();
+  } catch (err) {
+    console.error('Chargement recette pour édition :', err);
+    showErreur(`Impossible de charger la recette : ${err.message}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Modale — Nouvel ingrédient libre
 // ─────────────────────────────────────────────────────────────
 let _pendingIngredient = null; // { nom, quantite, unite } en attente de confirmation
@@ -364,8 +426,10 @@ async function enregistrerRecette() {
     : '';
 
   const btn = $('ar-btn-submit');
+  const enEdition = recetteId !== null;
+  const labelInitial = enEdition ? '✓ Mettre à jour la recette' : '✓ Enregistrer la recette';
   btn.disabled    = true;
-  btn.textContent = 'Enregistrement…';
+  btn.textContent = enEdition ? 'Mise à jour…' : 'Enregistrement…';
 
   try {
     // ── Étape 1 : créer silencieusement les ingrédients libres ──
@@ -397,32 +461,52 @@ async function enregistrerRecette() {
       produit_fini_id: parseInt(produitId),
       dlc_jours:       dlcJours,
       instructions:    instructionsPrefix,
-      ingredients:     ingredients.map(ing => ({
-        produit_id: ing.produit_id,
-        quantite:   ing.quantite,
-        unite:      ing.unite
-      }))
+      ingredients:     ingredients.map(ing => {
+        const item = {
+          produit_id: ing.produit_id,
+          quantite:   ing.quantite,
+          unite:      ing.unite,
+        };
+        if (enEdition && ing.id != null) item.id = ing.id;
+        return item;
+      })
     };
 
-    const res = await fetch('/api/recettes', {
-      method:  'POST',
+    const url    = enEdition ? `/api/recettes/${recetteId}` : '/api/recettes';
+    const method = enEdition ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload)
     });
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `HTTP ${res.status}`);
+      throw new Error(err.detail || err.message || `HTTP ${res.status}`);
     }
 
-    showToast(`✓ Recette "${nom}" enregistrée avec succès !`);
-    resetFormulaire();
+    if (enEdition) {
+      showToast(`✓ Recette "${nom}" mise à jour !`);
+      // Récupérer les nouveaux ids d'ingrédients pour permettre une 2e sauvegarde cohérente
+      const recetteMaj = await res.json();
+      ingredients = (recetteMaj.ingredients || []).map(ing => ({
+        id:         ing.id,
+        produit_id: ing.produit_id,
+        nom:        ing.produit_nom,
+        quantite:   ing.quantite,
+        unite:      ing.unite,
+      }));
+      renderIngredients();
+    } else {
+      showToast(`✓ Recette "${nom}" enregistrée avec succès !`);
+      resetFormulaire();
+    }
 
   } catch (err) {
     showErreur(`Erreur lors de l'enregistrement : ${err.message}`);
   } finally {
     btn.disabled    = false;
-    btn.textContent = '✓ Enregistrer la recette';
+    btn.textContent = labelInitial;
   }
 }
 
@@ -531,6 +615,13 @@ async function init() {
   });
 
   renderIngredients();
+
+  // Mode édition si ?id=X est présent dans l'URL
+  const params = new URLSearchParams(window.location.search);
+  const idParam = params.get('id');
+  if (idParam && /^\d+$/.test(idParam)) {
+    await chargerRecettePourEdition(parseInt(idParam, 10));
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
