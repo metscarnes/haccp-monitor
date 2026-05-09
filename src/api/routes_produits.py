@@ -29,9 +29,9 @@ BOUTIQUE_ID = 1  # mono-boutique Phase 2
 
 # Champs exportés/importés via Excel (ordre = ordre des colonnes dans le fichier)
 COLONNES_EXPORT = (
-    "id", "nom", "code_unique", "espece", "etape", "coupe_niveau",
+    "id", "nom", "code_unique", "espece",
     "conditionnement", "categorie", "dlc_jours", "temperature_conservation",
-    "format_etiquette", "type_produit", "actif",
+    "type_produit", "actif",
 )
 
 
@@ -260,9 +260,9 @@ async def exporter_xlsx():
 
     # Largeurs colonnes raisonnables
     largeurs = {
-        "id": 6, "nom": 38, "code_unique": 14, "espece": 12, "etape": 8,
-        "coupe_niveau": 14, "conditionnement": 14, "categorie": 22,
-        "dlc_jours": 10, "temperature_conservation": 22, "format_etiquette": 18,
+        "id": 6, "nom": 38, "code_unique": 14, "espece": 14,
+        "conditionnement": 14, "categorie": 20,
+        "dlc_jours": 10, "temperature_conservation": 22,
         "type_produit": 12, "actif": 8,
     }
     for idx, c in enumerate(COLONNES_EXPORT, start=1):
@@ -277,6 +277,59 @@ async def exporter_xlsx():
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/produits/template/xlsx")
+async def telecharger_template():
+    """Retourne un fichier Excel vide avec les bonnes colonnes et une ligne exemple."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        raise HTTPException(500, "openpyxl non installé sur le serveur")
+
+    colonnes_template = [c for c in COLONNES_EXPORT if c != "id"]
+    exemple = {
+        "nom":                      "Entrecôte bovin",
+        "code_unique":              "VB1",
+        "espece":                   "bovin",
+        "conditionnement":          "SOUS_VIDE",
+        "categorie":                "viande_pieces",
+        "dlc_jours":                3,
+        "temperature_conservation": "0°C à +4°C",
+        "type_produit":             "brut",
+        "actif":                    1,
+    }
+    largeurs = {
+        "nom": 38, "code_unique": 14, "espece": 14,
+        "conditionnement": 14, "categorie": 20,
+        "dlc_jours": 10, "temperature_conservation": 22,
+        "type_produit": 12, "actif": 8,
+    }
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Modèle import"
+
+    entete_fill = PatternFill("solid", fgColor="3D2008")
+    entete_font = Font(bold=True, color="FFFFFF")
+    for idx, col in enumerate(colonnes_template, start=1):
+        cell = ws.cell(row=1, column=idx, value=col)
+        cell.fill = entete_fill
+        cell.font = entete_font
+        cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[openpyxl.utils.get_column_letter(idx)].width = largeurs.get(col, 14)
+
+    ws.append([exemple.get(c, "") for c in colonnes_template])
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="modele_import_catalogue.xlsx"'},
     )
 
 
@@ -332,7 +385,7 @@ async def importer_xlsx(
                 val = row[idx] if idx < len(row) else None
                 if val is None or (isinstance(val, str) and val.strip() == ""):
                     continue
-                if champ in ("dlc_jours", "etape"):
+                if champ == "dlc_jours":
                     try:
                         val = int(val)
                     except (ValueError, TypeError):

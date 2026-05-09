@@ -215,10 +215,12 @@
       <div class="cat-import-corps">
         <p class="cat-import-info">
           Le fichier doit contenir une ligne d'en-tête avec au minimum la colonne
-          <code>nom</code>. Les autres colonnes reconnues : <code>code_unique, espece, etape,
-          coupe_niveau, conditionnement, categorie, dlc_jours, temperature_conservation,
-          format_etiquette, type_produit, actif</code>.
+          <code>nom</code>. Colonnes reconnues : <code>code_unique, espece, conditionnement,
+          categorie, dlc_jours, temperature_conservation, type_produit, actif</code>.
         </p>
+        <a href="/api/produits/template/xlsx" class="cat-btn cat-btn--template" download>
+          📥 Télécharger le modèle Excel
+        </a>
         <label class="cat-champ">
           <span>Fichier .xlsx</span>
           <input type="file" id="cat-import-fichier" accept=".xlsx">
