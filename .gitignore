@@ -13,4 +13,3 @@ haccp.db-wal
 __pycache__/
 *.pyc
 *.pyo
-static/docs/*.pdf
