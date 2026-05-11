@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Formation Découpe — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <a href="/elearning.html" class="hub-btn-admin" aria-label="Retour à l'E-Learning">← E-Learning</a>
+    <div class="hub-titre">DÉCOUPE</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       GRILLE — Découpe par espèce
+  ========================================================= -->
+  <main class="hub-grille" role="main" style="grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;">
+
+    <!-- ── Bœuf ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-decoupe-boeuf"
+       href="/elearning-pdf-viewer.html?module=decoupe-boeuf&titre=D%C3%A9coupe%20B%C5%93uf&pdf=/static/docs/decoupe_boeuf.pdf&retour=/elearning-decoupe.html"
+       aria-label="Lire le guide découpe bœuf">
+      <div class="hub-tuile-icone" aria-hidden="true">🐂</div>
+      <div class="hub-tuile-titre">BŒUF</div>
+      <div class="hub-tuile-statut">Guide de découpe<br><small>Validation traçable</small></div>
+    </a>
+
+    <!-- ── Veau ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-decoupe-veau"
+       href="/elearning-pdf-viewer.html?module=decoupe-veau&titre=D%C3%A9coupe%20Veau&pdf=/static/docs/decoupe_veau.pdf&retour=/elearning-decoupe.html"
+       aria-label="Lire le guide découpe veau">
+      <div class="hub-tuile-icone" aria-hidden="true">🐄</div>
+      <div class="hub-tuile-titre">VEAU</div>
+      <div class="hub-tuile-statut">Guide de découpe<br><small>Validation traçable</small></div>
+    </a>
+
+    <!-- ── Agneau ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-decoupe-agneau"
+       href="/elearning-pdf-viewer.html?module=decoupe-agneau&titre=D%C3%A9coupe%20Agneau&pdf=/static/docs/decoupe_agneau.pdf&retour=/elearning-decoupe.html"
+       aria-label="Lire le guide découpe agneau">
+      <div class="hub-tuile-icone" aria-hidden="true">🐑</div>
+      <div class="hub-tuile-titre">AGNEAU</div>
+      <div class="hub-tuile-statut">Guide de découpe<br><small>Validation traçable</small></div>
+    </a>
+
+    <!-- ── Porc ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-decoupe-porc"
+       href="/elearning-pdf-viewer.html?module=decoupe-porc&titre=D%C3%A9coupe%20Porc&pdf=/static/docs/decoupe_porc.pdf&retour=/elearning-decoupe.html"
+       aria-label="Lire le guide découpe porc">
+      <div class="hub-tuile-icone" aria-hidden="true">🐖</div>
+      <div class="hub-tuile-titre">PORC</div>
+      <div class="hub-tuile-statut">Guide de découpe<br><small>Validation traçable</small></div>
+    </a>
+
+  </main>
+
+  <script>
+    // Horloge
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>
