@@ -41,6 +41,7 @@ from src.api.routes_cuisson       import router as router_cuisson
 from src.api.routes_refroidissement import router as router_refroidissement
 from src.api.routes_stock           import router as router_stock
 from src.api.routes_hub             import router as router_hub
+from src.api.routes_elearning       import router as router_elearning
 
 load_dotenv()
 
@@ -142,6 +143,9 @@ app.include_router(router_refroidissement)
 app.include_router(router_stock)
 
 app.include_router(router_hub)
+
+# Routes API — E-Learning HACCP
+app.include_router(router_elearning)
 
 
 # ---------------------------------------------------------------------------

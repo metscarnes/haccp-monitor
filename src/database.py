@@ -611,6 +611,26 @@ CREATE TABLE IF NOT EXISTS dlc_devenir (
 
 CREATE INDEX IF NOT EXISTS idx_dlc_devenir_source
     ON dlc_devenir(source_type, source_id);
+
+-- ===========================================================================
+-- Module E-Learning — traçabilité des formations suivies
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS elearning_completions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id     INTEGER NOT NULL DEFAULT 1,
+    module          TEXT    NOT NULL,    -- 'hygiene-pdf' | 'decoupe-pdf' | 'hygiene-module' ...
+    personnel_id    INTEGER NOT NULL,
+    date_completion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_elearning_module
+    ON elearning_completions(module, date_completion);
+
+CREATE INDEX IF NOT EXISTS idx_elearning_personnel
+    ON elearning_completions(personnel_id, date_completion);
 """
 
 SEED_SQL = """

@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#3D2008">
-  <title>E-Learning HACCP — Au Comptoir des Lilas</title>
+  <title>Formation Hygiène — Au Comptoir des Lilas</title>
   <link rel="manifest" href="/static/manifest.json">
   <link rel="stylesheet" href="/static/css/reset.css">
   <link rel="stylesheet" href="/static/css/tokens.css">
@@ -22,32 +22,32 @@
        EN-TÊTE
   ========================================================= -->
   <header class="hub-header">
-    <a href="/taches-hub.html" class="hub-btn-admin" aria-label="Retour aux tâches">← Tâches</a>
-    <div class="hub-titre">E-LEARNING</div>
+    <a href="/elearning.html" class="hub-btn-admin" aria-label="Retour à l'E-Learning">← E-Learning</a>
+    <div class="hub-titre">HYGIÈNE</div>
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
   </header>
 
   <!-- ========================================================
-       GRILLE — Documents de formation
+       GRILLE — Modes de formation Hygiène
   ========================================================= -->
-  <main class="hub-grille elearning-grille" role="main" style="grid-template-columns: 1fr 1fr; grid-template-rows: 1fr;">
+  <main class="hub-grille" role="main" style="grid-template-columns: 1fr 1fr; grid-template-rows: 1fr;">
 
-    <!-- ── Hygiène ── -->
-    <a class="hub-tuile hub-tuile--ok" id="tuile-hygiene"
-       href="/elearning-hygiene.html"
-       aria-label="Formation hygiène">
-      <div class="hub-tuile-icone" aria-hidden="true">🧼</div>
-      <div class="hub-tuile-titre">HYGIÈNE</div>
-      <div class="hub-tuile-statut">Guide des bonnes pratiques</div>
+    <!-- ── Document PDF (avec validation lecture) ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-hygiene-pdf"
+       href="/elearning-pdf-viewer.html?module=hygiene-pdf&titre=Hygi%C3%A8ne&pdf=/static/docs/hygiene.pdf"
+       aria-label="Lire le document Hygiène">
+      <div class="hub-tuile-icone" aria-hidden="true">📄</div>
+      <div class="hub-tuile-titre">DOCUMENT</div>
+      <div class="hub-tuile-statut">Lire le guide PDF<br><small>Validation traçable</small></div>
     </a>
 
-    <!-- ── Découpe ── -->
-    <a class="hub-tuile hub-tuile--ok" id="tuile-decoupe"
-       href="/static/docs/decoupe.pdf" target="_blank" rel="noopener"
-       aria-label="Formation découpe — ouvrir le PDF">
-      <div class="hub-tuile-icone" aria-hidden="true">🔪</div>
-      <div class="hub-tuile-titre">DÉCOUPE</div>
-      <div class="hub-tuile-statut">Techniques & sécurité</div>
+    <!-- ── Module interactif (à venir) ── -->
+    <a class="hub-tuile hub-tuile--chargement" id="tuile-hygiene-module"
+       href="#" aria-label="Module interactif (bientôt disponible)"
+       onclick="event.preventDefault(); alert('Module interactif disponible prochainement.');">
+      <div class="hub-tuile-icone" aria-hidden="true">🎓</div>
+      <div class="hub-tuile-titre">MODULE</div>
+      <div class="hub-tuile-statut">Cours interactif + quiz<br><small>Bientôt disponible</small></div>
     </a>
 
   </main>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Formation — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <link rel="stylesheet" href="/static/css/pages/elearning.css">
+</head>
+<body class="hub-body elearning-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <a id="btn-retour" href="/elearning.html" class="hub-btn-admin" aria-label="Retour">← Retour</a>
+    <div class="hub-titre" id="elearning-titre">FORMATION</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       VISIONNEUSE PDF (iframe plein écran)
+  ========================================================= -->
+  <main class="elearning-viewer" role="main">
+    <iframe id="pdf-iframe"
+            class="elearning-pdf"
+            src=""
+            title="Document de formation"
+            aria-label="Document de formation"></iframe>
+  </main>
+
+  <!-- ========================================================
+       BARRE DE VALIDATION (sticky bas)
+  ========================================================= -->
+  <footer class="elearning-footer">
+    <div class="elearning-footer-info">
+      <span id="dernier-lecteur" class="elearning-dernier" hidden></span>
+    </div>
+    <div class="elearning-footer-actions">
+      <select id="select-personnel" class="elearning-select" aria-label="Sélection du lecteur">
+        <option value="">— Qui a lu ? —</option>
+      </select>
+      <button id="btn-valider" class="elearning-btn-valider" type="button" disabled>
+        ✅ J'AI LU ET COMPRIS
+      </button>
+    </div>
+  </footer>
+
+  <!-- ========================================================
+       OVERLAY DE CONFIRMATION
+  ========================================================= -->
+  <div id="overlay-success" class="elearning-overlay" hidden>
+    <div class="elearning-overlay-card">
+      <div class="elearning-overlay-icone" aria-hidden="true">✅</div>
+      <h2 class="elearning-overlay-titre">Lecture enregistrée !</h2>
+      <p class="elearning-overlay-texte" id="overlay-message">
+        Merci, votre validation est traçable.
+      </p>
+      <button id="btn-overlay-ok" class="elearning-btn-valider" type="button">
+        TERMINER
+      </button>
+    </div>
+  </div>
+
+  <script src="/static/js/elearning-pdf-viewer.js"></script>
+</body>
+</html>
