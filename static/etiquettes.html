@@ -311,15 +311,6 @@
     }
 
     /* ── Tuile substitution : aperçu + dépliage des lots ── */
-    .fab-sub-tuile.is-open {
-      grid-column: 1 / -1;
-      align-items: stretch;
-    }
-    .fab-sub-tuile.is-open .fab-sub-tuile-nom,
-    .fab-sub-tuile.is-open .fab-sub-tuile-compteur,
-    .fab-sub-tuile.is-open .fab-sub-tuile-aperçu {
-      text-align: center;
-    }
     .fab-sub-tuile-compteur {
       font-size: .72rem;
       color: #a16207;
@@ -340,14 +331,24 @@
       color: #6b7280;
     }
     .fab-sub-tuile-lots {
-      width: 100%;
+      grid-column: 1 / -1;
       box-sizing: border-box;
-      margin-top: .5rem;
-      padding-top: .5rem;
-      border-top: 1px dashed #d1d5db;
+      padding: .65rem .85rem .85rem;
+      background: #fffbf0;
+      border: 1.5px solid #D97706;
+      border-radius: 12px;
       display: flex;
       flex-direction: column;
-      gap: .35rem;
+      gap: .45rem;
+    }
+    .fab-sub-tuile-lots-titre {
+      font-size: .85rem;
+      font-weight: 700;
+      color: #6B3A1F;
+      text-align: center;
+      padding-bottom: .35rem;
+      border-bottom: 1px dashed #d1d5db;
+      margin-bottom: .25rem;
     }
     .fab-sub-lot {
       width: 100%;

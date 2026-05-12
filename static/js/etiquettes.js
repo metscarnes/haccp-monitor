@@ -556,7 +556,9 @@ function htmlSubLot(lot, isFifo) {
     </div>`;
 }
 
-/** Tuile produit (groupe de lots) — dépliable si plusieurs lots. */
+/** Tuile produit (groupe de lots) — dépliable si plusieurs lots.
+ *  Renvoie la tuile + (si multi-lots) une zone-lots SIBLING qui occupe sa
+ *  propre ligne de grille (grid-column: 1/-1). Évite tout chevauchement. */
 function htmlSubTuile(groupe, index = 0) {
   const isPriority = index === 0;
   const fifo       = groupe.lots[0];           // déjà trié, premier = plus urgent
@@ -565,9 +567,15 @@ function htmlSubTuile(groupe, index = 0) {
   const dlcClasse  = classeDlcUrgence(dateVal);
   const nbLots     = groupe.lots.length;
   const multiLots  = nbLots > 1;
+  const tuileKey   = `sub-${groupe.id}`;
 
   const lotsExpand = multiLots
-    ? `<div class="fab-sub-tuile-lots" hidden>
+    ? `<div class="fab-sub-tuile-lots"
+            data-tuile-key="${tuileKey}"
+            data-produit-id="${groupe.id}"
+            data-produit-nom="${escHtml(groupe.nom)}"
+            hidden>
+         <div class="fab-sub-tuile-lots-titre">Choisir un lot — ${escHtml(groupe.nom)}</div>
          ${groupe.lots.map((l, i) => htmlSubLot(l, i === 0)).join('')}
        </div>`
     : '';
@@ -584,6 +592,7 @@ function htmlSubTuile(groupe, index = 0) {
 
   return `
     <div class="fab-sub-tuile${isPriority ? ' tuile-priorite' : ''}"
+         data-tuile-key="${tuileKey}"
          data-produit-id="${groupe.id}"
          data-produit-nom="${escHtml(groupe.nom)}"
          data-reception-ligne-id="${fifo.reception_ligne_id}"
@@ -595,8 +604,8 @@ function htmlSubTuile(groupe, index = 0) {
       <div class="fab-sub-tuile-nom">${escHtml(groupe.nom)}</div>
       ${compteur}
       ${aperçu}
-      ${lotsExpand}
-    </div>`;
+    </div>
+    ${lotsExpand}`;
 }
 
 function afficherSubProduits(lots) {
@@ -660,19 +669,21 @@ elSubSearch.addEventListener('input', () => {
   afficherSubProduits(subAllProduits.filter(p => (p.nom ?? '').toUpperCase().includes(q)));
 });
 
-/** Trouve la tuile produit englobant un élément (utile pour récupérer produit_id/nom). */
-function tuileParente(el) {
-  return el?.closest('.fab-sub-tuile');
+/** Zone-lots sibling associée à une tuile (via data-tuile-key). */
+function zoneLotsDeTuile(tuile) {
+  if (!tuile?.dataset.tuileKey) return null;
+  return elSubGrid.querySelector(
+    `.fab-sub-tuile-lots[data-tuile-key="${tuile.dataset.tuileKey}"]`
+  );
 }
 
 /** Sélectionne une tuile (mono-lot → valide direct, multi-lots → déplie). */
 function gererClicTuile(tuile) {
   if (!tuile) return;
   if (tuile.dataset.multi === '1') {
-    const zone = tuile.querySelector('.fab-sub-tuile-lots');
+    const zone = zoneLotsDeTuile(tuile);
     if (zone) zone.hidden = !zone.hidden;
     const ouverte = zone && !zone.hidden;
-    tuile.classList.toggle('is-open', ouverte);
     const chev = tuile.querySelector('.fab-sub-tuile-chevron');
     if (chev) chev.textContent = ouverte ? '▲' : '▼';
     return;
@@ -688,11 +699,11 @@ function gererClicTuile(tuile) {
 elSubGrid.addEventListener('click', e => {
   const sousLot = e.target.closest('.fab-sub-lot');
   if (sousLot) {
-    const tuile = tuileParente(sousLot);
-    if (!tuile) return;
+    const zone = sousLot.closest('.fab-sub-tuile-lots');
+    if (!zone) return;
     validerSubstitution(
-      tuile.dataset.produitId,
-      tuile.dataset.produitNom,
+      zone.dataset.produitId,
+      zone.dataset.produitNom,
       sousLot.dataset.receptionLigneId,
     );
     return;
@@ -705,11 +716,11 @@ elSubGrid.addEventListener('keydown', e => {
   const sousLot = e.target.closest('.fab-sub-lot');
   if (sousLot) {
     e.preventDefault();
-    const tuile = tuileParente(sousLot);
-    if (tuile) {
+    const zone = sousLot.closest('.fab-sub-tuile-lots');
+    if (zone) {
       validerSubstitution(
-        tuile.dataset.produitId,
-        tuile.dataset.produitNom,
+        zone.dataset.produitId,
+        zone.dataset.produitNom,
         sousLot.dataset.receptionLigneId,
       );
     }
