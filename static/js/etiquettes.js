@@ -801,9 +801,11 @@ function validerSubstitution(produitId, produitNom, receptionLigneId) {
       ligne.outerHTML = `
         <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
           <span class="fab-lot-check">✓</span>
-          <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
-          <div class="fab-lot-info fab-lot-sub-badge">
-            ${badgeContenu}
+          <div class="fab-lot-sub-content">
+            <div class="fab-lot-nom">${escHtml(subNomCourant)}</div>
+            <div class="fab-lot-info fab-lot-sub-badge">
+              ${badgeContenu}
+            </div>
           </div>
           <button class="fab-lot-btn-remplacer fab-lot-btn-personnaliser"
                   data-pid="${subPidCourant}"
