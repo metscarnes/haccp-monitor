@@ -671,8 +671,10 @@ function gererClicTuile(tuile) {
   if (tuile.dataset.multi === '1') {
     const zone = tuile.querySelector('.fab-sub-tuile-lots');
     if (zone) zone.hidden = !zone.hidden;
+    const ouverte = zone && !zone.hidden;
+    tuile.classList.toggle('is-open', ouverte);
     const chev = tuile.querySelector('.fab-sub-tuile-chevron');
-    if (chev) chev.textContent = zone && !zone.hidden ? '▲' : '▼';
+    if (chev) chev.textContent = ouverte ? '▲' : '▼';
     return;
   }
   // Mono-lot → substitution directe sur le lot FIFO de la tuile
