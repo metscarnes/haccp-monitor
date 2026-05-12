@@ -500,26 +500,41 @@ function extraireMotMuscle(nom) {
   return mots[0] ?? '';
 }
 
-/** Filtre intelligent : muscle + catégorie via lexique. Fallback = tout le catalogue. */
+/** Score de pertinence textuelle d'un produit vs un ingrédient cible.
+ *  1000 = muscle + code, 100 = muscle seul, 10 = code seul, 0 = rien. */
+function scorerProduit(nomProduit, motMuscle, synonymes) {
+  const nomP = (nomProduit ?? '').toUpperCase();
+  const aMuscle = motMuscle && nomP.includes(motMuscle);
+  const aCode   = synonymes.length > 0
+    && synonymes.some(s => new RegExp(`\\b${s}\\b`).test(nomP));
+  if (aMuscle && aCode) return 1000;
+  if (aMuscle)          return 100;
+  if (aCode)            return 10;
+  return 0;
+}
+
+/** Filtre + score intelligent : muscle + catégorie via lexique.
+ *  Si au moins un match fort (muscle), restreint à ces produits.
+ *  Sinon, renvoie tout le catalogue avec un score (le tri DLC se fait après). */
 function filtrerProduitsIntelligent(produits, ingNom) {
-  const motMuscle = extraireMotMuscle(ingNom);
-  const code      = extraireCode(ingNom);
+  const motMuscle  = extraireMotMuscle(ingNom);
+  const code       = extraireCode(ingNom);
+  const synonymes  = code && LEXIQUE[code]
+    ? [code, ...LEXIQUE[code]].map(s => s.toUpperCase())
+    : [];
 
-  if (!motMuscle) return produits;
+  const scored = produits.map(p => ({
+    ...p,
+    _score: scorerProduit(p.nom, motMuscle, synonymes),
+  }));
 
-  let resultats;
-  if (code && LEXIQUE[code]) {
-    // Synonymes = le code lui-même + les mots du lexique
-    const synonymes = [code, ...LEXIQUE[code]].map(s => s.toUpperCase());
-    resultats = produits.filter(p => {
-      const nomP = (p.nom ?? '').toUpperCase();
-      return nomP.includes(motMuscle) && synonymes.some(s => nomP.includes(s));
-    });
-  } else {
-    resultats = produits.filter(p => (p.nom ?? '').toUpperCase().includes(motMuscle));
-  }
+  // Si on a des matches forts (muscle présent), on restreint à ces produits.
+  const fortMatches = scored.filter(p => p._score >= 100);
+  if (fortMatches.length > 0) return fortMatches;
 
-  return resultats.length > 0 ? resultats : produits;
+  // Sinon, on garde tout : le tri par score puis FIFO mettra
+  // les correspondances de code (tier 10) avant le reste.
+  return scored;
 }
 
 /** Compare 2 lots par DLC/DLUO ascendant (sans date → fin de liste). */
@@ -625,8 +640,14 @@ function afficherSubProduits(lots) {
   for (const grp of groupes.values()) {
     grp.lots.sort(comparerParDate);
   }
-  // Trie les groupes par DLC du lot le plus urgent
-  const tries = [...groupes.values()].sort((a, b) => comparerParDate(a.lots[0], b.lots[0]));
+  // Trie les groupes par pertinence textuelle (score desc) puis DLC du lot le plus urgent.
+  // Tous les lots d'un même groupe partagent le même score (même produit_id).
+  const tries = [...groupes.values()].sort((a, b) => {
+    const sa = a.lots[0]._score ?? 0;
+    const sb = b.lots[0]._score ?? 0;
+    if (sa !== sb) return sb - sa;
+    return comparerParDate(a.lots[0], b.lots[0]);
+  });
   elSubGrid.innerHTML = tries.map((grp, i) => htmlSubTuile(grp, i)).join('');
 }
 
