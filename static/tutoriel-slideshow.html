@@ -607,6 +607,32 @@ html, body {
 }
 .toolbar button:hover { background: rgba(0,0,0,.8); }
 
+/* Bouton retour en haut à gauche */
+.toolbar-back {
+  position: fixed;
+  top: 14px; left: 14px;
+  background: rgba(0,0,0,.55);
+  color: #F5ECD7;
+  border: 1px solid rgba(255,255,255,.2);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-decoration: none;
+  z-index: 1000;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background .15s, transform .1s;
+}
+.toolbar-back:hover { background: rgba(0,0,0,.8); }
+.toolbar-back:active { transform: scale(0.96); }
+
+@media print {
+  .toolbar-back { display: none !important; }
+}
+
 /* ============================================================
    COMPOSANTS DE MOCK — utilisent les vraies classes mais
    on neutralise les comportements full-height des pages
@@ -2384,7 +2410,12 @@ html, body {
   <button class="nav-fullscreen" id="fs" aria-label="Plein écran" title="Plein écran (F11)">⛶</button>
 </div>
 
-<!-- Outils en haut -->
+<!-- Bouton retour en haut à gauche -->
+<a href="/elearning.html" class="toolbar-back" title="Retour à E-Learning">
+  ← Retour
+</a>
+
+<!-- Outils en haut à droite -->
 <div class="toolbar">
   <button id="btn-print" title="Imprimer en PDF">🖨️ Imprimer / PDF</button>
   <button id="btn-toc" title="Sommaire">📑 Sommaire</button>
