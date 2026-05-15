@@ -36,25 +36,20 @@
       }
     }
 
-    /* ── Tuile vidéo ── */
+    /* ── Tuile miniature ── */
     .video-tuile {
       background: var(--color-card);
       border-radius: var(--radius);
       box-shadow: var(--shadow-card);
       border: 3px solid var(--color-ok);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      padding: 0.75rem 0.5rem;
-      cursor: pointer;
       position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      aspect-ratio: 16 / 9;
+      padding: 0;
+      display: block;
       transition: transform 0.1s, box-shadow 0.1s;
       -webkit-tap-highlight-color: transparent;
-      min-height: 110px;
-      color: var(--color-text);
-      text-align: center;
     }
 
     .video-tuile:active {
@@ -62,46 +57,93 @@
       box-shadow: 0 1px 8px rgba(61,32,8,.08);
     }
 
+    .video-tuile-thumb {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: calc(var(--radius) - 3px);
+    }
+
+    /* Fallback fond si image absente */
+    .video-tuile-thumb-fallback {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(2rem, 6vw, 3rem);
+      background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-text) 100%);
+      border-radius: calc(var(--radius) - 3px);
+    }
+
     .video-tuile-num {
       position: absolute;
       top: 0.4rem;
-      left: 0.5rem;
-      font-size: 0.7rem;
+      left: 0.45rem;
+      font-size: 0.72rem;
       font-weight: 800;
       background: var(--color-ok);
       color: #fff;
       border-radius: 50%;
-      width: 1.4rem;
-      height: 1.4rem;
+      width: 1.5rem;
+      height: 1.5rem;
       display: flex;
       align-items: center;
       justify-content: center;
       line-height: 1;
+      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      z-index: 2;
     }
 
-    .video-tuile-icone {
-      font-size: clamp(1.8rem, 5vw, 2.5rem);
-      line-height: 1;
+    /* Icône play au centre */
+    .video-tuile-play {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.8rem, 5vw, 2.6rem);
+      color: rgba(255,255,255,.9);
+      text-shadow: 0 2px 8px rgba(0,0,0,.6);
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .video-tuile:hover .video-tuile-play,
+    .video-tuile:focus-visible .video-tuile-play {
+      opacity: 1;
+    }
+
+    /* Bandeau titre en bas */
+    .video-tuile-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,.72));
+      padding: 0.9rem 0.5rem 0.4rem;
+      border-radius: 0 0 calc(var(--radius) - 3px) calc(var(--radius) - 3px);
+      z-index: 2;
     }
 
     .video-tuile-nom {
-      font-size: clamp(0.62rem, 1.8vw, 0.8rem);
+      color: #fff;
+      font-size: clamp(0.58rem, 1.5vw, 0.76rem);
       font-weight: 800;
-      letter-spacing: 0.04em;
-      line-height: 1.2;
-    }
-
-    .video-tuile-label {
-      font-size: 0.65rem;
-      opacity: 0.65;
-      line-height: 1.2;
+      letter-spacing: 0.05em;
+      text-align: center;
+      display: block;
+      text-shadow: 0 1px 4px rgba(0,0,0,.5);
     }
 
     /* ── Modal lecteur vidéo ── */
     .video-modal {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.72);
+      background: rgba(0,0,0,.75);
       z-index: 200;
       display: flex;
       align-items: center;
@@ -175,7 +217,6 @@
       background: rgba(255,255,255,.28);
     }
 
-    /* ── Lecteur vidéo ── */
     .video-player-wrap {
       padding: 0.75rem 0.75rem 0;
       flex-shrink: 0;
@@ -189,7 +230,6 @@
       max-height: 45dvh;
     }
 
-    /* ── Bouton PDF ── */
     .video-pdf-btn {
       margin: 0.75rem 0.75rem 0;
       padding: 0.75rem 1.25rem;
@@ -227,9 +267,8 @@
       background: var(--color-ok);
     }
 
-    /* ── Zone PDF ── */
     .video-pdf-zone {
-      margin: 0.75rem 0.75rem 0.75rem;
+      margin: 0.75rem;
       border-radius: 8px;
       overflow: hidden;
       border: 1px solid rgba(0,0,0,.1);
@@ -258,128 +297,138 @@
   </header>
 
   <!-- ========================================================
-       GRILLE — 10 tuiles vidéo
+       GRILLE — 10 tuiles vidéo avec miniatures
   ========================================================= -->
   <main class="videos-grille" role="main" id="videos-grille">
 
     <button class="video-tuile"
-            data-num="1"
             data-titre="MODULE 1 — HACCP"
             data-video="/static/docs/Vid%C3%A9os/1%20HACCP.mp4"
             data-pdf="/static/docs/Modules%20hygiene/1%20HACCP.pdf"
             aria-label="Vidéo 1 — HACCP">
       <span class="video-tuile-num">1</span>
-      <div class="video-tuile-icone" aria-hidden="true">🛡️</div>
-      <div class="video-tuile-nom">HACCP</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">HACCP</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="2"
             data-titre="MODULE 2 — LE PND"
             data-video="/static/docs/Vid%C3%A9os/2%20LE%20PND.mp4"
             data-pdf="/static/docs/Modules%20hygiene/2%20LE%20PND.pdf"
             aria-label="Vidéo 2 — Le PND">
       <span class="video-tuile-num">2</span>
-      <div class="video-tuile-icone" aria-hidden="true">🧹</div>
-      <div class="video-tuile-nom">LE PND</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/2%20PND.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">LE PND</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="3"
             data-titre="MODULE 3 — LE VESTIAIRE"
             data-video="/static/docs/Vid%C3%A9os/3%20LE%20VESTIAIRE.mp4"
             data-pdf="/static/docs/Modules%20hygiene/3%20LE%20VESTIAIRE.pdf"
             aria-label="Vidéo 3 — Le Vestiaire">
       <span class="video-tuile-num">3</span>
-      <div class="video-tuile-icone" aria-hidden="true">👕</div>
-      <div class="video-tuile-nom">VESTIAIRE</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">VESTIAIRE</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="4"
             data-titre="MODULE 4 — RÉCEPTION"
             data-video="/static/docs/Vid%C3%A9os/4%20RECEPTION.mp4"
             data-pdf="/static/docs/Modules%20hygiene/4%20RECEPTION.pdf"
             aria-label="Vidéo 4 — Réception">
       <span class="video-tuile-num">4</span>
-      <div class="video-tuile-icone" aria-hidden="true">📦</div>
-      <div class="video-tuile-nom">RÉCEPTION</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">RÉCEPTION</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="5"
             data-titre="MODULE 5 — TEMPÉRATURES"
             data-video="/static/docs/Vid%C3%A9os/5%20TEMPERATURES.mp4"
             data-pdf="/static/docs/Modules%20hygiene/5%20TEMPERATURES.pdf"
             aria-label="Vidéo 5 — Températures">
       <span class="video-tuile-num">5</span>
-      <div class="video-tuile-icone" aria-hidden="true">🌡️</div>
-      <div class="video-tuile-nom">TEMPÉRATURES</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">TEMPÉRATURES</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="6"
             data-titre="MODULE 6 — TRAÇABILITÉ"
             data-video="/static/docs/Vid%C3%A9os/6%20TRACABILITE.mp4"
             data-pdf="/static/docs/Modules%20hygiene/6%20TRACABILITE.pdf"
             aria-label="Vidéo 6 — Traçabilité">
       <span class="video-tuile-num">6</span>
-      <div class="video-tuile-icone" aria-hidden="true">🔍</div>
-      <div class="video-tuile-nom">TRAÇABILITÉ</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">TRAÇABILITÉ</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="7"
             data-titre="MODULE 7 — STOCK ET FABRICATION"
             data-video="/static/docs/Vid%C3%A9os/7%20STOCK%20ET%20FABRICATION.mp4"
             data-pdf="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.pdf"
             aria-label="Vidéo 7 — Stock et Fabrication">
       <span class="video-tuile-num">7</span>
-      <div class="video-tuile-icone" aria-hidden="true">🏭</div>
-      <div class="video-tuile-nom">FABRICATION</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">FABRICATION</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="8"
             data-titre="MODULE 8 — CUISSON"
             data-video="/static/docs/Vid%C3%A9os/8%20CUISSON.mp4"
             data-pdf="/static/docs/Modules%20hygiene/8%20CUISSON.pdf"
             aria-label="Vidéo 8 — Cuisson">
       <span class="video-tuile-num">8</span>
-      <div class="video-tuile-icone" aria-hidden="true">🍳</div>
-      <div class="video-tuile-nom">CUISSON</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">CUISSON</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="9"
             data-titre="MODULE 9 — REFROIDISSEMENT"
             data-video="/static/docs/Vid%C3%A9os/9%20REFROIDISSEMENT.mp4"
             data-pdf="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.pdf"
             aria-label="Vidéo 9 — Refroidissement">
       <span class="video-tuile-num">9</span>
-      <div class="video-tuile-icone" aria-hidden="true">❄️</div>
-      <div class="video-tuile-nom">REFROIDIS.</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">REFROIDISSEMENT</span>
+      </div>
     </button>
 
     <button class="video-tuile"
-            data-num="10"
             data-titre="MODULE 10 — STOCKAGE ET ALLERGÈNES"
             data-video="/static/docs/Vid%C3%A9os/10%20STOCKAGE%20ET%20ALLERGENES.mp4"
             data-pdf="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.pdf"
             aria-label="Vidéo 10 — Stockage et Allergènes">
       <span class="video-tuile-num">10</span>
-      <div class="video-tuile-icone" aria-hidden="true">⚠️</div>
-      <div class="video-tuile-nom">ALLERGÈNES</div>
-      <div class="video-tuile-label">Vidéo + PDF</div>
+      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="">
+      <span class="video-tuile-play" aria-hidden="true">▶</span>
+      <div class="video-tuile-footer">
+        <span class="video-tuile-nom">ALLERGÈNES</span>
+      </div>
     </button>
 
   </main>
@@ -391,13 +440,11 @@
 
     <div class="video-modal-box">
 
-      <!-- En-tête -->
       <div class="video-modal-header">
         <span class="video-modal-titre" id="modal-titre-text"></span>
         <button class="video-modal-fermer" id="btn-modal-fermer" aria-label="Fermer le lecteur">✕</button>
       </div>
 
-      <!-- Lecteur vidéo -->
       <div class="video-player-wrap">
         <video id="video-player" controls playsinline preload="metadata">
           <source id="video-src" src="" type="video/mp4">
@@ -405,13 +452,11 @@
         </video>
       </div>
 
-      <!-- Bouton support PDF -->
       <button class="video-pdf-btn" id="btn-pdf-toggle" aria-expanded="false" aria-controls="video-pdf-zone">
         <span>📄</span>
         <span id="btn-pdf-label">Voir le support de cours (PDF)</span>
       </button>
 
-      <!-- Zone PDF -->
       <div class="video-pdf-zone" id="video-pdf-zone" hidden>
         <iframe id="pdf-frame" src="" title="Support de cours PDF" loading="lazy"></iframe>
       </div>
@@ -433,29 +478,27 @@
 
     // ── Lecteur vidéo ──
     (function () {
-      const modal      = document.getElementById('video-modal');
-      const titreEl    = document.getElementById('modal-titre-text');
-      const videoEl    = document.getElementById('video-player');
-      const srcEl      = document.getElementById('video-src');
-      const btnFermer  = document.getElementById('btn-modal-fermer');
-      const btnPdf     = document.getElementById('btn-pdf-toggle');
-      const btnPdfLbl  = document.getElementById('btn-pdf-label');
-      const pdfZone    = document.getElementById('video-pdf-zone');
-      const pdfFrame   = document.getElementById('pdf-frame');
+      const modal     = document.getElementById('video-modal');
+      const titreEl   = document.getElementById('modal-titre-text');
+      const videoEl   = document.getElementById('video-player');
+      const srcEl     = document.getElementById('video-src');
+      const btnFermer = document.getElementById('btn-modal-fermer');
+      const btnPdf    = document.getElementById('btn-pdf-toggle');
+      const btnPdfLbl = document.getElementById('btn-pdf-label');
+      const pdfZone   = document.getElementById('video-pdf-zone');
+      const pdfFrame  = document.getElementById('pdf-frame');
 
       let pdfOuvert = false;
       let pdfUrl    = '';
 
-      // Ouvrir le modal au clic sur une tuile
       document.getElementById('videos-grille').addEventListener('click', function (e) {
         const tuile = e.target.closest('.video-tuile');
         if (!tuile) return;
 
-        titreEl.textContent  = tuile.dataset.titre || '';
-        pdfUrl               = tuile.dataset.pdf   || '';
-        srcEl.src            = tuile.dataset.video || '';
+        titreEl.textContent = tuile.dataset.titre || '';
+        pdfUrl              = tuile.dataset.pdf   || '';
+        srcEl.src           = tuile.dataset.video || '';
 
-        // Réinitialiser le PDF
         pdfOuvert = false;
         pdfZone.hidden = true;
         pdfFrame.src   = '';
@@ -466,49 +509,30 @@
         videoEl.load();
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
-
-        // Lancer la lecture automatiquement si possible
-        videoEl.play().catch(function () { /* autoplay bloqué, l'utilisateur peut lancer manuellement */ });
+        videoEl.play().catch(function () {});
       });
 
-      // Fermer le modal
       function fermerModal() {
         videoEl.pause();
-        videoEl.src = '';
-        srcEl.src   = '';
+        srcEl.src    = '';
         pdfFrame.src = '';
         modal.hidden = true;
         document.body.style.overflow = '';
       }
 
       btnFermer.addEventListener('click', fermerModal);
+      modal.addEventListener('click', function (e) { if (e.target === modal) fermerModal(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) fermerModal(); });
 
-      // Fermer au clic sur le fond
-      modal.addEventListener('click', function (e) {
-        if (e.target === modal) fermerModal();
-      });
-
-      // Touche Échap
-      document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && !modal.hidden) fermerModal();
-      });
-
-      // Toggle PDF
       btnPdf.addEventListener('click', function () {
         pdfOuvert = !pdfOuvert;
-
         if (pdfOuvert) {
-          if (!pdfFrame.src || pdfFrame.src === window.location.href) {
-            pdfFrame.src = pdfUrl;
-          }
+          if (!pdfFrame.src || pdfFrame.src === window.location.href) pdfFrame.src = pdfUrl;
           pdfZone.hidden = false;
           btnPdf.setAttribute('aria-expanded', 'true');
           btnPdf.classList.add('video-pdf-btn--actif');
           btnPdfLbl.textContent = 'Masquer le support de cours';
-          // Faire défiler pour montrer le PDF
-          setTimeout(function () {
-            pdfZone.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }, 80);
+          setTimeout(function () { pdfZone.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 80);
         } else {
           pdfZone.hidden = true;
           btnPdf.setAttribute('aria-expanded', 'false');
