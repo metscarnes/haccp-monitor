@@ -260,41 +260,7 @@
       max-height: 45dvh;
     }
 
-    .video-pdf-btn {
-      margin: 0.75rem 0.8rem 0;
-      padding: 0.75rem 1.25rem;
-      background: var(--color-card);
-      border: 2px solid var(--color-secondary);
-      border-radius: var(--radius-sm);
-      font-size: 0.95rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-      color: var(--color-text);
-      flex-shrink: 0;
-    }
-    .video-pdf-btn:hover  { background: var(--color-secondary); color: var(--color-bg); border-color: var(--color-secondary); }
-    .video-pdf-btn--actif { background: var(--color-ok); border-color: var(--color-ok); color: #fff; }
-    .video-pdf-btn--actif:hover { background: var(--color-ok); color: #fff; }
-
-    .video-pdf-zone {
-      margin: 0.75rem 0.8rem 0.8rem;
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-      border: 1px solid rgba(61,32,8,.10);
-      flex-shrink: 0;
-    }
-    .video-pdf-zone[hidden] { display: none; }
-    .video-pdf-zone iframe {
-      width: 100%;
-      height: 42dvh;
-      display: block;
-      border: none;
-    }
+    .video-player-wrap { padding-bottom: 0.8rem; }
   </style>
 </head>
 <body class="hub-body">
@@ -481,13 +447,6 @@
           <source id="video-src" src="" type="video/mp4">
         </video>
       </div>
-      <button class="video-pdf-btn" id="btn-pdf-toggle" aria-expanded="false">
-        <span>📄</span>
-        <span id="btn-pdf-label">Voir le support de cours (PDF)</span>
-      </button>
-      <div class="video-pdf-zone" id="video-pdf-zone" hidden>
-        <iframe id="pdf-frame" src="" title="Support PDF" loading="lazy"></iframe>
-      </div>
     </div>
   </div>
 
@@ -516,24 +475,12 @@
       const videoEl   = document.getElementById('video-player');
       const srcEl     = document.getElementById('video-src');
       const btnFermer = document.getElementById('btn-modal-fermer');
-      const btnPdf    = document.getElementById('btn-pdf-toggle');
-      const btnPdfLbl = document.getElementById('btn-pdf-label');
-      const pdfZone   = document.getElementById('video-pdf-zone');
-      const pdfFrame  = document.getElementById('pdf-frame');
-      let pdfOuvert = false, pdfUrl = '';
 
       document.getElementById('videos-grille').addEventListener('click', function (e) {
         const card = e.target.closest('.video-card');
         if (!card) return;
         titreEl.textContent = card.dataset.titre || '';
-        pdfUrl = card.dataset.pdf || '';
         srcEl.src = card.dataset.video || '';
-        pdfOuvert = false;
-        pdfZone.hidden = true;
-        pdfFrame.src = '';
-        btnPdf.setAttribute('aria-expanded', 'false');
-        btnPdf.classList.remove('video-pdf-btn--actif');
-        btnPdfLbl.textContent = 'Voir le support de cours (PDF)';
         videoEl.load();
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
@@ -543,7 +490,6 @@
       function fermer() {
         videoEl.pause();
         srcEl.src = '';
-        pdfFrame.src = '';
         modal.hidden = true;
         document.body.style.overflow = '';
       }
@@ -551,23 +497,6 @@
       btnFermer.addEventListener('click', fermer);
       modal.addEventListener('click', function (e) { if (e.target === modal) fermer(); });
       document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) fermer(); });
-
-      btnPdf.addEventListener('click', function () {
-        pdfOuvert = !pdfOuvert;
-        if (pdfOuvert) {
-          if (!pdfFrame.src || pdfFrame.src === window.location.href) pdfFrame.src = pdfUrl;
-          pdfZone.hidden = false;
-          btnPdf.setAttribute('aria-expanded', 'true');
-          btnPdf.classList.add('video-pdf-btn--actif');
-          btnPdfLbl.textContent = 'Masquer le support de cours';
-          setTimeout(function () { pdfZone.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 80);
-        } else {
-          pdfZone.hidden = true;
-          btnPdf.setAttribute('aria-expanded', 'false');
-          btnPdf.classList.remove('video-pdf-btn--actif');
-          btnPdfLbl.textContent = 'Voir le support de cours (PDF)';
-        }
-      });
     })();
   </script>
 </body>
