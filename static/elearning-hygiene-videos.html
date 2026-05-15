@@ -35,9 +35,13 @@
         grid-template-rows: repeat(2, 1fr);
         align-content: stretch;
         overflow-y: hidden;
+        /* hauteur explicite pour que les 1fr se résolvent correctement */
+        height: calc(100dvh - 64px);
+        box-sizing: border-box;
       }
       .video-tuile {
-        aspect-ratio: unset;
+        aspect-ratio: auto;
+        min-height: 0;
       }
     }
 
