@@ -32,16 +32,13 @@
     @media (min-width: 768px) and (orientation: landscape) {
       .videos-grille {
         grid-template-columns: repeat(5, 1fr);
-        grid-template-rows: repeat(2, 1fr);
-        align-content: stretch;
+        align-content: start;
         overflow-y: hidden;
-        /* hauteur explicite pour que les 1fr se résolvent correctement */
-        height: calc(100dvh - 64px);
-        box-sizing: border-box;
       }
+      /* Hauteur calculée : (viewport - header - padding×2 - gap) / 2 rangées */
       .video-tuile {
-        aspect-ratio: auto;
-        min-height: 0;
+        aspect-ratio: unset;
+        height: calc((100dvh - 64px - 2.25rem) / 2);
       }
     }
 
