@@ -15,6 +15,18 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/hub.css">
+
+  <!-- Préchargement des 10 miniatures (démarre la requête avant parsing du body) -->
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/1%20HACCP.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/2%20PND.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/4%20RECEPTION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/6%20TRACABILITE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/8%20CUISSON.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png">
   <style>
     .hub-body { background: #EDE0C8; }
 
@@ -181,7 +193,7 @@
        aria-label="Module 1 — HACCP">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">1</span>
-        <img src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -196,7 +208,7 @@
        aria-label="Module 2 — Le PND">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">2</span>
-        <img src="/static/docs/Modules%20hygiene/2%20PND.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/2%20PND.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -211,7 +223,7 @@
        aria-label="Module 3 — Le Vestiaire">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">3</span>
-        <img src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -226,7 +238,7 @@
        aria-label="Module 4 — Réception">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">4</span>
-        <img src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -241,7 +253,7 @@
        aria-label="Module 5 — Températures">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">5</span>
-        <img src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -256,7 +268,7 @@
        aria-label="Module 6 — Traçabilité">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">6</span>
-        <img src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -271,7 +283,7 @@
        aria-label="Module 7 — Stock et Fabrication">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">7</span>
-        <img src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -286,7 +298,7 @@
        aria-label="Module 8 — Cuisson">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">8</span>
-        <img src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -301,7 +313,7 @@
        aria-label="Module 9 — Refroidissement">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">9</span>
-        <img src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">
@@ -316,7 +328,7 @@
        aria-label="Module 10 — Stockage et Allergènes">
       <div class="pdf-card-thumb">
         <span class="pdf-card-num">10</span>
-        <img src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="pdf-card-icon" aria-hidden="true"></span>
       </div>
       <div class="pdf-card-info">

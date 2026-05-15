@@ -15,6 +15,18 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/hub.css">
+
+  <!-- Préchargement des 10 miniatures (démarre la requête avant parsing du body) -->
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/1%20HACCP.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/2%20PND.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/4%20RECEPTION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/6%20TRACABILITE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/8%20CUISSON.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png">
   <style>
     /* ── Fond de page légèrement teinté ── */
     .hub-body { background: #EDE0C8; }
@@ -280,7 +292,7 @@
             aria-label="Vidéo 1 — HACCP">
       <div class="video-card-thumb">
         <span class="video-card-num">1</span>
-        <img src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -296,7 +308,7 @@
             aria-label="Vidéo 2 — Le PND">
       <div class="video-card-thumb">
         <span class="video-card-num">2</span>
-        <img src="/static/docs/Modules%20hygiene/2%20PND.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/2%20PND.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -312,7 +324,7 @@
             aria-label="Vidéo 3 — Le Vestiaire">
       <div class="video-card-thumb">
         <span class="video-card-num">3</span>
-        <img src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -328,7 +340,7 @@
             aria-label="Vidéo 4 — Réception">
       <div class="video-card-thumb">
         <span class="video-card-num">4</span>
-        <img src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -344,7 +356,7 @@
             aria-label="Vidéo 5 — Températures">
       <div class="video-card-thumb">
         <span class="video-card-num">5</span>
-        <img src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -360,7 +372,7 @@
             aria-label="Vidéo 6 — Traçabilité">
       <div class="video-card-thumb">
         <span class="video-card-num">6</span>
-        <img src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -376,7 +388,7 @@
             aria-label="Vidéo 7 — Stock et Fabrication">
       <div class="video-card-thumb">
         <span class="video-card-num">7</span>
-        <img src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -392,7 +404,7 @@
             aria-label="Vidéo 8 — Cuisson">
       <div class="video-card-thumb">
         <span class="video-card-num">8</span>
-        <img src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -408,7 +420,7 @@
             aria-label="Vidéo 9 — Refroidissement">
       <div class="video-card-thumb">
         <span class="video-card-num">9</span>
-        <img src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
@@ -424,7 +436,7 @@
             aria-label="Vidéo 10 — Stockage et Allergènes">
       <div class="video-card-thumb">
         <span class="video-card-num">10</span>
-        <img src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="">
+        <img src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="" loading="eager" decoding="async" fetchpriority="high">
         <span class="video-card-play" aria-hidden="true"></span>
       </div>
       <div class="video-card-info">
