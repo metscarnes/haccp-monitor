@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/hub.css">
   <style>
-    /* ── Grille vidéos ── */
+    /* ── Grille YouTube-style ── */
     .videos-grille {
       flex: 1;
       min-height: 0;
@@ -24,131 +24,134 @@
       -webkit-overflow-scrolling: touch;
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 0.75rem;
-      padding: 0.75rem;
+      gap: 0.9rem;
+      padding: 0.9rem;
       align-content: start;
     }
 
-    @media (min-width: 768px) and (orientation: landscape) {
-      .videos-grille {
-        grid-template-columns: repeat(5, 1fr);
-        grid-template-rows: repeat(2, calc((100dvh - 64px - 2.25rem) / 2));
-        align-content: start;
-        overflow-y: hidden;
-      }
-      .video-tuile {
-        aspect-ratio: unset;
-      }
+    @media (min-width: 600px) {
+      .videos-grille { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (min-width: 900px) {
+      .videos-grille { grid-template-columns: repeat(5, 1fr); }
     }
 
-    /* ── Tuile miniature ── */
-    .video-tuile {
+    /* ── Carte vidéo ── */
+    .video-card {
       background: var(--color-card);
       border-radius: var(--radius);
       box-shadow: var(--shadow-card);
-      border: 3px solid var(--color-ok);
-      position: relative;
-      overflow: hidden;
+      border: 2px solid transparent;
+      display: flex;
+      flex-direction: column;
       cursor: pointer;
-      aspect-ratio: 16 / 9;
-      padding: 0;
-      display: block;
-      transition: transform 0.1s, box-shadow 0.1s;
+      overflow: hidden;
+      transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
       -webkit-tap-highlight-color: transparent;
+      text-align: left;
     }
 
-    .video-tuile:active {
-      transform: scale(0.96);
-      box-shadow: 0 1px 8px rgba(61,32,8,.08);
+    .video-card:hover,
+    .video-card:focus-visible {
+      border-color: var(--color-ok);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(61,32,8,.18);
     }
 
-    .video-tuile-thumb {
+    .video-card:active {
+      transform: scale(0.97);
+    }
+
+    /* Thumbnail wrapper — conserve le ratio 16:9 */
+    .video-card-thumb {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: #111;
+      flex-shrink: 0;
+    }
+
+    .video-card-thumb img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
-      border-radius: calc(var(--radius) - 3px);
+      transition: transform 0.2s;
     }
 
-    /* Fallback fond si image absente */
-    .video-tuile-thumb-fallback {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: clamp(2rem, 6vw, 3rem);
-      background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-text) 100%);
-      border-radius: calc(var(--radius) - 3px);
+    .video-card:hover .video-card-thumb img {
+      transform: scale(1.04);
     }
 
-    .video-tuile-num {
+    /* Badge numéro */
+    .video-card-num {
       position: absolute;
       top: 0.4rem;
-      left: 0.45rem;
-      font-size: 0.72rem;
-      font-weight: 800;
+      left: 0.4rem;
       background: var(--color-ok);
       color: #fff;
+      font-size: 0.68rem;
+      font-weight: 800;
       border-radius: 50%;
-      width: 1.5rem;
-      height: 1.5rem;
+      width: 1.4rem;
+      height: 1.4rem;
       display: flex;
       align-items: center;
       justify-content: center;
-      line-height: 1;
-      box-shadow: 0 1px 4px rgba(0,0,0,.35);
+      box-shadow: 0 1px 4px rgba(0,0,0,.4);
       z-index: 2;
     }
 
-    /* Icône play au centre */
-    .video-tuile-play {
+    /* Overlay play au hover */
+    .video-card-play {
       position: absolute;
       inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: clamp(1.8rem, 5vw, 2.6rem);
-      color: rgba(255,255,255,.9);
-      text-shadow: 0 2px 8px rgba(0,0,0,.6);
-      z-index: 2;
-      pointer-events: none;
+      background: rgba(0,0,0,.30);
       opacity: 0;
       transition: opacity 0.15s;
+      z-index: 2;
+      font-size: clamp(1.8rem, 5vw, 2.4rem);
+      color: #fff;
     }
 
-    .video-tuile:hover .video-tuile-play,
-    .video-tuile:focus-visible .video-tuile-play {
+    .video-card:hover .video-card-play,
+    .video-card:focus-visible .video-card-play {
       opacity: 1;
     }
 
-    /* Bandeau titre en bas */
-    .video-tuile-footer {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,.72));
-      padding: 0.9rem 0.5rem 0.4rem;
-      border-radius: 0 0 calc(var(--radius) - 3px) calc(var(--radius) - 3px);
-      z-index: 2;
+    /* Infos sous la vignette */
+    .video-card-info {
+      padding: 0.45rem 0.55rem 0.55rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
     }
 
-    .video-tuile-nom {
-      color: #fff;
-      font-size: clamp(0.58rem, 1.5vw, 0.76rem);
+    .video-card-titre {
+      font-size: clamp(0.7rem, 1.8vw, 0.82rem);
       font-weight: 800;
-      letter-spacing: 0.05em;
-      text-align: center;
-      display: block;
-      text-shadow: 0 1px 4px rgba(0,0,0,.5);
+      letter-spacing: 0.04em;
+      line-height: 1.25;
+      color: var(--color-text);
     }
 
-    /* ── Modal lecteur vidéo ── */
+    .video-card-sub {
+      font-size: 0.65rem;
+      color: var(--color-ok);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* ── Modal lecteur ── */
     .video-modal {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,.75);
+      background: rgba(0,0,0,.78);
       z-index: 200;
       display: flex;
       align-items: center;
@@ -156,7 +159,6 @@
       padding: 0.75rem;
       animation: modal-fadein 0.15s ease-out;
     }
-
     .video-modal[hidden] { display: none; }
 
     @keyframes modal-fadein {
@@ -196,7 +198,7 @@
     }
 
     .video-modal-titre {
-      font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+      font-size: clamp(0.9rem, 2.5vw, 1.1rem);
       font-weight: 700;
       letter-spacing: 0.04em;
     }
@@ -216,17 +218,12 @@
       flex-shrink: 0;
       transition: background 0.15s;
     }
-
-    .video-modal-fermer:hover,
-    .video-modal-fermer:active {
-      background: rgba(255,255,255,.28);
-    }
+    .video-modal-fermer:hover { background: rgba(255,255,255,.28); }
 
     .video-player-wrap {
       padding: 0.75rem 0.75rem 0;
       flex-shrink: 0;
     }
-
     .video-player-wrap video {
       width: 100%;
       border-radius: 8px;
@@ -250,27 +247,10 @@
       gap: 0.5rem;
       transition: background 0.15s, border-color 0.15s;
       color: var(--color-text);
-      -webkit-tap-highlight-color: transparent;
       flex-shrink: 0;
     }
-
-    .video-pdf-btn:hover,
-    .video-pdf-btn:active {
-      background: var(--color-secondary);
-      color: var(--color-bg);
-      border-color: var(--color-secondary);
-    }
-
-    .video-pdf-btn--actif {
-      background: var(--color-ok);
-      border-color: var(--color-ok);
-      color: #fff;
-    }
-
-    .video-pdf-btn--actif:hover,
-    .video-pdf-btn--actif:active {
-      background: var(--color-ok);
-    }
+    .video-pdf-btn:hover { background: var(--color-secondary); color: var(--color-bg); }
+    .video-pdf-btn--actif { background: var(--color-ok); border-color: var(--color-ok); color: #fff; }
 
     .video-pdf-zone {
       margin: 0.75rem;
@@ -279,9 +259,7 @@
       border: 1px solid rgba(0,0,0,.1);
       flex-shrink: 0;
     }
-
     .video-pdf-zone[hidden] { display: none; }
-
     .video-pdf-zone iframe {
       width: 100%;
       height: 42dvh;
@@ -292,196 +270,206 @@
 </head>
 <body class="hub-body">
 
-  <!-- ========================================================
-       EN-TÊTE
-  ========================================================= -->
   <header class="hub-header">
     <a href="/elearning-hygiene.html" class="hub-btn-admin" aria-label="Retour à Hygiène">← Hygiène</a>
     <div class="hub-titre">VIDÉOS HYGIÈNE</div>
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
   </header>
 
-  <!-- ========================================================
-       GRILLE — 10 tuiles vidéo avec miniatures
-  ========================================================= -->
   <main class="videos-grille" role="main" id="videos-grille">
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 1 — HACCP"
             data-video="/static/docs/Vid%C3%A9os/1%20HACCP.mp4"
             data-pdf="/static/docs/Modules%20hygiene/1%20HACCP.pdf"
             aria-label="Vidéo 1 — HACCP">
-      <span class="video-tuile-num">1</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">HACCP</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">1</span>
+        <img src="/static/docs/Modules%20hygiene/1%20HACCP.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">HACCP</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 2 — LE PND"
             data-video="/static/docs/Vid%C3%A9os/2%20LE%20PND.mp4"
             data-pdf="/static/docs/Modules%20hygiene/2%20LE%20PND.pdf"
             aria-label="Vidéo 2 — Le PND">
-      <span class="video-tuile-num">2</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/2%20PND.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">LE PND</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">2</span>
+        <img src="/static/docs/Modules%20hygiene/2%20PND.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">LE PND</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 3 — LE VESTIAIRE"
             data-video="/static/docs/Vid%C3%A9os/3%20LE%20VESTIAIRE.mp4"
             data-pdf="/static/docs/Modules%20hygiene/3%20LE%20VESTIAIRE.pdf"
             aria-label="Vidéo 3 — Le Vestiaire">
-      <span class="video-tuile-num">3</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">VESTIAIRE</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">3</span>
+        <img src="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">VESTIAIRE</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 4 — RÉCEPTION"
             data-video="/static/docs/Vid%C3%A9os/4%20RECEPTION.mp4"
             data-pdf="/static/docs/Modules%20hygiene/4%20RECEPTION.pdf"
             aria-label="Vidéo 4 — Réception">
-      <span class="video-tuile-num">4</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">RÉCEPTION</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">4</span>
+        <img src="/static/docs/Modules%20hygiene/4%20RECEPTION.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">RÉCEPTION</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 5 — TEMPÉRATURES"
             data-video="/static/docs/Vid%C3%A9os/5%20TEMPERATURES.mp4"
             data-pdf="/static/docs/Modules%20hygiene/5%20TEMPERATURES.pdf"
             aria-label="Vidéo 5 — Températures">
-      <span class="video-tuile-num">5</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">TEMPÉRATURES</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">5</span>
+        <img src="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">TEMPÉRATURES</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 6 — TRAÇABILITÉ"
             data-video="/static/docs/Vid%C3%A9os/6%20TRACABILITE.mp4"
             data-pdf="/static/docs/Modules%20hygiene/6%20TRACABILITE.pdf"
             aria-label="Vidéo 6 — Traçabilité">
-      <span class="video-tuile-num">6</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">TRAÇABILITÉ</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">6</span>
+        <img src="/static/docs/Modules%20hygiene/6%20TRACABILITE.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">TRAÇABILITÉ</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 7 — STOCK ET FABRICATION"
             data-video="/static/docs/Vid%C3%A9os/7%20STOCK%20ET%20FABRICATION.mp4"
             data-pdf="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.pdf"
             aria-label="Vidéo 7 — Stock et Fabrication">
-      <span class="video-tuile-num">7</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">FABRICATION</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">7</span>
+        <img src="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">FABRICATION</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 8 — CUISSON"
             data-video="/static/docs/Vid%C3%A9os/8%20CUISSON.mp4"
             data-pdf="/static/docs/Modules%20hygiene/8%20CUISSON.pdf"
             aria-label="Vidéo 8 — Cuisson">
-      <span class="video-tuile-num">8</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">CUISSON</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">8</span>
+        <img src="/static/docs/Modules%20hygiene/8%20CUISSON.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">CUISSON</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 9 — REFROIDISSEMENT"
             data-video="/static/docs/Vid%C3%A9os/9%20REFROIDISSEMENT.mp4"
             data-pdf="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.pdf"
             aria-label="Vidéo 9 — Refroidissement">
-      <span class="video-tuile-num">9</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">REFROIDISSEMENT</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">9</span>
+        <img src="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">REFROIDISSEMENT</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
-    <button class="video-tuile"
+    <button class="video-card"
             data-titre="MODULE 10 — STOCKAGE ET ALLERGÈNES"
             data-video="/static/docs/Vid%C3%A9os/10%20STOCKAGE%20ET%20ALLERGENES.mp4"
             data-pdf="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.pdf"
             aria-label="Vidéo 10 — Stockage et Allergènes">
-      <span class="video-tuile-num">10</span>
-      <img class="video-tuile-thumb" src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="">
-      <span class="video-tuile-play" aria-hidden="true">▶</span>
-      <div class="video-tuile-footer">
-        <span class="video-tuile-nom">ALLERGÈNES</span>
+      <div class="video-card-thumb">
+        <span class="video-card-num">10</span>
+        <img src="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png" alt="">
+        <span class="video-card-play" aria-hidden="true">▶</span>
+      </div>
+      <div class="video-card-info">
+        <span class="video-card-titre">ALLERGÈNES</span>
+        <span class="video-card-sub">▶ Vidéo · 📄 PDF</span>
       </div>
     </button>
 
   </main>
 
-  <!-- ========================================================
-       MODAL — Lecteur vidéo + PDF optionnel
-  ========================================================= -->
+  <!-- Modal lecteur -->
   <div id="video-modal" class="video-modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-titre-text">
-
     <div class="video-modal-box">
-
       <div class="video-modal-header">
         <span class="video-modal-titre" id="modal-titre-text"></span>
-        <button class="video-modal-fermer" id="btn-modal-fermer" aria-label="Fermer le lecteur">✕</button>
+        <button class="video-modal-fermer" id="btn-modal-fermer" aria-label="Fermer">✕</button>
       </div>
-
       <div class="video-player-wrap">
         <video id="video-player" controls playsinline preload="metadata">
           <source id="video-src" src="" type="video/mp4">
-          Votre navigateur ne supporte pas la lecture vidéo.
         </video>
       </div>
-
-      <button class="video-pdf-btn" id="btn-pdf-toggle" aria-expanded="false" aria-controls="video-pdf-zone">
+      <button class="video-pdf-btn" id="btn-pdf-toggle" aria-expanded="false">
         <span>📄</span>
         <span id="btn-pdf-label">Voir le support de cours (PDF)</span>
       </button>
-
       <div class="video-pdf-zone" id="video-pdf-zone" hidden>
-        <iframe id="pdf-frame" src="" title="Support de cours PDF" loading="lazy"></iframe>
+        <iframe id="pdf-frame" src="" title="Support PDF" loading="lazy"></iframe>
       </div>
-
     </div>
   </div>
 
   <script>
-    // ── Horloge ──
     (function () {
       const el = document.getElementById('hub-horloge');
       if (!el) return;
-      function tick() {
-        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      }
-      tick();
-      setInterval(tick, 10000);
+      function tick() { el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+      tick(); setInterval(tick, 10000);
     })();
 
-    // ── Lecteur vidéo ──
     (function () {
       const modal     = document.getElementById('video-modal');
       const titreEl   = document.getElementById('modal-titre-text');
@@ -492,42 +480,37 @@
       const btnPdfLbl = document.getElementById('btn-pdf-label');
       const pdfZone   = document.getElementById('video-pdf-zone');
       const pdfFrame  = document.getElementById('pdf-frame');
-
-      let pdfOuvert = false;
-      let pdfUrl    = '';
+      let pdfOuvert = false, pdfUrl = '';
 
       document.getElementById('videos-grille').addEventListener('click', function (e) {
-        const tuile = e.target.closest('.video-tuile');
-        if (!tuile) return;
-
-        titreEl.textContent = tuile.dataset.titre || '';
-        pdfUrl              = tuile.dataset.pdf   || '';
-        srcEl.src           = tuile.dataset.video || '';
-
+        const card = e.target.closest('.video-card');
+        if (!card) return;
+        titreEl.textContent = card.dataset.titre || '';
+        pdfUrl = card.dataset.pdf || '';
+        srcEl.src = card.dataset.video || '';
         pdfOuvert = false;
         pdfZone.hidden = true;
-        pdfFrame.src   = '';
+        pdfFrame.src = '';
         btnPdf.setAttribute('aria-expanded', 'false');
         btnPdf.classList.remove('video-pdf-btn--actif');
         btnPdfLbl.textContent = 'Voir le support de cours (PDF)';
-
         videoEl.load();
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
         videoEl.play().catch(function () {});
       });
 
-      function fermerModal() {
+      function fermer() {
         videoEl.pause();
-        srcEl.src    = '';
+        srcEl.src = '';
         pdfFrame.src = '';
         modal.hidden = true;
         document.body.style.overflow = '';
       }
 
-      btnFermer.addEventListener('click', fermerModal);
-      modal.addEventListener('click', function (e) { if (e.target === modal) fermerModal(); });
-      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) fermerModal(); });
+      btnFermer.addEventListener('click', fermer);
+      modal.addEventListener('click', function (e) { if (e.target === modal) fermer(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) fermer(); });
 
       btnPdf.addEventListener('click', function () {
         pdfOuvert = !pdfOuvert;
