@@ -32,7 +32,12 @@
     @media (min-width: 768px) and (orientation: landscape) {
       .videos-grille {
         grid-template-columns: repeat(5, 1fr);
+        grid-template-rows: repeat(2, 1fr);
         align-content: stretch;
+        overflow-y: hidden;
+      }
+      .video-tuile {
+        aspect-ratio: unset;
       }
     }
 
