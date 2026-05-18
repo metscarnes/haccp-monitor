@@ -2354,6 +2354,7 @@ if (elOrigine) {
   });
 }
 if (elOrigineToggle) {
+  elOrigineToggle.addEventListener('mousedown', e => e.preventDefault());
   elOrigineToggle.addEventListener('click', (e) => {
     e.preventDefault();
     if (!elOrigineList) return;
