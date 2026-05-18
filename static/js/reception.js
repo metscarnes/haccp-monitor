@@ -2322,8 +2322,14 @@ function _afficherSuggestionsOrigine(filtreTxt) {
   const norm = s => String(s || '').trim().toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtre = norm(filtreTxt);
-  const liste = (typeof PAYS_UE !== 'undefined' ? PAYS_UE : ['France'])
-    .filter(p => !filtre || norm(p).includes(filtre));
+  const filtreUp = String(filtreTxt || '').trim().toUpperCase();
+  const pays = typeof PAYS_UE !== 'undefined' ? PAYS_UE : ['France'];
+  const liste = pays.filter(p => {
+    if (!filtre) return true;
+    if (norm(p).includes(filtre)) return true;
+    const code = (typeof origineCode === 'function') ? origineCode(p) : '';
+    return filtreUp.length >= 1 && code.startsWith(filtreUp);
+  });
   if (!liste.length) {
     elOrigineList.hidden = true;
     return;
@@ -2339,11 +2345,7 @@ function _afficherSuggestionsOrigine(filtreTxt) {
 }
 
 if (elOrigine) {
-  elOrigine.addEventListener('focus', () => {
-    // Sur focus, on n'affiche pas auto le menu (le bouton flèche le fait)
-  });
   elOrigine.addEventListener('input', () => {
-    if (!elOrigineList || elOrigineList.hidden) return;
     _afficherSuggestionsOrigine(elOrigine.value);
   });
   elOrigine.addEventListener('blur', () => {
