@@ -9,7 +9,7 @@ GET    /api/ouvertures/suggestions      → autocomplete produits (réceptions r
 
 import io
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -146,13 +146,12 @@ async def suggestions_ouvertures(
     q: Optional[str] = Query(None, description="Filtre sur nom ou code_unique"),
 ):
     """
-    Retourne les produits matière_première pour l'autocomplete :
-    1. Produits issus de réceptions des 21 derniers jours (triés par date DESC, dédupliqués)
-       → inclut N° lot et DLC du lot FIFO disponible
-    2. Reste du catalogue matière_première
+    Retourne les produits matière_première effectivement EN STOCK
+    (au moins un lot conforme, non périmé, non traité via DLC).
+    Chaque produit expose son lot FIFO (DLC la plus courte) avec
+    numero_lot, dlc et reception_ligne_id.
+    Tri : réception la plus récente d'abord.
     """
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=21)).strftime("%Y-%m-%d %H:%M:%S")
-
     like = f"%{q}%" if q else None
 
     # Sous-requête FIFO réutilisable : lot disponible non périmé, non traité
@@ -174,14 +173,13 @@ async def suggestions_ouvertures(
         LIMIT 1
     """
 
-    async with get_db() as db:
-        # --- Produits récents depuis réceptions ---
-        params_recent: list = [cutoff]
-        filter_sql = ""
-        if like:
-            filter_sql = "AND (p.nom LIKE ? OR p.code_unique LIKE ?)"
-            params_recent += [like, like]
+    params: list = []
+    filter_sql = ""
+    if like:
+        filter_sql = "AND (p.nom LIKE ? OR p.code_unique LIKE ?)"
+        params += [like, like]
 
+    async with get_db() as db:
         cursor = await db.execute(
             f"""
             SELECT
@@ -196,8 +194,7 @@ async def suggestions_ouvertures(
             FROM reception_lignes rl
             JOIN receptions r ON r.id = rl.reception_id
             JOIN produits p   ON p.id = rl.produit_id
-            WHERE r.date_reception >= ?
-              AND p.categorie = 'matiere_premiere'
+            WHERE p.categorie = 'matiere_premiere'
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
@@ -211,31 +208,11 @@ async def suggestions_ouvertures(
             GROUP BY p.id
             ORDER BY last_reception DESC
             """,
-            params_recent,
+            params,
         )
-        recent_rows = await cursor.fetchall()
-        recent_ids = {row["produit_id"] for row in recent_rows}
+        rows = await cursor.fetchall()
 
-        # --- Reste du catalogue ---
-        params_cat: list = []
-        filter_cat_sql = ""
-        if like:
-            filter_cat_sql = "AND (nom LIKE ? OR code_unique LIKE ?)"
-            params_cat += [like, like]
-
-        cursor = await db.execute(
-            f"""
-            SELECT id AS produit_id, nom, code_unique, espece
-            FROM produits
-            WHERE categorie = 'matiere_premiere'
-              {filter_cat_sql}
-            ORDER BY nom ASC
-            """,
-            params_cat,
-        )
-        all_rows = await cursor.fetchall()
-
-    results = [
+    return [
         {
             "produit_id": row["produit_id"],
             "nom": row["nom"],
@@ -247,23 +224,8 @@ async def suggestions_ouvertures(
             "dlc": row["dlc"],
             "reception_ligne_id": row["reception_ligne_id"],
         }
-        for row in recent_rows
+        for row in rows
     ]
-    for row in all_rows:
-        if row["produit_id"] not in recent_ids:
-            results.append({
-                "produit_id": row["produit_id"],
-                "nom": row["nom"],
-                "code_unique": row["code_unique"],
-                "espece": row["espece"],
-                "is_recent": False,
-                "last_reception": None,
-                "numero_lot": None,
-                "dlc": None,
-                "reception_ligne_id": None,
-            })
-
-    return results
 
 
 # ---------------------------------------------------------------------------
