@@ -1509,7 +1509,9 @@ function fabReimprimer(fab) {
         : ing.quantite_base;
       qteTexte = `${qteScalee}${ing.unite || ''} `;
     }
-    li.textContent = `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng})`;
+    const origStr = (typeof origineCode === 'function' && ing.origine)
+      ? ` | Orig:${origineCode(ing.origine)}` : '';
+    li.textContent = `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng}${origStr})`;
     ul.appendChild(li);
   });
 
