@@ -2379,19 +2379,117 @@ _onReady(() => {
 /* ══════════════════════════════════════════════════════════════
    📏 ÉTALONNAGES
    ══════════════════════════════════════════════════════════════ */
+
+function creerCarteEtalonnage(e) {
+  const comps    = e.comparaisons || [];
+  const sondesNC = comps.filter(c => c.conforme === 0);
+  const variant  = (e.conforme === 0 || sondesNC.length > 0) ? 'nc' : 'ok';
+
+  const d = document.createElement('div');
+  d.className = `he-carte-simple he-carte-simple--${variant}`;
+  d.setAttribute('role', 'listitem');
+
+  // ── En-tête Phase 1 ──────────────────────────────────────────
+  const entete = document.createElement('div');
+  entete.className = 'he-carte-simple-entete';
+
+  const titre = document.createElement('div');
+  titre.className = 'he-carte-simple-titre';
+  titre.textContent = e.thermometre_nom || `Thermomètre #${e.thermometre_ref_id}`;
+  entete.appendChild(titre);
+
+  const badge = document.createElement('span');
+  badge.className = `he-badge he-badge--${e.conforme === 0 ? 'attention' : 'ok'}`;
+  badge.textContent = e.conforme === 0 ? '⚠ Ph.1 NC' : '✓ Ph.1 OK';
+  entete.appendChild(badge);
+  d.appendChild(entete);
+
+  // ── Méta Phase 1 ─────────────────────────────────────────────
+  const meta = document.createElement('div');
+  meta.className = 'he-carte-simple-meta';
+  meta.textContent = `${formatDateFR(e.date_etalonnage)} — ${e.operateur || '—'} — ${formatTemp(e.temperature_mesuree)}`;
+  d.appendChild(meta);
+
+  // ── Chips Phase 1 ─────────────────────────────────────────────
+  const chips = document.createElement('div');
+  chips.className = 'he-carte-simple-chips';
+  [e.action_corrective, e.reference ? `Réf : ${e.reference}` : null]
+    .filter(Boolean)
+    .forEach(txt => {
+      const chip = document.createElement('span');
+      chip.className = 'he-carte-simple-chip';
+      chip.textContent = txt;
+      chips.appendChild(chip);
+    });
+  d.appendChild(chips);
+
+  // ── Section Phase 2 — Sondes Zigbee ──────────────────────────
+  if (comps.length > 0) {
+    const section = document.createElement('div');
+    section.style.cssText = 'margin-top:10px;border-top:1px solid #EEE;padding-top:8px;';
+
+    const labelSec = document.createElement('div');
+    labelSec.style.cssText = 'font-size:12px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;';
+    labelSec.textContent = '📏 Sondes Zigbee — Phase 2';
+    section.appendChild(labelSec);
+
+    comps.forEach(c => {
+      const ok      = c.conforme !== 0;
+      const signe   = c.ecart >= 0 ? '+' : '';
+      const ecartTxt = `${signe}${Number(c.ecart).toFixed(1)}°C`;
+
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;flex-wrap:wrap;align-items:center;gap:5px 10px;padding:5px 8px;border-radius:6px;margin-bottom:4px;font-size:14px;background:${ok ? 'rgba(45,125,70,.07)' : 'rgba(201,48,48,.07)'};border:1px solid ${ok ? 'rgba(45,125,70,.2)' : 'rgba(201,48,48,.25)'};`;
+
+      const nom = document.createElement('span');
+      nom.style.cssText = 'font-weight:600;flex:1;min-width:120px;';
+      nom.textContent   = c.enceinte_nom;
+
+      const tZ = document.createElement('span');
+      tZ.style.color  = '#666';
+      tZ.textContent  = `Zigbee : ${Number(c.temp_zigbee).toFixed(1)} °C`;
+
+      const tR = document.createElement('span');
+      tR.style.color  = '#666';
+      tR.textContent  = `Réf : ${Number(c.temp_reference).toFixed(1)} °C`;
+
+      const ecartEl = document.createElement('span');
+      ecartEl.style.cssText = `font-weight:700;color:${ok ? 'var(--ok)' : 'var(--alerte)'};`;
+      ecartEl.textContent   = `Écart : ${ecartTxt}`;
+
+      const icon = document.createElement('span');
+      icon.textContent = ok ? '✅' : '❌';
+
+      row.appendChild(nom);
+      row.appendChild(tZ);
+      row.appendChild(tR);
+      row.appendChild(ecartEl);
+      row.appendChild(icon);
+      section.appendChild(row);
+
+      if (!ok) {
+        const alerte = document.createElement('div');
+        alerte.style.cssText = 'background:rgba(201,48,48,.1);border:1px solid var(--alerte);border-radius:6px;padding:7px 10px;font-size:13px;color:var(--alerte);font-weight:600;margin-bottom:4px;';
+        alerte.textContent = `⚠️ Sonde Zigbee "${c.enceinte_nom}" à recalibrer, le responsable est prévenu`;
+        section.appendChild(alerte);
+      }
+    });
+
+    d.appendChild(section);
+  } else {
+    const note = document.createElement('div');
+    note.style.cssText = 'font-size:13px;color:#999;font-style:italic;margin-top:6px;';
+    note.textContent = 'Phase 2 (sondes Zigbee) : non encore réalisée';
+    d.appendChild(note);
+  }
+
+  return d;
+}
+
 async function etalCharger() {
   await chargerListe('etal',
     '/api/etalonnage/historique?limit=100',
-    e => creerCarteSimple({
-      titre: e.thermometre_nom || `Thermomètre #${e.thermometre_ref_id}`,
-      meta : `${formatDateFR(e.date_etalonnage)} — ${e.operateur || '—'} — ${formatTemp(e.temperature_mesuree)}`,
-      sousTitre: e.reference ? `Réf : ${e.reference}` : null,
-      chips: [
-        e.conforme === 0 ? '⚠ Non conforme' : '✓ Conforme',
-        e.action_corrective || null,
-      ].filter(Boolean),
-      variant: e.conforme === 0 ? 'nc' : 'ok',
-    }),
+    e => creerCarteEtalonnage(e),
     { singulier: 'étalonnage', pluriel: 'étalonnages' }
   );
 }

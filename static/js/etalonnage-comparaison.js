@@ -197,8 +197,17 @@ function majBoutonSubmit() {
   elSubmit.disabled = !tous || enceintesState.size === 0;
 }
 
+// ── État post-enregistrement : prêt à rediriger après alerte NC ─
+let pretARediriger = false;
+
 // ── Soumission ────────────────────────────────────────────────
 elSubmit.addEventListener('click', async () => {
+  // Après une NC confirmée, le bouton sert à rediriger
+  if (pretARediriger) {
+    location.href = '/etalonnage.html';
+    return;
+  }
+
   hideMsg();
 
   const comparaisons = [];
@@ -221,13 +230,24 @@ elSubmit.addEventListener('click', async () => {
   elSubmitTexte.textContent = 'Envoi…';
 
   try {
-    await apiFetch(`/api/etalonnage/${etalonnageId}/comparaisons`, {
+    const result = await apiFetch(`/api/etalonnage/${etalonnageId}/comparaisons`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ comparaisons }),
     });
-    // Succès → retour à l'historique (Screen 1)
-    location.href = '/etalonnage.html';
+
+    if (result.sondes_nc && result.sondes_nc.length > 0) {
+      // Afficher une alerte par sonde non conforme avant de rediriger
+      const lignes = result.sondes_nc
+        .map(nom => `⚠️ Sonde Zigbee "${nom}" à recalibrer, le responsable est prévenu`)
+        .join('\n');
+      showMsg(lignes, 'avertissement');
+      elSubmitTexte.textContent = 'OK — Retour accueil →';
+      elSubmit.disabled = false;
+      pretARediriger    = true;
+    } else {
+      location.href = '/etalonnage.html';
+    }
   } catch (err) {
     showMsg(`Erreur : ${err.message}`, 'erreur');
     elSubmit.disabled         = false;

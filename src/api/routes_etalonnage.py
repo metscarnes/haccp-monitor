@@ -145,6 +145,7 @@ async def creer_etalonnage(body: EtalonnageIn):
 @router.get("/historique")
 async def historique_etalonnages(limit: int = Query(50, ge=1, le=500)):
     from src.database import get_db
+    from collections import defaultdict
 
     async with get_db() as db:
         rows = await db.execute_fetchall(
@@ -159,7 +160,35 @@ async def historique_etalonnages(limit: int = Query(50, ge=1, le=500)):
             """,
             (limit,),
         )
-    return [_row_to_dict(r) for r in rows]
+
+        resultats = [_row_to_dict(r) for r in rows]
+
+        if resultats:
+            ids = [r["id"] for r in resultats]
+            placeholders = ",".join("?" * len(ids))
+            comp_rows = await db.execute_fetchall(
+                f"""
+                SELECT etalonnage_id, enceinte_nom, temp_zigbee,
+                       temp_reference, ecart, conforme
+                FROM etalonnage_comparaisons
+                WHERE etalonnage_id IN ({placeholders})
+                ORDER BY enceinte_nom
+                """,
+                ids,
+            )
+            comps: dict = defaultdict(list)
+            for cr in comp_rows:
+                comps[cr[0]].append({
+                    "enceinte_nom":   cr[1],
+                    "temp_zigbee":    cr[2],
+                    "temp_reference": cr[3],
+                    "ecart":          cr[4],
+                    "conforme":       cr[5],
+                })
+            for r in resultats:
+                r["comparaisons"] = comps.get(r["id"], [])
+
+    return resultats
 
 
 # ---------------------------------------------------------------------------
@@ -282,11 +311,23 @@ async def enregistrer_comparaisons(etalonnage_id: int, body: ComparaisonsIn):
 
         await db.commit()
 
+    nc_sondes = [
+        c.enceinte_nom
+        for c in body.comparaisons
+        if abs(round(c.temp_reference - c.temp_zigbee, 2)) > ECART_MAX
+    ]
+
     logger.info(
-        "Comparaisons EET01 enregistrées — étalonnage_id=%d (%d enceintes)",
-        etalonnage_id, len(body.comparaisons),
+        "Comparaisons EET01 enregistrées — étalonnage_id=%d (%d enceintes, %d NC)",
+        etalonnage_id, len(body.comparaisons), len(nc_sondes),
     )
-    return {"ok": True, "etalonnage_id": etalonnage_id, "nb": len(body.comparaisons)}
+    return {
+        "ok":              True,
+        "etalonnage_id":   etalonnage_id,
+        "nb":              len(body.comparaisons),
+        "nb_non_conformes": len(nc_sondes),
+        "sondes_nc":       nc_sondes,
+    }
 
 
 # ---------------------------------------------------------------------------
