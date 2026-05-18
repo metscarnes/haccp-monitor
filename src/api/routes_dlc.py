@@ -225,7 +225,12 @@ async def historique_devenir(
                 WHEN 'reception_ligne'  THEN fo.nom
                 WHEN 'fabrication'      THEN NULL
                 WHEN 'refroidissement'  THEN NULL
-            END AS fournisseur_nom
+            END AS fournisseur_nom,
+            CASE d.source_type
+                WHEN 'reception_ligne'  THEN rl.origine
+                WHEN 'refroidissement'  THEN rl_ref.origine
+                ELSE NULL
+            END AS origine
         FROM       dlc_devenir      d
         LEFT JOIN  reception_lignes rl  ON d.source_type = 'reception_ligne' AND rl.id = d.source_id
         LEFT JOIN  produits         p   ON p.id = rl.produit_id
@@ -234,6 +239,8 @@ async def historique_devenir(
         LEFT JOIN  recettes         r   ON r.id = f.recette_id
         LEFT JOIN  refroidissements ref ON d.source_type = 'refroidissement' AND ref.id = d.source_id
         LEFT JOIN  produits         p_ref ON p_ref.id = ref.produit_id
+        LEFT JOIN  cuissons         c_ref ON c_ref.id = ref.cuisson_id
+        LEFT JOIN  reception_lignes rl_ref ON rl_ref.id = c_ref.reception_ligne_id
         LEFT JOIN  personnel        pers ON pers.id = d.personnel_id
         {where_sql}
         ORDER BY d.created_at DESC, d.id DESC

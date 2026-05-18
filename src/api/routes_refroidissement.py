@@ -101,6 +101,7 @@ async def lister_produits_cuisson():
             "cuisson_date":             lot.get("date_origine"),
             "dlc":                      lot.get("dlc"),
             "numero_lot":               lot.get("numero_lot"),
+            "origine":                  lot.get("origine"),
             "nb_cuissons_disponibles":  1,
         }
 
@@ -293,6 +294,7 @@ async def lister_refroidissements(
                    p.espece     AS espece,
                    pers.prenom  AS personnel_prenom,
                    rl.numero_lot AS reception_numero_lot,
+                   rl.origine    AS origine,
                    rl.reception_id AS reception_id
             FROM   refroidissements r
             LEFT   JOIN produits  p    ON p.id    = r.produit_id

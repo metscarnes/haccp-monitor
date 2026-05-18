@@ -305,6 +305,26 @@
           <div class="rec-lot-genere" id="rec-lot-genere" hidden></div>
         </div>
 
+        <!-- Origine (pays) -->
+        <div class="rec-form-group">
+          <label class="rec-champ-label" for="rec-origine">Origine</label>
+          <div class="rec-origine-wrap" style="position:relative;">
+            <input type="text" id="rec-origine" class="rec-input"
+                   value="France"
+                   placeholder="Pays d'origine"
+                   autocomplete="off"
+                   aria-label="Pays d'origine"
+                   list="rec-origine-suggestions"
+                   style="padding-right:2.5rem;">
+            <button type="button" id="rec-origine-toggle"
+                    class="rec-origine-toggle"
+                    aria-label="Afficher les suggestions de pays"
+                    style="position:absolute;right:.25rem;top:50%;transform:translateY(-50%);background:transparent;border:0;font-size:1.5rem;cursor:pointer;padding:.25rem .5rem;">▼</button>
+            <div id="rec-origine-suggestions-list" class="rec-autocomplete" hidden
+                 role="listbox" aria-label="Suggestions pays"></div>
+          </div>
+        </div>
+
         <!-- DLC / DLUO toggle -->
         <div class="rec-form-group">
           <div class="rec-dlc-header">
@@ -620,6 +640,7 @@
     </div>
   </div>
 
+  <script src="/static/js/core/origine.js"></script>
   <script src="/static/js/reception.js"></script>
 </body>
 </html>

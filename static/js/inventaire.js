@@ -101,9 +101,13 @@ function renderItems() {
     const selecne = gestionState.selection.has(cle) ? ' selectionne' : '';
     const meta    = [];
     if (it.numero_lot)       meta.push(`Lot ${escHtml(it.numero_lot)}`);
+    if (it.origine && typeof origineCode === 'function') {
+      const code = origineCode(it.origine);
+      if (code) meta.push(`Origine : ${escHtml(code)}`);
+    }
     if (it.quantite != null) meta.push(`${it.quantite} ${escHtml(it.unite || '')}`);
     if (it.fournisseur_nom)  meta.push(`Frn : ${escHtml(it.fournisseur_nom)}`);
-    if (it.date_origine)     meta.push(`Origine : ${formatDateFr(it.date_origine)}`);
+    if (it.date_origine)     meta.push(`Reçu : ${formatDateFr(it.date_origine)}`);
 
     return `
       <article class="inv-item inv-item--${niveau}${selecne}"

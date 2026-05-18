@@ -380,7 +380,10 @@ function afficherProduits() {
     if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
     const metaParts = [];
     if (p.cuisson_date) metaParts.push(`Cuisson du ${formatDate(p.cuisson_date)}`);
-    if (p.numero_lot)   metaParts.push(`Lot : ${escHtml(p.numero_lot)}`);
+    if (p.numero_lot)   {
+      const codeOri = (p.origine && typeof origineCode === 'function') ? origineCode(p.origine) : '';
+      metaParts.push(`Lot : ${escHtml(p.numero_lot)}${codeOri ? ` · Origine ${escHtml(codeOri)}` : ''}`);
+    }
     const meta = metaParts.length
       ? `<div class="cu-tuile-dlc">${metaParts.join('<br>')}</div>`
       : '';
@@ -767,7 +770,11 @@ async function chargerHistorique() {
             <strong>${badge}${escHtml(r.produit_nom ?? '—')}</strong>
             <br>
             <small>
-              Lot : ${escHtml(r.numero_lot ?? r.reception_numero_lot ?? '—')}
+              Lot : ${escHtml(r.numero_lot ?? r.reception_numero_lot ?? '—')}${
+                (r.origine && typeof origineCode === 'function' && origineCode(r.origine))
+                  ? ` · Origine ${escHtml(origineCode(r.origine))}`
+                  : ''
+              }
               <br>
               Opérateur : ${escHtml(r.personnel_prenom ?? '—')}
               ${r.action_corrective ? `· Action : ${escHtml(r.action_corrective)}` : ''}

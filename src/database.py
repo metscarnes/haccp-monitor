@@ -2898,10 +2898,12 @@ async def get_fiches_incident(
             fi.*,
             COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
+            rl.origine AS origine,
             per.prenom AS cloturee_par_prenom
         FROM fiches_incident fi
         LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
         LEFT JOIN produits     p   ON p.id  = fi.produit_id
+        LEFT JOIN reception_lignes rl ON rl.id = fi.reception_ligne_id
         LEFT JOIN personnel    per ON per.id = fi.cloturee_par
         {where}
         ORDER BY fi.created_at DESC
@@ -2920,10 +2922,12 @@ async def get_fiche_incident(db: aiosqlite.Connection, fiche_id: int) -> Optiona
             fi.*,
             COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
+            rl.origine AS origine,
             per.prenom AS cloturee_par_prenom
         FROM fiches_incident fi
         LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
         LEFT JOIN produits     p   ON p.id  = fi.produit_id
+        LEFT JOIN reception_lignes rl ON rl.id = fi.reception_ligne_id
         LEFT JOIN personnel    per ON per.id = fi.cloturee_par
         WHERE fi.id = ?
         """,
@@ -3133,6 +3137,7 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
             """
             SELECT rl.id        AS reception_ligne_id,
                    rl.numero_lot,
+                   rl.origine    AS origine,
                    rl.dlc,
                    rl.dluo,
                    rl.poids_kg,
@@ -3415,6 +3420,7 @@ async def get_dlc_calendrier(
                 'reception_ligne'    AS source_type,
                 rl.dlc               AS dlc,
                 rl.numero_lot        AS numero_lot,
+                rl.origine           AS origine,
                 rl.poids_kg          AS quantite,
                 'kg'                 AS unite,
                 p.id                 AS produit_id,
@@ -3497,6 +3503,7 @@ async def get_dlc_calendrier(
                 SELECT
                     p.nom           AS produit_nom,
                     rl.numero_lot,
+                    rl.origine      AS origine,
                     rl.dlc,
                     ri.quantite     AS quantite_base,
                     ri.unite,
@@ -3524,6 +3531,7 @@ async def get_dlc_calendrier(
                 'cuisson'            AS source_type,
                 c.dlc_finale         AS dlc,
                 COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
+                rl.origine           AS origine,
                 c.quantite           AS quantite,
                 COALESCE(c.unite, 'kg') AS unite,
                 p.id                 AS produit_id,
@@ -3570,6 +3578,7 @@ async def get_dlc_calendrier(
                 'refroidissement'      AS source_type,
                 rf.dlc_finale          AS dlc,
                 COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
+                rl.origine             AS origine,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 p.id                   AS produit_id,
@@ -3691,6 +3700,7 @@ async def get_stock_unifie(
                 COALESCE(rl.dlc, rl.dluo) AS dlc,
                 rl.dlc IS NULL AND rl.dluo IS NOT NULL AS est_dluo,
                 rl.numero_lot      AS numero_lot,
+                rl.origine         AS origine,
                 rl.poids_kg        AS quantite,
                 'kg'               AS unite,
                 r.date_reception   AS date_origine,
@@ -3766,6 +3776,7 @@ async def get_stock_unifie(
                 p.espece              AS espece,
                 c.dlc_finale          AS dlc,
                 COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
+                rl.origine            AS origine,
                 c.quantite            AS quantite,
                 COALESCE(c.unite,'kg') AS unite,
                 c.date_cuisson        AS date_origine,
@@ -3805,6 +3816,7 @@ async def get_stock_unifie(
                 p.espece               AS espece,
                 rf.dlc_finale          AS dlc,
                 COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
+                rl.origine             AS origine,
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 rf.date_refroidissement AS date_origine,

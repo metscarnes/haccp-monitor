@@ -70,6 +70,9 @@ const elLot               = document.getElementById('rec-lot');
 const elBtnPasLot         = document.getElementById('rec-btn-pas-lot');
 const elBtnAnnulerLot     = document.getElementById('rec-btn-annuler-lot');
 const elLotGenere         = document.getElementById('rec-lot-genere');
+const elOrigine           = document.getElementById('rec-origine');
+const elOrigineToggle     = document.getElementById('rec-origine-toggle');
+const elOrigineList       = document.getElementById('rec-origine-suggestions-list');
 const elDlc               = document.getElementById('rec-dlc');
 const elDlcBtn            = document.getElementById('rec-dlc-btn');
 const elDluoBtn           = document.getElementById('rec-dluo-btn');
@@ -1560,6 +1563,10 @@ function reinitFormProduit() {
   elBtnPasLot.hidden = false;
   elBtnAnnulerLot.hidden = true;
 
+  // Origine : défaut France à chaque nouveau produit
+  if (elOrigine) elOrigine.value = 'France';
+  if (elOrigineList) elOrigineList.hidden = true;
+
   // DLC reset to DLC mode
   elDlc.value = '';
   elDlcBtn.classList.add('ok-sel');
@@ -1605,6 +1612,7 @@ function majListeLignes() {
       parts.push(`${l.temperature_reception}°C`);
     }
     if (l.numero_lot) parts.push(l.numero_lot);
+    if (l.origine) parts.push(`Origine : ${origineCode(l.origine)}`);
     detail.textContent = parts.join(' · ');
 
     info.appendChild(nom);
@@ -1667,6 +1675,9 @@ function chargerLigneEnEdition(l, idx) {
     elBtnPasLot.hidden = true;
     elBtnAnnulerLot.hidden = false;
   }
+
+  // Restaurer Origine
+  if (elOrigine) elOrigine.value = l.origine || 'France';
 
   // Restaurer DLC/DLUO
   if (l.dluo) {
@@ -1737,6 +1748,8 @@ function _buildPayload() {
   if (obsO) payload.odeur_observation      = obsO;
   const lot = elLot.value.trim();
   if (lot) payload.numero_lot = lot;
+  const origineVal = (elOrigine && elOrigine.value || '').trim();
+  payload.origine = origineVal || 'France';
   const dateVal = elDlc.value;
   if (dateVal) {
     if (dlcMode === 'dluo') payload.dluo = dateVal;
@@ -1779,6 +1792,7 @@ function _ligneToLocal(ligne, produit) {
     temperature_reception: ligne.temperature_reception,
     numero_lot:          ligne.numero_lot,
     lot_interne:         ligne.lot_interne,
+    origine:             ligne.origine || 'France',
     dlc:                 ligne.dlc,
     dluo:                ligne.dluo,
     motifs:              motifsNc,
@@ -1930,6 +1944,7 @@ function remplirRecap() {
       parts.push(`${l.temperature_reception}°C`);
     }
     if (l.numero_lot) parts.push(`Lot${l.lot_interne ? ' interne' : ''} : ${l.numero_lot}`);
+    if (l.origine) parts.push(`Origine : ${origineCode(l.origine)}`);
     det.textContent = parts.join(' · ');
     left.appendChild(nom);
     if (parts.length) left.appendChild(det);
@@ -2300,6 +2315,63 @@ function restaurerDepuisPcr01() {
   }
 }
 
+
+// ── Dropdown Origine (pays UE) ─────────────────────────────
+function _afficherSuggestionsOrigine(filtreTxt) {
+  if (!elOrigineList) return;
+  const norm = s => String(s || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const filtre = norm(filtreTxt);
+  const liste = (typeof PAYS_UE !== 'undefined' ? PAYS_UE : ['France'])
+    .filter(p => !filtre || norm(p).includes(filtre));
+  if (!liste.length) {
+    elOrigineList.hidden = true;
+    return;
+  }
+  elOrigineList.innerHTML = liste.map(p => {
+    const code = (typeof origineCode === 'function') ? origineCode(p) : '';
+    return `<div class="rec-autocomplete-item" role="option" data-pays="${p}">
+      <span style="font-weight:600;">${p}</span>
+      ${code ? `<span style="color:var(--hors-ligne);margin-left:.5rem;">${code}</span>` : ''}
+    </div>`;
+  }).join('');
+  elOrigineList.hidden = false;
+}
+
+if (elOrigine) {
+  elOrigine.addEventListener('focus', () => {
+    // Sur focus, on n'affiche pas auto le menu (le bouton flèche le fait)
+  });
+  elOrigine.addEventListener('input', () => {
+    if (!elOrigineList || elOrigineList.hidden) return;
+    _afficherSuggestionsOrigine(elOrigine.value);
+  });
+  elOrigine.addEventListener('blur', () => {
+    // Laisser le temps au clic sur l'item de se propager
+    setTimeout(() => { if (elOrigineList) elOrigineList.hidden = true; }, 150);
+  });
+}
+if (elOrigineToggle) {
+  elOrigineToggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!elOrigineList) return;
+    if (elOrigineList.hidden) {
+      _afficherSuggestionsOrigine('');
+      elOrigine && elOrigine.focus();
+    } else {
+      elOrigineList.hidden = true;
+    }
+  });
+}
+if (elOrigineList) {
+  elOrigineList.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('[data-pays]');
+    if (!item) return;
+    e.preventDefault();
+    if (elOrigine) elOrigine.value = item.dataset.pays;
+    elOrigineList.hidden = true;
+  });
+}
 
 // ── Initialisation ─────────────────────────────────────────
 async function init() {

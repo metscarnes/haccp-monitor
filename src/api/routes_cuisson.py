@@ -179,6 +179,7 @@ async def lister_cuissons(
                    p.espece    AS espece,
                    pers.prenom AS personnel_prenom,
                    COALESCE(rl.numero_lot, fab.lot_interne) AS numero_lot,
+                   rl.origine  AS origine,
                    rl.reception_id AS reception_id
             FROM   cuissons c
             LEFT   JOIN produits        p    ON p.id    = c.produit_id
@@ -235,6 +236,7 @@ async def produits_disponibles_pour_cuisson():
             "type_produit":       lot.get("type_produit"),
             "en_stock":           True,
             "numero_lot":         lot.get("numero_lot"),
+            "origine":            lot.get("origine"),
             "dlc":                lot.get("dlc"),
             "source_type":        src_type,
             "source_id":          src_id,
@@ -271,6 +273,7 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
                    rl.id                AS reception_ligne_id,
                    rl.reception_id      AS reception_id,
                    rl.numero_lot,
+                   rl.origine           AS origine,
                    COALESCE(rl.dlc, rl.dluo) AS dlc,
                    rl.poids_kg,
                    rl.temperature_reception,

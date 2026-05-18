@@ -367,8 +367,10 @@ function afficherProduits() {
     const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
     const dlc   = p.en_stock && p.dlc
       ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
+    const codeOrigine = (p.en_stock && p.origine && typeof origineCode === 'function')
+      ? origineCode(p.origine) : '';
     const lot   = p.en_stock && p.numero_lot
-      ? `<div class="cu-tuile-lot">Lot ${escHtml(p.numero_lot)}</div>` : '';
+      ? `<div class="cu-tuile-lot">Lot ${escHtml(p.numero_lot)}${codeOrigine ? ` <span class="cu-tuile-origine">· ${escHtml(codeOrigine)}</span>` : ''}</div>` : '';
     const icone = ESPECES_ICONES[p.espece] ?? '🥩';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
@@ -459,12 +461,14 @@ async function selectionnerProduit(id, nom) {
       elLotSelect.innerHTML = lotsAvecIdx.map(({ lot }) => {
         const key = lotKey(lot);
         const estFifo = key === state.fifoLotKey;
-        const origine = lot.source_type === 'fabrication' ? 'fabriqué' : 'reçu';
+        const origineVerbe = lot.source_type === 'fabrication' ? 'fabriqué' : 'reçu';
+        const codeOri = (lot.origine && typeof origineCode === 'function') ? origineCode(lot.origine) : '';
         const label = [
           estFifo ? '⭐ FIFO —' : '',
           `Lot ${lot.numero_lot ?? '—'}`,
+          codeOri ? `· Origine ${codeOri}` : '',
           `· DLC ${formatDate(lot.dlc)}`,
-          `· ${origine} ${formatDate(lot.date_reception)}`,
+          `· ${origineVerbe} ${formatDate(lot.date_reception)}`,
           lot.fournisseur_nom ? `· ${lot.fournisseur_nom}` : '',
         ].filter(Boolean).join(' ');
         return `<option value="${escHtml(key)}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
@@ -499,8 +503,9 @@ function appliquerLotChoisi(lot) {
   const badgeFab = srcType === 'fabrication'
     ? ' <span class="cu-fifo-badge">🔪 Fabrication</span>'
     : '';
+  const codeOri = (lot.origine && typeof origineCode === 'function') ? origineCode(lot.origine) : '';
   elProdLot.innerHTML = lot.numero_lot
-    ? `Lot : ${escHtml(lot.numero_lot)}${badgeFifo}${badgeFab}`
+    ? `Lot : ${escHtml(lot.numero_lot)}${codeOri ? ` · Origine : ${escHtml(codeOri)}` : ''}${badgeFifo}${badgeFab}`
     : '';
   elProdDlc.textContent = lot.dlc ? `DLC : ${formatDate(lot.dlc)}` : '';
 }
@@ -531,7 +536,11 @@ elBtnHisto.addEventListener('click', async () => {
       <div class="cu-histo-ligne">
         <div class="cu-histo-date">${formatDate(r.date_reception)}</div>
         <div class="cu-histo-info">
-          <strong>Lot :</strong> ${escHtml(r.numero_lot ?? '—')}
+          <strong>Lot :</strong> ${escHtml(r.numero_lot ?? '—')}${
+            (r.origine && typeof origineCode === 'function' && origineCode(r.origine))
+              ? ` &nbsp;·&nbsp; <strong>Origine :</strong> ${escHtml(origineCode(r.origine))}`
+              : ''
+          }
           &nbsp;·&nbsp; <strong>DLC :</strong> ${formatDate(r.dlc)}
           ${r.fournisseur_nom ? `<br><small>${escHtml(r.fournisseur_nom)}</small>` : ''}
           ${r.poids_kg ? `&nbsp;·&nbsp;${r.poids_kg} kg` : ''}

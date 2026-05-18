@@ -120,6 +120,11 @@ async def lister_produits(
                  JOIN receptions r2 ON r2.id = rl2.reception_id
                  WHERE {_fifo_where} {_fifo_order})
             """
+            _fifo_origine = f"""
+                (SELECT rl2.origine FROM reception_lignes rl2
+                 JOIN receptions r2 ON r2.id = rl2.reception_id
+                 WHERE {_fifo_where} {_fifo_order})
+            """
             _exists_dispo = """
                 EXISTS (
                     SELECT 1 FROM reception_lignes rl
@@ -140,7 +145,8 @@ async def lister_produits(
                 SELECT p.*, {_fifo_sub} AS numero_lot,
                        {_fifo_dlc} AS dlc,
                        {_fifo_dluo} AS dluo,
-                       {_fifo_id}  AS reception_ligne_id
+                       {_fifo_id}  AS reception_ligne_id,
+                       {_fifo_origine} AS origine
                 FROM produits p
                 WHERE p.boutique_id = ? AND p.actif = 1
                   AND {_exists_dispo}
@@ -178,6 +184,7 @@ async def lots_disponibles(
             p.type_produit AS type_produit,
             rl.id          AS reception_ligne_id,
             rl.numero_lot  AS numero_lot,
+            rl.origine     AS origine,
             rl.dlc         AS dlc,
             rl.dluo        AS dluo,
             rl.poids_kg    AS poids_kg,

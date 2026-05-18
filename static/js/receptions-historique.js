@@ -458,6 +458,7 @@ function creerLigne(lig) {
   const champs = [
     { label: 'Fournisseur',   valeur: lig.fournisseur_nom || '—' },
     { label: 'N° lot',        valeur: lig.numero_lot || '—' },
+    { label: 'Origine',       valeur: lig.origine || '—' },
     { label: 'DLC',           valeur: formatDateFR(lig.dlc) },
     { label: 'T° réception',  valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur',     valeur: formatTemp(lig.temperature_coeur) },

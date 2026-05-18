@@ -541,6 +541,7 @@ async def suggestions_produits_receptions(
                 -- Fournisseur de la ligne si défini, sinon de la réception parente
                 COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom) AS fournisseur_nom,
                 rl.numero_lot  AS numero_lot,
+                rl.origine     AS origine,
                 rl.dlc         AS dlc,
                 r.date_reception AS date_reception
             FROM reception_lignes rl
@@ -568,6 +569,7 @@ async def suggestions_produits_receptions(
                 "espece": d["espece"],
                 "fournisseurs": [],
                 "dernier_lot": d["numero_lot"],
+                "derniere_origine": d.get("origine"),
                 "derniere_dlc": d["dlc"],
                 "derniere_reception": d["date_reception"],
             }

@@ -201,6 +201,7 @@ async def fifo_produit(produit_id: int):
             """
             SELECT rl.id              AS id,
                    rl.numero_lot,
+                   rl.origine          AS origine,
                    rl.dlc,
                    rl.dluo,
                    rl.poids_kg,
@@ -244,6 +245,7 @@ async def debug_fifo(produit_id: int):
             SELECT
                 rl.id,
                 rl.numero_lot,
+                rl.origine,
                 rl.dlc,
                 rl.dluo,
                 rl.conforme,

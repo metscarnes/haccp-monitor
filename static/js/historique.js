@@ -807,6 +807,7 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
   const champs = [
     { label: 'Fournisseur', valeur: lig.fournisseur_nom || receptionFournisseurNom || '—' },
     { label: 'N° lot', valeur: lig.numero_lot || '—' },
+    { label: 'Origine', valeur: lig.origine || '—' },
     { label: 'DLC', valeur: formatDateFR(lig.dlc) },
     { label: 'T° réception', valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur', valeur: formatTemp(lig.temperature_coeur) },
@@ -1893,7 +1894,7 @@ function creerCarteSimple({ titre, sousTitre, meta, chips, badge, variant }) {
 }
 
 /* ── Carte accordéon avec traçabilité (cuissons / refroidissements) ── */
-function creerCarteTraca({ icone, titre, lot, dlc, meta, chips, variant, etiquette, remplirDetail }) {
+function creerCarteTraca({ icone, titre, lot, origine, dlc, meta, chips, variant, etiquette, remplirDetail }) {
   const carte = document.createElement('div');
   carte.className = 'he-carte-fab' + (variant ? ` he-carte-fab--${variant}` : '');
   carte.setAttribute('role', 'listitem');
@@ -1921,6 +1922,16 @@ function creerCarteTraca({ icone, titre, lot, dlc, meta, chips, variant, etiquet
     lotEl.className = 'he-fab-lot';
     lotEl.textContent = `Lot ${lot}`;
     entete.appendChild(lotEl);
+  }
+  if (origine && typeof origineCode === 'function') {
+    const code = origineCode(origine);
+    if (code) {
+      const oriEl = document.createElement('span');
+      oriEl.className = 'he-fab-origine';
+      oriEl.style.cssText = 'display:inline-block;margin-left:.5rem;font-size:.7rem;font-weight:700;color:#2D7D46;background:#dcfce7;padding:2px 8px;border-radius:4px;flex-shrink:0;';
+      oriEl.textContent = `Origine : ${code}`;
+      entete.appendChild(oriEl);
+    }
   }
   if (dlc) {
     const dlcBadge = document.createElement('span');
@@ -2272,6 +2283,7 @@ async function cuisLister() {
       icone: '🔥',
       titre: c.produit_nom || '—',
       lot:   c.numero_lot || null,
+      origine: c.origine || null,
       dlc:   c.dlc_finale || null,
       meta:  `${formatDateFR(c.date_cuisson)} — ${c.personnel_prenom || '—'} — T° à cœur ${formatTemp(c.temperature_sortie)}`,
       chips: [
@@ -2334,6 +2346,7 @@ async function refrLister() {
       icone: '❄️',
       titre: r.produit_nom || '—',
       lot:   r.numero_lot || r.reception_numero_lot || null,
+      origine: r.origine || null,
       dlc:   r.dlc_finale || null,
       meta:  `${formatDateFR(r.date_refroidissement)} — ${r.personnel_prenom || '—'} — T° ${formatTemp(r.temperature_initiale)} → ${formatTemp(r.temperature_finale)}`,
       chips: [
@@ -2524,6 +2537,10 @@ async function dlcdevLister() {
       const srcLabel = d.source_type === 'fabrication' ? 'Fabrication' : 'Réception';
       const chips = [ srcLabel ];
       if (d.numero_lot) chips.push(`Lot ${d.numero_lot}`);
+      if (d.origine && typeof origineCode === 'function') {
+        const code = origineCode(d.origine);
+        if (code) chips.push(`Origine : ${code}`);
+      }
       if (d.poids_kg)   chips.push(`${d.poids_kg} kg`);
       if (d.fournisseur_nom) chips.push(d.fournisseur_nom);
       return creerCarteSimple({
