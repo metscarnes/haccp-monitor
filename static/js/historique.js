@@ -1339,6 +1339,14 @@ function fabRemplirIngredients(el, ingredients, fab) {
       lotEl.appendChild(dlcTxt);
     }
 
+    if (ing.origine) {
+      const origTxt = document.createElement('span');
+      origTxt.className = 'he-fab-ing-origine';
+      const code = typeof origineCode === 'function' ? origineCode(ing.origine) : ing.origine;
+      origTxt.textContent = ` · Origine ${code}`;
+      lotEl.appendChild(origTxt);
+    }
+
     if (ing.reception_id) {
       const lien = document.createElement('a');
       lien.href = `/reception-detail.html?id=${ing.reception_id}`;

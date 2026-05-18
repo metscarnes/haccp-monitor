@@ -439,12 +439,14 @@ function htmlLigneFifoOk(lot, ingId) {
   const ingNom    = lot.produit_nom ?? lot.ingredient_nom ?? '';
   const dateVal   = lotFifo.dlc || lotFifo.dluo;
   const dateLabel = lotFifo.dluo && !lotFifo.dlc ? 'DLUO' : 'DLC';
+  const codeOrig  = (typeof origineCode === 'function' && lotFifo.origine)
+    ? ` · Origine ${origineCode(lotFifo.origine)}` : '';
   return `
     <div class="fab-lot-ligne fab-lot-ligne--ok" data-pid="${ingId}">
       <span class="fab-lot-check">✓</span>
       <div class="fab-lot-nom">${escHtml(ingNom)}</div>
       <div class="fab-lot-info">
-        Lot ${escHtml(lotFifo.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal ?? '')}
+        Lot ${escHtml(lotFifo.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal ?? '')}${codeOrig}
       </div>
       <button class="fab-lot-btn-remplacer fab-lot-btn-personnaliser"
               data-pid="${ingId}"
@@ -779,6 +781,7 @@ function validerSubstitution(produitId, produitNom, receptionLigneId) {
         numero_lot:         fifoData.numero_lot ?? null,
         dlc:  isDluo ? null : dateVal,
         dluo: isDluo ? dateVal : null,
+        origine:            fifoData.origine ?? null,
       };
       lot.produit_id     = Number(produitId);
       lot.produit_nom    = produitNom + suffixe;
@@ -793,11 +796,13 @@ function validerSubstitution(produitId, produitNom, receptionLigneId) {
     elSubOverlay.hidden = true;
 
     const dateLabel = isDluo ? 'DLUO' : 'DLC';
+    const codeOrig  = (typeof origineCode === 'function' && fifoData.origine)
+      ? ` · Origine ${origineCode(fifoData.origine)}` : '';
     const ligne = elLots.querySelector(`.fab-lot-ligne[data-pid="${subPidCourant}"]`);
     if (ligne) {
       const badgeContenu = memeProduit
-        ? `Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}`
-        : `→ ${escHtml(produitNom)} (substitut) | Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}`;
+        ? `Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}${codeOrig}`
+        : `→ ${escHtml(produitNom)} (substitut) | Lot ${escHtml(fifoData.numero_lot ?? '—')} | ${dateLabel} ${formatDate(dateVal)}${codeOrig}`;
       ligne.outerHTML = `
         <div class="fab-lot-ligne fab-lot-ligne--substitue" data-pid="${subPidCourant}">
           <span class="fab-lot-check">✓</span>
@@ -831,6 +836,7 @@ function validerSubstitution(produitId, produitNom, receptionLigneId) {
         dlc:        lotChoisi.dlc,
         dluo:       lotChoisi.dluo,
         poids_kg:   lotChoisi.poids_kg,
+        origine:    lotChoisi.origine ?? null,
       });
     } else {
       appliquerSubstitution(null);
@@ -936,12 +942,15 @@ function afficherRecap() {
   // même en cas de substitution (la DLC vient de la réception FIFO du substitut).
   const lotsMap = {};
   (state.fifoLots ?? []).forEach(lot => {
-    const riId   = String(lot.recette_ingredient_id ?? lot.ingredient_id);
-    const numLot = lot.lot_fifo?.numero_lot ?? '—';
-    const sub    = state.lotsSubstitues[riId];
+    const riId    = String(lot.recette_ingredient_id ?? lot.ingredient_id);
+    const numLot  = lot.lot_fifo?.numero_lot ?? '—';
+    const sub     = state.lotsSubstitues[riId];
+    const origine = lot.lot_fifo?.origine ?? null;
+    const codeOrig = (typeof origineCode === 'function' && origine)
+      ? ` · Origine ${origineCode(origine)}` : '';
     lotsMap[riId] = sub
-      ? `${numLot} (Substitut : ${sub.nom})`
-      : numLot;
+      ? `${numLot} (Substitut : ${sub.nom})${codeOrig}`
+      : `${numLot}${codeOrig}`;
   });
 
   const linesHtml = state.ingredients.map(ing => {
@@ -1076,7 +1085,9 @@ elBtnGenerer.addEventListener('click', async () => {
       const unite = ing?.unite ?? '';
       const qteTexte = qte !== '' ? `${qte}${unite} ` : '';
 
-      li.textContent = `${qteTexte}${nom} (L:${numLot} | DLC:${dlcIng})`;
+      const origStr = (typeof origineCode === 'function' && lot.lot_fifo?.origine)
+        ? ` | Orig:${origineCode(lot.lot_fifo.origine)}` : '';
+      li.textContent = `${qteTexte}${nom} (L:${numLot} | DLC:${dlcIng}${origStr})`;
       ulIngredients.appendChild(li);
     });
 

@@ -3330,6 +3330,7 @@ async def get_fabrications_historique(
             SELECT
                 p.nom           AS produit_nom,
                 rl.numero_lot,
+                rl.origine      AS origine,
                 rl.dlc,
                 ri.quantite     AS quantite_base,
                 ri.unite,
