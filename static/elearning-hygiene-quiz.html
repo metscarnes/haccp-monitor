@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Quiz Hygiène — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <style>
+    .hub-body { background: #EDE0C8; }
+
+    .quiz-grille {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      padding: 1rem;
+      align-content: start;
+    }
+
+    @media (min-width: 600px)  { .quiz-grille { grid-template-columns: repeat(3, 1fr); } }
+    @media (min-width: 900px)  { .quiz-grille { grid-template-columns: repeat(5, 1fr); } }
+
+    /* ── Carte Quiz ── */
+    .quiz-card {
+      background: var(--color-card);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 2px 10px rgba(61,32,8,.10), 0 0 0 1.5px rgba(61,32,8,.06);
+      display: flex;
+      flex-direction: column;
+      text-decoration: none;
+      color: var(--color-text);
+      overflow: hidden;
+      position: relative;
+      transition: transform 0.16s ease, box-shadow 0.16s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .quiz-card:hover,
+    .quiz-card:focus-visible {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 28px rgba(61,32,8,.18), 0 0 0 2px var(--color-secondary);
+      outline: none;
+    }
+    .quiz-card:active { transform: scale(0.97); }
+
+    /* En-tête coloré de la carte */
+    .quiz-card-head {
+      position: relative;
+      aspect-ratio: 16 / 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      background: linear-gradient(150deg, #6B3A1F 0%, #3D2008 100%);
+      color: #F5ECD7;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+    .quiz-card-emoji { font-size: clamp(1.8rem, 6vw, 2.4rem); line-height: 1; }
+    .quiz-card-num {
+      position: absolute;
+      top: 0.45rem;
+      left: 0.45rem;
+      background: var(--color-secondary);
+      color: var(--color-text);
+      font-size: 0.66rem;
+      font-weight: 800;
+      border-radius: 50%;
+      width: 1.45rem;
+      height: 1.45rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 5px rgba(0,0,0,.45);
+    }
+
+    /* Badge état (réussi / verrouillé) */
+    .quiz-card-badge {
+      position: absolute;
+      top: 0.45rem;
+      right: 0.45rem;
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      padding: 0.18rem 0.5rem;
+      border-radius: var(--radius-pill);
+      box-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+    .quiz-card-badge--ok    { background: var(--color-ok);   color: #fff; }
+    .quiz-card-badge--retry { background: var(--color-warning); color: #fff; }
+    .quiz-card-badge[hidden] { display: none; }
+
+    /* Infos */
+    .quiz-card-info {
+      padding: 0.5rem 0.6rem 0.6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.18rem;
+    }
+    .quiz-card-module {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-secondary);
+    }
+    .quiz-card-titre {
+      font-size: clamp(0.72rem, 1.8vw, 0.84rem);
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      line-height: 1.2;
+      color: var(--color-text);
+    }
+    .quiz-card-sub {
+      font-size: 0.62rem;
+      font-weight: 600;
+      color: var(--color-secondary);
+      opacity: 0.85;
+      margin-top: 0.05rem;
+    }
+
+    /* Carte verrouillée (quiz pas encore disponible) */
+    .quiz-card--lock {
+      pointer-events: none;
+      opacity: 0.5;
+      filter: grayscale(0.4);
+    }
+    .quiz-card--lock .quiz-card-head {
+      background: linear-gradient(150deg, #9c8a76 0%, #6f6253 100%);
+    }
+  </style>
+</head>
+<body class="hub-body">
+
+  <header class="hub-header">
+    <a href="/elearning-hygiene.html" class="hub-btn-admin" aria-label="Retour à Hygiène">← Hygiène</a>
+    <div class="hub-titre">QUIZ HYGIÈNE</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="quiz-grille" role="main" id="quiz-grille">
+    <!-- Cartes injectées par JS -->
+  </main>
+
+  <script>
+    // Liste des 10 quiz (titres alignés sur les modules de cours).
+    // disponible:true => quiz jouable ; sinon verrouillé "Bientôt".
+    const QUIZ = [
+      { id: 1,  titre: 'HACCP',           disponible: true  },
+      { id: 2,  titre: 'LE PND',          disponible: false },
+      { id: 3,  titre: 'VESTIAIRE',       disponible: false },
+      { id: 4,  titre: 'RÉCEPTION',       disponible: false },
+      { id: 5,  titre: 'TEMPÉRATURES',    disponible: false },
+      { id: 6,  titre: 'TRAÇABILITÉ',     disponible: false },
+      { id: 7,  titre: 'FABRICATION',     disponible: false },
+      { id: 8,  titre: 'CUISSON',         disponible: false },
+      { id: 9,  titre: 'REFROIDISSEMENT', disponible: false },
+      { id: 10, titre: 'ALLERGÈNES',      disponible: false },
+    ];
+
+    const grille = document.getElementById('quiz-grille');
+
+    function carteHTML(q) {
+      const lock = q.disponible ? '' : ' quiz-card--lock';
+      const tag = q.disponible ? 'a' : 'div';
+      const href = q.disponible
+        ? ` href="/quiz.html?quiz=${q.id}"`
+        : '';
+      const sub = q.disponible ? '📝 10 questions' : '🔒 Bientôt';
+      return `
+        <${tag} class="quiz-card${lock}"${href} aria-label="Quiz ${q.id} — ${q.titre}">
+          <div class="quiz-card-head">
+            <span class="quiz-card-num">${q.id}</span>
+            <span class="quiz-card-badge quiz-card-badge--ok" data-badge="${q.id}" hidden>✓ Réussi</span>
+            <span class="quiz-card-emoji" aria-hidden="true">📝</span>
+          </div>
+          <div class="quiz-card-info">
+            <span class="quiz-card-module">QUIZ ${q.id}</span>
+            <span class="quiz-card-titre">${q.titre}</span>
+            <span class="quiz-card-sub">${sub}</span>
+          </div>
+        </${tag}>`;
+    }
+
+    grille.innerHTML = QUIZ.map(carteHTML).join('');
+
+    // Marquer les quiz déjà réussis (≥ 80 %) via l'API.
+    (async function marquerReussites() {
+      try {
+        const res = await fetch('/api/elearning/quiz/resultats?limit=500');
+        if (!res.ok) return;
+        const resultats = await res.json();
+        const reussis = new Set(
+          resultats.filter(r => r.reussi).map(r => r.quiz_id)
+        );
+        reussis.forEach(id => {
+          const badge = document.querySelector(`[data-badge="${id}"]`);
+          if (badge) badge.hidden = false;
+        });
+      } catch (e) {
+        console.warn('Résultats quiz non chargés :', e);
+      }
+    })();
+
+    // Horloge
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() { el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+      tick(); setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

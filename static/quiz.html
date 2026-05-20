@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Quiz — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <link rel="stylesheet" href="/static/css/pages/quiz.css">
+</head>
+<body class="hub-body quiz-body">
+
+  <!-- ========================================================
+       EN-TÊTE + barre de progression
+  ========================================================= -->
+  <header class="hub-header">
+    <a href="/elearning-hygiene-quiz.html" id="btn-retour" class="hub-btn-admin" aria-label="Retour aux quiz">← Quiz</a>
+    <div class="hub-titre" id="quiz-titre">QUIZ</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <div class="quiz-progress" aria-hidden="true">
+    <div class="quiz-progress-bar" id="quiz-progress-bar" style="width:0%"></div>
+  </div>
+
+  <main class="quiz-main" role="main">
+
+    <!-- ─────────────── ÉCRAN 1 : Choix du participant ─────────────── -->
+    <section class="quiz-panel quiz-intro" id="ecran-intro">
+      <div class="quiz-card-shell">
+        <div class="quiz-intro-emoji" aria-hidden="true">📝</div>
+        <h1 class="quiz-intro-titre" id="intro-titre">Quiz</h1>
+        <p class="quiz-intro-sub" id="intro-sub">10 questions · réussite à partir de 80 %</p>
+
+        <label class="quiz-label" for="select-personnel">Qui passe ce quiz ?</label>
+        <select id="select-personnel" class="quiz-select" aria-label="Choisir le participant">
+          <option value="">— Sélectionner —</option>
+        </select>
+
+        <p class="quiz-intro-dernier" id="intro-dernier" hidden></p>
+
+        <button id="btn-demarrer" class="quiz-btn quiz-btn--primary" disabled>
+          Commencer le quiz
+        </button>
+      </div>
+    </section>
+
+    <!-- ─────────────── ÉCRAN 2 : Questions ─────────────── -->
+    <section class="quiz-panel quiz-question" id="ecran-question" hidden>
+      <div class="quiz-card-shell">
+
+        <div class="quiz-q-meta">
+          <span class="quiz-q-compteur" id="q-compteur">Question 1 / 10</span>
+          <span class="quiz-q-score" id="q-score">Score : 0</span>
+        </div>
+
+        <h2 class="quiz-q-enonce" id="q-enonce"></h2>
+
+        <div class="quiz-options" id="q-options" role="group" aria-label="Réponses possibles">
+          <!-- boutons d'options injectés -->
+        </div>
+
+        <!-- Indice -->
+        <div class="quiz-indice-zone">
+          <button id="btn-indice" class="quiz-btn quiz-btn--ghost quiz-btn--sm" type="button">
+            💡 Afficher un indice
+          </button>
+          <div class="quiz-indice" id="q-indice" hidden></div>
+        </div>
+
+        <!-- Bloc révélé après réponse -->
+        <div class="quiz-feedback" id="q-feedback" hidden>
+
+          <div class="quiz-verdict" id="q-verdict"></div>
+
+          <!-- Correction détaillée (dépliable) -->
+          <button class="quiz-accordion" id="btn-correction" type="button" aria-expanded="false">
+            <span>🔍 Correction détaillée</span>
+            <span class="quiz-accordion-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="quiz-accordion-body" id="q-correction" hidden></div>
+
+          <!-- Explication (dépliable) -->
+          <button class="quiz-accordion" id="btn-explication" type="button" aria-expanded="false">
+            <span>📖 Afficher l'explication</span>
+            <span class="quiz-accordion-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="quiz-accordion-body" id="q-explication" hidden></div>
+
+          <button id="btn-suivant" class="quiz-btn quiz-btn--primary quiz-btn--next">
+            Question suivante →
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ─────────────── ÉCRAN 3 : Résultat final ─────────────── -->
+    <section class="quiz-panel quiz-resultat" id="ecran-resultat" hidden>
+      <div class="quiz-card-shell quiz-resultat-shell">
+        <div class="quiz-resultat-emoji" id="resultat-emoji" aria-hidden="true">🎉</div>
+        <h2 class="quiz-resultat-titre" id="resultat-titre">Quiz terminé !</h2>
+
+        <div class="quiz-score-cercle" id="score-cercle">
+          <span class="quiz-score-pct" id="score-pct">0 %</span>
+          <span class="quiz-score-frac" id="score-frac">0 / 10</span>
+        </div>
+
+        <p class="quiz-resultat-msg" id="resultat-msg"></p>
+        <p class="quiz-resultat-trace" id="resultat-trace" hidden></p>
+
+        <div class="quiz-resultat-actions">
+          <button id="btn-recommencer" class="quiz-btn quiz-btn--ghost">↻ Recommencer</button>
+          <a href="/elearning-hygiene-quiz.html" class="quiz-btn quiz-btn--primary">Retour aux quiz</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- État de chargement / erreur -->
+    <section class="quiz-panel quiz-erreur" id="ecran-erreur" hidden>
+      <div class="quiz-card-shell">
+        <div class="quiz-intro-emoji" aria-hidden="true">⚠️</div>
+        <h2 class="quiz-intro-titre">Quiz indisponible</h2>
+        <p class="quiz-intro-sub" id="erreur-msg">Impossible de charger ce quiz.</p>
+        <a href="/elearning-hygiene-quiz.html" class="quiz-btn quiz-btn--primary">Retour aux quiz</a>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="/static/js/quiz.js"></script>
+</body>
+</html>

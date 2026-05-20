@@ -631,6 +631,30 @@ CREATE INDEX IF NOT EXISTS idx_elearning_module
 
 CREATE INDEX IF NOT EXISTS idx_elearning_personnel
     ON elearning_completions(personnel_id, date_completion);
+
+-- ===========================================================================
+-- Module Quiz E-Learning — résultats des quiz (attestation de formation)
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS quiz_resultats (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id       INTEGER NOT NULL DEFAULT 1,
+    quiz_id           INTEGER NOT NULL,            -- 1..10 (numéro du quiz hygiène)
+    personnel_id      INTEGER NOT NULL,
+    score             INTEGER NOT NULL,            -- nb de bonnes réponses
+    total             INTEGER NOT NULL,            -- nb total de questions
+    pourcentage       INTEGER NOT NULL,            -- 0..100
+    reussi            INTEGER NOT NULL DEFAULT 0,  -- 1 si pourcentage >= seuil (80)
+    date_completion   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_resultats_quiz
+    ON quiz_resultats(quiz_id, date_completion);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_resultats_personnel
+    ON quiz_resultats(personnel_id, quiz_id, date_completion);
 """
 
 SEED_SQL = """

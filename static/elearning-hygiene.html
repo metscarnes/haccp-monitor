@@ -30,7 +30,7 @@
   <!-- ========================================================
        GRILLE — Modes de formation Hygiène
   ========================================================= -->
-  <main class="hub-grille" role="main" style="grid-template-columns: 1fr 1fr; grid-template-rows: 1fr;">
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr;">
 
     <!-- ── Vidéos de formation ── -->
     <a class="hub-tuile hub-tuile--ok" id="tuile-hygiene-videos"
@@ -48,6 +48,15 @@
       <div class="hub-tuile-icone" aria-hidden="true">🎓</div>
       <div class="hub-tuile-titre">MODULE</div>
       <div class="hub-tuile-statut">10 supports de cours<br><small>Fiches PDF par module</small></div>
+    </a>
+
+    <!-- ── Quiz de validation ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-hygiene-quiz"
+       href="/elearning-hygiene-quiz.html"
+       aria-label="Quiz de validation hygiène">
+      <div class="hub-tuile-icone" aria-hidden="true">📝</div>
+      <div class="hub-tuile-titre">QUIZ</div>
+      <div class="hub-tuile-statut">10 quiz de validation<br><small>Réussite ≥ 80 %</small></div>
     </a>
 
   </main>
