@@ -41,6 +41,14 @@
   const elDejaDetail  = $('deja-detail');
   const elBtnDejaRejouer = $('btn-deja-rejouer');
 
+  // Pop-up « reprise d'un quiz en cours »
+  const elModalReprise   = $('modal-reprise');
+  const elRepriseMsg     = $('reprise-msg');
+  const elRepriseAvanc   = $('reprise-avancement');
+  const elRepriseDetail  = $('reprise-detail');
+  const elBtnRepriseContinuer   = $('btn-reprise-continuer');
+  const elBtnRepriseRecommencer = $('btn-reprise-recommencer');
+
   // Question
   const elQCompteur   = $('q-compteur');
   const elQScore      = $('q-score');
@@ -85,6 +93,7 @@
   let personnelId = null;
   let personnelPrenom = '';
   let repondu = false;
+  let reponses = {};        // {0:'A',1:'C',...} réponses données (pour la reprise)
 
   // ── Horloge ─────────────────────────────────────────────────
   function tickHorloge() {
@@ -191,9 +200,33 @@
     if (elSelect.value) {
       personnelId = parseInt(elSelect.value, 10);
       personnelPrenom = elSelect.options[elSelect.selectedIndex].textContent;
-      verifierDejaReussi();
+      verifierEtatParticipant();
     }
   });
+
+  // À la sélection : on regarde d'abord s'il y a une partie en cours à reprendre,
+  // sinon on regarde si la personne a déjà validé ce quiz.
+  async function verifierEtatParticipant() {
+    const prog = await chargerProgression();
+    if (prog && prog.q_index > 0) {
+      afficherModalReprise(prog);
+      return;
+    }
+    verifierDejaReussi();
+  }
+
+  async function chargerProgression() {
+    try {
+      const res = await fetch(
+        `/api/elearning/quiz/progression?quiz_id=${quizId}&personnel_id=${personnelId}`
+      );
+      if (!res.ok) return null;
+      return await res.json();   // null si aucune progression
+    } catch (e) {
+      console.warn('Progression non chargée :', e);
+      return null;
+    }
+  }
 
   elBtnDemarrer.addEventListener('click', () => {
     if (!elSelect.value) return;
@@ -205,6 +238,7 @@
   function demarrerQuiz() {
     qIndex = 0;
     score = 0;
+    reponses = {};
     afficherEcran(ecranQuestion);
     afficherQuestion();
   }
@@ -243,6 +277,80 @@
     elModalDeja.hidden = true;
     demarrerQuiz();
   });
+
+  // ── Pop-up « reprise d'un quiz en cours » ───────────────────
+  let progressionEnAttente = null;
+
+  function afficherModalReprise(prog) {
+    progressionEnAttente = prog;
+    const total = prog.total || quiz.questions.length;
+    const faites = prog.q_index;            // nb de questions déjà répondues
+    elRepriseAvanc.textContent = `${faites} / ${total}`;
+    elRepriseMsg.textContent =
+      `Bonjour ${personnelPrenom}, vous avez un quiz commencé mais non terminé.`;
+    elRepriseDetail.textContent =
+      `Vous en étiez à la question ${faites + 1} sur ${total} ` +
+      `(score actuel : ${prog.score}). Voulez-vous reprendre ou recommencer ?`;
+    elModalReprise.hidden = false;
+  }
+
+  elBtnRepriseContinuer.addEventListener('click', () => {
+    elModalReprise.hidden = true;
+    if (progressionEnAttente) {
+      reprendreQuiz(progressionEnAttente);
+      progressionEnAttente = null;
+    }
+  });
+
+  elBtnRepriseRecommencer.addEventListener('click', async () => {
+    elModalReprise.hidden = true;
+    progressionEnAttente = null;
+    await supprimerProgression();
+    // après suppression : vérifier tout de même un éventuel « déjà réussi »
+    verifierDejaReussi();
+  });
+
+  function reprendreQuiz(prog) {
+    qIndex = prog.q_index;
+    score = prog.score;
+    reponses = {};
+    Object.keys(prog.reponses || {}).forEach((k) => {
+      reponses[parseInt(k, 10)] = prog.reponses[k];
+    });
+    afficherEcran(ecranQuestion);
+    afficherQuestion();
+  }
+
+  // ── Sauvegarde / suppression de la progression (backend) ────
+  async function sauverProgression() {
+    try {
+      await fetch('/api/elearning/quiz/progression', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quiz_id: quiz.id,
+          personnel_id: personnelId,
+          q_index: qIndex,
+          score: score,
+          total: quiz.questions.length,
+          reponses: reponses,
+        }),
+      });
+    } catch (e) {
+      console.warn('Progression non sauvegardée :', e);
+    }
+  }
+
+  async function supprimerProgression() {
+    try {
+      await fetch(
+        `/api/elearning/quiz/progression?quiz_id=${quizId}&personnel_id=${personnelId}`,
+        { method: 'DELETE' }
+      );
+    } catch (e) {
+      console.warn('Progression non supprimée :', e);
+    }
+  }
 
   // ── Affichage d'une question ────────────────────────────────
   function afficherQuestion() {
@@ -308,6 +416,7 @@
     const bonne = q.bonne_reponse;
     const correct = lettre === bonne;
     if (correct) score++;
+    reponses[qIndex] = lettre;   // mémoriser pour la reprise
 
     // Marquer les options
     elQOptions.querySelectorAll('.quiz-option').forEach((btn) => {
@@ -377,6 +486,7 @@
   elBtnSuivant.addEventListener('click', () => {
     if (qIndex + 1 < quiz.questions.length) {
       qIndex++;
+      sauverProgression();   // sauvegarde à chaque avancée (reprise possible)
       afficherQuestion();
     } else {
       terminer();
@@ -601,6 +711,7 @@
   elBtnRecommencer.addEventListener('click', () => {
     qIndex = 0;
     score = 0;
+    reponses = {};
     elResultatSignature.hidden = true;
     elBtnSignValider.textContent = '✓ Valider la signature';
     afficherEcran(ecranQuestion);

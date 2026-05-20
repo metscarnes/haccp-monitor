@@ -656,6 +656,27 @@ CREATE INDEX IF NOT EXISTS idx_quiz_resultats_quiz
 
 CREATE INDEX IF NOT EXISTS idx_quiz_resultats_personnel
     ON quiz_resultats(personnel_id, quiz_id, date_completion);
+
+-- Progression d'un quiz en cours (reprise plus tard si non terminé).
+-- Une seule ligne par (boutique, quiz, personnel) : écrasée à chaque avancée,
+-- supprimée quand le quiz est terminé (résultat enregistré dans quiz_resultats).
+CREATE TABLE IF NOT EXISTS quiz_progression (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id       INTEGER NOT NULL DEFAULT 1,
+    quiz_id           INTEGER NOT NULL,            -- 1..10 (numéro du quiz hygiène)
+    personnel_id      INTEGER NOT NULL,
+    q_index           INTEGER NOT NULL,            -- index de la question en cours (0-based)
+    score             INTEGER NOT NULL,            -- bonnes réponses cumulées
+    total             INTEGER NOT NULL,            -- nb total de questions du quiz
+    reponses          TEXT,                        -- JSON : {"0":"A","1":"C",...} réponses données
+    date_maj          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id),
+    UNIQUE (boutique_id, quiz_id, personnel_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_quiz_progression_personnel
+    ON quiz_progression(personnel_id, quiz_id);
 """
 
 SEED_SQL = """

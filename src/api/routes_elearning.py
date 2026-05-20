@@ -5,6 +5,7 @@ GET  /api/elearning/completions?module=hygiene-pdf  → historique des lectures
 POST /api/elearning/completions                      → enregistrer une lecture validée
 """
 
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
@@ -33,6 +34,15 @@ class QuizResultatCreate(BaseModel):
     score:        int
     total:        int
     signature:    str | None = None   # PNG base64 (data-URL), requis si quiz réussi
+
+
+class QuizProgressionSave(BaseModel):
+    quiz_id:      int
+    personnel_id: int
+    q_index:      int                 # index de la question en cours (0-based)
+    score:        int                 # bonnes réponses cumulées
+    total:        int                 # nb total de questions
+    reponses:     dict[str, str] = {} # {"0":"A","1":"C",...} réponses données
 
 
 SEUIL_VALIDATION = 80  # % minimum pour valider un quiz
@@ -205,6 +215,12 @@ async def enregistrer_resultat_quiz(body: QuizResultatCreate):
             (BOUTIQUE_ID, body.quiz_id, body.personnel_id,
              body.score, body.total, pourcentage, reussi, signature),
         )
+        # Quiz terminé → on efface la progression en cours éventuelle
+        await db.execute(
+            "DELETE FROM quiz_progression "
+            "WHERE boutique_id = ? AND quiz_id = ? AND personnel_id = ?",
+            (BOUTIQUE_ID, body.quiz_id, body.personnel_id),
+        )
         await db.commit()
         new_id = cursor.lastrowid
 
@@ -219,3 +235,96 @@ async def enregistrer_resultat_quiz(body: QuizResultatCreate):
         created = await row.fetchone()
 
     return dict(created)
+
+
+# ===========================================================================
+# Quiz E-Learning — progression en cours (reprise d'un quiz non terminé)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# GET /api/elearning/quiz/progression
+# ---------------------------------------------------------------------------
+
+@router.get("/quiz/progression")
+async def lire_progression_quiz(
+    quiz_id:      int = Query(..., description="Numéro du quiz"),
+    personnel_id: int = Query(..., description="Membre du personnel"),
+):
+    """Progression en cours d'un membre sur un quiz (null si aucune)."""
+    async with get_db() as db:
+        row = await db.execute(
+            "SELECT quiz_id, personnel_id, q_index, score, total, reponses, date_maj "
+            "FROM quiz_progression "
+            "WHERE boutique_id = ? AND quiz_id = ? AND personnel_id = ?",
+            (BOUTIQUE_ID, quiz_id, personnel_id),
+        )
+        result = await row.fetchone()
+
+    if not result:
+        return None
+    data = dict(result)
+    try:
+        data["reponses"] = json.loads(data["reponses"]) if data["reponses"] else {}
+    except (ValueError, TypeError):
+        data["reponses"] = {}
+    return data
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/elearning/quiz/progression
+# ---------------------------------------------------------------------------
+
+@router.put("/quiz/progression")
+async def sauver_progression_quiz(body: QuizProgressionSave):
+    """Sauvegarde (ou écrase) la progression en cours d'un quiz non terminé."""
+    if body.total <= 0:
+        raise HTTPException(400, "total doit être > 0")
+    if body.q_index < 0 or body.q_index >= body.total:
+        raise HTTPException(400, "q_index hors limites")
+    if body.score < 0 or body.score > body.total:
+        raise HTTPException(400, "score invalide")
+
+    reponses_json = json.dumps(body.reponses, ensure_ascii=False)
+
+    async with get_db() as db:
+        row = await db.execute("SELECT id FROM personnel WHERE id = ?", (body.personnel_id,))
+        if not await row.fetchone():
+            raise HTTPException(404, "personnel_id introuvable")
+
+        await db.execute(
+            "INSERT INTO quiz_progression "
+            "(boutique_id, quiz_id, personnel_id, q_index, score, total, reponses, date_maj) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(boutique_id, quiz_id, personnel_id) DO UPDATE SET "
+            "  q_index = excluded.q_index, "
+            "  score   = excluded.score, "
+            "  total   = excluded.total, "
+            "  reponses = excluded.reponses, "
+            "  date_maj = CURRENT_TIMESTAMP",
+            (BOUTIQUE_ID, body.quiz_id, body.personnel_id,
+             body.q_index, body.score, body.total, reponses_json),
+        )
+        await db.commit()
+
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/elearning/quiz/progression
+# ---------------------------------------------------------------------------
+
+@router.delete("/quiz/progression")
+async def supprimer_progression_quiz(
+    quiz_id:      int = Query(..., description="Numéro du quiz"),
+    personnel_id: int = Query(..., description="Membre du personnel"),
+):
+    """Efface la progression en cours (ex: l'utilisateur choisit de recommencer)."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM quiz_progression "
+            "WHERE boutique_id = ? AND quiz_id = ? AND personnel_id = ?",
+            (BOUTIQUE_ID, quiz_id, personnel_id),
+        )
+        await db.commit()
+
+    return {"ok": True}
