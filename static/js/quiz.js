@@ -351,6 +351,11 @@
 
     afficherEcran(ecranResultat);
 
+    // Score parfait → pluie de confettis sur tout l'écran
+    if (score === total) {
+      lancerConfettis();
+    }
+
     // Enregistrement backend (traçabilité / future attestation)
     try {
       const res = await fetch('/api/elearning/quiz/resultats', {
@@ -386,6 +391,74 @@
     afficherEcran(ecranQuestion);
     afficherQuestion();
   });
+
+  // ── Confettis (score parfait 10/10) ─────────────────────────
+  function lancerConfettis() {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'quiz-confettis';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+
+    let W, H;
+    function dimensionner() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    dimensionner();
+    window.addEventListener('resize', dimensionner);
+
+    const couleurs = ['#D4A574', '#6B3A1F', '#2D7D46', '#E8913A', '#C93030', '#F5ECD7'];
+    const N = 160;
+    const pieces = [];
+    for (let i = 0; i < N; i++) {
+      pieces.push({
+        x: Math.random() * W,
+        y: Math.random() * -H,          // démarrent au-dessus de l'écran
+        w: 6 + Math.random() * 8,
+        h: 8 + Math.random() * 10,
+        couleur: couleurs[(Math.random() * couleurs.length) | 0],
+        vy: 1.8 + Math.random() * 3.2,  // vitesse de chute
+        vx: -1.5 + Math.random() * 3,   // dérive latérale
+        rot: Math.random() * Math.PI,
+        vrot: -0.15 + Math.random() * 0.3,
+        oscill: Math.random() * Math.PI * 2,
+      });
+    }
+
+    const debut = performance.now();
+    const DUREE = 5000; // ms
+
+    function frame(now) {
+      const ecoule = now - debut;
+      ctx.clearRect(0, 0, W, H);
+      let vivants = 0;
+      for (const p of pieces) {
+        p.oscill += 0.05;
+        p.x += p.vx + Math.sin(p.oscill) * 0.8;
+        p.y += p.vy;
+        p.rot += p.vrot;
+        if (p.y < H + 20) vivants++;
+
+        // fondu sur la dernière seconde
+        ctx.globalAlpha = ecoule > DUREE - 1000
+          ? Math.max(0, (DUREE - ecoule) / 1000)
+          : 1;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.couleur;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (ecoule < DUREE && vivants > 0) {
+        requestAnimationFrame(frame);
+      } else {
+        window.removeEventListener('resize', dimensionner);
+        canvas.remove();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
 
   // ── Toast ───────────────────────────────────────────────────
   function toast(msg) {
