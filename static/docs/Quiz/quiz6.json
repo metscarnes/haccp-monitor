@@ -1,0 +1,206 @@
+{
+  "id": 6,
+  "titre": "Quiz 6",
+  "theme": "Traçabilité",
+  "seuil_validation": 80,
+  "themes_abordes": [
+    "Les trois niveaux de la traçabilité HACCP",
+    "Traçabilité en amont (Mère)",
+    "Traçabilité interne (Filiation Mère-Fille)",
+    "Traçabilité en aval",
+    "Informations obligatoires à la réception",
+    "Gestion des numéros de lot"
+  ],
+  "questions": [
+    {
+      "num": 1,
+      "enonce": "Quels sont les trois niveaux de la traçabilité alimentaire selon la méthode HACCP ?",
+      "options": {
+        "A": "Réception, stockage et distribution",
+        "B": "Fournisseur, transformation et transport",
+        "C": "Amont, interne et aval",
+        "D": "Primaire, secondaire et tertiaire"
+      },
+      "indice": "Pensez au flux du produit : d'où il vient, ce qu'il devient dans l'établissement, et vers qui il va.",
+      "corrections": {
+        "A": "Bien que ces étapes logistiques fassent partie intégrante du flux physique, elles ne définissent pas les trois niveaux structurels HACCP. La méthode réglementaire utilise une terminologie de suivi bien plus globale et non purement opérationnelle.",
+        "B": "Ces termes décrivent des acteurs ou des actions logistiques plutôt que les segments réglementaires officiels. Ils ne couvrent pas l'intégralité du circuit documentaire depuis la source jusqu'au consommateur final.",
+        "C": "Ces trois étapes temporelles permettent de suivre le produit sans interruption depuis son origine fournisseur jusqu'à la vente. Elles constituent le socle réglementaire absolu de la traçabilité sanitaire selon la méthode HACCP.",
+        "D": "Cette classification est souvent utilisée en économie industrielle ou pour catégoriser les couches d'emballages. Elle n'est absolument pas la terminologie employée pour désigner la traçabilité alimentaire sanitaire."
+      },
+      "bonne_reponse": "C",
+      "explication": "La traçabilité en amont : Son but est de connaître l'origine exacte de toutes les denrées et matières premières entrant dans votre établissement. Lors de la réception, il est impératif de collecter des informations précises comme le nom du fournisseur, le vrai numéro de lot, la date de réception, le pays d'origine et la DLC.\nLa traçabilité en interne : Elle fait le lien entre les matières premières que vous avez réceptionnées et les produits finis que vous fabriquez. Elle permet de suivre chaque étape de la transformation d'une matière première brute (traçabilité \"mère\") vers les morceaux découpés ou transformés (traçabilité \"fille\").\nLa traçabilité en aval : Elle sert à identifier précisément quels produits ont été vendus à quels clients pour réagir en cas d'alerte."
+    },
+    {
+      "num": 2,
+      "enonce": "Quel est l'objectif principal de la traçabilité alimentaire en amont ?",
+      "options": {
+        "A": "Suivre la température de conservation pendant le transport",
+        "B": "Connaître l'origine de toutes les denrées et matières premières entrant dans l'établissement",
+        "C": "Garantir le prix d'achat des matières premières",
+        "D": "Identifier les produits finis avant leur mise en rayon"
+      },
+      "indice": "Concentrez-vous sur l'étape initiale où les produits franchissent le seuil de l'entreprise.",
+      "corrections": {
+        "A": "Le suivi des températures est un contrôle qualitatif de sécurité sanitaire indispensable lors de la réception. Il ne définit cependant pas l'objectif documentaire d'identification lié à la traçabilité d'origine.",
+        "B": "La traçabilité amont se concentre exclusivement sur l'identification précise des sources et des fournisseurs d'origine. Cette collecte de données s'effectue obligatoirement avant toute manipulation interne du produit.",
+        "C": "La traçabilité est un outil strict de sécurité alimentaire et non un processus de gestion commerciale. Le suivi financier n'a aucun lien avec la prévention des risques sanitaires liés aux produits.",
+        "D": "L'identification finale des produits destinés à la vente relève exclusivement de la traçabilité interne et aval. L'amont concerne uniquement l'étape d'entrée initiale des marchandises brutes dans le stock."
+      },
+      "bonne_reponse": "B",
+      "explication": "La traçabilité en amont, également appelée \"Traça Mère\", constitue le point de départ de toute la chaîne de sécurité sanitaire.\nLe principe de base : Dès qu'une marchandise franchit les portes, vous devez être capable d'identifier précisément d'où elle vient pour constituer sa \"carte d'identité\" initiale.\nLa méthode : Il suffit de collecter et d'archiver les informations inscrites sur la fiche produit via le module \"Réception\" de votre application.\nLes informations critiques : Vous devez obligatoirement relever le nom du fournisseur, le vrai numéro de lot (à ne jamais inventer), la date de réception, le poids net, le numéro d’agrément sanitaire de l’abattoir, le pays d’origine, et la DLC/date d'abattage pour les produits PAD."
+    },
+    {
+      "num": 3,
+      "enonce": "Dans le cadre de la traçabilité interne, comment appelle-t-on le lien entre la matière brute et le produit transformé ?",
+      "options": {
+        "A": "Matière première et produit fini",
+        "B": "Traçabilité mère et traçabilité fille",
+        "C": "Traçabilité ascendante et descendante",
+        "D": "Lot d'entrée et lot de sortie"
+      },
+      "indice": "Le support de formation utilise une analogie familiale pour expliquer cette connexion.",
+      "corrections": {
+        "A": "Ces deux mots désignent pertinemment les états physiques successifs du produit lors de sa transformation industrielle. Ils ne nomment cependant pas le système documentaire de liaison informatique décrit dans la formation.",
+        "B": "La 'mère' représente la matière première brute réceptionnée et formellement enregistrée dans le système. La 'fille' désigne logiquement les portions ou les produits finis directement issus de sa transformation.",
+        "C": "Ces termes techniques sont des synonymes globaux désignant respectivement la traçabilité amont et aval. Ils ne décrivent pas spécifiquement le lien de transformation interne effectué au sein du laboratoire.",
+        "D": "Ce vocabulaire est techniquement très proche de la réalité comptable et logistique de la gestion des stocks. Le document officiel HACCP utilise néanmoins une terminologie parentale très spécifique pour illustrer cette filiation documentaire."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le concept de \"traçabilité mère\" et \"traçabilité fille\" est le cœur même de la traçabilité en interne.\nLa Traçabilité Mère : Il s'agit des matières brutes réceptionnées de vos fournisseurs (le point de départ).\nLa Traçabilité Fille : Il s'agit du produit final que vous avez préparé et transformé pour vos clients.\nLe lien interne : Par exemple, pour fabriquer des merguez (produit fille), vous assemblez de la viande, des épices et des boyaux (produits mères). La traçabilité interne enregistre que le nouveau lot de merguez a été fabriqué à partir de ces lots spécifiques. Si un fournisseur signale un défaut sur une épice, vous savez immédiatement quelles merguez retirer de la vente."
+    },
+    {
+      "num": 4,
+      "enonce": "En situation réelle, quelle est la règle impérative concernant l'enregistrement du numéro de lot lors de la réception ?",
+      "options": {
+        "A": "Attendre la fin de la journée pour noter tous les numéros de mémoire",
+        "B": "Reprendre le numéro indiqué sur le bon de livraison ou l'emballage",
+        "C": "Générer un numéro aléatoire pour chaque nouveau carton",
+        "D": "Utiliser uniquement la date du jour comme numéro de lot"
+      },
+      "indice": "La source de l'information doit être un document officiel ou l'étiquette d'origine.",
+      "corrections": {
+        "A": "Le risque de grave erreur humaine est beaucoup trop élevé pour différer cette tâche de saisie cruciale. L'enregistrement informatique doit obligatoirement se faire au moment précis de la réception physique des colis.",
+        "B": "L'intégrité de la chaîne de traçabilité repose sur l'utilisation stricte des identifiants d'origine. Il faut recopier méticuleusement les numéros officiels fournis par le producteur ou par l'abattoir.",
+        "C": "L'invention de numéros internes rompt définitivement le lien d'identification avec le fournisseur initial. Cette pratique rendrait totalement impossible tout rappel de produit efficace ordonné par les autorités sanitaires.",
+        "D": "La date seule est totalement insuffisante car plusieurs lots différents peuvent être livrés simultanément. Le numéro de lot est une suite alphanumérique unique et beaucoup plus complexe permettant d'isoler une production spécifique."
+      },
+      "bonne_reponse": "B",
+      "explication": "Cette consigne est véritablement la règle d'or de la traçabilité.\nL'interdiction d'inventer : En situation réelle, vous ne devez absolument jamais inventer de numéro de lot.\nLa seule méthode valable : Vous devez impérativement reprendre le vrai numéro qui vous est fourni, en le copiant tel qu'il est indiqué sur le bon de livraison (BL) ou sur l'étiquette de l'emballage.\nPourquoi cette rigueur ? En cas de crise sanitaire (ex: rappel national sur un ingrédient), l'alerte est lancée sur la base du numéro de lot d'origine. Si vous avez substitué ce numéro par un code inventé, il sera impossible de retrouver dans quelles préparations cet ingrédient a été utilisé, brisant ainsi la chaîne de sécurité."
+    },
+    {
+      "num": 5,
+      "enonce": "Pour quel type de présentation de viande la date d'abattage est-elle spécifiquement requise en traçabilité amont ?",
+      "options": {
+        "A": "Uniquement pour le PAD (Prêt À Découper)",
+        "B": "Uniquement pour les volailles fermières",
+        "C": "Pour tous les produits transformés maison",
+        "D": "Uniquement pour les carcasses entières"
+      },
+      "indice": "Recherchez l'acronyme utilisé dans le document pour désigner les produits déjà parés.",
+      "corrections": {
+        "A": "Le document de formation précise expressément que la date d'abattage est une information supplémentaire exigée. Elle doit être spécifiquement collectée dans l'application pour les produits carnés livrés sous cette forme conditionnée.",
+        "B": "Cette exigence réglementaire stricte ne se limite absolument pas à l'espèce animale de la volaille. Elle dépend exclusivement du mode de présentation commerciale du produit carné à l'instant de sa réception.",
+        "C": "Les produits transformés en interne utilisent la traçabilité fille basée sur le lot d'entrée. La date d'abattage initiale concerne exclusivement l'étape de réception amont de la matière première brute.",
+        "D": "Bien que cette date figure toujours physiquement sur l'étiquette d'une carcasse, la présentation PAD exige une saisie informatique accrue. La formation souligne justement son importance réglementaire spécifique pour l'enregistrement de ces morceaux déjà parés."
+      },
+      "bonne_reponse": "A",
+      "explication": "Pour bien comprendre cette spécificité, il faut se replonger dans l'étape de la traçabilité en amont (la \"Traça Mère\").\nLes informations standards : En règle générale, pour la plupart des matières premières, vous enregistrez le nom du fournisseur, le vrai numéro de lot, le poids net, la date de réception, et le numéro d’agrément sanitaire.\nL'exception du PAD : Pour la viande livrée sous la forme de PAD (Prêt À Découper), la procédure exige des données supplémentaires. Vous devez obligatoirement relever et saisir la date d'abattage ainsi que la DLC.\nL'explication : Les viandes PAD sont des morceaux déjà désossés et parés par l'abattoir (souvent sous vide). Leur manipulation préalable rend le suivi de leur date d'abattage initiale très critique pour garantir le respect strict des limites de sécurité sanitaire."
+    },
+    {
+      "num": 6,
+      "enonce": "Quelles informations sanitaires doivent être collectées et archivées pour la traçabilité en amont ?",
+      "options": {
+        "A": "Le nom du chauffeur-livreur",
+        "B": "Le numéro de plaque d'immatriculation du camion",
+        "C": "Le numéro d'agrément sanitaire de l'abattoir ou du fournisseur",
+        "D": "Le prix unitaire au kilo"
+      },
+      "indice": "Il s'agit d'un code officiel commençant souvent par le code pays (ex: FR).",
+      "corrections": {
+        "A": "L'identité personnelle du personnel de transport n'est absolument pas une donnée légalement requise. Elle n'apporte strictement aucune information pertinente pour le suivi sanitaire et bactériologique des lots de viande.",
+        "B": "C'est une simple information de contrôle logistique utilisée par la sécurité des entrepôts. Elle ne fait aucunement partie des données de traçabilité sanitaire intrinsèques du produit lui-même.",
+        "C": "Ce numéro officiel certifie que l'établissement source respecte rigoureusement les normes d'hygiène européennes. Sa collecte informatique est obligatoire pour identifier légalement la provenance sécurisée de la viande.",
+        "D": "Le prix de vente est une donnée purement commerciale et comptable sans aucune valeur d'hygiène. Il ne figure donc pas du tout dans les objectifs de sécurité alimentaire de la méthode HACCP."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le numéro d’agrément sanitaire (de l’abattoir ou du fournisseur) est une donnée incontournable de la traçabilité en amont. Dès l'entrée d'une matière première, vous devez vérifier et archiver les éléments suivants :\nL'identité du produit et des acteurs : Le nom de votre fournisseur, la description des produits, et le numéro d'agrément sanitaire.\nLes données de suivi fondamentales : Le numéro de lot (à recopier tel quel) et le poids net.\nLes dates clés : La date de réception (plus la date d'abattage et la DLC pour les viandes PAD).\nLa provenance géographique : Le pays ou la région d'origine (précisant les lieux d'élevage et d'abattage)."
+    },
+    {
+      "num": 7,
+      "enonce": "À quel moment de la formation le module d'enregistrement de la traçabilité en amont est-il abordé ?",
+      "options": {
+        "A": "Lors de l'inventaire mensuel",
+        "B": "Dans le module 'Vente'",
+        "C": "Uniquement lors des contrôles vétérinaires",
+        "D": "Dans le module 'Réception'"
+      },
+      "indice": "C'est l'étape où l'on vérifie la conformité de ce qui est livré.",
+      "corrections": {
+        "A": "L'inventaire mensuel permet exclusivement de compter physiquement les stocks dormants en chambre froide. La traçabilité amont doit impérativement être enregistrée en temps réel lors du flux entrant des marchandises.",
+        "B": "Le module de vente correspond très exactement à la notion de traçabilité en aval. C'est l'étape logistique finale du processus qui enregistre la sortie définitive du produit fini.",
+        "C": "Les inspecteurs vétérinaires vérifient toujours a posteriori la bonne tenue des registres numériques de l'établissement. L'enregistrement informatique doit cependant être une pratique autonome et totalement quotidienne de l'exploitant.",
+        "D": "La collecte des informations primordiales de la traçabilité mère s'effectue logiquement dès l'arrivée physique. Elle prend place informatiquement au moment précis où les marchandises entrent dans l'établissement via le quai."
+      },
+      "bonne_reponse": "D",
+      "explication": "Le module \"Réception\" est l'outil central qui permet de concrétiser la traçabilité en amont (la \"Traça Mère\") sur le terrain.\nLe point de départ du système : Puisque l'objectif de la traçabilité en amont est de connaître l'origine exacte des matières premières, c'est logiquement au moment de la livraison que tout commence.\nUne centralisation des données : La formation explique qu'il suffit de collecter et d’archiver toutes les informations déjà présentes sur la fiche produit directement dans ce module informatique dédié.\nLa création de la Traçabilité Mère : C'est dans ce module que vous saisissez le nom du fournisseur, le vrai numéro de lot, le poids net, le numéro d'agrément sanitaire et la date d'abattage. Si cette étape est bien réalisée, tout le suivi interne sera sécurisé."
+    },
+    {
+      "num": 8,
+      "enonce": "Que permet d'identifier précisément la traçabilité alimentaire en aval ?",
+      "options": {
+        "A": "La liste des allergènes présents dans la recette",
+        "B": "La durée de vie du produit après ouverture",
+        "C": "Les produits vendus à chaque client",
+        "D": "La température du réfrigérateur de stockage"
+      },
+      "indice": "C'est le dernier maillon de la chaîne de suivi.",
+      "corrections": {
+        "A": "L'information stricte sur les allergènes est une obligation d'étiquetage préventive pour le consommateur direct. La traçabilité aval concerne plutôt le suivi logistique physique du flux client de sortie.",
+        "B": "Cette information temporelle concerne exclusivement les recommandations de consommation ou les DLC secondaires internes. Elle ne sert absolument pas à l'identification logistique du destinataire final du produit vendu.",
+        "C": "L'objectif fondamental de l'aval est de pouvoir localiser très rapidement les acheteurs finaux des lots. Ce maillon d'identification permet de récupérer efficacement les produits si un problème est détecté après la vente.",
+        "D": "Le relevé de la température ambiante est une mesure de surveillance préventive de la chaîne du froid. Ce n'est absolument pas un système de suivi de la destination finale des denrées carnées."
+      },
+      "bonne_reponse": "C",
+      "explication": "La traçabilité en aval a pour but d'identifier les produits vendus à chaque client. Elle s'inscrit dans la chaîne continue HACCP :\nEn amont (Traçabilité Mère) : Connaître l'origine des matières premières via les étiquettes fournisseurs.\nEn interne (Mère à Fille) : Suivre les étapes de transformation pour lier la viande et les épices au produit fini fabriqué.\nEn aval : Une fois le produit fini fabriqué, savoir exactement à qui ce produit spécifique a été distribué. Si l'on découvre qu'un lot de matière première était défectueux, ce dernier maillon permet de retrouver immédiatement les clients qui ont acheté les produits finis impactés."
+    },
+    {
+      "num": 9,
+      "enonce": "Quel est le rôle de la 'traçabilité interne' dans le processus de fabrication (ex: merguez) ?",
+      "options": {
+        "A": "Déterminer la marge bénéficiaire sur le produit transformé",
+        "B": "Négocier les tarifs avec les fournisseurs de matières premières",
+        "C": "Comparer les délais de livraison entre différents grossistes",
+        "D": "Suivre chaque étape de transformation en partant de la matière première brute"
+      },
+      "indice": "Pensez au cheminement du produit à l'intérieur du laboratoire ou de la cuisine.",
+      "corrections": {
+        "A": "L'analyse de rentabilité financière est une fonction purement économique de gestion d'entreprise. Elle ne répond à aucune exigence de sécurité sanitaire ou de suivi d'hygiène de la production.",
+        "B": "La négociation commerciale tarifaire se déroule très en amont du processus de production en laboratoire. Elle n'entre absolument pas dans le cadre technique du suivi de fabrication documentaire HACCP.",
+        "C": "L'évaluation des performances des fournisseurs est un processus d'optimisation purement logistique et d'achats. Cette activité demeure totalement distincte de la traçabilité sanitaire des recettes de fabrication.",
+        "D": "Elle assure la continuité rigoureuse du suivi documentaire en liant informatiquement chaque ingrédient de base utilisé. Ce maillon connecte les lots de viande, d'épices et de boyaux au produit fini final."
+      },
+      "bonne_reponse": "D",
+      "explication": "L'objectif de la traçabilité interne est de suivre chaque étape de transformation d’un produit au sein de l’établissement.\nLe passage de la \"Mère\" à la \"Fille\" : Ce suivi s'effectue en partant de la matière première brute (traçabilité mère) pour arriver au produit transformé final (traçabilité fille).\nL'exemple des merguez : Pour fabriquer des merguez (le produit \"fille\"), vous allez utiliser diverses matières premières déjà réceptionnées : lots de viande, d'eau, d'épices, et de boyaux de mouton (les produits \"mères\").\nL'action informatique : La traçabilité interne consiste à associer informatiquement tous ces vrais lots d'ingrédients à votre nouvelle préparation de merguez, garantissant ainsi une connaissance parfaite de la composition de votre produit fini."
+    },
+    {
+      "num": 10,
+      "enonce": "Lors de la réception d'une carcasse de veau, quelle information de poids doit être archivée ?",
+      "options": {
+        "A": "Le poids estimé après cuisson",
+        "B": "Le poids vif avant abattage",
+        "C": "Le poids net (kg)",
+        "D": "Le poids total du camion de livraison"
+      },
+      "indice": "Regardez les étiquettes de carcasse présentes dans les exemples visuels.",
+      "corrections": {
+        "A": "La traçabilité amont enregistre strictement l'état physique brut du produit à l'instant de son entrée. Elle ignore par conséquent toute future perte de poids inévitablement liée à la préparation culinaire.",
+        "B": "Cette information purement zootechnique concerne exclusivement l'éleveur et l'abattoir lors de l'arrivée de l'animal. Elle n'est plus du tout pertinente ni même généralement accessible lors de la réception en boucherie.",
+        "C": "Le poids net est l'une des informations d'identification clés expressément citées par la procédure d'enregistrement. Cette donnée quantitative permet de décrire et de valoriser précisément la matière première entrant dans le stock.",
+        "D": "Cette donnée globale de pesée routière concerne le transporteur lors du passage aux péages autoroutiers. Elle n'aide absolument pas à tracer le lot spécifique de viande reçu par l'artisan boucher."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le poids net fait effectivement partie des données incontournables à enregistrer lors de la réception d'une marchandise (la traçabilité amont).\nLa collecte des données obligatoires : Lors de la réception de matières premières dans le module dédié, vous devez collecter le nom du fournisseur, le vrai numéro de lot, la date de réception, le numéro d'agrément sanitaire, et le poids net qui est expressément exigé.\nDes exemples concrets : Sur les exemples d'étiquettes de \"Veau 1/2 Carcasse\" présentés en formation, on peut clairement lire la ligne \"Poids Net (Kg)\" avec la valeur exacte imprimée (ex: 81.7 kg).\nLa saisie : C'est cette valeur précise, fournie directement sur l'étiquette ou le bon de livraison, que vous devez reporter informatiquement pour garantir que la quantité exacte de matière entrante est correctement enregistrée."
+    }
+  ]
+}

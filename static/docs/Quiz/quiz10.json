@@ -1,0 +1,302 @@
+{
+  "id": 10,
+  "titre": "Quiz 10",
+  "theme": "Stockage & Allergènes",
+  "seuil_validation": 80,
+  "themes_abordes": [
+    "Allergènes réglementaires",
+    "Températures de stockage",
+    "Organisation des enceintes réfrigérées",
+    "Gestion de l'épicerie sèche",
+    "Gestion des restes et refroidissement",
+    "Conservation des documents sanitaires",
+    "Procédure TIAC"
+  ],
+  "questions": [
+    {
+      "num": 1,
+      "enonce": "L'Union Européenne a identifié un certain nombre d'allergènes majeurs devant être obligatoirement déclarés. Quel est ce nombre ?",
+      "options": {
+        "A": "16",
+        "B": "12",
+        "C": "14",
+        "D": "10"
+      },
+      "indice": "C'est un nombre pair situé entre dix et quinze.",
+      "corrections": {
+        "A": "Ce nombre dépasse la liste officielle actuelle établie par l'Union Européenne pour l'étiquetage obligatoire. Il inclut probablement de fausses catégories non reconnues par la législation sanitaire en vigueur.",
+        "B": "Bien que ce soit un nombre significatif, la réglementation européenne inclut deux catégories supplémentaires pour assurer une protection optimale. Cette liste incomplète omettrait des allergènes majeurs très dangereux pour les consommateurs.",
+        "C": "La réglementation européenne définit très précisément 14 allergènes majeurs, incluant notamment le lupin et les mollusques. Ces éléments spécifiques doivent impérativement être signalés aux clients, même lorsqu'ils sont présents à l'état de traces.",
+        "D": "Ce chiffre est très souvent confondu avec d'anciennes réglementations sanitaires désormais totalement obsolètes. La liste légale actuelle est beaucoup plus étendue pour couvrir efficacement davantage de risques allergiques graves."
+      },
+      "bonne_reponse": "C",
+      "explication": "L'Union Européenne impose de déclarer 14 allergènes majeurs. Voici les points essentiels abordés dans vos sources :\nLa liste des 14 allergènes réglementaires : Céréales contenant du gluten (blé, seigle, orge, avoine…), Crustacés, Œufs, Poissons, Arachides, Soja, Lait (y compris le lactose), Fruits à coque (amandes, noisettes, noix, etc.), Céleri, Moutarde, Graines de sésame, Anhydride sulfureux et sulfites (lorsque la concentration est ≥ 10 mg/kg ou 10 mg/L), Lupin, Mollusques.\nLe risque de contamination croisée : Il est impératif de signaler ces allergènes même s'ils ne sont présents qu'à l'état de traces suite à une contamination croisée.\nLa vérification par les fournisseurs : Pour savoir si un produit contient l'un de ces allergènes, vous devez vérifier la liste des ingrédients en consultant les étiquettes ou les fiches techniques des matières premières.\nLe formatage obligatoire : La réglementation impose aux fournisseurs d'indiquer clairement ces 14 allergènes en les mettant en gras ou en les soulignant dans leurs fiches techniques afin qu'ils soient immédiatement repérables."
+    },
+    {
+      "num": 2,
+      "enonce": "À partir de quel seuil la présence d'anhydride sulfureux et de sulfites doit-elle être obligatoirement indiquée ?",
+      "options": {
+        "A": "≥ 1 mg/kg ou 1 mg/L",
+        "B": "≥ 10 mg/kg ou 10 mg/L",
+        "C": "≥ 20 mg/kg ou 20 mg/L",
+        "D": "≥ 5 mg/kg ou 5 mg/L"
+      },
+      "indice": "Pensez à un nombre entier à deux chiffres qui est la base du système décimal.",
+      "corrections": {
+        "A": "Ce seuil est beaucoup trop bas pour déclencher la stricte obligation d'étiquetage selon les normes en vigueur. Une telle exigence rendrait la traçabilité industrielle des produits extrêmement complexe à gérer.",
+        "B": "La loi impose formellement la déclaration dès que la concentration atteint ou dépasse ce seuil très précis. Cette obligation permet de prévenir efficacement les graves réactions allergiques chez les personnes sensibles.",
+        "C": "Attendre ce seuil très élevé serait particulièrement dangereux pour la santé publique globale. Des réactions allergiques sévères peuvent en effet survenir à des doses deux fois plus faibles que celle-ci.",
+        "D": "Bien que la présence des sulfites soit surveillée, ce niveau de concentration reste en dessous de la limite réglementaire. La législation ne rend la déclaration textuelle obligatoire qu'à partir du palier supérieur."
+      },
+      "bonne_reponse": "B",
+      "explication": "L'anhydride sulfureux et les sulfites font partie de la liste stricte des 14 allergènes majeurs.\nUne exception avec un seuil précis : Contrairement à d'autres allergènes de la liste, l'anhydride sulfureux et les sulfites ont la particularité d'avoir un seuil de déclaration spécifique quantifié. Ils doivent obligatoirement être indiqués dès lors que leur concentration est supérieure ou égale à 10 mg/kg ou 10 mg/L.\nLa règle des traces : De manière générale, le document insiste sur le fait que les allergènes doivent être signalés même s'ils ne sont présents qu'à l'état de traces en raison d'une contamination croisée.\nComment les repérer facilement : La réglementation impose aux fournisseurs de faire ressortir ces allergènes visuellement, en les écrivant en gras ou en les soulignant sur leurs fiches techniques."
+    },
+    {
+      "num": 3,
+      "enonce": "Selon les astuces de rangement fournies, quelle est la place idéale pour les produits bruts dans une armoire froide ?",
+      "options": {
+        "A": "En haut",
+        "B": "Sur la porte",
+        "C": "En bas",
+        "D": "Au milieu"
+      },
+      "indice": "Considérez l'ordre logique pour éviter qu'un produit sale ne coule sur un produit propre.",
+      "corrections": {
+        "A": "Placer les produits bruts en haut présente un très grave risque de contamination croisée descendante. Leurs exsudats organiques pourraient s'égoutter directement sur les produits finis placés juste en dessous.",
+        "B": "La porte constitue la zone la plus instable et la plus sujette aux variations thermiques de l'enceinte. Elle ne convient absolument pas au stockage sécurisé des produits bruts hautement périssables.",
+        "C": "Ranger systématiquement les produits bruts au niveau inférieur évite toute chute de liquide contaminé. Cette disposition protège efficacement les plats préparés et prêts à consommer situés sur les étagères supérieures.",
+        "D": "Cette zone intermédiaire est généralement et logiquement réservée aux produits déjà portionnés ou emballés. Elle permet une meilleure organisation visuelle des stocks semi-finis de la cuisine lors des services."
+      },
+      "bonne_reponse": "C",
+      "explication": "Voici comment le document organise la disposition idéale des aliments au sein des armoires froides :\nEn haut : Les plats cuisinés.\nAu milieu : Les portions emballées.\nEn bas : Les produits bruts.\nCette organisation spatiale fait partie d'un ensemble de bonnes pratiques de stockage qui inclut également l'application de la méthode FIFO (First In First Out), la surveillance rigoureuse des températures (à comparer avec un thermomètre à sonde), et l'affichage bien en vue des documents de suivi et des fiches de nettoyage."
+    },
+    {
+      "num": 4,
+      "enonce": "Quelle est la plage de température réglementaire pour le stockage des viandes en chambre froide positive ?",
+      "options": {
+        "A": "+4°C à +6°C",
+        "B": "0°C à +2°C",
+        "C": "+2°C à +4°C",
+        "D": "+8°C à +12°C"
+      },
+      "indice": "La viande demande l'une des températures les plus basses parmi les produits frais, juste au-dessus du gel.",
+      "corrections": {
+        "A": "Cette plage de température est malheureusement beaucoup trop élevée pour la conservation sécurisée de la viande fraîche. Cette douceur relative favoriserait inexorablement le développement bactérien ultra-rapide dans les tissus musculaires.",
+        "B": "La viande crue nécessite un froid positif intense, très proche du point de congélation physique. Cette température stricte ralentit extrêmement efficacement la dégradation des tissus et la dangereuse prolifération microbienne.",
+        "C": "Bien que très proche du seuil idéal, cette plage est plutôt réglementairement réservée aux produits laitiers et B.O.F. La viande fraîche exige systématiquement un froid très légèrement plus strict pour garantir sa conservation.",
+        "D": "Cette température modérée correspond exclusivement aux locaux ouverts de préparation froide et de manipulation. Elle est en revanche totalement inappropriée pour un stockage frigorifique prolongé des denrées animales."
+      },
+      "bonne_reponse": "B",
+      "explication": "Les températures réglementaires de stockage garantissent la sécurité des aliments en freinant la croissance bactérienne. La viande, étant une denrée très périssable, requiert l'environnement positif le plus froid possible (0°C à +2°C) sans pour autant congeler la chair, ce qui dégraderait ses fibres musculaires. Il est impératif de contrôler régulièrement ces enceintes à l'aide d'un thermomètre à sonde étalonné."
+    },
+    {
+      "num": 5,
+      "enonce": "Quelle est la température cible lors de la phase de rinçage dans une machine à vaisselle ?",
+      "options": {
+        "A": "+65°C à +75°C",
+        "B": "+35°C à +40°C",
+        "C": "+50°C à +60°C",
+        "D": "+80°C à +90°C"
+      },
+      "indice": "C'est la température la plus élevée mentionnée pour le cycle de la machine à vaisselle.",
+      "corrections": {
+        "A": "Bien que l'eau soit très chaude, cette température reste inférieure aux normes strictes de rinçage industriel. Elle ne permet pas d'assurer une hygiène optimale et définitive du matériel en restauration collective.",
+        "B": "Il s'agit exclusivement de la température d'eau tiède destinée à la phase initiale de prélavage. Elle demeure très largement insuffisante pour éliminer les résidus de détergent et tuer les microbes.",
+        "C": "Cette plage thermique intermédiaire correspond très précisément à l'action chimique de la phase de lavage. Elle n'est cependant pas assez élevée pour garantir une véritable désinfection thermique lors du rinçage final.",
+        "D": "Un ultime rinçage à très haute température est absolument crucial pour assurer la désinfection finale de la vaisselle. Cette chaleur extrême permet également d'accélérer drastiquement le séchage sans trace des équipements lavés."
+      },
+      "bonne_reponse": "D",
+      "explication": "Le document détaille le cycle thermique précis de la machine à vaisselle, divisé en trois phases successives avec des températures croissantes :\nLe prélavage : La température cible doit être comprise entre +35°C et +40°C.\nLe lavage : L'eau doit ensuite monter pour atteindre entre +50°C et +60°C.\nLe rinçage : C'est la phase finale et la plus chaude, qui exige une température de +80°C à +90°C.\nPour élargir sur la gestion du chaud, la règle concernant le bain-marie impose de maintenir une température comprise entre +63°C et +65°C pour les préparations servies chaudes."
+    },
+    {
+      "num": 6,
+      "enonce": "Que signifie l'acronyme FIFO utilisé pour la gestion des stocks ?",
+      "options": {
+        "A": "First In First Out (Premier Entré Premier Sorti)",
+        "B": "Fiches Informatisées de Flux Opérationnels",
+        "C": "Finition Immédiate des Formats Ouverts",
+        "D": "Froid Intense pour Fruits Organiques"
+      },
+      "indice": "Il s'agit d'une règle de rotation basée sur l'ordre d'arrivée des produits.",
+      "corrections": {
+        "A": "Cette règle logistique fondamentale garantit que les produits les plus anciens sont toujours utilisés en stricte priorité. Elle permet d'éviter efficacement le dépassement critique des dates de péremption des marchandises en rayon.",
+        "B": "Il ne s'agit absolument pas d'un obscur système documentaire informatique ou administratif purement théorique. Le FIFO désigne une méthode physique et très concrète de rangement et d'utilisation des denrées brutes.",
+        "C": "Bien que la gestion rapide des produits ouverts soit importante en cuisine pour la sécurité. Cet acronyme international se réfère spécifiquement et uniquement à l'ordre de rotation chronologique des stocks fermés.",
+        "D": "L'acronyme concerne la gestion logistique globale de l'ensemble des matières premières du magasin sans distinction. Il ne cible absolument pas une technologie de conservation thermique spécifique réservée aux fruits bios."
+      },
+      "bonne_reponse": "A",
+      "explication": "L'acronyme FIFO est la règle d'or pour assurer une bonne rotation de vos produits dans les armoires froides ou l'épicerie.\nLe suivi rigoureux des dates : Vous devez noter systématiquement la DLC ou la DDM directement sur chaque boîte. Ce suivi doit être numérisé et anticipé dans votre application 1 mois à l'avance.\nLe traitement des produits entamés : Dès qu'un produit est ouvert, il doit impérativement être filmé, daté avec sa nouvelle date de péremption, et rangé dans un bac spécial.\nDes inspections régulières : Pour s'assurer qu'aucun produit ne stagne, il est demandé d'effectuer un contrôle mensuel de l'ensemble des produits stockés."
+    },
+    {
+      "num": 7,
+      "enonce": "Dans l'épicerie (réserve sèche), quelle est la règle concernant le stockage des produits d'entretien ?",
+      "options": {
+        "A": "Ils doivent être dans un bac fermé au sol",
+        "B": "Pas de produits d'entretien dans ce local",
+        "C": "Ils doivent être sur l'étagère du haut",
+        "D": "Seulement s'ils sont dans leur emballage d'origine"
+      },
+      "indice": "La sécurité alimentaire exige une séparation totale entre l'alimentaire et le non-alimentaire chimique.",
+      "corrections": {
+        "A": "Le stockage direct au sol est strictement interdit par les normes d'hygiène pour absolument tout type de contenant. De plus, les produits chimiques nettoyants ne doivent jamais côtoyer l'environnement immédiat des aliments.",
+        "B": "Pour éviter tout risque grave de contamination chimique accidentelle, l'épicerie est exclusivement réservée à l'alimentaire. Les produits de nettoyage toxiques doivent impérativement être stockés dans un local technique totalement séparé.",
+        "C": "Leur présence physique en hauteur augmenterait considérablement le risque de chute accidentelle des bidons. Les fuites chimiques couleraient alors inévitablement de haut en bas sur l'ensemble des aliments stockés en dessous.",
+        "D": "Même parfaitement emballés et hermétiquement scellés, le risque insidieux de transfert de fortes odeurs existe. Ce danger olfactif et toxique impose une séparation physique extrêmement stricte des locaux de stockage de l'établissement."
+      },
+      "bonne_reponse": "B",
+      "explication": "Il est formellement interdit de stocker des produits d'entretien dans l'épicerie pour éviter toute contamination chimique des denrées. Voici les autres règles fondamentales de cette réserve sèche :\nZéro produit au sol : Tous les produits doivent impérativement être placés sur des étagères.\nUn rangement stratégique : L'organisation se fait par famille d'aliments. La consigne de sécurité est de toujours placer les produits les plus lourds en bas (grosses conserves, bidons d'huile).\nLe suivi de l'hygiène : Son entretien doit être rigoureux, tracé via une application ou une feuille d'émargement.\nL'inspection des stocks : Un contrôle mensuel de l'ensemble des produits présents dans cette réserve est exigé."
+    },
+    {
+      "num": 8,
+      "enonce": "Selon la procédure de gestion des restes chauds, quel est le délai maximal pour refroidir un plat en cellule de refroidissement ?",
+      "options": {
+        "A": "Moins de 1 heure",
+        "B": "Moins de 4 heures",
+        "C": "Moins de 3 heures",
+        "D": "Moins de 2 heures"
+      },
+      "indice": "C'est un intervalle de temps correspondant à 120 minutes.",
+      "corrections": {
+        "A": "Bien que ce refroidissement très rapide soit thermiquement idéal pour l'aliment, ce n'est pas le délai limite officiel. Le protocole standard de sécurité tolère en effet une durée légèrement supérieure pour achever cette opération.",
+        "B": "Un refroidissement aussi extrêmement lent est particulièrement dangereux pour la santé publique des consommateurs. Il est totalement non conforme aux règles d'hygiène strictes pour des produits destinés à être conservés jusqu'au lendemain.",
+        "C": "Ce délai étendu est malheureusement encore beaucoup trop long pour garantir la parfaite sécurité sanitaire. Il permettrait à certaines bactéries pathogènes très tenaces de se multiplier activement durant cette phase critique.",
+        "D": "Le passage très rapide de la température initiale à +3°C en moins de deux heures est absolument indispensable. Cette vitesse d'exécution limite drastiquement toute multiplication bactérienne dans les denrées cuisinées."
+      },
+      "bonne_reponse": "D",
+      "explication": "Voici les étapes incontournables de ce protocole visant à garantir une traçabilité et une sécurité alimentaire optimales :\nLe maintien au chaud (Jour J) : Les préparations qui ne sont pas mises en vente doivent d'abord être maintenues à une température supérieure à +63°C.\nLe refroidissement rapide : La descente en température doit être brutale et s'effectuer en moins de 2 heures à l'aide de la cellule de refroidissement.\nLa conservation : Une fois refroidis, ces restes doivent être stockés au frais à +3°C avec une DLC strictement fixée à J+1.\nLe devenir des restes (Jour J+1) : Le lendemain, ils peuvent être donnés à une association ou réutilisés (avec remise en température obligatoire au-dessus de +63°C). À l'issue de cette deuxième journée, le produit devra être définitivement éliminé. (Tout plat chaud ayant déjà été mis en vente le jour J ne peut être refroidi et doit être éliminé)."
+    },
+    {
+      "num": 9,
+      "enonce": "Combien de temps doivent être conservées les fiches d'enregistrement du nettoyage ?",
+      "options": {
+        "A": "5 ans",
+        "B": "1 an",
+        "C": "3 ans",
+        "D": "6 mois"
+      },
+      "indice": "Il s'agit de la durée standard pour la majorité des relevés de température et de contrôle quotidien.",
+      "corrections": {
+        "A": "Cette durée d'archivage particulièrement longue est légalement réservée à d'autres documents administratifs et comptables plus complexes. Elle n'est absolument pas exigée pour la simple traçabilité quotidienne de l'hygiène de base des locaux.",
+        "B": "La réglementation sanitaire impose spécifiquement cette durée d'archivage d'une année civile entière pour ces traces. Elle correspond au délai légal fermement requis pour la très grande majorité des documents de suivi quotidien.",
+        "C": "Ce délai de trois années complètes s'applique exclusivement aux dossiers de fond beaucoup plus lourds et structurels. Il concerne par exemple les fiches de non-conformité majeures ou l'aptitude médicale du personnel.",
+        "D": "Un archivage limité à un seul semestre reste beaucoup trop court pour répondre sereinement aux exigences réglementaires. Les inspecteurs des services d'hygiène de l'État peuvent demander à vérifier les procédures de toute l'année écoulée."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le document source propose un tableau récapitulatif strict de la gestion documentaire :\nLes documents à conserver pendant 1 an : Cette durée s'applique à la majorité des documents de suivi quotidien. Cela inclut les bons de livraison, les relevés de températures, les feuilles d'enregistrement du nettoyage, le contrôle de l'huile, et la traçabilité des matières premières.\nLes documents à conserver pendant 3 ans : Les fiches de non-conformité, l'aptitude médicale du personnel, et les attestations de formations.\nLes documents \"À jour\" : Le plan de lutte contre les nuisibles et les résultats d'analyses bactériologiques.\nQuelle que soit la durée, tout doit être stocké directement dans l'application ou par numérisation (archivage papier interdit)."
+    },
+    {
+      "num": 10,
+      "enonce": "Quelle est la définition d'une Toxi-Infection Alimentaire Collective (TIAC) ?",
+      "options": {
+        "A": "Apparition de symptômes chez au moins deux personnes",
+        "B": "Apparition de symptômes chez au moins cinq personnes",
+        "C": "Une intoxication touchant l'ensemble des clients d'un service",
+        "D": "Dès qu'une personne présente des symptômes graves"
+      },
+      "indice": "Cherchez le plus petit nombre permettant de parler d'un groupe ou d'une collectivité.",
+      "corrections": {
+        "A": "Le seuil réglementaire très strict de seulement deux personnes malades définit le caractère véritablement collectif de l'incident. Cette survenue groupée après avoir consommé le même repas déclenche immédiatement l'alerte sanitaire maximale.",
+        "B": "C'est un nombre totalement arbitraire et dangereusement élevé pour déclencher une alerte sanitaire d'urgence. La vigilance sanitaire absolue commence en réalité dès que plus d'un seul individu est touché par les mêmes symptômes.",
+        "C": "Bien que cette catastrophe sanitaire massive soit possible, la définition officielle demeure beaucoup moins exigeante. Il ne faut surtout pas attendre que tout le monde soit malade pour que l'alerte gouvernementale soit donnée.",
+        "D": "Un cas clinique isolé, même gravissime, demeure défini légalement comme une simple intoxication alimentaire individuelle. Le caractère fondamentalement \"collectif\" d'une TIAC nécessite impérativement un nombre minimum de deux victimes distinctes."
+      },
+      "bonne_reponse": "A",
+      "explication": "Le terme \"collective\" prend tout son sens dès lors que plusieurs individus sont touchés.\nLa définition précise : Une TIAC est avérée lors de l'apparition rapprochée de symptômes digestifs chez au moins deux personnes, à condition qu'elles aient consommé un même repas ou un même aliment.\nLa prise en charge : Dès que deux clients signalent des symptômes, le chef d’établissement doit les inviter à consulter un médecin très rapidement.\nLa documentation interne : Vous devez remplir une fiche de notification (Cerfa n°12211*02) ainsi qu'un questionnaire annexe à transmettre à votre contact dédié.\nLe signalement aux autorités : La direction a la responsabilité de prévenir officiellement l'ARS (Agence Régionale de Santé) par téléphone ou courriel."
+    },
+    {
+      "num": 11,
+      "enonce": "Comment les fournisseurs doivent-ils indiquer les allergènes sur les fiches techniques ?",
+      "options": {
+        "A": "En majuscules uniquement",
+        "B": "En gras ou soulignés",
+        "C": "Avec un code couleur spécifique (ex: rouge)",
+        "D": "Dans une annexe séparée à la fin du document"
+      },
+      "indice": "Pensez aux deux manières classiques de faire ressortir un mot dans un texte sans utiliser de couleur.",
+      "corrections": {
+        "A": "L'utilisation exclusive des lettres majuscules n'est pas le mode de mise en évidence spécifié par la réglementation. Cette simple casse ne permet souvent pas de faire ressortir suffisamment le danger au milieu d'un long texte.",
+        "B": "La mise en évidence typographique par le gras ou le soulignement est formellement exigée par la loi européenne. Elle permet d'identifier très rapidement les risques allergènes graves lors de la lecture des listes d'ingrédients.",
+        "C": "Bien que cette méthode soit visuellement très efficace pour alerter l'œil humain sur un danger. Ce n'est malheureusement pas la méthode typographique réglementaire légalement mentionnée dans le support de formation.",
+        "D": "L'information cruciale sur les allergènes doit être obligatoirement intégrée directement à la liste principale des ingrédients. La reléguer dans une annexe lointaine la rendrait quasiment invisible lors d'une lecture rapide par le cuisinier."
+      },
+      "bonne_reponse": "B",
+      "explication": "Cette consigne de formatage est essentielle pour garantir la sécurité alimentaire au quotidien.\nUne identification visuelle immédiate : La réglementation impose que les 14 allergènes majeurs soient immédiatement repérables dans la liste des ingrédients. Le gras ou le souligné permet aux équipes de les identifier d'un simple coup d'œil.\nLes supports à vérifier systématiquement : Vous devez prendre le réflexe de consulter les fiches techniques ou les étiquettes accompagnant les matières premières livrées par vos fournisseurs.\nL'importance d'une traçabilité rigoureuse : Cette vigilance est primordiale car les allergènes doivent être signalés, et ce, même s'ils ne sont présents qu'à l'état de traces en raison d'un risque de contamination croisée."
+    },
+    {
+      "num": 12,
+      "enonce": "Lorsqu'un reste chaud est conservé pour le lendemain (DLC J+1), à quelle température doit-il être maintenu en attendant sa remise en température ?",
+      "options": {
+        "A": "+3°C",
+        "B": "+10°C",
+        "C": "0°C",
+        "D": "+6°C"
+      },
+      "indice": "C'est la température cible finale après le passage en cellule de refroidissement.",
+      "corrections": {
+        "A": "Après son refroidissement très rapide en cellule, le plat doit impérativement être stocké au froid positif strict. Ce choc thermique permet de stopper efficacement toute croissance bactérienne résiduelle durant la nuit.",
+        "B": "C'est une température ambiante beaucoup trop douce et trop élevée pour une conservation nocturne sécurisée. Elle permettrait malheureusement aux microbes pathogènes de se multiplier très dangereusement pendant le long stockage.",
+        "C": "Bien que cet environnement frigorifique soit intensément froid, la cible standard pour les plats cuisinés refroidis est légèrement supérieure. Elle est en effet fixée à trois degrés pour éviter le gel partiel destructeur des préparations culinaires.",
+        "D": "C'est la limite haute de fonctionnement tolérée pour le stockage de base de certains frigos ménagers. Pour des restes très sensibles cuisinés, la réglementation professionnelle exige un froid beaucoup plus sécurisant et stable à trois degrés."
+      },
+      "bonne_reponse": "A",
+      "explication": "Cette température de +3°C correspond à la phase de stockage à froid de la procédure de gestion des restes chauds.\nLa condition de départ : La conservation n'est autorisée que pour les productions du jour qui n'ont pas été mises en vente et maintenues au-dessus de +63°C.\nLa descente en température : Le plat chaud doit d'abord subir un refroidissement très rapide en moins de 2 heures en cellule.\nLe stockage : La préparation est stockée au frigo à +3°C avec une DLC fixée à J+1.\nLa remise en température : Le lendemain, ces restes peuvent être réutilisés moyennant une nouvelle chauffe obligatoire au-dessus de +63°C. À la fin de cette deuxième journée, la préparation doit être définitivement éliminée."
+    },
+    {
+      "num": 13,
+      "enonce": "À quelle fréquence doit être effectué le contrôle des produits présents dans la réserve sèche (épicerie) ?",
+      "options": {
+        "A": "Chaque semaine",
+        "B": "Tous les mois",
+        "C": "Tous les trimestres",
+        "D": "Une fois par an"
+      },
+      "indice": "C'est une vérification régulière effectuée douze fois par an.",
+      "corrections": {
+        "A": "C'est une fréquence administrativement très élevée et particulièrement chronophage pour inspecter des produits secs. Ces denrées stables ont en effet généralement des dates de péremption lointaines qui ne nécessitent absolument pas ce rythme effréné.",
+        "B": "Un contrôle mensuel régulier permet de vérifier méthodiquement les dates de péremption et l'état physique des emballages. Cette cadence est idéale pour réajuster les stocks efficacement sans surcharger inutilement le travail de l'équipe.",
+        "C": "Attendre trois longs mois comporte le risque majeur d'oublier des produits périssables discrètement entamés. Ce retard laisserait également inévitablement passer plusieurs dates de durabilité minimale des produits de l'épicerie.",
+        "D": "Ce délai extrêmement espacé correspond plutôt à un vaste inventaire comptable et financier global du magasin. Il ne s'agit en aucun cas d'une véritable gestion sanitaire active et préventive des denrées alimentaires de l'atelier."
+      },
+      "bonne_reponse": "B",
+      "explication": "L'inspection mensuelle de la réserve sèche est une étape clé des bonnes pratiques.\nL'application du FIFO et l'anticipation : Ce contrôle vérifie que le FIFO est respecté. C'est le moment de s'assurer que les DLC/DDM sont notées sur chaque boîte et anticipées d'un mois dans l'application.\nLa surveillance des produits entamés : Vous vérifiez que le bac dédié aux produits ouverts est bien tenu, et que les denrées sont filmées et datées.\nLe maintien d'un rangement sécurisé : Ce point d'étape mensuel confirme que l'organisation spatiale est maintenue (regroupement par famille, zéro produit au sol, produits lourds en bas)."
+    },
+    {
+      "num": 14,
+      "enonce": "Quelle est la procédure correcte pour un produit entamé dans la réserve sèche ?",
+      "options": {
+        "A": "Le laisser dans son sac d'origine ouvert sur l'étagère",
+        "B": "Le placer dans un bac spécial, filmé et daté",
+        "C": "Le stocker au réfrigérateur par précaution",
+        "D": "Le jeter immédiatement après ouverture"
+      },
+      "indice": "L'organisation repose sur l'utilisation de contenants protecteurs et d'informations de temps.",
+      "corrections": {
+        "A": "Cette très mauvaise pratique expose directement le produit à l'humidité ambiante et aux attaques d'éventuels nuisibles. Elle entraîne également une perte totale de traçabilité sur sa véritable date d'ouverture par l'équipe.",
+        "B": "Cette méthode rigoureuse protège efficacement le produit des dangereuses contaminations croisées extérieures en réserve. L'ajout d'une date claire permet en outre de suivre très précisément sa durée de vie résiduelle après ouverture.",
+        "C": "L'humidité très élevée présente à l'intérieur du réfrigérateur risquerait au contraire d'altérer gravement la qualité des produits. Elle détruirait rapidement la texture des denrées fondamentalement sèches comme les poudres, les biscuits ou les épices.",
+        "D": "De très nombreux produits secs industriels se conservent encore parfaitement bien après leur ouverture initiale en cuisine. Ce gaspillage systématique est totalement inutile s'ils sont correctement protégés et minutieusement tracés dans le temps."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le traitement spécifique des produits après leur ouverture est une étape cruciale pour maintenir l'hygiène. La règle des 3 actions pour un produit entamé est la suivante :\nLe protéger : Le produit doit être systématiquement filmé. Cela permet de le protéger de l'air, de l'humidité et de prévenir tout risque d'attirer des nuisibles.\nLe tracer : Vous devez le dater. Une fois ouvert, la durée de vie du produit est modifiée, et inscrire la date permet d'assurer un suivi rigoureux.\nL'isoler : La préparation filmée et datée doit ensuite être rangée dans un bac spécial dédié uniquement aux produits entamés."
+    },
+    {
+      "num": 15,
+      "enonce": "Quel document doit être tenu 'à jour' en permanence (sans durée d'archivage fixe mentionnée de 1 ou 3 ans) ?",
+      "options": {
+        "A": "Les relevés de température des frigos",
+        "B": "Les fiches de non-conformité",
+        "C": "Le plan de lutte contre les nuisibles",
+        "D": "Les bons de livraison"
+      },
+      "indice": "C'est un dossier qui concerne la protection du local contre les animaux indésirables.",
+      "corrections": {
+        "A": "Ces documents de contrôle quotidien des équipements ont une durée d'archivage légale et très spécifique fixée à un an. Ce délai d'expiration les différencie fondamentalement du plan de protection du bâtiment contre l'extérieur.",
+        "B": "Ce sont des documents de traçabilité très ponctuels qui sont légalement archivés pendant un an ou trois ans après leur création. Ils ne nécessitent absolument pas une mise à jour documentaire permanente comme le dossier des interventions externes.",
+        "C": "Ce dossier vital doit refléter en permanence la situation sanitaire extrêmement actuelle de l'ensemble de l'établissement. Il doit impérativement contenir à tout moment les tous derniers bons d'intervention des prestataires de dératisation.",
+        "D": "Comme la quasi-totalité des documents de traçabilité liés à la réception, ils doivent être gardés précisément un an. Ils s'accumulent au fil du temps dans les classeurs mais ne sont pas du tout qualifiés de documents 'à jour'."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le document source propose un tableau récapitulatif strict de la gestion documentaire :\nLes documents à maintenir \"À jour\" : Le plan de lutte contre les nuisibles (incluant les bons d'intervention de dératisation) et les résultats d'analyses bactériologiques effectuées par un laboratoire extérieur.\nLes documents à conserver 1 an : La réception (bons de livraison), les relevés de températures, les feuilles d'enregistrement du nettoyage, le contrôle de l'huile, et la traçabilité des matières premières.\nLes documents à conserver 3 ans : Les fiches de non-conformité, l'aptitude médicale du personnel, et les attestations de formations.\nLa règle d'or est que tout doit être stocké directement dans l'application ou par numérisation, l'archivage papier étant interdit."
+    }
+  ]
+}

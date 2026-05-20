@@ -1,0 +1,205 @@
+{
+  "id": 7,
+  "titre": "Quiz 7",
+  "theme": "Stock & Fabrication",
+  "seuil_validation": 80,
+  "themes_abordes": [
+    "Traçabilité alimentaire interne",
+    "Gestion des stocks et FIFO",
+    "Module de production et fabrication",
+    "Calcul de la Date Limite de Consommation (DLC)",
+    "Gestion des lots et substitutions"
+  ],
+  "questions": [
+    {
+      "num": 1,
+      "enonce": "Quelle action est possible directement depuis le module « Stock » pour un produit réceptionné ?",
+      "options": {
+        "A": "Valider le bon de livraison fournisseur",
+        "B": "Modifier la recette de fabrication",
+        "C": "Imprimer des étiquettes de DLC",
+        "D": "Saisir les températures de cuisson"
+      },
+      "indice": "Pensez à l'action immédiate simplifiée par un clic sur le produit dans l'interface de gestion.",
+      "corrections": {
+        "A": "Cette étape administrative intervient exclusivement lors de la réception physique des marchandises sur le quai. Elle doit obligatoirement être finalisée avant que le produit ne soit géré informatiquement dans le module stock.",
+        "B": "La création et la modification complexe des recettes se font uniquement dans le module de production. Le module de stock initial ne permet pas d'altérer les fiches techniques de fabrication des produits.",
+        "C": "L'interface de gestion permet effectivement d'imprimer très simplement les étiquettes de Date Limite de Consommation. Cette action rapide s'effectue en cliquant directement sur le produit concerné dans la liste d'inventaire.",
+        "D": "Le suivi sanitaire rigoureux des températures de cuisson relève du module de production ou du plan HACCP. Le stock de matières premières brutes n'est absolument pas conçu pour enregistrer ces paramètres thermiques."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le module « Stock » a pour rôle principal de centraliser la totalité des produits que vous avez réceptionnés.\nL'impression intuitive des étiquettes : Il est possible d'imprimer des étiquettes DLC rapides en cliquant sur le produit. Pour l'étiquette complète d'une fabrication (détaillant les lots et matières), il faudra aller dans le module « Historique ».\nLe cœur de la traçabilité : Ce module est connecté à HACCP Monitor pour suivre les DLC, choisir les bons lots et sécuriser vos fabrications.\nL'application du principe FIFO : Lorsqu'une recette est lancée, le système analyse le stock et recommande d'utiliser en priorité le lot dont la DLC est la plus courte (Premier entré, premier sorti).\nL'impact sur les fabrications : Bien que la règle interne fixe la DLC d'une fabrication à 3 jours maximum, l'application vérifie le stock. Si un ingrédient possède une DLC plus courte, la DLC du produit fabriqué est automatiquement réduite."
+    },
+    {
+      "num": 2,
+      "enonce": "Quelles sont les trois étapes clés gérées par le module « Production » ?",
+      "options": {
+        "A": "Nettoyage, Désinfection et Maintenance",
+        "B": "Réception, Stockage et Vente",
+        "C": "Fabrication, Cuisson et Refroidissement",
+        "D": "Commande, Livraison et Facturation"
+      },
+      "indice": "Considérez les transformations physiques que subit le produit lors de sa création en cuisine.",
+      "corrections": {
+        "A": "Bien que cruciaux pour l'hygiène, ces processus d'entretien régulier ne font pas partie du module de production. Ils relèvent d'un plan de nettoyage sanitaire totalement distinct de la transformation physique des aliments.",
+        "B": "Ces grandes étapes logistiques font certes partie du flux global de l'établissement. Elles ne constituent cependant pas les fonctions techniques spécifiques du module de production interne en laboratoire.",
+        "C": "Le module de production exploite les numéros de lot spécifiquement pour ces trois phases de transformation. Ce triptyque couvre l'intégralité du cycle de préparation physique du produit jusqu'à sa conservation.",
+        "D": "Ces fonctions indispensables sont de nature purement administrative, commerciale et logistique. Elles demeurent totalement indépendantes de la fabrication alimentaire physique proprement dite dans les ateliers."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le module « Production » est le centre névralgique de l'application HACCP Monitor où les numéros de lots enregistrés sont exploités. L'étape de Fabrication s'appuie sur plusieurs mécanismes stricts :\nLe calculateur de production : L'application calcule automatiquement les matières premières nécessaires et leurs quantités exactes selon la quantité de produit fini souhaitée.\nLa connexion au stock (FIFO) : S'il y a plusieurs lots d'un même produit, l'application vous imposera d'utiliser en priorité celui dont la DLC est la plus courte.\nLa gestion des remplacements : L'application permet d'effectuer un remplacement par le produit le plus pertinent en stock tout en appliquant la logique FIFO.\nLa règle de sécurité sur la DLC : Si un ingrédient utilisé possède une DLC inférieure à la règle des 3 jours, la DLC du produit fini sera automatiquement réduite.\nL'étiquetage : Le module génère un nouveau numéro de lot unique archivant les ingrédients, quantités, lots d'origine et la nouvelle DLC calculée."
+    },
+    {
+      "num": 3,
+      "enonce": "Comment fonctionne le calculateur de production de l'application ?",
+      "options": {
+        "A": "Il définit les temps de cuisson idéaux pour chaque lot",
+        "B": "Il indique les matières premières nécessaires selon la quantité finale souhaitée",
+        "C": "Il calcule le nombre de calories par portion fabriquée",
+        "D": "Il estime le prix de vente en fonction des ingrédients"
+      },
+      "indice": "Réfléchissez à l'aide apportée lors de la préparation d'une recette pour éviter les erreurs de dosage.",
+      "corrections": {
+        "A": "Le calculateur aide grandement à la préparation quantitative des ingrédients bruts avant assemblage. Il ne définit cependant pas du tout les paramètres techniques de température ou de temps de cuisson.",
+        "B": "En saisissant simplement la quantité cible de produit fini, l'application agit immédiatement. Elle calcule et ajuste automatiquement les proportions exactes de chaque ingrédient nécessaire à la recette.",
+        "C": "L'application est un outil strictement dédié à la traçabilité et à la sécurité alimentaire. Elle n'intègre aucune fonctionnalité de logiciel de calcul nutritionnel ou diététique pour les portions.",
+        "D": "L'outil informatique se concentre exclusivement sur la traçabilité sanitaire et les quantités de matières premières. Il n'intervient absolument pas dans la gestion financière ou le calcul commercial des coûts de revient."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le calculateur de production est conçu pour automatiser et simplifier la préparation de vos recettes.\nAutomatisation des proportions : Vous sélectionnez simplement la recette que vous souhaitez réaliser (ex: Merguez forte de bœuf).\nCiblage de la production : Vous saisissez la quantité totale de produit fini souhaitée dans le champ « Production ciblée du jour ».\nDéduction immédiate des besoins : Le calculateur décompose la recette et indique automatiquement la liste et la quantité de toutes les matières premières nécessaires au gramme près.\nDéclenchement du flux : L'application se connecte au stock pour appliquer la règle FIFO et vous proposer les bons lots à utiliser en priorité."
+    },
+    {
+      "num": 4,
+      "enonce": "Quel principe l'application utilise-t-elle pour recommander un lot de matière première en priorité ?",
+      "options": {
+        "A": "Le principe FIFO (First-In, First-Out)",
+        "B": "Le choix aléatoire pour varier les fournisseurs",
+        "C": "Le principe LIFO (Last-In, First-Out)",
+        "D": "Le critère du coût de revient le plus bas"
+      },
+      "indice": "Il s'agit d'une règle de gestion de stock visant à utiliser les produits les plus anciens en premier.",
+      "corrections": {
+        "A": "L'application privilégie systématiquement le lot dont la date limite de consommation (DLC) est la plus courte. Cette gestion intelligente assure une rotation optimale des stocks et limite fortement les pertes de marchandises.",
+        "B": "Un choix purement aléatoire des ingrédients ne permettrait aucune gestion rigoureuse de la sécurité alimentaire. Cette méthode hasardeuse conduirait inévitablement à un dépassement dangereux des dates limites des anciens lots.",
+        "C": "Ce principe inversé favoriserait logiquement l'utilisation des produits les plus récemment livrés par les fournisseurs. Il augmenterait drastiquement les risques de gaspillage massif et de péremption des anciens stocks dormants.",
+        "D": "La sécurité sanitaire absolue et la gestion stricte des dates de péremption priment systématiquement. Les considérations purement financières de coût n'ont aucune influence algorithmique dans ce module d'hygiène."
+      },
+      "bonne_reponse": "A",
+      "explication": "Le principe FIFO, qui signifie « premier entré, premier sorti », est une logique de priorité automatisée.\nSélection automatique du lot : Lors de la préparation d'une recette, s'il existe plusieurs lots disponibles, l'application va toujours privilégier le lot dont la DLC est la plus courte.\nMaintien de la règle lors des substitutions : Cette logique s'applique avec la même rigueur lorsque vous utilisez la fonction \"Remplacer\" pour substituer un ingrédient manquant. Une fois les alternatives identifiées, l'application recommande le lot de remplacement dont la DLC expire en premier."
+    },
+    {
+      "num": 5,
+      "enonce": "Dans quel but l'application distingue-t-elle le « VB-COLLIER SANS OS » du « VB-COLLIER AVEC OS » ?",
+      "options": {
+        "A": "Pour calculer automatiquement le poids des déchets",
+        "B": "Pour simplifier l'inventaire physique",
+        "C": "Pour éviter une erreur de traçabilité dans la recette",
+        "D": "Pour alerter le service comptable d'une erreur de prix"
+      },
+      "indice": "Pensez à la précision nécessaire pour suivre le parcours d'un ingrédient spécifique de la réception au produit fini.",
+      "corrections": {
+        "A": "Le système informatique ne mentionne et n'intègre aucun calcul automatique de perte ou de rendement d'abattage. La présence d'os n'est pas évaluée sous cet angle purement quantitatif de gestion des déchets.",
+        "B": "Bien que cette précision descriptive aide indéniablement lors de l'inventaire physique dans les chambres froides. Son objectif principal et fondamental demeure la rigueur absolue de la traçabilité sanitaire de l'ingrédient.",
+        "C": "L'application compare très précisément les références brutes pour s'assurer de la parfaite adéquation avec la recette. Ce blocage empêche l'utilisation non tracée d'un ingrédient de substitution non déclaré dans le système.",
+        "D": "La distinction minutieuse entre ces références carnées est purement opérationnelle et axée sur l'hygiène. Elle n'a aucune finalité financière destinée à alerter le service comptable sur d'éventuelles erreurs tarifaires."
+      },
+      "bonne_reponse": "C",
+      "explication": "Cette distinction est fondamentale pour garantir que les données enregistrées reflètent exactement la réalité.\nUne identification stricte : Si votre recette nécessite du « SANS OS » mais que le stock ne contient que du « AVEC OS », l'ingrédient apparaîtra manquant. L'application bloque toute erreur de traçabilité qui surviendrait si l'on utilisait l'un à la place de l'autre sans le déclarer.\nUn processus encadré : L'utilisateur doit volontairement utiliser la fonction « Remplacer » pour sélectionner le produit avec os comme substitut officiel.\nUne transparence totale : Une fois la fabrication terminée, l'étiquette indiquera clairement que le substitut a été utilisé, associant son propre numéro de lot et sa propre DLC à la recette."
+    },
+    {
+      "num": 6,
+      "enonce": "Que se passe-t-il si vous cliquez sur « Remplacer » pour un ingrédient manquant ?",
+      "options": {
+        "A": "L'application supprime l'ingrédient de la recette définitivement",
+        "B": "L'application envoie une commande automatique au fournisseur",
+        "C": "L'application bloque la fabrication par mesure de sécurité",
+        "D": "L'application analyse et propose les produits les plus proches en stock"
+      },
+      "indice": "L'application essaie d'aider l'opérateur en cherchant une correspondance logique dans les produits disponibles.",
+      "corrections": {
+        "A": "La substitution logicielle est une action purement ponctuelle pour un lot de fabrication d'une journée précise. Elle ne modifie ou ne supprime absolument pas l'ingrédient originel dans la fiche technique de base.",
+        "B": "La fonction de remplacement sert uniquement à utiliser intelligemment ce qui est déjà présent en stock physique. Elle n'est aucunement reliée à un module d'achat déclenchant des commandes automatiques vers l'extérieur.",
+        "C": "Le système ne bloque pas stérilement la production mais propose au contraire des alternatives viables. Cette souplesse encadrée permet de maintenir l'activité commerciale tout en conservant une traçabilité parfaite.",
+        "D": "Le système informatique identifie intelligemment les substituts les plus pertinents et logiques pour la recette. Il les affiche ensuite par ordre de pertinence selon les quantités réellement disponibles en chambre froide."
+      },
+      "bonne_reponse": "D",
+      "explication": "La fonction « Remplacer » est conçue pour offrir de la flexibilité tout en maintenant une rigueur absolue sur la traçabilité.\nAnalyse intelligente du stock : L'application scanne instantanément les produits actuellement disponibles dans votre stock unifié.\nProposition par pertinence : Le système identifie les produits qui se rapprochent le plus de l'ingrédient initialement prévu et vous les affiche par ordre de pertinence.\nMaintien de la sécurité (FIFO) : Si le produit de remplacement possède plusieurs lots, l'application vous recommandera automatiquement d'utiliser en priorité le lot de substitution dont la DLC expire en premier."
+    },
+    {
+      "num": 7,
+      "enonce": "Quelle est la règle interne par défaut pour la DLC d'une fabrication ?",
+      "options": {
+        "A": "Une durée maximale de 3 jours",
+        "B": "Une durée maximale de 5 jours",
+        "C": "La durée est identique à celle de la réception",
+        "D": "Une durée maximale de 24 heures"
+      },
+      "indice": "Cherchez le nombre de jours standard mentionné pour sécuriser les produits transformés en interne.",
+      "corrections": {
+        "A": "Toutes les fabrications internes suivent informatiquement par défaut cette règle simple de conservation sanitaire stricte. Elle impose une durée de vie maximale de trois jours pour toute nouvelle préparation élaborée en laboratoire.",
+        "B": "La durée de cinq jours est beaucoup trop longue pour garantir la parfaite fraîcheur bactériologique des préparations. La règle établie dans les documents de formation est nettement plus stricte pour sécuriser la production.",
+        "C": "La fabrication en laboratoire crée un produit totalement nouveau avec ses propres caractéristiques de conservation finale. Elle ne calque donc pas simplement et aveuglément la date d'origine de la matière première initiale.",
+        "D": "Une durée de vingt-quatre heures serait logistiquement et commercialement beaucoup trop courte pour le point de vente. La règle interne laisse une marge de sécurité de quelques jours tout en restant très rigoureuse."
+      },
+      "bonne_reponse": "A",
+      "explication": "Cette règle est un pilier de la sécurité sanitaire pour vos fabrications.\nLe plafond strict de 3 jours : Par défaut, la politique interne impose qu'aucun produit transformé en laboratoire ne puisse être conservé plus de 3 jours.\nLe contrôle intelligent des ingrédients : L'application ne se contente pas d'appliquer cette règle aveuglément ; elle analyse les DLC de toutes les matières premières intégrées à la recette.\nLa règle de la durée la plus courte : Si l'un des ingrédients possède une DLC inférieure à 3 jours, la DLC de votre produit fini sera automatiquement réduite pour s'aligner sur cet ingrédient le plus fragile. Le système bloque ainsi tout risque de péremption d'un composant caché."
+    },
+    {
+      "num": 8,
+      "enonce": "Comment est déterminée la DLC finale si l'un des ingrédients a une DLC de 2 jours alors que la règle interne est de 3 jours ?",
+      "options": {
+        "A": "Elle est calculée comme la moyenne des DLC des ingrédients",
+        "B": "Elle est réduite automatiquement à 2 jours",
+        "C": "Elle reste à 3 jours selon la règle interne",
+        "D": "La fabrication est interdite par le système"
+      },
+      "indice": "La sécurité alimentaire exige de toujours s'aligner sur l'élément le plus fragile de la préparation.",
+      "corrections": {
+        "A": "Un simple calcul de moyenne mathématique ne garantit absolument pas la sécurité alimentaire de la préparation. Il risquerait de prolonger dangereusement la durée de vie légale du composant le plus fragile de la recette.",
+        "B": "L'application informatique applique systématiquement la date de péremption la plus courte parmi tous les éléments. Ce verrouillage évite qu'un produit fini ne dépasse la DLC critique de l'une de ses matières premières.",
+        "C": "Maintenir la date à trois jours créerait un risque sanitaire majeur pour le consommateur final du produit. Le produit fini expirerait en effet chronologiquement après l'un de ses propres composants internes avariés.",
+        "D": "Le système n'interdit pas stérilement la production de la recette en laboratoire sous ce seul prétexte. Il autorise la fabrication mais sécurise immédiatement la date de péremption en la réduisant de force."
+      },
+      "bonne_reponse": "B",
+      "explication": "Voici la mécanique exacte qui se cache derrière ce calcul automatique :\nUne double vérification systématique : L'application compare la règle interne (3 jours maximum) avec la DLC de chacun des ingrédients individuels intégrés dans la recette.\nL'application stricte de la durée la plus courte : Le système force la DLC finale à s'aligner sur l'échéance la plus proche. L'application ignore le droit d'aller jusqu'à 3 jours et force la DLC finale à 2 jours.\nL'objectif de ce verrou : Cette restriction empêche catégoriquement qu'un produit fini ne puisse avoir une durée de vie supérieure à celle de l'une de ses propres matières premières, évitant ainsi de vendre une préparation contenant un ingrédient périmé depuis la veille."
+    },
+    {
+      "num": 9,
+      "enonce": "Où peut-on retrouver et réimprimer l'étiquette complète de fabrication incluant tous les lots d'ingrédients ?",
+      "options": {
+        "A": "Sur le bon de livraison du fournisseur d'épices",
+        "B": "Uniquement sur l'imprimante après validation",
+        "C": "Dans le module « Historique » (Flux produits)",
+        "D": "Dans le menu des paramètres de l'application"
+      },
+      "indice": "Cherchez le module qui conserve la trace de toutes les activités passées de l'atelier.",
+      "corrections": {
+        "A": "Le bon de livraison papier concerne exclusivement l'entrée logistique initiale des marchandises brutes. Il ne contient logiquement pas le détail documentaire exhaustif de la transformation interne en laboratoire.",
+        "B": "L'application numérique permet heureusement une récupération ultérieure très facile et permanente des données. Ce retraitement est rendu possible grâce à un archivage numérique systématique et sécurisé de la production.",
+        "C": "Ce module centralise tous les enregistrements passés pour agir comme le grand registre officiel inaltérable. Il permet de rééditer à volonté les fiches exhaustives de traçabilité complète des fabrications.",
+        "D": "Le menu des paramètres sert uniquement à la configuration technique et logicielle de l'outil informatique. Il n'est absolument pas conçu pour la consultation opérationnelle ou la réimpression des données de production."
+      },
+      "bonne_reponse": "C",
+      "explication": "La distinction entre les différents types d'étiquettes est centrale pour maîtriser la traçabilité.\nL'étiquette complète dans l'Historique : Le module « Historique » agit comme le registre officiel. L'étiquette de fabrication que vous y réimprimez affiche le nouveau numéro de lot unique, le détail des ingrédients, leurs quantités, les lots d'origine et les DLC.\nLe lien avec les réceptions : Depuis la fiche de fabrication (dans l'onglet Flux Produits), vous disposez de liens cliquables permettant de remonter à la fiche d'enregistrement de la réception initiale.\nLa différence avec le module Stock : Depuis le module « Stock », vous imprimez uniquement une étiquette DLC \"simple\" pour l'étiquetage rapide des bacs, qui ne contient pas l'historique complet de la recette."
+    },
+    {
+      "num": 10,
+      "enonce": "Quel élément permet de relier directement une fabrication finie à son bon de livraison d'origine ?",
+      "options": {
+        "A": "La photo du camion de livraison enregistrée dans le stock",
+        "B": "Les liens cliquables dans la fiche d'enregistrement de fabrication",
+        "C": "Le nom de l'opérateur de saisie",
+        "D": "Un code couleur spécifique sur l'étiquette DLC"
+      },
+      "indice": "Pensez à la fonctionnalité interactive qui permet de naviguer entre les différents enregistrements de l'application.",
+      "corrections": {
+        "A": "La photo du camion est une simple preuve visuelle de conformité hygiénique validée à la réception. Elle ne constitue cependant pas le lien direct de traçabilité numérique et hiérarchique des lots de matières.",
+        "B": "L'application crée des ponts numériques interactifs entre les différents modules de gestion du logiciel. Ces hyperliens permettent de remonter instantanément de la production jusqu'à la réception d'origine.",
+        "C": "Le nom de l'opérateur identifie simplement le collaborateur physique responsable de la tâche de saisie. Cette information humaine n'établit absolument pas le lien logistique et documentaire direct avec le fournisseur.",
+        "D": "Les codes couleurs servent essentiellement à l'organisation visuelle et rapide du matériel en cuisine. Ils ne constituent en aucun cas le lien de traçabilité informatique formel exigé par la réglementation."
+      },
+      "bonne_reponse": "B",
+      "explication": "Cette fonctionnalité représente l'aboutissement de toute la chaîne de traçabilité mise en place.\nLe récapitulatif détaillé : La fiche détaillée dans l'historique liste tous les ingrédients utilisés avec leurs numéros de lots et DLC.\nLa navigation instantanée : À côté de chaque ingrédient listé, se trouvent des liens cliquables. En cliquant sur l'un de ces liens, l'application ouvre directement la fiche d'enregistrement initiale issue du module de réception.\nL'accès au bon de livraison : C'est sur cette fiche de réception d'origine que vous pourrez retrouver le bon de livraison associé à la matière première, prouvant ainsi en un clic l'origine de chaque composant de votre fabrication."
+    }
+  ]
+}
