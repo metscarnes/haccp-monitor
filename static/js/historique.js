@@ -180,6 +180,7 @@ const TAB_HOOKS = {
   'he-content-dlcdev': () => dlcdevCharger(),
   'he-content-nuis'  : () => nuisCharger(),
   'he-content-rapp'  : () => rappCharger(),
+  'he-content-attest': () => attestCharger(),
 };
 const _tabCharge = new Set();
 
@@ -2666,6 +2667,101 @@ async function rappCharger() {
   );
 }
 
+/* ══════════════════════════════════════════════════════════════
+   🏆 ATTESTATIONS DE RÉUSSITE (quiz e-learning hygiène)
+   ══════════════════════════════════════════════════════════════ */
+const ATTEST_QUIZ_TITRES = {
+  1: 'HACCP', 2: 'Le PND', 3: 'Vestiaire', 4: 'Réception',
+  5: 'Températures', 6: 'Traçabilité', 7: 'Fabrication', 8: 'Cuisson',
+  9: 'Refroidissement', 10: 'Allergènes',
+};
+let _attestSelectRempli = false;
+
+function attestTitreQuiz(id) {
+  return ATTEST_QUIZ_TITRES[id] ? `Quiz ${id} — ${ATTEST_QUIZ_TITRES[id]}` : `Quiz ${id}`;
+}
+
+function attestRemplirSelect() {
+  if (_attestSelectRempli) return;
+  const sel = $('he-attest-quiz');
+  if (!sel) return;
+  Object.keys(ATTEST_QUIZ_TITRES).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = attestTitreQuiz(parseInt(id, 10));
+    sel.appendChild(opt);
+  });
+  _attestSelectRempli = true;
+}
+
+async function attestCharger() {
+  attestRemplirSelect();
+  const btn = $('he-attest-filtrer');
+  if (btn && !btn._lie) { btn.addEventListener('click', attestLister); btn._lie = true; }
+  attestLister();
+}
+
+async function attestLister() {
+  const liste = $('he-attest-liste');
+  if (!liste) return;
+  liste.innerHTML = '';
+  afficherMessage('attest', '⏳', 'Chargement…');
+
+  const quizId  = $('he-attest-quiz').value;
+  const reussi  = $('he-attest-reussi').value;   // '1' ou ''
+  const p = new URLSearchParams({ limit: '500' });
+  if (quizId) p.set('quiz_id', quizId);
+
+  try {
+    let rows = await apiFetch(`/api/elearning/quiz/resultats?${p.toString()}`);
+    if (reussi === '1') rows = rows.filter(r => r.reussi);
+
+    masquerMessage('attest');
+
+    const cpt = $('he-attest-compteur');
+    if (cpt) {
+      const n = rows.length;
+      cpt.textContent = n
+        ? `${n} ${reussi === '1' ? (n > 1 ? 'attestations' : 'attestation') : (n > 1 ? 'résultats' : 'résultat')}`
+        : '';
+    }
+
+    if (!rows.length) {
+      afficherMessage('attest', '📭', 'Aucune attestation pour ce filtre.');
+      return;
+    }
+
+    rows.forEach(r => {
+      const carte = creerCarteSimple({
+        titre: r.personnel_prenom || '—',
+        sousTitre: attestTitreQuiz(r.quiz_id),
+        meta: `${formatDateFR(r.date_completion)} — Score ${r.score}/${r.total}`,
+        chips: [`${r.pourcentage} %`],
+        badge: r.reussi
+          ? { text: '✓ Réussi', variant: 'ok' }
+          : { text: 'Échec', variant: 'nc' },
+        variant: r.reussi ? 'ok' : 'nc',
+      });
+
+      if (r.reussi) {
+        const lien = document.createElement('a');
+        lien.href =
+          `/attestation.html?quiz=${r.quiz_id}&personnel_id=${r.personnel_id}` +
+          `&retour=${encodeURIComponent('/historique.html?tab=attestations')}`;
+        lien.target = '_blank';
+        lien.rel = 'noopener';
+        lien.textContent = '🏆 Ouvrir l\'attestation';
+        lien.style.cssText = 'color:var(--accent);font-weight:600;font-size:14px;margin-top:6px;text-decoration:none;display:inline-block;';
+        carte.appendChild(lien);
+      }
+
+      liste.appendChild(carte);
+    });
+  } catch (err) {
+    afficherMessage('attest', '⚠️', `Erreur : ${err.message}`);
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────
 initDates(ouvRefs);
 initDates(recRefs);
@@ -2690,6 +2786,7 @@ const TAB_MAP = {
   etalonnages  : { cat: 'temp',  btn: 'he-tab-etal'  },
   dlc          : { cat: 'flux',  btn: 'he-tab-dlcdev'},
   nuisibles    : { cat: 'haccp', btn: 'he-tab-nuis'  },
+  attestations : { cat: 'haccp', btn: 'he-tab-attest'},
   rapports     : { cat: 'rap',   btn: 'he-tab-rapp'  },
 };
 

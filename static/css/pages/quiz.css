@@ -463,6 +463,13 @@
   color: var(--color-ok);
 }
 
+.quiz-btn--attestation {
+  margin-top: 0.4rem;
+  font-size: var(--text-lg);
+  box-shadow: 0 4px 14px rgba(107, 58, 31, 0.35);
+}
+.quiz-btn--attestation[hidden] { display: none; }
+
 .quiz-resultat-actions {
   display: flex;
   gap: 0.7rem;

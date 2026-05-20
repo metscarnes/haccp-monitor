@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#3D2008">
+  <title>Attestation de réussite — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/pages/attestation.css">
+</head>
+<body class="att-body">
+
+  <!-- Barre d'actions (masquée à l'impression) -->
+  <div class="att-actions" id="att-actions">
+    <a href="/elearning-hygiene-quiz.html" id="att-retour" class="att-btn att-btn--ghost">← Retour</a>
+    <button id="att-imprimer" class="att-btn att-btn--primary">🖨️ Imprimer / PDF</button>
+  </div>
+
+  <!-- Feuille A4 -->
+  <main class="att-feuille" id="att-feuille" role="main">
+
+    <div class="att-bordure">
+
+      <header class="att-entete">
+        <div class="att-etab">
+          <div class="att-etab-nom" id="att-etab-nom">Au Comptoir des Lilas</div>
+          <div class="att-etab-adresse" id="att-etab-adresse">122 rue de Paris, Les Lilas, 93260</div>
+        </div>
+        <div class="att-sceau" aria-hidden="true">🏅</div>
+      </header>
+
+      <div class="att-titre-wrap">
+        <h1 class="att-titre">Attestation de réussite</h1>
+        <p class="att-sous-titre">Formation Hygiène Alimentaire — HACCP</p>
+      </div>
+
+      <section class="att-corps">
+        <p class="att-intro">L'établissement soussigné atteste que&nbsp;:</p>
+
+        <p class="att-nom" id="att-nom">—</p>
+
+        <p class="att-phrase">
+          a suivi et réussi avec succès le module d'évaluation
+        </p>
+
+        <p class="att-module" id="att-module">—</p>
+
+        <div class="att-resultat">
+          <div class="att-resultat-bloc">
+            <span class="att-resultat-valeur" id="att-pct">—</span>
+            <span class="att-resultat-label">Résultat</span>
+          </div>
+          <div class="att-resultat-sep" aria-hidden="true"></div>
+          <div class="att-resultat-bloc">
+            <span class="att-resultat-valeur" id="att-score">—</span>
+            <span class="att-resultat-label">Bonnes réponses</span>
+          </div>
+          <div class="att-resultat-sep" aria-hidden="true"></div>
+          <div class="att-resultat-bloc">
+            <span class="att-resultat-valeur att-resultat-valeur--seuil">≥ 80 %</span>
+            <span class="att-resultat-label">Seuil de validation</span>
+          </div>
+        </div>
+
+        <div class="att-themes" id="att-themes" hidden>
+          <h2 class="att-themes-titre">Thèmes abordés</h2>
+          <ul class="att-themes-liste" id="att-themes-liste"></ul>
+        </div>
+      </section>
+
+      <footer class="att-pied">
+        <div class="att-pied-date">
+          <span class="att-pied-label">Fait à Les Lilas, le</span>
+          <span class="att-pied-valeur" id="att-date">—</span>
+        </div>
+        <div class="att-pied-signature">
+          <img src="/static/docs/Quiz/Ma%20signature%20HD%20sans%20fond.png" alt="Signature du responsable" class="att-signature-img">
+          <div class="att-signature-ligne"></div>
+          <span class="att-pied-label">Le responsable</span>
+        </div>
+      </footer>
+
+      <div class="att-ref" id="att-ref"></div>
+
+    </div>
+  </main>
+
+  <script src="/static/js/attestation.js"></script>
+</body>
+</html>

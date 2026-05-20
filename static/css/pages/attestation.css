@@ -1,0 +1,338 @@
+/* ============================================================
+   ATTESTATION DE RÉUSSITE — page A4 imprimable
+   ============================================================ */
+
+.att-body {
+  font-family: var(--font);
+  background: #cfc4ad;
+  color: var(--color-text);
+  min-height: 100dvh;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ── Barre d'actions ── */
+.att-actions {
+  width: 100%;
+  max-width: 210mm;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.att-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0.6rem 1.3rem;
+  font-size: var(--text-base);
+  font-weight: 700;
+  font-family: var(--font);
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.1s, background 0.15s;
+}
+.att-btn:active { transform: scale(0.97); }
+.att-btn--primary {
+  background: var(--color-accent);
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(107, 58, 31, 0.3);
+}
+.att-btn--primary:hover { background: #592f18; }
+.att-btn--ghost {
+  background: #fff;
+  color: var(--color-accent);
+  border-color: var(--color-secondary);
+}
+.att-btn--ghost:hover { background: #f4ead9; }
+
+/* ── Feuille A4 ── */
+.att-feuille {
+  width: 210mm;
+  max-width: 100%;
+  min-height: 297mm;
+  background: #fffdf8;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  padding: 14mm;
+  box-sizing: border-box;
+}
+
+/* Bordure décorative intérieure */
+.att-bordure {
+  height: 100%;
+  min-height: calc(297mm - 28mm);
+  border: 2px solid var(--color-accent);
+  outline: 1px solid var(--color-secondary);
+  outline-offset: 4px;
+  padding: 12mm 12mm 10mm;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ── En-tête établissement ── */
+.att-entete {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1.5px solid var(--color-secondary);
+  padding-bottom: 0.8rem;
+}
+.att-etab-nom {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--color-accent);
+}
+.att-etab-adresse {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  opacity: 0.8;
+  margin-top: 0.15rem;
+}
+.att-sceau { font-size: 2.6rem; line-height: 1; }
+
+/* ── Titre ── */
+.att-titre-wrap {
+  text-align: center;
+  margin: 2.2rem 0 1.6rem;
+}
+.att-titre {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  margin: 0;
+  text-transform: uppercase;
+}
+.att-titre::after {
+  content: '';
+  display: block;
+  width: 90px;
+  height: 3px;
+  background: var(--color-secondary);
+  margin: 0.6rem auto 0;
+  border-radius: 2px;
+}
+.att-sous-titre {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  margin: 0.6rem 0 0;
+  letter-spacing: 0.03em;
+}
+
+/* ── Corps ── */
+.att-corps {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+.att-intro {
+  font-size: 1rem;
+  color: var(--color-text);
+  margin: 0.5rem 0 0;
+}
+.att-nom {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--color-accent);
+  font-style: italic;
+  margin: 0.3rem 0;
+  padding: 0 1rem 0.3rem;
+  border-bottom: 2px dotted var(--color-secondary);
+  min-width: 50%;
+}
+.att-phrase {
+  font-size: 1rem;
+  color: var(--color-text);
+  margin: 0.4rem 0 0;
+  max-width: 80%;
+  line-height: 1.5;
+}
+.att-module {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin: 0.2rem 0 0.4rem;
+}
+
+/* ── Bloc résultat ── */
+.att-resultat {
+  display: flex;
+  align-items: stretch;
+  gap: 1.6rem;
+  margin: 0.8rem 0 0.4rem;
+  padding: 1rem 1.6rem;
+  background: rgba(45, 125, 70, 0.08);
+  border: 1.5px solid var(--color-ok);
+  border-radius: var(--radius-lg);
+}
+.att-resultat-bloc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+.att-resultat-valeur {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--color-ok);
+  line-height: 1;
+}
+.att-resultat-valeur--seuil { color: var(--color-accent); }
+.att-resultat-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-accent);
+}
+.att-resultat-sep {
+  width: 1px;
+  background: var(--color-secondary);
+  opacity: 0.6;
+}
+
+/* ── Thèmes ── */
+.att-themes {
+  margin: 1rem 0 0;
+  width: 100%;
+  max-width: 85%;
+  text-align: left;
+}
+.att-themes[hidden] { display: none; }
+.att-themes-titre {
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-accent);
+  text-align: center;
+  margin: 0 0 0.5rem;
+}
+.att-themes-liste {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 1.2rem;
+  max-width: 520px;
+}
+.att-themes-liste li {
+  position: relative;
+  padding-left: 1.3rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+.att-themes-liste li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--color-ok);
+  font-weight: 800;
+}
+
+/* ── Pied (date + signature) ── */
+.att-pied {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+}
+.att-pied-date,
+.att-pied-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.att-pied-signature { align-items: center; text-align: center; }
+.att-pied-label {
+  font-size: 0.8rem;
+  color: var(--color-text);
+  opacity: 0.85;
+}
+.att-pied-valeur {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.att-signature-img {
+  height: 54px;
+  width: auto;
+  max-width: 180px;
+  object-fit: contain;
+  margin-bottom: -6px;
+}
+.att-signature-ligne {
+  width: 170px;
+  border-bottom: 1.5px solid var(--color-text);
+  margin: 2px 0;
+}
+
+/* ── Référence (bas de page) ── */
+.att-ref {
+  position: absolute;
+  bottom: 2mm;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--color-text);
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* État erreur */
+.att-erreur {
+  text-align: center;
+  padding: 3rem 1rem;
+  font-size: 1.1rem;
+  color: var(--color-alert);
+  font-weight: 600;
+}
+
+/* ============================================================
+   IMPRESSION
+   ============================================================ */
+@media print {
+  @page { size: A4; margin: 0; }
+  .att-body {
+    background: #fff;
+    padding: 0;
+    display: block;
+  }
+  .att-actions { display: none !important; }
+  .att-feuille {
+    width: 210mm;
+    min-height: 297mm;
+    box-shadow: none;
+    margin: 0;
+  }
+}
+
+/* ── Responsive (écran étroit) ── */
+@media (max-width: 760px) {
+  .att-feuille { padding: 6mm; }
+  .att-bordure { padding: 6mm; min-height: 0; }
+  .att-titre { font-size: 1.7rem; }
+  .att-nom { font-size: 1.5rem; }
+  .att-module { font-size: 1.15rem; }
+  .att-resultat { flex-wrap: wrap; gap: 0.8rem 1.2rem; justify-content: center; }
+  .att-themes-liste { grid-template-columns: 1fr; }
+  .att-pied { flex-direction: column; align-items: center; gap: 1.4rem; }
+}

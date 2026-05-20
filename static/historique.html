@@ -424,6 +424,10 @@
       background: rgba(232,145,58,.15);
       color: var(--attention);
     }
+    .he-badge--nc {
+      background: rgba(201,48,48,.15);
+      color: var(--alerte);
+    }
 
     .he-reception-infos {
       background: rgba(45,125,70,.06);
@@ -1103,6 +1107,7 @@
       <button class="he-tab-btn actif" id="he-tab-ouv"  data-target="he-content-ouv"  role="tab">✂️ Ouvertures</button>
       <button class="he-tab-btn"       id="he-tab-nett" data-target="he-content-nett" role="tab">🧹 Nettoyage</button>
       <button class="he-tab-btn"       id="he-tab-nuis" data-target="he-content-nuis" role="tab">🐀 Nuisibles</button>
+      <button class="he-tab-btn"       id="he-tab-attest" data-target="he-content-attest" role="tab">🏆 Attestations réussite</button>
     </div>
 
     <!-- 📄 Rapports -->
@@ -1487,6 +1492,29 @@
     <div class="he-compteur" id="he-nuis-compteur"></div>
     <div class="he-liste"    id="he-nuis-liste"></div>
     <div class="he-message"  id="he-nuis-message" hidden><div class="he-message-icone" id="he-nuis-icone">⏳</div><div id="he-nuis-texte">Chargement…</div></div>
+  </div>
+
+  <!-- 🏆 Attestations de réussite (quiz e-learning) -->
+  <div id="he-content-attest" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-attest">
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-attest-quiz">Quiz</label>
+        <select id="he-attest-quiz" class="he-filtre-input">
+          <option value="">Tous les quiz</option>
+        </select>
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-attest-reussi">Statut</label>
+        <select id="he-attest-reussi" class="he-filtre-input">
+          <option value="1">Réussites uniquement</option>
+          <option value="">Toutes les tentatives</option>
+        </select>
+      </div>
+      <button class="he-btn-filtrer" id="he-attest-filtrer">🔍 Rechercher</button>
+    </div>
+    <div class="he-compteur" id="he-attest-compteur"></div>
+    <div class="he-liste"    id="he-attest-liste"></div>
+    <div class="he-message"  id="he-attest-message" hidden><div class="he-message-icone" id="he-attest-icone">⏳</div><div id="he-attest-texte">Chargement…</div></div>
   </div>
 
   <!-- 📄 Rapports générés -->

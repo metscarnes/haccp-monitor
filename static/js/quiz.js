@@ -66,6 +66,7 @@
   const elResultatTrace = $('resultat-trace');
   const elResultatThemes = $('resultat-themes');
   const elResultatThemesListe = $('resultat-themes-liste');
+  const elBtnAttestation = $('btn-attestation');
   const elBtnRecommencer= $('btn-recommencer');
 
   const elErreurMsg = $('erreur-msg');
@@ -413,6 +414,9 @@
       elResultatThemes.hidden = true;
     }
 
+    // Bouton attestation masqué tant que le résultat n'est pas enregistré
+    elBtnAttestation.hidden = true;
+
     afficherEcran(ecranResultat);
 
     // Score parfait → pluie de confettis sur tout l'écran
@@ -439,6 +443,14 @@
         const heureStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         elResultatTrace.textContent = `Résultat enregistré le ${dateStr} à ${heureStr}.`;
         elResultatTrace.hidden = false;
+
+        // Résultat tracé → on peut proposer l'attestation (si validé)
+        if (reussi) {
+          elBtnAttestation.href =
+            `/attestation.html?quiz=${quiz.id}&personnel_id=${personnelId}` +
+            `&retour=${encodeURIComponent('/quiz.html?quiz=' + quiz.id)}`;
+          elBtnAttestation.hidden = false;
+        }
       } else {
         throw new Error('HTTP ' + res.status);
       }
