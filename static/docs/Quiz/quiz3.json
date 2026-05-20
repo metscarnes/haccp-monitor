@@ -1,0 +1,243 @@
+{
+  "id": 3,
+  "titre": "Quiz 3",
+  "theme": "Vestiaire & Tenue professionnelle",
+  "seuil_validation": 80,
+  "themes_abordes": [
+    "Hygiène du personnel",
+    "Gestion et entretien des vestiaires",
+    "Protocole de nettoyage du linge",
+    "Entretien des équipements de protection individuelle (EPI)",
+    "Gestion du kit visiteur"
+  ],
+  "questions": [
+    {
+      "num": 1,
+      "enonce": "Où est-il permis d'entreposer ses effets personnels à l'intérieur du vestiaire selon les consignes de rangement strict ?",
+      "options": {
+        "A": "Sur le dessus des casiers si l'espace intérieur est insuffisant",
+        "B": "Dans le bac identifié pour les produits d'entretien",
+        "C": "Sous les casiers pour les chaussures civiles",
+        "D": "Exclusivement à l'intérieur des casiers individuels"
+      },
+      "indice": "Considérez la règle de rangement qui vise à libérer toutes les surfaces externes des casiers.",
+      "corrections": {
+        "A": "Le stockage sur le dessus des casiers est formellement interdit car cela favorise l'accumulation de poussière et le désordre. Cette mauvaise pratique nuit considérablement au maintien de la propreté générale de la pièce.",
+        "B": "Les produits d'entretien ne doivent jamais être entreposés dans les vestiaires pour prévenir tout risque de contamination chimique. Ce bac spécifique n'est donc absolument pas destiné à recevoir les effets personnels des employés.",
+        "C": "Rien ne doit être laissé au sol ou sous les casiers afin de faciliter le nettoyage quotidien des surfaces. L'espace inférieur doit impérativement rester totalement dégagé en permanence pour l'entretien.",
+        "D": "Le règlement stipule explicitement que rien ne doit être laissé en dehors des casiers pour maintenir l'ordre et l'hygiène. Cette consigne stricte vise à confiner les affaires personnelles dans des espaces fermés."
+      },
+      "bonne_reponse": "D",
+      "explication": "Pour vous aider à mieux comprendre ce thème, voici les explications détaillées sur la gestion des effets personnels et l'organisation des vestiaires :\nLa règle du \"rangement strict\" : Les consignes stipulent très clairement que rien ne doit être laissé en dehors des casiers, que ce soit posé au-dessus ou rangé en dessous. L'objectif est de maintenir un environnement propre et de prévenir tout désordre ou contamination.\nLa séparation entre le \"civil\" et le \"professionnel\" : À l'intérieur même des casiers, une organisation rigoureuse s'impose. Vos tenues personnelles doivent être rangées dans des casiers distincts de vos tenues de travail. Il en va de même pour vos chaussures : les chaussures civiles et les chaussures de travail doivent être stockées séparément.\nLa gestion des exceptions (objets encombrants) : Si vous possédez des effets personnels trop volumineux pour entrer dans votre casier individuel, une solution spécifique est prévue. Un bac avec couvercle, clairement identifié, est mis à disposition dans le vestiaire pour y ranger ces objets.\nLes interdictions complémentaires : Il est formellement interdit d'entreposer du matériel ou des produits d'entretien dans les vestiaires pour éviter tout risque de contamination. De plus, à la sortie du vestiaire, avant d'entrer en zone de production, vous devez impérativement ôter tous vos bijoux (montres, bagues, bracelets) pour les laisser en sécurité dans votre casier."
+    },
+    {
+      "num": 2,
+      "enonce": "Quelle est la règle concernant le stockage des chaussures de travail par rapport aux chaussures civiles ?",
+      "options": {
+        "A": "Les chaussures de travail doivent être laissées à l'entrée de la cuisine",
+        "B": "Elles peuvent être rangées ensemble dans le même compartiment",
+        "C": "Elles doivent être stockées séparément",
+        "D": "Les chaussures civiles doivent être placées dans un sac plastique au-dessus du casier"
+      },
+      "indice": "Pensez au principe de séparation entre ce qui vient de l'extérieur et l'équipement de production.",
+      "corrections": {
+        "A": "Le protocole de gestion du vestiaire prévoit le stockage des chaussures dans des casiers distincts au sein du vestiaire lui-même. Elles ne doivent en aucun cas traîner librement à l'entrée de la zone de préparation.",
+        "B": "Mélanger les chaussures civiles et professionnelles annulerait les bénéfices de l'hygiène vestimentaire en propageant directement des germes. Cette promiscuité physique est une source majeure et inacceptable de contamination croisée.",
+        "C": "La séparation stricte entre les chaussures de ville et les chaussures professionnelles prévient l'introduction de contaminants extérieurs. Elle crée une véritable barrière sanitaire étanche entre la rue et les zones de travail.",
+        "D": "Le rangement au-dessus des casiers est formellement interdit, quelle que soit la protection plastique utilisée pour emballer les objets. Cette règle d'interdiction s'applique uniformément à l'ensemble des effets personnels sans exception."
+      },
+      "bonne_reponse": "C",
+      "explication": "Pour approfondir ce thème, voici pourquoi cette séparation est si cruciale et comment elle s'inscrit dans l'hygiène globale des vestiaires :\nÉviter la contamination croisée : La règle stipule explicitement que les chaussures de travail et les chaussures civiles doivent être stockées séparément. L'objectif principal est de créer une barrière sanitaire : vos chaussures civiles transportent des germes de la rue, en les isolant, vous évitez de contaminer vos chaussures de sécurité qui entrent en production.\nUne règle qui s'applique à toute la tenue : Cette logique de séparation ne concerne pas uniquement les chaussures. Les consignes exigent que l'intégralité de vos vêtements de travail soit rangée dans des casiers distincts de votre tenue personnelle.\nLa responsabilité de l'entretien : Concernant les chaussures de sécurité, le document précise qu'elles doivent impérativement rester propres et que leur entretien régulier est à la charge du collaborateur.\nUne vigilance étendue aux visiteurs : Ce niveau d'exigence s'applique aussi aux personnes extérieures. Lorsqu'un visiteur doit pénétrer dans une zone de production, l'enfilage de sur-chaussures bleues constitue la dernière étape obligatoire du Kit Visiteur."
+    },
+    {
+      "num": 3,
+      "enonce": "À quelle fréquence les tenues professionnelles doivent-elles être changées ?",
+      "options": {
+        "A": "Quotidiennement",
+        "B": "Tous les deux jours",
+        "C": "Uniquement lorsqu'elles présentent des taches visibles",
+        "D": "Une fois par semaine"
+      },
+      "indice": "Réfléchissez au cycle de nettoyage nécessaire pour une hygiène optimale chaque matin.",
+      "corrections": {
+        "A": "Un changement journalier est strictement requis pour respecter les standards d'hygiène en vigueur dans l'établissement. Cette routine sanitaire garantit par ailleurs une présentation toujours impeccable du personnel.",
+        "B": "Porter une tenue plus d'une journée en milieu alimentaire augmente considérablement les risques de prolifération bactérienne. L'accumulation de sueur et de projections rend le vêtement totalement impropre au service le lendemain.",
+        "C": "Même sans taches visuellement apparentes, les vêtements accumulent des millions de micro-organismes au cours d'une seule journée de travail. L'absence de souillure visible n'est donc absolument pas un indicateur fiable de propreté sanitaire.",
+        "D": "Cette fréquence hebdomadaire est totalement insuffisante pour maintenir le niveau de propreté exigé par les normes de l'établissement. Un tel délai transformerait inévitablement la tenue en un dangereux vecteur de contamination."
+      },
+      "bonne_reponse": "A",
+      "explication": "Le changement quotidien de la tenue professionnelle est effectivement une règle incontournable. Voici les principes détaillés qui encadrent ce renouvellement :\nUn double objectif : Le changement quotidien de la tenue n'est pas qu'une question de propreté visuelle, il est exigé pour respecter les standards d'hygiène stricts tout en assurant une présentation impeccable.\nLe circuit très strict du linge \"sale\" : Après usage, les tenues sales ne doivent jamais être stockées dans vos casiers. Elles doivent être déposées immédiatement dans un contenant fermé, spécifiquement identifié et dédié à cet usage, pour éviter toute contamination.\nUn protocole de lavage rigoureux : Les vestes et pantalons doivent être lavés à 90 °C. Lors du séchage, les vêtements ne doivent avoir aucun contact avec le sol, et le linge propre doit être conservé à l'abri dans un contenant fermé.\nL'exception matérielle (Le tablier en cuir) : Le tablier en cuir possède son propre protocole. Quotidiennement, il faut le nettoyer avec une lavette imprégnée de produit Flash’ Germ (en laissant agir 5 minutes), puis le rincer et le sécher sur un cintre sans le plier. Hebdomadairement, un produit protecteur doit y être appliqué."
+    },
+    {
+      "num": 4,
+      "enonce": "Que doit impérativement faire un employé concernant ses bijoux à la sortie du vestiaire ?",
+      "options": {
+        "A": "Les désinfecter avec une solution hydroalcoolique",
+        "B": "Ôter sa montre, ses bagues et ses bracelets",
+        "C": "Retirer uniquement les bracelets larges",
+        "D": "Les recouvrir de gants de protection"
+      },
+      "indice": "Identifiez les objets métalliques personnels qui sont interdits sur les mains et les poignets.",
+      "corrections": {
+        "A": "La simple désinfection des bijoux reste inefficace pour garantir une hygiène alimentaire totale sous le métal. Ces accessoires décoratifs doivent par conséquent être physiquement retirés avant toute prise de poste.",
+        "B": "Le port de bijoux est formellement interdit car ils constituent des nids à bactéries très difficiles à assainir. Ils présentent également un risque mécanique de tomber accidentellement dans les préparations carnées.",
+        "C": "L'interdiction est totale et inclut rigoureusement l'ensemble des bagues et des montres, sans aucune exception de taille. La tolérance ne s'applique donc à aucun bracelet, qu'il soit fin, souple ou large.",
+        "D": "Le port de gants jetables ne remplace absolument pas l'interdiction légale de porter des bijoux en zone de production. Les bagues risquent de déchirer discrètement le latex et de contaminer directement la matière première."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le retrait des bijoux est en effet une étape incontournable qui s'inscrit dans un protocole de préparation très précis.\nUne interdiction totale : L'affiche de rappel est sans appel : il est strictement interdit de porter une montre, une bague ou un bracelet. Vous devez donc impérativement les ôter et les laisser en sécurité dans votre casier personnel.\nLe triptyque obligatoire : Retirer ses bijoux ne se fait pas de manière isolée. Cela fait partie d'une routine en trois étapes que chaque employé doit respecter à la sortie du vestiaire : ôter ses bijoux, mettre sa charlotte (pour couvrir les cheveux), et laver ses mains et avant-bras scrupuleusement. Le retrait préalable des bagues et montres est la condition indispensable qui rend possible le nettoyage complet des mains."
+    },
+    {
+      "num": 5,
+      "enonce": "Quel est le protocole correct pour le dépôt du linge sale après usage ?",
+      "options": {
+        "A": "Le ranger dans le compartiment dédié du casier personnel",
+        "B": "Le mélanger avec les lavettes de nettoyage pour un lavage groupé",
+        "C": "Le laisser sur un étendoir pour l'aérer avant le lavage",
+        "D": "Le déposer immédiatement dans un contenant fermé, identifié et dédié"
+      },
+      "indice": "Pensez au contenant spécifique utilisé pour isoler les vêtements utilisés.",
+      "corrections": {
+        "A": "Les tenues sales ne doivent jamais être stockées dans les casiers des vestiaires pour éviter de contaminer cet espace privé. Ce confinement créerait un environnement particulièrement propice au développement bactérien et aux mauvaises odeurs.",
+        "B": "Les tenues de restauration doivent être nettoyées séparément des équipements de nettoyage pour d'évidentes raisons d'hygiène. Un lavage groupé risquerait de transférer massivement les souillures des lavettes sur les vêtements corporels.",
+        "C": "L'exposition du linge sale à l'air libre est fermement proscrite car elle favorise la propagation active des germes. Le textile souillé par le travail de la viande doit être immédiatement isolé de l'environnement ambiant.",
+        "D": "Le stockage immédiat dans un réceptacle fermé évite la dispersion volatile des contaminants dans l'air ambiant. Cette action rapide protège durablement l'environnement sain du vestiaire et prépare le circuit de nettoyage."
+      },
+      "bonne_reponse": "D",
+      "explication": "Pour approfondir la gestion du linge sale, voici les éléments clés de vos sources qui expliquent la rigueur de ce protocole :\nLe confinement immédiat : La consigne d'utiliser immédiatement un contenant fermé a pour but de stopper net toute propagation de bactéries. En fin de service, en isolant votre tenue dans un bac dédié, vous protégez l'environnement sain du vestiaire.\nL'interdiction absolue des casiers : Les tenues sales ne doivent jamais être remises dans les casiers. Enfermer une tenue souillée dans un espace clos comme un casier créerait un nid à bactéries et ruinerait les efforts de nettoyage.\nLe tri à la source : Le dépôt dans un contenant dédié prépare l'étape du lavage. Les tenues de restauration doivent être nettoyées séparément des éléments fortement exposés aux germes, tels que les lavettes ou autres équipements de nettoyage."
+    },
+    {
+      "num": 6,
+      "enonce": "À quelle température les vestes et pantalons professionnels doivent-ils être lavés pour garantir leur désinfection ?",
+      "options": {
+        "A": "90°C",
+        "B": "30°C",
+        "C": "40°C",
+        "D": "60°C"
+      },
+      "indice": "Cherchez la température la plus élevée mentionnée dans le protocole d'entretien du linge.",
+      "corrections": {
+        "A": "Cette très haute température est techniquement requise pour détruire efficacement les agents pathogènes incrustés. Elle assure la désinfection thermique indispensable pour dissoudre totalement les graisses animales sur les tissus.",
+        "B": "Un lavage à froid ou à très basse température ne permet pas d'éliminer les bactéries accrochées sur les tenues de travail. Il ne parvient pas non plus à extraire correctement la graisse tenace logée dans les fibres textiles.",
+        "C": "Cette température modérée est destinée au linge domestique délicat et ne répond pas du tout aux exigences sanitaires professionnelles. Elle laisse survivre de très nombreux micro-organismes potentiellement dangereux pour les produits manipulés.",
+        "D": "Bien que chaude, cette température peut s'avérer insuffisante pour atteindre les standards de désinfection d'une boucherie haut de gamme. Le protocole interne strict de l'établissement exige le palier thermique supérieur pour garantir une hygiène irréprochable."
+      },
+      "bonne_reponse": "A",
+      "explication": "Le lavage à 90 °C est la norme exigée pour garantir une hygiène irréprochable. Voici les étapes détaillées concernant le protocole du \"linge propre\" :\nUne désinfection en profondeur : Les vestes et pantalons doivent obligatoirement être lavés à 90 °C en utilisant une lessive adaptée afin d'éradiquer les bactéries et de dissoudre les graisses tenaces.\nUn séchage sous haute surveillance : Le processus perdrait son utilité si le linge était recontaminé. Le séchage doit s'effectuer de manière sécurisée (sèche-linge ou étendoir propre) et il est formellement exigé que le linge n'ait aucun contact avec le sol.\nUn stockage hermétique exclusif : Une fois la tenue propre et sèche, elle doit être protégée de l'environnement extérieur. Le protocole impose de la ranger dans un contenant fermé, strictement réservé à cet usage."
+    },
+    {
+      "num": 7,
+      "enonce": "Quelle est la durée de contact recommandée pour le produit Flash' Germ lors du nettoyage du tablier en cuir ?",
+      "options": {
+        "A": "Il doit être rincé immédiatement après application",
+        "B": "15 minutes",
+        "C": "5 minutes",
+        "D": "30 secondes"
+      },
+      "indice": "Il s'agit d'un court délai nécessaire à l'action bactéricide du produit.",
+      "corrections": {
+        "A": "Un rinçage immédiat annule purement et simplement l'effet désinfectant du produit chimique liquide. L'agent biocide n'a matériellement pas le temps d'attaquer la paroi cellulaire protectrice des bactéries.",
+        "B": "Prolonger excessivement le contact avec un produit chimique agressif pourrait endommager gravement la matière naturelle du cuir. Ce dépassement du temps d'action dégraderait rapidement et définitivement cet équipement de protection onéreux.",
+        "C": "Ce temps de pause spécifique permet au produit désinfectant d'agir efficacement sur la surface du cuir avant le rinçage. Cette durée stricte correspond à l'action optimale préconisée par la fiche technique du fabricant.",
+        "D": "Un temps de contact aussi court ne garantit absolument pas l'élimination totale des micro-organismes ciblés par la procédure. Le processus de destruction chimique des agents pathogènes réclame obligatoirement une exposition plus longue."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le respect de ce temps d'action est une étape clé de l'entretien manuel de cet équipement.\nLa préparation : L'hygiène du tablier commence par un dépoussiérage pour retirer les salissures grossières à l'aide d'un chiffon doux.\nLe temps d'action (5 minutes) : Le nettoyage actif s'effectue avec une lavette imprégnée de Flash’ Germ. Il est impératif de laisser le produit agir pendant 5 minutes. C'est la durée minimale requise pour que les agents biocides détruisent les germes.\nLe rinçage et le rangement : Le tablier est ensuite rincé à l'eau claire pour évacuer le produit. Il doit être séché et rangé impérativement sur un cintre, sans jamais être plié.\nL'entretien hebdomadaire : Une fois par semaine, il est obligatoire d'y appliquer un produit protecteur spécialement adapté au cuir."
+    },
+    {
+      "num": 8,
+      "enonce": "Comment doit être stocké le tablier en cuir après son nettoyage ?",
+      "options": {
+        "A": "Accroché à une poignée de porte pour un séchage rapide",
+        "B": "Dans le contenant fermé réservé au linge propre",
+        "C": "Sur un cintre, sans le plier",
+        "D": "Plié soigneusement sur l'étagère supérieure du casier"
+      },
+      "indice": "Considérez le support qui permet de maintenir la forme naturelle de l'équipement.",
+      "corrections": {
+        "A": "L'usage des poignées de portes comme support de stockage est totalement contraire aux règles d'organisation du vestiaire. Cette pratique expose indûment l'équipement propre à des contacts répétés et très inappropriés.",
+        "B": "Le linge propre en textile classique est effectivement stocké en contenant fermé, mais cette règle ne s'applique pas au cuir. Ce matériau naturel organique nécessite de respirer à l'air libre pour conserver ses propriétés intactes.",
+        "C": "Le suspendre sans aucun pliage évite de marquer et de craqueler le cuir de manière définitive. Cette position verticale rigoureuse permet également une ventilation optimale de l'équipement après son nettoyage humide.",
+        "D": "Le pliage répété du cuir est fortement déconseillé car il affaiblit inéluctablement le matériau aux zones de pliure. Ces craquelures deviendraient rapidement des nids à bactéries incrustées qu'il serait impossible d'assainir correctement."
+      },
+      "bonne_reponse": "C",
+      "explication": "Pour mieux comprendre ce thème, il faut voir cette règle de rangement comme l'aboutissement du soin particulier accordé au tablier en cuir :\nL'étape finale du nettoyage : Le rangement sur cintre intervient à la fin du protocole, après avoir retiré les salissures, appliqué le Flash’ Germ, rincé à l’eau claire et séché le tablier.\nL'interdiction de le plier : Plier du cuir risque de créer des plis permanents et des craquelures. Dans un environnement exigeant une hygiène stricte, ces craquelures pourraient devenir des zones où l'humidité stagne et où les bactéries prolifèrent.\nLe complément hebdomadaire : Ce rangement vertical soigné s'accompagne de l'application d'un produit protecteur spécifique une fois par semaine. Utiliser un cintre permet de conserver la forme du tablier et de garantir un séchage uniforme sans emprisonner d'humidité."
+    },
+    {
+      "num": 9,
+      "enonce": "Dans quel ordre les éléments du kit visiteur doivent-ils être enfilés avant d'entrer en zone de production ?",
+      "options": {
+        "A": "1. Masque, 2. Charlotte, 3. Sur-chaussures, 4. Blouse",
+        "B": "1. Charlotte, 2. Blouse, 3. Masque, 4. Sur-chaussures",
+        "C": "1. Blouse, 2. Masque, 3. Sur-chaussures, 4. Charlotte",
+        "D": "1. Sur-chaussures, 2. Blouse, 3. Charlotte, 4. Masque"
+      },
+      "indice": "On commence généralement par couvrir la tête pour éviter la chute de cheveux sur le reste de l'équipement.",
+      "corrections": {
+        "A": "La grande blouse polyéthylène doit toujours être mise avant le masque et les sur-chaussures pour assurer une protection centrale. La charlotte reste par ailleurs le tout premier élément hygiénique à positionner sur le visiteur.",
+        "B": "Cet ordre logique de l'habillage permet de protéger le haut du corps et les cheveux en priorité absolue. La séquence se termine naturellement par la couverture des éléments les plus proches du sol contaminé.",
+        "C": "La charlotte doit impérativement être posée en premier pour éviter que des cheveux morts ne tombent sur la blouse propre. L'inversion involontaire de ces deux étapes initiales compromet gravement la propreté de l'ensemble de la tenue.",
+        "D": "Enfiler les sur-chaussures en premier risquerait de contaminer la blouse et la charlotte lors de leur manipulation ultérieure. Les mains toucheraient d'abord la zone la plus sale avant de venir protéger le visage et la tête."
+      },
+      "bonne_reponse": "B",
+      "explication": "L'habillage d'un visiteur ne s'improvise pas, car toute personne extérieure représente un risque de contamination.\nL'hygiène des mains préalable : La personne doit obligatoirement se laver les mains ou utiliser un désinfectant avant de manipuler le kit pour éviter de salir les équipements propres.\nL'ordre d'habillage : La séquence stricte est la suivante. 1- La charlotte (placée en premier pour couvrir les cheveux et éviter qu'ils ne tombent). 2- La blouse en polyéthylène (qui doit être bien fermée). 3- Le masque (ajusté pour couvrir le nez et la bouche). 4- Les sur-chaussures (enfilées en dernier pour ne pas se contaminer les mains juste avant d'ajuster le visage).\nL'obligation d'usage unique : Le kit est strictement à usage unique ; il ne faut jamais réutiliser ses composants.\nLe rôle de supervision : C'est au personnel de remettre spontanément un kit et de vérifier que le visiteur a bien compris comment l'utiliser."
+    },
+    {
+      "num": 10,
+      "enonce": "Quelle action doit être effectuée immédiatement avant de manipuler les composants du kit visiteur ?",
+      "options": {
+        "A": "Se laver les mains ou utiliser un désinfectant",
+        "B": "Vérifier la date de péremption du kit",
+        "C": "Enfiler ses propres gants personnels",
+        "D": "Signer le registre des visiteurs"
+      },
+      "indice": "Il s'agit de la mesure barrière fondamentale pour éviter la contamination croisée.",
+      "corrections": {
+        "A": "L'hygiène préalable et stricte des mains est cruciale pour éviter de contaminer les équipements de protection avant leur usage. Elle constitue la mesure barrière fondamentale précédant absolument toute manipulation de matériel propre.",
+        "B": "Bien que la vérification du matériel soit utile, le nettoyage des mains demeure l'action prioritaire de sécurité sanitaire exigée. L'inspection visuelle des dates ne protège en rien contre une contamination manuelle directe des masques.",
+        "C": "Les gants personnels de ville ne remplacent absolument pas le protocole de lavage des mains formellement requis en laboratoire. Ces accessoires textiles sont eux-mêmes porteurs de très nombreux germes récoltés à l'extérieur de l'établissement.",
+        "D": "Les tâches purement administratives d'enregistrement doivent être effectuées totalement indépendamment de la procédure d'habillage hygiénique. L'action chimique de désinfection cutanée précède toujours immédiatement la manipulation physique des composants du kit."
+      },
+      "bonne_reponse": "A",
+      "explication": "Pour mieux comprendre l'hygiène préalable au port du Kit Visiteur, voici les règles appliquées :\nLa prévention des contaminations croisées : La consigne stipule très clairement qu'il faut se laver les mains ou utiliser un désinfectant avant même de toucher au kit. Manipuler un équipement propre avec des mains sales reviendrait à le souiller avant son utilisation.\nUne étape qui précède un habillage strict : Cette désinfection est le préalable obligatoire à la procédure d'habillage. Sans des mains propres, l'ajustement de la charlotte et du masque sur le visage deviendrait un risque direct pour les zones de production.\nLes règles indissociables : Le kit impose un usage unique absolu, même si les éléments semblent propres. De plus, il relève de la responsabilité du personnel d'accompagner le visiteur pour s'assurer qu'il respecte bien cette étape de désinfection des mains avant de s'habiller."
+    },
+    {
+      "num": 11,
+      "enonce": "Qui est responsable de l'entretien des chaussures de sécurité au sein de l'établissement ?",
+      "options": {
+        "A": "Le responsable de production",
+        "B": "Le service de nettoyage externe",
+        "C": "Le fournisseur d'équipements de protection",
+        "D": "Le collaborateur"
+      },
+      "indice": "Pensez à la personne qui porte l'équipement chaque jour.",
+      "corrections": {
+        "A": "Le responsable supervise l'application stricte des procédures mais n'effectue jamais le nettoyage des équipements de sécurité des employés. Cette tâche manuelle d'entretien courant ne relève en aucun cas de ses attributions managériales.",
+        "B": "Bien que les locaux communs soient nettoyés par un service dédié, l'équipement de protection individuelle reste une responsabilité personnelle. Le prestataire externe n'a d'ailleurs pas l'autorisation d'entretenir les chaussures privées des salariés.",
+        "C": "Le fournisseur assure uniquement la conformité technique du matériel neuf livré, mais n'intervient pas dans son entretien. Son rôle commercial se limite exclusivement à la vente et au remplacement des bottes défectueuses.",
+        "D": "Le protocole précise explicitement que l'entretien et la propreté des chaussures de sécurité sont à la charge exclusive de chaque salarié. Cette responsabilisation individuelle indispensable garantit l'hygiène quotidienne de cet équipement de protection critique."
+      },
+      "bonne_reponse": "D",
+      "explication": "Les chaussures de sécurité constituent une exception notable dans la gestion globale de votre tenue de travail.\nUne responsabilité individuelle : L'entretien des chaussures de sécurité est à la charge exclusive du collaborateur. Il vous incombe personnellement de veiller à ce qu'elles restent constamment propres.\nUne exception par rapport aux vêtements classiques : Les vêtements classiques (vestes et pantalons) constituent une tenue fournie et entretenue par l'établissement via un lavage en machine à 90 °C. À l'inverse, les chaussures échappent à ce circuit automatisé et reposent sur votre propre rigueur.\nLe lien direct avec le stockage séparé : Puisque vous êtes responsable de leur propreté, la règle exigeant de stocker séparément les chaussures de sécurité et les chaussures civiles prend tout son sens. Cette séparation vous permet de ne pas ruiner vos propres efforts d'entretien en évitant que la saleté de la rue ne contamine votre équipement professionnel."
+    },
+    {
+      "num": 12,
+      "enonce": "Comment doivent être gérés les objets encombrants qui ne rentrent pas dans les casiers ?",
+      "options": {
+        "A": "Ils doivent être déposés à la réception de l'établissement",
+        "B": "Ils sont rangés dans un bac avec couvercle, clairement identifié",
+        "C": "Ils sont tolérés au sol le long du mur s'ils sont étiquetés",
+        "D": "Ils doivent rester à l'extérieur du vestiaire dans le véhicule personnel"
+      },
+      "indice": "Cherchez l'équipement spécial mis à disposition pour le rangement de gros volume.",
+      "corrections": {
+        "A": "Le vestiaire dispose déjà d'un dispositif interne spécifique pour éviter de disperser les affaires privées dans d'autres zones publiques. Déposer ses objets volumineux à la réception encombrerait par ailleurs inutilement l'espace d'accueil des clients.",
+        "B": "Cette solution officielle permet de stocker les objets volumineux sans jamais encombrer les zones de passage ou le dessus des casiers. L'utilisation d'un contenant clos et formellement identifié maintient la rigueur sanitaire des lieux.",
+        "C": "Rien ne doit jamais être toléré au sol pour garantir un nettoyage complet, rapide et efficace des surfaces de circulation. La présence d'étiquettes nominatives ne justifie aucune dérogation à cette règle d'hygiène fondamentale.",
+        "D": "L'établissement prévoit heureusement une solution de stockage interne pour éviter aux employés de faire des allers-retours fastidieux vers leur véhicule. Cette interdiction stricte de ramener ses affaires à la voiture n'existe pas dans le règlement du personnel."
+      },
+      "bonne_reponse": "B",
+      "explication": "Cette règle est la solution apportée pour gérer les exceptions tout en maintenant une hygiène irréprochable.\nLa règle absolue du \"rangement strict\" : Rien ne doit être laissé en dehors des casiers, que ce soit posé au-dessus ou en dessous, afin de prévenir le désordre et de garantir un nettoyage efficace au quotidien.\nGérer l'exception sans briser la règle : Pour les effets personnels très volumineux (sac de sport, casque), l'établissement met à disposition un bac spécifique pour éviter que ces objets ne finissent par traîner au sol.\nLe rôle du couvercle et de l'identification : Le couvercle agit comme une barrière, confinant l'objet encombrant et évitant qu'il ne prenne la poussière. Le fait que le bac soit clairement identifié évite toute confusion avec d'autres usages (comme le linge sale ou les déchets)."
+    }
+  ]
+}

@@ -1,0 +1,205 @@
+{
+  "id": 4,
+  "titre": "Quiz 4",
+  "theme": "Réception des marchandises",
+  "seuil_validation": 80,
+  "themes_abordes": [
+    "Processus de réception des marchandises",
+    "Contrôle de température et non-conformités",
+    "Utilisation de l'application HACCP sur tablette",
+    "Gestion documentaire et traçabilité",
+    "Hygiène du transport et sécurité alimentaire"
+  ],
+  "questions": [
+    {
+      "num": 1,
+      "enonce": "Que signifie juridiquement la signature du bon de livraison par le réceptionnaire ?",
+      "options": {
+        "A": "Elle confirme l'acceptation de la conformité des produits et de la quantité reçue.",
+        "B": "Elle permet de décharger la marchandise avant d'effectuer les contrôles de température.",
+        "C": "Elle atteste uniquement que le camion est arrivé à l'heure prévue.",
+        "D": "Elle sert de preuve pour le paiement immédiat du fournisseur en espèces."
+      },
+      "indice": "Réfléchissez à l'engagement pris par l'établissement vis-à-vis de l'état de la marchandise au moment de l'émargement.",
+      "corrections": {
+        "A": "Le document précise explicitement qu'une signature équivaut à l'acceptation formelle de ces deux critères essentiels. Cet acte juridique transfère officiellement la responsabilité sanitaire du livreur à l'établissement réceptionnaire.",
+        "B": "Les contrôles stricts de température doivent impérativement précéder la signature du document de transport. Ce préalable indispensable permet de garantir la sécurité alimentaire de la livraison avant tout engagement de l'établissement.",
+        "C": "La signature engage formellement la responsabilité de l'établissement sur l'état sanitaire et le nombre exact de produits. Elle ne se limite absolument pas à la simple validation de l'horaire logistique du transporteur.",
+        "D": "Le bon de livraison concerne exclusivement la réception physique et qualitative de la marchandise sur le quai. La facturation et le paiement constituent un processus comptable totalement distinct de cette validation opérationnelle."
+      },
+      "bonne_reponse": "A",
+      "explication": "Pour vous aider à mieux comprendre et maîtriser ce thème, il faut retenir que la signature du bon de livraison (BL) n'est pas une simple formalité administrative : c'est l'acte juridique par lequel s'opère le transfert de responsabilité.\nL'engagement de conformité : Comme le précise strictement le manuel, « un bon de livraison signé équivaut à l’acception de sa conformité et de la quantité reçue ». En signant, vous attestez officiellement que les produits livrés sont sains, au bon nombre, et respectent les normes exigées.\nLe premier rempart de la sécurité alimentaire : La sécurité alimentaire commence à la réception. C'est à ce moment précis que vous protégez vos futurs clients en évitant de faire entrer des produits dangereux dans vos stocks.\nLe contrôle quadripartite obligatoire : Il est formellement interdit de signer un bon sans avoir procédé aux vérifications rigoureuses de quatre critères : la température, la qualité, les DLC/DDM et les quantités.\nLe droit de refus (principe de précaution) : La règle en cas d'anomalie grave est stricte : « En cas de doute, appliquez le principe de précaution : Refusez la livraison. La sécurité de nos clients est prioritaire ».\nLa traçabilité et les litiges (Fiche PCR01) : Si une non-conformité est détectée, l'application génère une fiche d'incident (PCR01) qui nécessite de recueillir la signature du livreur sur la tablette. S'il refuse la reprise, le produit défectueux doit être isolé au réfrigérateur avec une étiquette « À RETOURNER »."
+    },
+    {
+      "num": 2,
+      "enonce": "Quel équipement est spécifiquement recommandé pour mesurer la température de l'enceinte du camion lors de l'étape 2 ?",
+      "options": {
+        "A": "L'enregistreur de température fixe du camion.",
+        "B": "Le thermomètre à sonde.",
+        "C": "Le thermomètre laser.",
+        "D": "Le capteur thermique intégré à la tablette."
+      },
+      "indice": "Considérez l'outil qui permet de mesurer une température à distance sans percer les emballages.",
+      "corrections": {
+        "A": "Le réceptionnaire doit impérativement effectuer sa propre mesure indépendante avec le matériel étalonné de l'établissement. Se fier uniquement aux données de bord du transporteur annulerait l'impartialité indispensable de cette vérification sanitaire.",
+        "B": "Cet outil de précision pointu est strictement réservé au contrôle à cœur des produits organiques. Son utilisation invasive n'intervient qu'en cas de doute ou de non-conformité d'ambiance préalablement détectée.",
+        "C": "Le thermomètre laser permet une lecture très rapide et sans aucun contact physique de la température ambiante. Cet outil est parfaitement adapté pour contrôler l'enceinte de transport frigorifique dès l'ouverture des portes.",
+        "D": "La tablette numérique sert exclusivement à l'enregistrement et au traitement informatique des données HACCP. Elle ne possède matériellement aucune fonction de mesure thermique directe de l'environnement ou des denrées."
+      },
+      "bonne_reponse": "C",
+      "explication": "Le thermomètre laser est effectivement l'outil adéquat pour cette étape précise.\nUne mesure rapide pour l'enceinte du camion : Le manuel indique explicitement qu'il faut utiliser le thermomètre laser pour prendre la température de l’enceinte du camion. Il permet de mesurer instantanément l'espace de stockage dès l'ouverture des portes, sans manipuler la marchandise.\nL'étape 2 sur la tablette : Lors de l'étape de \"Contrôle du camion\" sur le logiciel HACCP Monitor, vous devez utiliser le clavier numérique pour taper la valeur exacte lue sur la sonde du laser.\nLa différence avec le thermomètre à sonde : Si le laser sert à vérifier l'air ambiant, le thermomètre à sonde sert à vérifier l'intérieur des denrées. Si la température du camion relevée au laser est anormale (ex: 25°C), l'application va automatiquement bloquer la procédure et exiger un « contrôle à cœur » en piquant le produit.\nL'assistance automatisée : Vous n'avez pas à connaître par cœur toutes les tolérances. Une fois la température du camion saisie, l'outil calcule automatiquement s'il y a une non-conformité (NC) et vous dicte la marche à suivre."
+    },
+    {
+      "num": 3,
+      "enonce": "Quelle est la procédure correcte si l'imprimante ne fonctionne pas lors de l'édition d'une étiquette ?",
+      "options": {
+        "A": "Changer immédiatement les piles de l'imprimante avant de retenter l'impression.",
+        "B": "Débrancher le routeur Wi-Fi de la zone de réception pendant une minute.",
+        "C": "Appuyer brièvement sur le bouton reset situé sous l'appareil avec une pointe de stylo.",
+        "D": "Maintenir le bouton d'allumage 2 secondes, attendre l'extinction, puis rallumer et patienter 45 secondes."
+      },
+      "indice": "Il s'agit d'un cycle précis d'extinction et de rallumage avec un temps d'attente pour le signal sans fil.",
+      "corrections": {
+        "A": "L'absence soudaine d'impression est généralement liée à un problème de connexion réseau plutôt qu'à l'alimentation électrique. Un changement de batterie serait inutile et ralentirait fortement la procédure de réception des marchandises.",
+        "B": "Le dysfonctionnement doit d'abord être traité localement sur l'imprimante par un simple cycle d'extinction. Intervenir directement sur l'infrastructure réseau de l'établissement affecterait inutilement tous les autres équipements connectés.",
+        "C": "Le document préconise une procédure très spécifique de redémarrage via le bouton d'alimentation principal situé en façade. L'utilisation d'un éventuel bouton de réinitialisation d'usine n'est absolument pas requise pour cette relance standard.",
+        "D": "Cette procédure manuelle de redémarrage permet de réinitialiser efficacement la connexion Wi-Fi interne de l'appareil. Ce long délai d'attente garantit la synchronisation réseau indispensable comme l'indique clairement le mode d'emploi."
+      },
+      "bonne_reponse": "D",
+      "explication": "Pour bien maîtriser ce thème, il faut comprendre l'enjeu critique de cette impression dans la gestion des anomalies.\nLa procédure technique de dépannage détaillée : En cas de dysfonctionnement, la procédure stricte de réinitialisation consiste à faire un appui long de 2 secondes sur le bouton d'allumage, attendre que la LED devienne orange et que l'appareil s'éteigne, appuyer de nouveau pendant 2 secondes pour rallumer, puis patienter 45 secondes jusqu'à ce que l'icône Wi-Fi s'arrête de clignoter.\nPourquoi cette impression est-elle obligatoire ? L'édition de cette étiquette intervient lorsqu'une non-conformité est confirmée (mauvaise température ou propreté) et que le livreur refuse de reprendre la marchandise.\nL'objectif sanitaire (le balisage) : L'étiquette sert à baliser clairement le lot concerné afin d'éviter toute confusion. Une fois l'étiquette « À RETOURNER » apposée, le produit défectueux doit être isolé dans une zone séparée au réfrigérateur.\nLe filet de sécurité : Si l'imprimante met du temps à redémarrer, la procédure n'est pas bloquée. Le système sauvegarde vos actions et vous permet de réimprimer l'étiquette et la fiche PCR01 depuis le module « HISTORIQUE »."
+    },
+    {
+      "num": 4,
+      "enonce": "Lors de la saisie d'un produit sur la tablette, quelles informations sont obligatoires après avoir sélectionné le nom de l'article ?",
+      "options": {
+        "A": "L'heure exacte de fin de production chez le fabricant.",
+        "B": "Le nom du chauffeur et l'immatriculation du camion.",
+        "C": "Le prix unitaire et le poids total de la palette.",
+        "D": "Le numéro de lot du fournisseur et la DLC (ou DLUO)."
+      },
+      "indice": "Pensez aux éléments qui permettent de retrouver l'origine d'un produit en cas d'alerte sanitaire.",
+      "corrections": {
+        "A": "Seules la date limite de consommation et l'identification du lot sont strictement requises lors de cette saisie. L'heure précise de production usine n'apporte aucune donnée exploitable pour la traçabilité interne du magasin.",
+        "B": "L'application se concentre exclusivement sur les caractéristiques sanitaires du produit organique réceptionné. Les détails logistiques et personnels concernant le transporteur n'ont aucune utilité dans ce champ de saisie précis.",
+        "C": "Bien que systématiquement présentes sur le bon de livraison, ces données économiques ne constituent pas le focus de l'application HACCP. La sécurité sanitaire se désintéresse totalement des aspects financiers ou volumétriques globaux de la marchandise.",
+        "D": "Ces deux données alphanumériques sont absolument indispensables pour assurer la parfaite traçabilité sanitaire de chaque denrée. Elles permettent d'identifier et de bloquer immédiatement la marchandise visée en cas d'alerte ou de litige."
+      },
+      "bonne_reponse": "D",
+      "explication": "La saisie de ces deux informations est le cœur même de la traçabilité alimentaire.\nUn des quatre piliers du contrôle : La vérification des dates limites fait partie du contrôle \"quadripartite\" systématique exigé à la réception (température, qualité, DLC/DDM, quantités).\nLa saisie obligatoire sur la tablette : Lors de l'ajout d'un produit dans HACCP Monitor, les champs « N° de lot fournisseur » et « DLC » sont obligatoires. Cela permet de lier physiquement la marchandise à l'historique informatique de l'établissement.\nLes appréciations visuelles en complément : À cette même étape, vous devez également évaluer la qualité du produit en notant vos appréciations visuelles avant de pouvoir cliquer sur « Ajouter ».\nUn rôle crucial en cas de litige : Si le produit est non-conforme, l'application utilise ce numéro de lot et cette DLC pour préremplir automatiquement la fiche d'incident PCR01. C'est également ce numéro et cette DLC précis qui seront imprimés sur l'étiquette « À RETOURNER » pour baliser le danger physique."
+    },
+    {
+      "num": 5,
+      "enonce": "Dans quel cas un contrôle de température 'à cœur' devient-il obligatoire selon l'application ?",
+      "options": {
+        "A": "Systématiquement pour chaque livraison, quel que soit l'état du camion.",
+        "B": "Seulement pour les produits surgelés dont l'emballage est givré.",
+        "C": "Lorsque la température de l'enceinte du camion dépasse le seuil de tolérance autorisé pour le produit.",
+        "D": "Uniquement si le chauffeur refuse de signer le bon de livraison."
+      },
+      "indice": "Cette mesure est une étape de vérification approfondie suite à une première anomalie détectée.",
+      "corrections": {
+        "A": "Le contrôle à cœur est une action corrective extrêmement invasive qui endommage irrémédiablement l'emballage protecteur. Il n'est donc déclenché qu'en cas d'anomalie d'ambiance et ne saurait être appliqué systématiquement aux lots sains.",
+        "B": "Les denrées fraîches très périssables comme les abats (ex: foie d'agneau) sont également soumises à cette règle impérative. Ce contrôle thermique invasif s'applique universellement à toute catégorie en cas de rupture de la chaîne du froid.",
+        "C": "L'application analyse instantanément l'écart thermique détecté et impose cette mesure de sécurité renforcée. Cette vérification permet de déterminer avec précision si le produit organique lui-même a effectivement subi un réchauffement.",
+        "D": "C'est exclusivement la mesure physique d'une température non conforme qui dicte le besoin formel d'un contrôle à cœur. L'attitude, le refus ou le comportement humain du livreur n'a aucune influence sur ce déclenchement logiciel."
+      },
+      "bonne_reponse": "C",
+      "explication": "Cette étape illustre parfaitement l'intelligence et le rôle d'assistance du système HACCP Monitor.\nL'analyse automatique (le déclencheur) : Lorsque vous prenez la température ambiante du camion au laser et que vous la saisissez, le logiciel la compare avec les seuils des produits attendus. Si vous saisissez 25°C, l'application détecte un écart majeur.\nPourquoi le contrôle \"à cœur\" ? Une température d'enceinte anormale est une alerte grave, mais elle ne signifie pas toujours que le produit à l'intérieur de son emballage a chauffé. L'application exige alors un contrôle à cœur avec le thermomètre à sonde.\nVous êtes guidé de A à Z : Vous n'avez pas à interpréter la conformité. L'application bloque la réception classique et vous indique la marche à suivre étape par étape.\nLa suite de la procédure : Si le contrôle à cœur confirme que le produit est trop chaud, la non-conformité est confirmée, déclenchant l'édition automatique de la fiche PCR01 et l'impression éventuelle de l'étiquette."
+    },
+    {
+      "num": 6,
+      "enonce": "Pour un produit comme le foie d'agneau (catégorie abats), quelle est la plage de température cible lors de la réception ?",
+      "options": {
+        "A": "Entre 2 °C et 4 °C.",
+        "B": "Entre 0 °C et 3 °C.",
+        "C": "Entre 0 °C et 7 °C.",
+        "D": "Toujours inférieure à -18°C."
+      },
+      "indice": "Les abats nécessitent un froid plus intense que la viande de boucherie standard.",
+      "corrections": {
+        "A": "Cette plage thermique modérée est couramment acceptée pour d'autres types de denrées carnées moins fragiles. Les abats exigent en revanche une température de conservation nette, nettement plus basse et plus rigoureuse.",
+        "B": "Les abats sont des denrées extrêmement périssables nécessitant une conservation frigorifique stricte et sans faille. Cette plage étroite garantit le blocage optimal de la prolifération bactérienne rapide dans les tissus organiques.",
+        "C": "Le seuil maximal légal de 7°C est beaucoup trop élevé pour garantir la sécurité sanitaire des abats crus. Une telle tolérance thermique entraînerait inévitablement une dégradation bactériologique foudroyante de ces produits ultra-frais.",
+        "D": "Cette valeur thermique très négative correspond exclusivement au stockage en chambre froide des produits surgelés ou congelés. Elle ne s'applique absolument pas à la catégorie des abats frais simplement réfrigérés cités dans cette procédure."
+      },
+      "bonne_reponse": "B",
+      "explication": "Le foie d'agneau, en tant qu'abat, fait partie des denrées extrêmement sensibles qui nécessitent une maîtrise parfaite de la chaîne du froid.\nDes seuils spécifiques à chaque denrée : Le seuil de température autorisé varie selon le produit. Pour la catégorie des abats, la plage cible est très stricte et doit se situer entre 0 °C et +3 °C.\nL'assistance logicielle : C'est le grand avantage de votre système. Vous n'avez pas besoin de mémoriser les températures, l'application vérifie automatiquement si la température relevée constitue une non-conformité.\nLe passage au contrôle à cœur : Si la température de l'enceinte est anormale, cela rend le contrôle à cœur obligatoire pour vérifier la température interne du foie d'agneau avec la sonde.\nLa confirmation du litige : Si le contrôle à cœur révèle que le produit a effectivement chauffé (ex: 5 °C au lieu de +3 °C max), l'application vous dicte la marche à suivre et préremplit la fiche d'incident PCR01."
+    },
+    {
+      "num": 7,
+      "enonce": "Si un produit est jugé non-conforme et que le livreur refuse de le reprendre, quelle action doit être menée ?",
+      "options": {
+        "A": "Accepter le produit normalement et l'intégrer au stock pour ne pas perdre de marchandise.",
+        "B": "Imprimer l'étiquette 'À RETOURNER', l'apposer sur le produit et isoler le lot au réfrigérateur.",
+        "C": "Jeter immédiatement le produit pour éviter tout risque de contamination.",
+        "D": "Laisser le produit sur le quai de déchargement jusqu'au passage du responsable."
+      },
+      "indice": "Pensez à la manière de signaler visuellement une anomalie tout en maintenant le produit au frais.",
+      "corrections": {
+        "A": "La sécurité alimentaire publique prime incontestablement sur la perte économique potentielle encourue par le magasin. Un produit sanitaire non-conforme ne doit absolument jamais être dissimulé ou intégré au milieu du stock sain.",
+        "B": "Ce balisage clair et cet isolement physique immédiat évitent que le produit dangereux ne soit utilisé par erreur. Le lot reste parfaitement sécurisé au froid dans l'attente de la résolution définitive du litige commercial.",
+        "C": "Le produit défectueux doit impérativement être conservé de manière isolée pour servir de preuve juridique ou d'expertise. Sa destruction physique immédiate empêcherait tout retour ultérieur au fournisseur ou tout dédommagement financier.",
+        "D": "Abandonner des denrées périssables sur un quai de déchargement extérieur expose à de graves risques sanitaires supplémentaires. Cette mauvaise pratique viole totalement le principe de la marche en avant et du respect de la chaîne du froid."
+      },
+      "bonne_reponse": "B",
+      "explication": "Cette action représente le dernier filet de sécurité physique lorsqu'un produit potentiellement dangereux reste dans vos locaux.\nLe balisage visuel du danger : L'objectif principal de l'étiquette d'identification est de baliser clairement le lot et d’éviter toute confusion avec les produits conformes si le livreur refuse la reprise.\nL'isolement physique : Le lot défectueux doit être placé au réfrigérateur dans une zone séparée ou clairement identifiée, en attente de la résolution du litige pour éviter les contaminations croisées.\nL'assistance de l'application : À la fin de l'édition de la fiche incident PCR01, l'application vous propose d'imprimer cette fameuse étiquette portant la mention « À RETOURNER ».\nLa traçabilité du litige : Le logiciel enregistre cette situation de blocage. L'action corrective de votre fiche atteste que le retour n'a pas été accepté par le livreur, et précise que le produit est isolé et balisé."
+    },
+    {
+      "num": 8,
+      "enonce": "Quels sont les quatre critères de contrôle visuel à valider sur la tablette pour chaque produit ?",
+      "options": {
+        "A": "Température, Humidité, pH et Acidité.",
+        "B": "Poids, Taille, Forme et Emballage.",
+        "C": "Provenance, Label, Prix et Marque.",
+        "D": "Couleur, Consistance, Exsudat et Odeur."
+      },
+      "indice": "Il s'agit de caractéristiques sensorielles que l'on peut percevoir sans instrument de mesure complexe.",
+      "corrections": {
+        "A": "Le pH est une mesure biochimique optionnelle et complexe nécessitant des instruments de laboratoire spécifiques. L'humidité et l'acidité ne font pas partie des quatre boutons de conformité standard évalués visuellement par l'opérateur.",
+        "B": "Bien que l'intégrité de l'emballage protecteur soit un point de vérification important, ces critères volumétriques restent superficiels. Les contrôles prioritaires exigés sur la tablette concernent directement l'aspect intrinsèque de la chair du produit carnée.",
+        "C": "Ces informations strictement administratives et commerciales ne constituent en rien le contrôle visuel physique exigé à réception. L'application recherche une évaluation de l'état organique de la denrée et non son positionnement marketing ou tarifaire.",
+        "D": "Ces quatre indicateurs organoleptiques fondamentaux permettent d'évaluer rapidement et visuellement la parfaite fraîcheur de la marchandise. Ils reposent entièrement sur l'expertise humaine directe pour valider la qualité salubre de la viande fraîche."
+      },
+      "bonne_reponse": "D",
+      "explication": "L'évaluation sensorielle est une étape indispensable pour valider la fraîcheur et la salubrité d'une denrée.\nLe pilier « Qualité » du contrôle : Les vérifications de réception reposent sur la température, les DLC/DDM, les quantités et la qualité. Ces quatre critères (couleur, consistance, exsudat et odeur) constituent précisément l'étape de contrôle de la qualité du produit.\nUne saisie obligatoire : Lors de l'ajout d'un produit, il faut noter ces appréciations visuelles avant de pouvoir cliquer sur le bouton « Ajouter ».\nUn choix binaire de conformité : Pour chaque critère, vous devez cliquer soit sur « ✓ Conforme » soit sur « X NC » (Non-Conforme).\nVotre expertise humaine : La tablette ne peut pas inspecter la viande à votre place. C'est votre observation qui permet de valider que la viande a une belle couleur, une fermeté normale, pas d'excès de liquide, et pas d'odeur anormale."
+    },
+    {
+      "num": 9,
+      "enonce": "Où peut-on retrouver et réimprimer une fiche incident PCR01 si la page a déjà été fermée ?",
+      "options": {
+        "A": "Dans le module 'HISTORIQUE', sous-section 'FLUX PRODUITS' puis 'RÉCEPTIONS'.",
+        "B": "Uniquement en contactant le support technique pour débloquer le fichier.",
+        "C": "Directement sur l'écran d'accueil de la tablette via le bouton 'URGENCE'.",
+        "D": "Dans le calendrier DLC, à la date de réception du produit."
+      },
+      "indice": "Cherchez le nom du module qui sert généralement à consulter les événements passés.",
+      "corrections": {
+        "A": "Le module historique centralise efficacement tous les enregistrements numériques et actes de réception passés de l'établissement. Ce cheminement de navigation précis permet de récupérer et de réimprimer facilement les précieux documents de non-conformité.",
+        "B": "L'utilisateur final dispose heureusement d'un accès totalement autonome et instantané à ses propres enregistrements de travail. Le recours laborieux au support informatique n'est absolument pas requis pour cette opération courante de consultation.",
+        "C": "L'écran d'accueil interactif propose des modules d'action ou de saisie immédiate et non d'archivage documentaire. Les documents et historiques passés sont logiquement centralisés dans la section dédiée à la mémoire du système.",
+        "D": "Le module calendrier DLC sert exclusivement au suivi logistique quotidien des dates de péremption des lots stockés. Il ne constitue absolument pas un outil d'archivage de formulaires pour retrouver les fiches d'incident de réception."
+      },
+      "bonne_reponse": "A",
+      "explication": "Pour bien comprendre comment ce module s'intègre dans votre travail quotidien, voici les points essentiels :\nLe droit à l'erreur (le filet de sécurité) : Si la page est fermée par erreur ou suite à une panne (ex: imprimante), le système enregistre vos saisies en temps réel.\nLe registre officiel : Le module « HISTORIQUE » est le grand registre informatique de votre établissement. En allant dans « FLUX PRODUITS » puis « RÉCEPTIONS », vous accédez à l'ensemble de vos livraisons.\nLes deux documents clés à réimprimer : Depuis cet écran, vous pouvez générer de nouveau la fiche incident PCR01 (qui retrace le problème et les actions correctives) et l'étiquette « À RETOURNER » indispensable pour baliser le produit défectueux."
+    },
+    {
+      "num": 10,
+      "enonce": "Quelle est la règle de sécurité à appliquer si un doute subsiste sur la propreté du camion ou l'impact sanitaire ?",
+      "options": {
+        "A": "Accepter la livraison mais demander une remise commerciale immédiate.",
+        "B": "Prendre une photo et accepter les produits pour éviter une rupture de stock.",
+        "C": "Appliquer le principe de précaution et refuser la livraison.",
+        "D": "Nettoyer soi-même l'intérieur du camion du fournisseur avant de décharger."
+      },
+      "indice": "C'est l'attitude par défaut à adopter lorsque la santé des consommateurs pourrait être menacée.",
+      "corrections": {
+        "A": "Une hypothétique remise financière accordée par le transporteur ne compensera jamais un risque sanitaire mortel pour le client final. La sécurité absolue des consommateurs ne peut faire l'objet d'aucune négociation ou transaction monétaire sur le quai.",
+        "B": "La capture d'une photographie sert d'excellente preuve visuelle du litige d'hygiène auprès de la direction du fournisseur. Cependant, elle ne justifie aucunement l'acceptation irresponsable de denrées dont la parfaite sécurité originelle est lourdement compromise.",
+        "C": "Le document souligne très fermement que la sécurité inconditionnelle des clients demeure la priorité absolue de l'établissement. Face à une grave incertitude sur l'hygiène du transport, le blocage formel et le rejet de la marchandise deviennent obligatoires.",
+        "D": "L'hygiène rigoureuse et systématisée du matériel de transport incombe légalement et exclusivement au prestataire logistique désigné. Le personnel de réception de la boucherie ne doit jamais intervenir physiquement pour nettoyer un équipement mobile externe."
+      },
+      "bonne_reponse": "C",
+      "explication": "Cette règle illustre la priorité absolue donnée à la santé des consommateurs lors de la réception des marchandises.\nL'évaluation du risque sanitaire : Face à un camion sale, si l'anomalie peut avoir un impact sur la sécurité sanitaire des produits, vous devez refuser la livraison.\nLa règle d'or du principe de précaution : S'il est impossible de déterminer avec certitude si la marchandise a été contaminée, le manuel est catégorique : « En cas de doute, appliquez le principe de précaution : Refusez la livraison ».\nLa collecte de preuves visuelles : Si l'anomalie de propreté ne correspond pas aux choix de l'application, l'instruction est de prendre « simplement une photo pour conserver une preuve visuelle de la situation ».\nUne procédure de litige (PCR01) : Le refus de livraison enclenche la fiche PCR01. Si le livreur refuse de reprendre la marchandise, il faudra imprimer l'étiquette d'identification, l'apposer sur le lot concerné et l'isoler dans une zone séparée."
+    }
+  ]
+}
