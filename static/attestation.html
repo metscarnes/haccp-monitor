@@ -7,6 +7,7 @@
   <title>Attestation de réussite — Au Comptoir des Lilas</title>
   <link rel="stylesheet" href="/static/css/reset.css">
   <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/fonts-attestation.css">
   <link rel="stylesheet" href="/static/css/pages/attestation.css">
 </head>
 <body class="att-body">
@@ -14,7 +15,7 @@
   <!-- Barre d'actions (masquée à l'impression) -->
   <div class="att-actions" id="att-actions">
     <a href="/elearning-hygiene-quiz.html" id="att-retour" class="att-btn att-btn--ghost">← Retour</a>
-    <button id="att-imprimer" class="att-btn att-btn--primary">🖨️ Imprimer / PDF</button>
+    <button id="att-imprimer" class="att-btn att-btn--primary">Imprimer / PDF</button>
   </div>
 
   <!-- Feuille A4 -->
@@ -22,87 +23,92 @@
 
     <div class="att-bordure">
 
+      <!-- En-tête institutionnel -->
       <header class="att-entete">
+        <img src="/static/docs/Quiz/Logo%20AU%20Comptoir%20Des%20Lilas.png"
+             alt="Au Comptoir des Lilas" class="att-logo">
         <div class="att-etab">
-          <div class="att-etab-nom" id="att-etab-nom">Au Comptoir des Lilas</div>
-          <div class="att-etab-adresse" id="att-etab-adresse">122 rue de Paris, Les Lilas, 93260</div>
+          <div class="att-etab-nom">Au Comptoir des Lilas</div>
+          <div class="att-etab-ligne">122 rue de Paris — 93260 Les Lilas</div>
+          <div class="att-etab-ligne">SIRET 103 577 607 00015</div>
         </div>
-        <div class="att-sceau" aria-hidden="true">🏅</div>
       </header>
 
+      <div class="att-filet" aria-hidden="true"></div>
+
+      <!-- Titre -->
       <div class="att-titre-wrap">
         <h1 class="att-titre">Attestation de réussite</h1>
-        <p class="att-sous-titre">Formation Hygiène Alimentaire — HACCP</p>
+        <p class="att-sur-titre">Formation à l'hygiène alimentaire — méthode HACCP</p>
       </div>
 
+      <!-- Corps -->
       <section class="att-corps">
         <p class="att-intro">
-          La société <strong>Au Comptoir des Lilas</strong>, représentée par son Président,
-          atteste par la présente que&nbsp;:
+          Nous soussignés, la société Au Comptoir des Lilas, représentée par son Président,
+          attestons que
         </p>
 
         <p class="att-nom" id="att-nom">—</p>
+        <div class="att-nom-filet" aria-hidden="true"></div>
 
         <p class="att-phrase">
-          a satisfait aux exigences du module de formation et d'évaluation
-          relatif à l'hygiène alimentaire (méthode HACCP)&nbsp;:
+          a validé avec succès le module de formation et d'évaluation suivant&nbsp;:
         </p>
 
         <p class="att-module" id="att-module">—</p>
 
         <p class="att-phrase att-phrase--secondaire">
-          en obtenant un résultat conforme au seuil de validation requis,
-          attestant ainsi de la maîtrise des connaissances suivantes&nbsp;:
+          et satisfait aux exigences requises, attestant ainsi de la maîtrise
+          des compétences évaluées ci-dessous.
         </p>
 
+        <!-- Résultats (sobre) -->
         <div class="att-resultat">
           <div class="att-resultat-bloc">
             <span class="att-resultat-valeur" id="att-pct">—</span>
             <span class="att-resultat-label">Résultat obtenu</span>
           </div>
-          <div class="att-resultat-sep" aria-hidden="true"></div>
           <div class="att-resultat-bloc">
             <span class="att-resultat-valeur" id="att-score">—</span>
             <span class="att-resultat-label">Bonnes réponses</span>
           </div>
-          <div class="att-resultat-sep" aria-hidden="true"></div>
           <div class="att-resultat-bloc">
-            <span class="att-resultat-valeur att-resultat-valeur--seuil">≥ 80 %</span>
+            <span class="att-resultat-valeur" id="att-seuil">≥ 80 %</span>
             <span class="att-resultat-label">Seuil de validation</span>
           </div>
         </div>
 
+        <!-- Compétences évaluées -->
         <div class="att-themes" id="att-themes" hidden>
-          <h2 class="att-themes-titre">Compétences et thèmes évalués</h2>
+          <h2 class="att-themes-titre">Compétences évaluées</h2>
           <ul class="att-themes-liste" id="att-themes-liste"></ul>
         </div>
       </section>
 
+      <!-- Lieu / date -->
       <p class="att-lieu-date">
         Fait à Les Lilas, le <span class="att-lieu-date-val" id="att-date">—</span>
       </p>
 
+      <!-- Signatures -->
       <footer class="att-pied">
-        <!-- Signature opérateur (capturée à la réussite) -->
         <div class="att-signataire">
           <span class="att-signataire-role">Le stagiaire</span>
           <div class="att-signataire-zone">
             <img id="att-signature-operateur" class="att-signature-img" alt="Signature du stagiaire" hidden>
           </div>
-          <div class="att-signataire-ligne"></div>
           <span class="att-signataire-nom" id="att-operateur-nom">—</span>
         </div>
 
-        <!-- Signature du Président -->
         <div class="att-signataire">
           <span class="att-signataire-role">Le Président</span>
           <div class="att-signataire-zone">
-            <img src="/static/docs/Quiz/Ma%20signature%20HD%20sans%20fond.png" alt="Signature du Président" class="att-signature-img att-signature-img--president">
+            <img src="/static/docs/Quiz/Ma%20signature%20HD%20sans%20fond.png"
+                 alt="Signature du Président" class="att-signature-img att-signature-img--president">
           </div>
-          <div class="att-signataire-ligne"></div>
           <span class="att-signataire-nom">Ulysse CAMPIGLIA</span>
           <span class="att-signataire-detail">Président — Au Comptoir des Lilas</span>
-          <span class="att-signataire-detail">SIRET : 103 577 607 00015</span>
         </div>
       </footer>
 

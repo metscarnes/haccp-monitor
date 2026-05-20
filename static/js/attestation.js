@@ -93,7 +93,7 @@
 
     // Seuil affiché selon le quiz
     const seuil = quiz.seuil_validation || 80;
-    const elSeuil = document.querySelector('.att-resultat-valeur--seuil');
+    const elSeuil = $('att-seuil');
     if (elSeuil) elSeuil.textContent = `≥ ${seuil} %`;
 
     // Date (de la meilleure tentative)

@@ -1,0 +1,28 @@
+/* ============================================================
+   Polices locales pour l'attestation (hors-ligne, sans Google)
+   Fichiers variables servis depuis /static/fonts/
+   ============================================================ */
+
+@font-face {
+  font-family: 'Montserrat';
+  font-style: normal;
+  font-weight: 100 900;          /* fonte variable : 400→700 utilisés */
+  font-display: swap;
+  src: url('/static/fonts/montserrat.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 400 900;          /* fonte variable */
+  font-display: swap;
+  src: url('/static/fonts/playfair-display.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Source Serif 4';
+  font-style: normal;
+  font-weight: 200 900;          /* fonte variable */
+  font-display: swap;
+  src: url('/static/fonts/source-serif-4.woff2') format('woff2');
+}
