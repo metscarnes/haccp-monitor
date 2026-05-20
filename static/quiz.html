@@ -137,6 +137,29 @@
 
   </main>
 
+  <!-- ─────────────── POP-UP : déjà réussi ─────────────── -->
+  <div class="quiz-modal" id="modal-deja-reussi" hidden role="dialog" aria-modal="true" aria-labelledby="deja-titre">
+    <div class="quiz-modal-box">
+      <div class="quiz-modal-confettis" aria-hidden="true">
+        <span>🎉</span><span>🏆</span><span>⭐</span><span>🎊</span><span>✨</span>
+      </div>
+      <div class="quiz-modal-medaille" aria-hidden="true">🏅</div>
+      <h2 class="quiz-modal-titre" id="deja-titre">Déjà validé !</h2>
+      <p class="quiz-modal-msg" id="deja-msg"></p>
+
+      <div class="quiz-modal-note">
+        <span class="quiz-modal-note-pct" id="deja-pct">—</span>
+        <span class="quiz-modal-note-label">meilleure note</span>
+      </div>
+      <p class="quiz-modal-detail" id="deja-detail"></p>
+
+      <div class="quiz-modal-actions">
+        <button id="btn-deja-rejouer" class="quiz-btn quiz-btn--primary">↻ Rejouer le quiz</button>
+        <a href="/elearning-hygiene-quiz.html" class="quiz-btn quiz-btn--ghost">Retour aux quiz</a>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/quiz.js"></script>
 </body>
 </html>

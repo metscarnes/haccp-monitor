@@ -140,23 +140,6 @@
       z-index: 3;
     }
 
-    /* Badge état (réussi / verrouillé) */
-    .quiz-card-badge {
-      position: absolute;
-      top: 0.45rem;
-      right: 0.45rem;
-      font-size: 0.62rem;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      padding: 0.18rem 0.5rem;
-      border-radius: var(--radius-pill);
-      box-shadow: 0 1px 4px rgba(0,0,0,.3);
-      z-index: 3;
-    }
-    .quiz-card-badge--ok    { background: var(--color-ok);   color: #fff; }
-    .quiz-card-badge--retry { background: var(--color-warning); color: #fff; }
-    .quiz-card-badge[hidden] { display: none; }
-
     /* Infos */
     .quiz-card-info {
       padding: 0.5rem 0.6rem 0.6rem;
@@ -239,7 +222,6 @@
         <${tag} class="quiz-card${lock}"${href} aria-label="Quiz ${q.id} — ${q.titre}">
           <div class="quiz-card-head">
             <span class="quiz-card-num">${q.id}</span>
-            <span class="quiz-card-badge quiz-card-badge--ok" data-badge="${q.id}" hidden>✓ Réussi</span>
             <img src="${q.img}" alt="" loading="eager" decoding="async" fetchpriority="high">
             <span class="quiz-card-emoji" aria-hidden="true"></span>
           </div>
@@ -252,24 +234,6 @@
     }
 
     grille.innerHTML = QUIZ.map(carteHTML).join('');
-
-    // Marquer les quiz déjà réussis (≥ 80 %) via l'API.
-    (async function marquerReussites() {
-      try {
-        const res = await fetch('/api/elearning/quiz/resultats?limit=500');
-        if (!res.ok) return;
-        const resultats = await res.json();
-        const reussis = new Set(
-          resultats.filter(r => r.reussi).map(r => r.quiz_id)
-        );
-        reussis.forEach(id => {
-          const badge = document.querySelector(`[data-badge="${id}"]`);
-          if (badge) badge.hidden = false;
-        });
-      } catch (e) {
-        console.warn('Résultats quiz non chargés :', e);
-      }
-    })();
 
     // Horloge
     (function () {

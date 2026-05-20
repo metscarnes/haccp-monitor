@@ -34,6 +34,13 @@
   const elIntroDernier= $('intro-dernier');
   const elBtnDemarrer = $('btn-demarrer');
 
+  // Pop-up « déjà réussi »
+  const elModalDeja   = $('modal-deja-reussi');
+  const elDejaMsg     = $('deja-msg');
+  const elDejaPct     = $('deja-pct');
+  const elDejaDetail  = $('deja-detail');
+  const elBtnDejaRejouer = $('btn-deja-rejouer');
+
   // Question
   const elQCompteur   = $('q-compteur');
   const elQScore      = $('q-score');
@@ -171,16 +178,60 @@
 
   elSelect.addEventListener('change', () => {
     elBtnDemarrer.disabled = !elSelect.value;
+    if (elSelect.value) {
+      personnelId = parseInt(elSelect.value, 10);
+      personnelPrenom = elSelect.options[elSelect.selectedIndex].textContent;
+      verifierDejaReussi();
+    }
   });
 
   elBtnDemarrer.addEventListener('click', () => {
     if (!elSelect.value) return;
     personnelId = parseInt(elSelect.value, 10);
     personnelPrenom = elSelect.options[elSelect.selectedIndex].textContent;
+    demarrerQuiz();
+  });
+
+  function demarrerQuiz() {
     qIndex = 0;
     score = 0;
     afficherEcran(ecranQuestion);
     afficherQuestion();
+  }
+
+  // ── Pop-up « déjà réussi » ──────────────────────────────────
+  async function verifierDejaReussi() {
+    try {
+      const res = await fetch(
+        `/api/elearning/quiz/meilleur?quiz_id=${quizId}&personnel_id=${personnelId}`
+      );
+      if (!res.ok) return;
+      const best = await res.json();
+      if (best && best.reussi) {
+        afficherModalDeja(best);
+      }
+    } catch (e) {
+      console.warn('Vérification meilleure note échouée :', e);
+    }
+  }
+
+  function afficherModalDeja(best) {
+    elDejaPct.textContent = `${best.pourcentage} %`;
+    elDejaMsg.textContent =
+      `Bravo ${personnelPrenom}, vous avez déjà validé ce quiz !`;
+    const d = new Date(best.date_completion);
+    const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const tentatives = best.nb_tentatives > 1
+      ? ` · ${best.nb_tentatives} tentatives`
+      : '';
+    elDejaDetail.textContent =
+      `Score ${best.score}/${best.total} — obtenu le ${dateStr}${tentatives}.`;
+    elModalDeja.hidden = false;
+  }
+
+  elBtnDejaRejouer.addEventListener('click', () => {
+    elModalDeja.hidden = true;
+    demarrerQuiz();
   });
 
   // ── Affichage d'une question ────────────────────────────────

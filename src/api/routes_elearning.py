@@ -143,6 +143,36 @@ async def lister_resultats_quiz(
 
 
 # ---------------------------------------------------------------------------
+# GET /api/elearning/quiz/meilleur
+# ---------------------------------------------------------------------------
+
+@router.get("/quiz/meilleur")
+async def meilleur_resultat_quiz(
+    quiz_id:      int = Query(..., description="Numéro du quiz"),
+    personnel_id: int = Query(..., description="Membre du personnel"),
+):
+    """Meilleur résultat d'un membre pour un quiz (meilleur %, le plus récent
+    en cas d'égalité). Retourne null si la personne n'a jamais passé ce quiz."""
+    sql = (
+        "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
+        "       r.score, r.total, r.pourcentage, r.reussi, r.date_completion, "
+        "       (SELECT COUNT(*) FROM quiz_resultats r2 "
+        "        WHERE r2.boutique_id = r.boutique_id AND r2.quiz_id = r.quiz_id "
+        "          AND r2.personnel_id = r.personnel_id) AS nb_tentatives "
+        "FROM quiz_resultats r "
+        "JOIN personnel p ON p.id = r.personnel_id "
+        "WHERE r.boutique_id = ? AND r.quiz_id = ? AND r.personnel_id = ? "
+        "ORDER BY r.pourcentage DESC, r.date_completion DESC "
+        "LIMIT 1"
+    )
+    async with get_db() as db:
+        row = await db.execute(sql, (BOUTIQUE_ID, quiz_id, personnel_id))
+        result = await row.fetchone()
+
+    return dict(result) if result else None
+
+
+# ---------------------------------------------------------------------------
 # POST /api/elearning/quiz/resultats
 # ---------------------------------------------------------------------------
 
