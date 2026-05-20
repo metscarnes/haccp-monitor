@@ -3,6 +3,14 @@
   "titre": "Quiz 1",
   "theme": "Réglementation & HACCP",
   "seuil_validation": 80,
+  "themes_abordes": [
+    "Réglementation européenne (Paquet Hygiène)",
+    "Plan de Maîtrise Sanitaire (PMS)",
+    "Méthode HACCP",
+    "Contrôles officiels et DDPP",
+    "Hygiène opérationnelle (5M, Marche en avant)",
+    "Gestion des dates (DLC/DDM) et des dangers"
+  ],
   "questions": [
     {
       "num": 1,
@@ -192,7 +200,7 @@
         "D": "Depuis l'année 2017, la réglementation française impose la transparence totale et immédiate des résultats d'inspection sanitaire. Cette mesure gouvernementale concerne l'intégralité des établissements professionnels opérant dans la vaste chaîne alimentaire."
       },
       "bonne_reponse": "D",
-      "explication": "Cette notion est essentielle car elle touche directement à l'image de marque de l'établissement.\nUn outil de transparence : Le site Alim'confiance rend publics les résultats des contrôles officiels réalisés par les services de l'État dans le domaine de l'hygiène alimentaire.\nUn affichage simple : Les résultats sont traduits par un système de smileys affichés sur une vitrine ou sur une carte interactive en ligne. L'évaluation comprend quatre niveaux allant de \"Très satisfaisant\" à \"À améliorer\".\nL'origine des données : Ces données proviennent exclusivement des inspections de la DDPP, qui agit sous l'autorité du préfet. C'est ce qui transforme l'hygiène d'un enjeu de simple respect légal en un véritable enjeu de communication commerciale et de réputation en ligne.\nThèmes abordés\nRéglementation européenne (Paquet Hygiène)\nPlan de Maîtrise Sanitaire (PMS)\nMéthode HACCP\nContrôles officiels et DDPP\nHygiène opérationnelle (5M, Marche en avant)\nGestion des dates (DLC/DDM) et des dangers"
+      "explication": "Cette notion est essentielle car elle touche directement à l'image de marque de l'établissement.\nUn outil de transparence : Le site Alim'confiance rend publics les résultats des contrôles officiels réalisés par les services de l'État dans le domaine de l'hygiène alimentaire.\nUn affichage simple : Les résultats sont traduits par un système de smileys affichés sur une vitrine ou sur une carte interactive en ligne. L'évaluation comprend quatre niveaux allant de \"Très satisfaisant\" à \"À améliorer\".\nL'origine des données : Ces données proviennent exclusivement des inspections de la DDPP, qui agit sous l'autorité du préfet. C'est ce qui transforme l'hygiène d'un enjeu de simple respect légal en un véritable enjeu de communication commerciale et de réputation en ligne."
     }
   ]
 }

@@ -419,6 +419,50 @@
 }
 .quiz-resultat-trace[hidden] { display: none; }
 
+/* ── Thèmes abordés (résultat + futur report attestation) ── */
+.quiz-themes {
+  width: 100%;
+  max-width: 460px;
+  margin: 0.2rem 0;
+  padding: 0.9rem 1rem;
+  background: rgba(212, 165, 116, 0.14);
+  border: 1.5px solid var(--color-secondary);
+  border-radius: var(--radius);
+  text-align: left;
+}
+.quiz-themes[hidden] { display: none; }
+.quiz-themes-titre {
+  margin: 0 0 0.55rem;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--color-accent);
+  text-align: center;
+}
+.quiz-themes-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.quiz-themes-liste li {
+  position: relative;
+  padding-left: 1.4rem;
+  font-size: var(--text-sm);
+  line-height: 1.35;
+  color: var(--color-text);
+}
+.quiz-themes-liste li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 800;
+  color: var(--color-ok);
+}
+
 .quiz-resultat-actions {
   display: flex;
   gap: 0.7rem;

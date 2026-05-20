@@ -64,6 +64,8 @@
   const elScoreFrac     = $('score-frac');
   const elResultatMsg   = $('resultat-msg');
   const elResultatTrace = $('resultat-trace');
+  const elResultatThemes = $('resultat-themes');
+  const elResultatThemesListe = $('resultat-themes-liste');
   const elBtnRecommencer= $('btn-recommencer');
 
   const elErreurMsg = $('erreur-msg');
@@ -398,6 +400,17 @@
       elResultatMsg.textContent =
         `${personnelPrenom}, vous avez obtenu ${pct} %. ` +
         `Il faut au moins ${seuil} % pour valider. Recommencez pour progresser !`;
+    }
+
+    // Thèmes abordés (repris ensuite dans l'attestation de réussite)
+    const themes = quiz.themes_abordes || [];
+    if (themes.length) {
+      elResultatThemesListe.innerHTML = themes
+        .map((t) => `<li>${esc(t)}</li>`)
+        .join('');
+      elResultatThemes.hidden = false;
+    } else {
+      elResultatThemes.hidden = true;
     }
 
     afficherEcran(ecranResultat);

@@ -33,7 +33,25 @@ RE_QUESTION_MARK = re.compile(r"^(\d+)\s*/\s*10$")
 RE_OPTION = re.compile(r"^([A-D])\.\s*(.*)$", re.S)
 
 
+def extraire_themes(paras):
+    """Extrait la liste de la section finale « Thèmes abordés ».
+    Retourne (themes, index_debut) ; index_debut = len(paras) si absente."""
+    idx = next(
+        (i for i, l in enumerate(paras)
+         if l.lower().startswith("thèmes abordés") or l.lower().startswith("themes abordés")),
+        None,
+    )
+    if idx is None:
+        return [], len(paras)
+    themes = [l for l in paras[idx + 1:] if l.strip()]
+    return themes, idx
+
+
 def parser(paras):
+    # Isoler la section « Thèmes abordés » pour ne pas la mêler à Q10
+    themes, idx_themes = extraire_themes(paras)
+    paras = paras[:idx_themes]
+
     # Découpe en blocs par marqueur "N / 10"
     indices = [i for i, l in enumerate(paras) if RE_QUESTION_MARK.match(l)]
     blocs = []
@@ -145,7 +163,7 @@ def parser(paras):
                 "explication": explication,
             }
         )
-    return questions
+    return questions, themes
 
 
 def main():
@@ -155,13 +173,14 @@ def main():
     sortie = sys.argv[4]
 
     paras = extraire_paragraphes(extract_dir + "/word/document.xml")
-    questions = parser(paras)
+    questions, themes = parser(paras)
 
     quiz = {
         "id": numero,
         "titre": "Quiz " + str(numero),
         "theme": theme,
         "seuil_validation": 80,
+        "themes_abordes": themes,
         "questions": questions,
     }
     with open(sortie, "w", encoding="utf-8") as f:
