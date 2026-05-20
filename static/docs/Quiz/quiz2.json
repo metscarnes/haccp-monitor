@@ -505,7 +505,7 @@
         "D": "Les résidus de produits d'entretien chimiques toxiques nécessitent un traitement spécialisé via la filière complexe des déchets dangereux. Ils n'ont strictement aucun lien biologique avec les sous-produits organiques issus de la transformation de la carcasse."
       },
       "bonne_reponse": "B",
-      "explication": ""
+      "explication": "La gestion des déchets est une composante majeure du Plan de Maîtrise Sanitaire. Les SPA3 (Sous-Produits Animaux de catégorie 3) désignent les parties d'animaux abattus qui sont propres à la consommation humaine, mais qui ne sont pas destinées à cet usage pour des raisons commerciales (os, suif, nerfs, parures invendables). Contrairement aux catégories 1 et 2 qui regroupent les animaux malades ou à haut risque (SRM - Matériels à Risque Spécifié), la catégorie 3 présente un risque sanitaire très faible si elle est gérée correctement avant son enlèvement par le prestataire d'équarrissage."
     },
     {
       "num": 27,
@@ -524,7 +524,7 @@
         "D": "Les gros bacs de stockage placés en permanence sous les tables entravent lourdement les opérations régulières de nettoyage des sols. La présence prolongée de ces déchets stagnants sous le nez des opérateurs favorise grandement les dangereuses contaminations croisées."
       },
       "bonne_reponse": "C",
-      "explication": ""
+      "explication": "Le stockage des sous-produits animaux est un point très surveillé par les inspecteurs de la DDPP. Bien qu'ils soient considérés comme des déchets, les SPA3 restent des matières organiques hautement périssables. Pour empêcher la fermentation, la prolifération bactérienne et l'apparition de fortes odeurs, ils doivent obligatoirement être conservés au froid (généralement entre 0°C et +3°C). Si l'établissement ne dispose pas d'un petit local poubelle réfrigéré indépendant, ces bacs hermétiquement fermés doivent être stockés dans une zone bien identifiée et isolée à l'intérieur de la chambre froide principale."
     },
     {
       "num": 28,
@@ -543,7 +543,7 @@
         "D": "L'utilisation d'un vocabulaire dramatique excessif ne correspond pas du tout à la classification juridique modérée de ces restes sains. Une véritable marchandise toxique et dangereuse relèverait d'un marquage de catégorie 1 nécessitant une sécurisation d'urgence."
       },
       "bonne_reponse": "C",
-      "explication": ""
+      "explication": "L'identification visuelle des déchets est une étape fondamentale de la méthode HACCP pour prévenir les erreurs de manipulation. Les contenants (bacs ou fûts d'équarrissage) utilisés pour collecter et stocker les os et la graisse doivent être parfaitement étanches, faciles à nettoyer et à désinfecter, et munis d'un couvercle. La loi exige que l'étiquetage mentionne sans aucune ambiguïté la phrase complète \"Sous-produits animaux de catégorie 3 non destinés à la consommation humaine\", afin que l'ensemble du personnel et les prestataires externes sachent exactement comment manipuler ce flux de matières spécifiques."
     },
     {
       "num": 29,
@@ -562,7 +562,7 @@
         "D": "Les fins sacs en plastique classiques sont fragiles et se percent très facilement sous les arêtes particulièrement pointues des os découpés. L'écoulement silencieux d'exsudats sanguinolents directement sur le carrelage de l'atelier créerait une très dangereuse zone hautement contaminée."
       },
       "bonne_reponse": "B",
-      "explication": ""
+      "explication": "Le tri à la source est une exigence absolue pour le bon fonctionnement des filières de retraitement. Au poste de découpe, l'artisan doit disposer de contenants distincts : une poubelle pour les DIB (plastiques, cartons souillés), éventuellement une filière pour les cartons propres, et un bac d'équarrissage étanche réservé aux SPA3. Mélanger des couteaux cassés, des gants en latex ou des films étirables avec les os rend le lot SPA3 non conforme, ce qui peut entraîner un refus de collecte par la société d'équarrissage et des pénalités financières pour l'établissement."
     },
     {
       "num": 30,
@@ -581,7 +581,7 @@
         "D": "Ce modeste document technique industriel atteste exclusivement de la robustesse mécanique ou de l'étanchéité du matériel de stockage acheté. Il ne fournit logiquement aucune indication factuelle sur le tonnage ou sur la bonne gestion du flux des déchets par l'artisan."
       },
       "bonne_reponse": "A",
-      "explication": ""
+      "explication": "La traçabilité HACCP ne s'applique pas uniquement aux produits qui entrent (fournisseurs) et qui sortent (clients), elle englobe également les déchets. Lors du ramassage des SPA3, le chauffeur de la société d'équarrissage (le prestataire agréé) doit remettre un document commercial de suivi (bon d'enlèvement ou ticket de pesée). L'artisan a l'obligation de classer et de conserver ces documents. En cas de contrôle de la DDPP, ces archives permettent de prouver que l'établissement gère correctement ses volumes de déchets en rapport avec ses volumes de production, et qu'il ne procède à aucune élimination sauvage dans la nature ou via le circuit municipal classique."
     }
   ]
 }

@@ -175,8 +175,12 @@ def parser(paras):
 
         # 5) explications : tout le reste après "Explications"
         explication_parts = []
-        # idx pointe sur "Explications :" ; passer le titre
+        # idx pointe sur la ligne "Explications :" ; le texte peut être
+        # sur la même ligne (collé au titre) ou sur les lignes suivantes.
         if idx < len(bloc):
+            reste = re.sub(r"^explications?\s*:?\s*", "", bloc[idx], flags=re.I).strip()
+            if reste:
+                explication_parts.append(reste)
             idx += 1
         while idx < len(bloc):
             explication_parts.append(bloc[idx])
