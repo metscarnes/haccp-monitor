@@ -15,6 +15,18 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/hub.css">
+
+  <!-- Préchargement des 10 miniatures (mêmes images que les vidéos / modules) -->
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/1%20HACCP.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/2%20PND.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/3%20VESTIAIRE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/4%20RECEPTION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/5%20TEMPERATURES.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/6%20TRACABILITE.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/7%20STOCK%20ET%20FABRICATION.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/8%20CUISSON.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/9%20REFROIDISSEMENT.png">
+  <link rel="preload" as="image" href="/static/docs/Modules%20hygiene/10%20STOCKAGE%20ET%20ALLERGENES.png">
   <style>
     .hub-body { background: #EDE0C8; }
 
@@ -56,20 +68,60 @@
     }
     .quiz-card:active { transform: scale(0.97); }
 
-    /* En-tête coloré de la carte */
+    /* Vignette de la carte (image reprise des vidéos) */
     .quiz-card-head {
       position: relative;
-      aspect-ratio: 16 / 10;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.35rem;
-      background: linear-gradient(150deg, #6B3A1F 0%, #3D2008 100%);
-      color: #F5ECD7;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: #1a1410;
       border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     }
-    .quiz-card-emoji { font-size: clamp(1.8rem, 6vw, 2.4rem); line-height: 1; }
+    .quiz-card-head img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.22s ease;
+    }
+    .quiz-card:hover .quiz-card-head img { transform: scale(1.05); }
+
+    /* Dégradé bas permanent (lisibilité badges) */
+    .quiz-card-head::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,.0) 40%, rgba(0,0,0,.50) 100%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Pastille "Quiz" au centre de la vignette */
+    .quiz-card-emoji {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      opacity: 0.55;
+      transition: opacity 0.16s;
+    }
+    .quiz-card-emoji::after {
+      content: '📝';
+      background: rgba(255,255,255,.92);
+      border-radius: 50%;
+      width: 2.6rem;
+      height: 2.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      box-shadow: 0 3px 14px rgba(0,0,0,.35);
+      transition: transform 0.16s;
+    }
+    .quiz-card:hover .quiz-card-emoji        { opacity: 1; }
+    .quiz-card:hover .quiz-card-emoji::after { transform: scale(1.12); }
+
     .quiz-card-num {
       position: absolute;
       top: 0.45rem;
@@ -85,6 +137,7 @@
       align-items: center;
       justify-content: center;
       box-shadow: 0 1px 5px rgba(0,0,0,.45);
+      z-index: 3;
     }
 
     /* Badge état (réussi / verrouillé) */
@@ -98,6 +151,7 @@
       padding: 0.18rem 0.5rem;
       border-radius: var(--radius-pill);
       box-shadow: 0 1px 4px rgba(0,0,0,.3);
+      z-index: 3;
     }
     .quiz-card-badge--ok    { background: var(--color-ok);   color: #fff; }
     .quiz-card-badge--retry { background: var(--color-warning); color: #fff; }
@@ -158,17 +212,18 @@
   <script>
     // Liste des 10 quiz (titres alignés sur les modules de cours).
     // disponible:true => quiz jouable ; sinon verrouillé "Bientôt".
+    const IMG = '/static/docs/Modules%20hygiene/';
     const QUIZ = [
-      { id: 1,  titre: 'HACCP',           disponible: true  },
-      { id: 2,  titre: 'LE PND',          disponible: false },
-      { id: 3,  titre: 'VESTIAIRE',       disponible: false },
-      { id: 4,  titre: 'RÉCEPTION',       disponible: false },
-      { id: 5,  titre: 'TEMPÉRATURES',    disponible: false },
-      { id: 6,  titre: 'TRAÇABILITÉ',     disponible: false },
-      { id: 7,  titre: 'FABRICATION',     disponible: false },
-      { id: 8,  titre: 'CUISSON',         disponible: false },
-      { id: 9,  titre: 'REFROIDISSEMENT', disponible: false },
-      { id: 10, titre: 'ALLERGÈNES',      disponible: false },
+      { id: 1,  titre: 'HACCP',           img: IMG + '1%20HACCP.png',                    disponible: true  },
+      { id: 2,  titre: 'LE PND',          img: IMG + '2%20PND.png',                      disponible: false },
+      { id: 3,  titre: 'VESTIAIRE',       img: IMG + '3%20VESTIAIRE.png',                disponible: false },
+      { id: 4,  titre: 'RÉCEPTION',       img: IMG + '4%20RECEPTION.png',                disponible: false },
+      { id: 5,  titre: 'TEMPÉRATURES',    img: IMG + '5%20TEMPERATURES.png',             disponible: false },
+      { id: 6,  titre: 'TRAÇABILITÉ',     img: IMG + '6%20TRACABILITE.png',              disponible: false },
+      { id: 7,  titre: 'FABRICATION',     img: IMG + '7%20STOCK%20ET%20FABRICATION.png', disponible: false },
+      { id: 8,  titre: 'CUISSON',         img: IMG + '8%20CUISSON.png',                  disponible: false },
+      { id: 9,  titre: 'REFROIDISSEMENT', img: IMG + '9%20REFROIDISSEMENT.png',          disponible: false },
+      { id: 10, titre: 'ALLERGÈNES',      img: IMG + '10%20STOCKAGE%20ET%20ALLERGENES.png', disponible: false },
     ];
 
     const grille = document.getElementById('quiz-grille');
@@ -185,7 +240,8 @@
           <div class="quiz-card-head">
             <span class="quiz-card-num">${q.id}</span>
             <span class="quiz-card-badge quiz-card-badge--ok" data-badge="${q.id}" hidden>✓ Réussi</span>
-            <span class="quiz-card-emoji" aria-hidden="true">📝</span>
+            <img src="${q.img}" alt="" loading="eager" decoding="async" fetchpriority="high">
+            <span class="quiz-card-emoji" aria-hidden="true"></span>
           </div>
           <div class="quiz-card-info">
             <span class="quiz-card-module">QUIZ ${q.id}</span>
