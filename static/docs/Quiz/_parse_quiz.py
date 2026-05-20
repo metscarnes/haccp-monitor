@@ -29,8 +29,33 @@ def extraire_paragraphes(xml_path):
     return out
 
 
-RE_QUESTION_MARK = re.compile(r"^(\d+)\s*/\s*10$")
+RE_QUESTION_MARK = re.compile(r"^(\d+)\s*/\s*\d+$")
 RE_OPTION = re.compile(r"^([A-D])\.\s*(.*)$", re.S)
+# Marqueurs d'option B/C/D en milieu de ligne (options collées sur une seule ligne)
+RE_OPTION_INLINE = re.compile(r"\s+([B-D])\.\s+")
+
+
+RE_OPTION_PREFIXE = re.compile(r"^([A-D])\.\s*")
+
+
+def eclater_options_inline(ligne):
+    """Découpe une ligne « A. … B. … C. … D. … » en [(lettre, texte), ...].
+    Renvoie None si la ligne ne contient pas plusieurs options collées."""
+    m0 = RE_OPTION_PREFIXE.match(ligne)
+    if not m0:
+        return None
+    coupes = list(RE_OPTION_INLINE.finditer(ligne))
+    if not coupes:
+        return None
+    segments = []
+    lettre = m0.group(1)
+    debut = m0.end()
+    for c in coupes:
+        segments.append((lettre, ligne[debut:c.start()].strip()))
+        lettre = c.group(1)
+        debut = c.end()
+    segments.append((lettre, ligne[debut:].strip()))
+    return segments
 
 
 def extraire_themes(paras):
@@ -76,8 +101,14 @@ def parser(paras):
             m = RE_OPTION.match(bloc[idx])
             if not m:
                 break
+            # cas « A. … B. … C. … D. … » collées sur une seule ligne
+            inline = eclater_options_inline(bloc[idx])
+            if inline and len(inline) > 1:
+                for lettre, txt in inline:
+                    options[lettre] = txt
+                idx += 1
+                break
             lettre = m.group(1)
-            # le reste de l'option peut continuer sur la même ligne uniquement
             options[lettre] = m.group(2).strip()
             idx += 1
             if len(options) == 4:
