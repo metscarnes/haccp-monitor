@@ -408,10 +408,26 @@
     min-height: 0;
     page-break-inside: avoid;
   }
+  /* Forcer la mise en page « certificat » (jamais en colonnes) à l'impression */
+  .att-entete { flex-direction: row; align-items: center; gap: 1.1rem; }
+  .att-resultat { flex-direction: row; }
+  .att-resultat-bloc + .att-resultat-bloc {
+    border-left: 1px solid #ece1ca;
+    border-top: none;
+  }
+  .att-themes-liste { grid-template-columns: 1fr 1fr; }
+  .att-pied {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.6rem;
+  }
+  .att-signataire { width: 48%; max-width: none; }
+  .att-lieu-date { text-align: right; }
 }
 
-/* ── Responsive (écran étroit) ── */
-@media (max-width: 760px) {
+/* ── Responsive (écran étroit) — écran uniquement, jamais à l'impression ── */
+@media screen and (max-width: 760px) {
   .att-feuille { padding: 7mm; }
   .att-bordure { padding: 8mm; min-height: 0; }
   .att-titre { font-size: 1.35rem; letter-spacing: 0.16em; }
