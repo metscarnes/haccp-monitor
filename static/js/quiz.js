@@ -69,6 +69,13 @@
   const elBtnAttestation = $('btn-attestation');
   const elBtnRecommencer= $('btn-recommencer');
 
+  // Signature opérateur
+  const elResultatSignature = $('resultat-signature');
+  const elSignaturePad      = $('signature-pad');
+  const elSignaturePlaceholder = $('signature-placeholder');
+  const elBtnSignEffacer    = $('btn-signature-effacer');
+  const elBtnSignValider    = $('btn-signature-valider');
+
   const elErreurMsg = $('erreur-msg');
 
   // ── État ────────────────────────────────────────────────────
@@ -376,12 +383,15 @@
     }
   });
 
-  // ── Écran final + envoi du résultat ─────────────────────────
-  async function terminer() {
+  // ── Écran final ─────────────────────────────────────────────
+  let dernierReussi = false;
+
+  function terminer() {
     const total = quiz.questions.length;
     const pct = Math.round((score * 100) / total);
     const seuil = quiz.seuil_validation || SEUIL;
     const reussi = pct >= seuil;
+    dernierReussi = reussi;
 
     elProgress.style.width = '100%';
 
@@ -414,17 +424,31 @@
       elResultatThemes.hidden = true;
     }
 
-    // Bouton attestation masqué tant que le résultat n'est pas enregistré
+    // Réinitialiser les zones dynamiques
     elBtnAttestation.hidden = true;
+    elResultatTrace.hidden = true;
 
     afficherEcran(ecranResultat);
 
-    // Score parfait → pluie de confettis sur tout l'écran
+    // Score parfait → confettis
     if (score === total) {
       lancerConfettis();
     }
 
-    // Enregistrement backend (traçabilité / future attestation)
+    if (reussi) {
+      // Signature opérateur OBLIGATOIRE avant enregistrement
+      elResultatSignature.hidden = false;
+      initSignaturePad();
+    } else {
+      // Échec : pas de signature requise, on enregistre directement
+      elResultatSignature.hidden = true;
+      enregistrerResultat(null);
+    }
+  }
+
+  // ── Enregistrement backend (avec signature si réussi) ───────
+  async function enregistrerResultat(signature) {
+    const total = quiz.questions.length;
     try {
       const res = await fetch('/api/elearning/quiz/resultats', {
         method: 'POST',
@@ -434,36 +458,151 @@
           personnel_id: personnelId,
           score: score,
           total: total,
+          signature: signature,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        const d = new Date(data.date_completion);
-        const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const heureStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        elResultatTrace.textContent = `Résultat enregistré le ${dateStr} à ${heureStr}.`;
-        elResultatTrace.hidden = false;
+      if (!res.ok) throw new Error('HTTP ' + res.status);
 
-        // Résultat tracé → on peut proposer l'attestation (si validé)
-        if (reussi) {
-          elBtnAttestation.href =
-            `/attestation.html?quiz=${quiz.id}&personnel_id=${personnelId}` +
-            `&retour=${encodeURIComponent('/quiz.html?quiz=' + quiz.id)}`;
-          elBtnAttestation.hidden = false;
-        }
-      } else {
-        throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const d = new Date(data.date_completion);
+      const dateStr = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const heureStr = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      elResultatTrace.textContent = `Résultat enregistré le ${dateStr} à ${heureStr}.`;
+      elResultatTrace.hidden = false;
+
+      // Quiz validé + signature enregistrée → proposer l'attestation
+      if (dernierReussi) {
+        elResultatSignature.hidden = true;
+        elBtnAttestation.href =
+          `/attestation.html?quiz=${quiz.id}&personnel_id=${personnelId}` +
+          `&retour=${encodeURIComponent('/quiz.html?quiz=' + quiz.id)}`;
+        elBtnAttestation.hidden = false;
       }
+      return true;
     } catch (e) {
       console.warn('Résultat non enregistré :', e);
-      toast("Résultat non enregistré (hors ligne ?)");
+      toast('Résultat non enregistré (hors ligne ?)');
+      return false;
     }
   }
+
+  // ── Signature opérateur (pad tactile) ──────────────────────
+  let signCtx = null;
+  let signDessine = false;
+  let signVide = true;
+  let signDernierX = 0;
+  let signDernierY = 0;
+  let signInitialise = false;
+
+  function initSignaturePad() {
+    // Redimensionner le canvas à sa taille CSS réelle (net en HiDPI)
+    const ratio = window.devicePixelRatio || 1;
+    const rect = elSignaturePad.getBoundingClientRect();
+    elSignaturePad.width = Math.round(rect.width * ratio);
+    elSignaturePad.height = Math.round(rect.height * ratio);
+    signCtx = elSignaturePad.getContext('2d');
+    signCtx.scale(ratio, ratio);
+    signCtx.lineWidth = 2.2;
+    signCtx.lineCap = 'round';
+    signCtx.lineJoin = 'round';
+    signCtx.strokeStyle = '#1a1410';
+    viderSignature();
+
+    if (!signInitialise) {
+      attacherEvenementsSign();
+      signInitialise = true;
+    }
+  }
+
+  function posXY(e) {
+    const rect = elSignaturePad.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function signDebut(e) {
+    e.preventDefault();
+    signDessine = true;
+    const { x, y } = posXY(e);
+    signDernierX = x;
+    signDernierY = y;
+    // point initial (permet de signer un simple point)
+    signCtx.beginPath();
+    signCtx.arc(x, y, 1.1, 0, Math.PI * 2);
+    signCtx.fillStyle = '#1a1410';
+    signCtx.fill();
+    marquerNonVide();
+  }
+
+  function signMove(e) {
+    if (!signDessine) return;
+    e.preventDefault();
+    const { x, y } = posXY(e);
+    signCtx.beginPath();
+    signCtx.moveTo(signDernierX, signDernierY);
+    signCtx.lineTo(x, y);
+    signCtx.stroke();
+    signDernierX = x;
+    signDernierY = y;
+  }
+
+  function signFin(e) {
+    if (e) e.preventDefault();
+    signDessine = false;
+  }
+
+  function marquerNonVide() {
+    if (signVide) {
+      signVide = false;
+      elSignaturePlaceholder.hidden = true;
+      elBtnSignValider.disabled = false;
+    }
+  }
+
+  function viderSignature() {
+    if (signCtx) {
+      const rect = elSignaturePad.getBoundingClientRect();
+      signCtx.clearRect(0, 0, rect.width, rect.height);
+    }
+    signVide = true;
+    elSignaturePlaceholder.hidden = false;
+    elBtnSignValider.disabled = true;
+  }
+
+  function attacherEvenementsSign() {
+    elSignaturePad.addEventListener('pointerdown', signDebut);
+    elSignaturePad.addEventListener('pointermove', signMove);
+    window.addEventListener('pointerup', signFin);
+    // fallback tactile (anciens navigateurs sans Pointer Events)
+    elSignaturePad.addEventListener('touchstart', signDebut, { passive: false });
+    elSignaturePad.addEventListener('touchmove', signMove, { passive: false });
+    elSignaturePad.addEventListener('touchend', signFin);
+  }
+
+  elBtnSignEffacer.addEventListener('click', viderSignature);
+
+  elBtnSignValider.addEventListener('click', async () => {
+    if (signVide) {
+      toast('Veuillez signer avant de valider.');
+      return;
+    }
+    elBtnSignValider.disabled = true;
+    elBtnSignValider.textContent = 'Enregistrement…';
+    const dataUrl = elSignaturePad.toDataURL('image/png');
+    const ok = await enregistrerResultat(dataUrl);
+    if (!ok) {
+      // échec réseau : réautoriser une nouvelle tentative
+      elBtnSignValider.disabled = false;
+      elBtnSignValider.textContent = '✓ Valider la signature';
+    }
+  });
 
   // ── Recommencer ─────────────────────────────────────────────
   elBtnRecommencer.addEventListener('click', () => {
     qIndex = 0;
     score = 0;
+    elResultatSignature.hidden = true;
+    elBtnSignValider.textContent = '✓ Valider la signature';
     afficherEcran(ecranQuestion);
     afficherQuestion();
   });

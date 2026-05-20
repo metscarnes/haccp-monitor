@@ -36,20 +36,29 @@
       </div>
 
       <section class="att-corps">
-        <p class="att-intro">L'établissement soussigné atteste que&nbsp;:</p>
+        <p class="att-intro">
+          La société <strong>Au Comptoir des Lilas</strong>, représentée par son Président,
+          atteste par la présente que&nbsp;:
+        </p>
 
         <p class="att-nom" id="att-nom">—</p>
 
         <p class="att-phrase">
-          a suivi et réussi avec succès le module d'évaluation
+          a satisfait aux exigences du module de formation et d'évaluation
+          relatif à l'hygiène alimentaire (méthode HACCP)&nbsp;:
         </p>
 
         <p class="att-module" id="att-module">—</p>
 
+        <p class="att-phrase att-phrase--secondaire">
+          en obtenant un résultat conforme au seuil de validation requis,
+          attestant ainsi de la maîtrise des connaissances suivantes&nbsp;:
+        </p>
+
         <div class="att-resultat">
           <div class="att-resultat-bloc">
             <span class="att-resultat-valeur" id="att-pct">—</span>
-            <span class="att-resultat-label">Résultat</span>
+            <span class="att-resultat-label">Résultat obtenu</span>
           </div>
           <div class="att-resultat-sep" aria-hidden="true"></div>
           <div class="att-resultat-bloc">
@@ -64,20 +73,36 @@
         </div>
 
         <div class="att-themes" id="att-themes" hidden>
-          <h2 class="att-themes-titre">Thèmes abordés</h2>
+          <h2 class="att-themes-titre">Compétences et thèmes évalués</h2>
           <ul class="att-themes-liste" id="att-themes-liste"></ul>
         </div>
       </section>
 
+      <p class="att-lieu-date">
+        Fait à Les Lilas, le <span class="att-lieu-date-val" id="att-date">—</span>
+      </p>
+
       <footer class="att-pied">
-        <div class="att-pied-date">
-          <span class="att-pied-label">Fait à Les Lilas, le</span>
-          <span class="att-pied-valeur" id="att-date">—</span>
+        <!-- Signature opérateur (capturée à la réussite) -->
+        <div class="att-signataire">
+          <span class="att-signataire-role">Le stagiaire</span>
+          <div class="att-signataire-zone">
+            <img id="att-signature-operateur" class="att-signature-img" alt="Signature du stagiaire" hidden>
+          </div>
+          <div class="att-signataire-ligne"></div>
+          <span class="att-signataire-nom" id="att-operateur-nom">—</span>
         </div>
-        <div class="att-pied-signature">
-          <img src="/static/docs/Quiz/Ma%20signature%20HD%20sans%20fond.png" alt="Signature du responsable" class="att-signature-img">
-          <div class="att-signature-ligne"></div>
-          <span class="att-pied-label">Le responsable</span>
+
+        <!-- Signature du Président -->
+        <div class="att-signataire">
+          <span class="att-signataire-role">Le Président</span>
+          <div class="att-signataire-zone">
+            <img src="/static/docs/Quiz/Ma%20signature%20HD%20sans%20fond.png" alt="Signature du Président" class="att-signature-img att-signature-img--president">
+          </div>
+          <div class="att-signataire-ligne"></div>
+          <span class="att-signataire-nom">Ulysse CAMPIGLIA</span>
+          <span class="att-signataire-detail">Président — Au Comptoir des Lilas</span>
+          <span class="att-signataire-detail">SIRET : 103 577 607 00015</span>
         </div>
       </footer>
 

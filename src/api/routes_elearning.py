@@ -32,6 +32,7 @@ class QuizResultatCreate(BaseModel):
     personnel_id: int
     score:        int
     total:        int
+    signature:    str | None = None   # PNG base64 (data-URL), requis si quiz réussi
 
 
 SEUIL_VALIDATION = 80  # % minimum pour valider un quiz
@@ -155,7 +156,7 @@ async def meilleur_resultat_quiz(
     en cas d'égalité). Retourne null si la personne n'a jamais passé ce quiz."""
     sql = (
         "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
-        "       r.score, r.total, r.pourcentage, r.reussi, r.date_completion, "
+        "       r.score, r.total, r.pourcentage, r.reussi, r.signature, r.date_completion, "
         "       (SELECT COUNT(*) FROM quiz_resultats r2 "
         "        WHERE r2.boutique_id = r.boutique_id AND r2.quiz_id = r.quiz_id "
         "          AND r2.personnel_id = r.personnel_id) AS nb_tentatives "
@@ -187,6 +188,11 @@ async def enregistrer_resultat_quiz(body: QuizResultatCreate):
     pourcentage = round(body.score * 100 / body.total)
     reussi = 1 if pourcentage >= SEUIL_VALIDATION else 0
 
+    signature = (body.signature or "").strip() or None
+    # Signature opérateur obligatoire quand le quiz est réussi (attestation traçable)
+    if reussi and not signature:
+        raise HTTPException(400, "signature opérateur requise pour valider le quiz")
+
     async with get_db() as db:
         row = await db.execute("SELECT id FROM personnel WHERE id = ?", (body.personnel_id,))
         if not await row.fetchone():
@@ -194,17 +200,17 @@ async def enregistrer_resultat_quiz(body: QuizResultatCreate):
 
         cursor = await db.execute(
             "INSERT INTO quiz_resultats "
-            "(boutique_id, quiz_id, personnel_id, score, total, pourcentage, reussi) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(boutique_id, quiz_id, personnel_id, score, total, pourcentage, reussi, signature) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (BOUTIQUE_ID, body.quiz_id, body.personnel_id,
-             body.score, body.total, pourcentage, reussi),
+             body.score, body.total, pourcentage, reussi, signature),
         )
         await db.commit()
         new_id = cursor.lastrowid
 
         row = await db.execute(
             "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
-            "       r.score, r.total, r.pourcentage, r.reussi, r.date_completion "
+            "       r.score, r.total, r.pourcentage, r.reussi, r.signature, r.date_completion "
             "FROM quiz_resultats r "
             "JOIN personnel p ON p.id = r.personnel_id "
             "WHERE r.id = ?",

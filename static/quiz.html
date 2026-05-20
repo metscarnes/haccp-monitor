@@ -117,6 +117,21 @@
 
         <p class="quiz-resultat-msg" id="resultat-msg"></p>
 
+        <!-- Signature opérateur obligatoire (quiz réussi) -->
+        <div class="quiz-signature" id="resultat-signature" hidden>
+          <p class="quiz-signature-consigne" id="signature-consigne">
+            Signez ci-dessous pour valider votre réussite et générer votre attestation.
+          </p>
+          <div class="quiz-signature-pad-wrap">
+            <canvas id="signature-pad" class="quiz-signature-pad" aria-label="Zone de signature"></canvas>
+            <span class="quiz-signature-placeholder" id="signature-placeholder">✍️ Signez ici</span>
+          </div>
+          <div class="quiz-signature-actions">
+            <button id="btn-signature-effacer" class="quiz-btn quiz-btn--ghost quiz-btn--sm" type="button">↺ Effacer</button>
+            <button id="btn-signature-valider" class="quiz-btn quiz-btn--primary" type="button" disabled>✓ Valider la signature</button>
+          </div>
+        </div>
+
         <!-- Thèmes abordés (repris dans l'attestation de réussite) -->
         <div class="quiz-themes" id="resultat-themes" hidden>
           <h3 class="quiz-themes-titre">📚 Thèmes abordés</h3>

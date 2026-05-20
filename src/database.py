@@ -645,6 +645,7 @@ CREATE TABLE IF NOT EXISTS quiz_resultats (
     total             INTEGER NOT NULL,            -- nb total de questions
     pourcentage       INTEGER NOT NULL,            -- 0..100
     reussi            INTEGER NOT NULL DEFAULT 0,  -- 1 si pourcentage >= seuil (80)
+    signature         TEXT,                        -- signature opérateur (PNG base64 data-URL)
     date_completion   DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id)
@@ -933,6 +934,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE receptions ADD COLUMN proprete_photo_filename TEXT",
             # v3.8 — Cuisson depuis une fabrication (produit fini cru → cuisson)
             "ALTER TABLE cuissons ADD COLUMN fabrication_id INTEGER",
+            # v4.0 — Signature opérateur sur les résultats de quiz (attestation)
+            "ALTER TABLE quiz_resultats ADD COLUMN signature TEXT",
         ]
         for sql in migrations:
             try:

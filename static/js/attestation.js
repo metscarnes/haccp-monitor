@@ -67,8 +67,18 @@
       return;
     }
 
-    // Nom du participant
+    // Nom du participant (corps + pied signataire)
     $('att-nom').textContent = best.personnel_prenom || '—';
+    $('att-operateur-nom').textContent = best.personnel_prenom || '—';
+
+    // Signature opérateur stockée (capturée à la réussite)
+    const imgOp = $('att-signature-operateur');
+    if (best.signature) {
+      imgOp.src = best.signature;
+      imgOp.hidden = false;
+    } else {
+      imgOp.hidden = true;
+    }
 
     // Module : « Quiz N — THÈME »
     const titreModule = quiz.theme
