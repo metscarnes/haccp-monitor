@@ -71,6 +71,72 @@ async def modifier_personnel(personnel_id: int, body: PersonnelUpdate):
     return {"ok": True}
 
 
+@router.delete("/personnel/{personnel_id}/entrees")
+async def purger_entrees_personnel(personnel_id: int):
+    """Supprime TOUTES les entrées créées par un membre du personnel.
+
+    Utilisé pour réinitialiser le compte « test » servant aux essais et aux
+    formations. Le membre du personnel lui-même est conservé : seules ses
+    données sont effacées.
+
+    Couvre les deux modes de liaison opérateur du schéma :
+      - clé étrangère personnel_id / cloturee_par
+      - texte libre operateur / visa (comparé au prénom exact)
+    """
+    async with get_db() as db:
+        cur = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (personnel_id,))
+        row = await cur.fetchone()
+        if row is None:
+            raise HTTPException(404, "Personnel non trouvé")
+        prenom = row["prenom"]
+
+        supprime: dict[str, int] = {}
+
+        async def _del(table: str, where: str, params: tuple) -> None:
+            c = await db.execute(f"DELETE FROM {table} WHERE {where}", params)
+            if c.rowcount:
+                supprime[table] = supprime.get(table, 0) + c.rowcount
+
+        # 1) Enfants des réceptions de l'utilisateur (évite les orphelins) ----
+        #    On récupère d'abord les réceptions concernées.
+        rec_rows = await db.execute_fetchall(
+            "SELECT id FROM receptions WHERE personnel_id = ?", (personnel_id,)
+        )
+        rec_ids = [r[0] for r in rec_rows]
+        if rec_ids:
+            placeholders = ",".join("?" * len(rec_ids))
+            await _del("fiches_incident", f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("non_conformites_fournisseur", f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("reception_lignes", f"reception_id IN ({placeholders})", tuple(rec_ids))
+
+        # 2) Tables liées par clé étrangère personnel_id ----------------------
+        for table in (
+            "receptions", "ouvertures", "cuissons", "refroidissements",
+            "fabrications", "dlc_devenir", "elearning_completions",
+            "quiz_resultats", "quiz_progression",
+        ):
+            await _del(table, "personnel_id = ?", (personnel_id,))
+
+        # 3) Fiches incident clôturées par l'utilisateur (FK cloturee_par) ----
+        await _del("fiches_incident", "cloturee_par = ?", (personnel_id,))
+
+        # 4) Tables liées par texte operateur = prénom ------------------------
+        for table in (
+            "etiquettes_generees", "tache_validations", "etalonnages",
+            "registre_nettoyage", "non_conformites_fournisseur",
+        ):
+            await _del(table, "operateur = ?", (prenom,))
+
+        # 5) Contrôles nuisibles visés par l'utilisateur (texte visa) ---------
+        await _del("nuisibles_controles", "visa = ?", (prenom,))
+
+        await db.commit()
+
+    total = sum(supprime.values())
+    return {"ok": True, "personnel_id": personnel_id, "prenom": prenom,
+            "total": total, "detail": supprime}
+
+
 # ---------------------------------------------------------------------------
 # Pièges
 # ---------------------------------------------------------------------------

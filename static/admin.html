@@ -277,6 +277,26 @@
       </div>
     </section>
 
+    <!-- ── Zone de test ── -->
+    <section class="admin-section" id="section-test">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🧪 Zone de test</h2>
+        <span class="admin-badge admin-badge--info">Formations &amp; essais</span>
+      </div>
+      <div class="admin-section-body">
+        <p class="admin-info-text">
+          Supprime <strong>toutes les entrées</strong> créées par le membre du personnel nommé
+          « test » (réceptions, étiquettes, cuissons, tâches, formations, quiz, etc.).
+          Le membre « test » lui-même est conservé pour pouvoir continuer les essais.
+          <br>Cette action est <strong>irréversible</strong>.
+        </p>
+        <div class="admin-depannage-grid">
+          <button class="btn btn-danger" id="btn-purger-test">🗑️ Supprimer les entrées de « test »</button>
+        </div>
+        <div id="test-msg" class="admin-depan-msg" hidden></div>
+      </div>
+    </section>
+
   </main>
 
   <script>
@@ -837,6 +857,52 @@
       } catch (err) {
         msg.className = 'admin-depan-msg admin-depan-msg--erreur';
         msg.textContent = `Erreur : ${err.message}`;
+      }
+    });
+
+    // ── Zone de test : purge des entrées de « test » ────────
+    $('btn-purger-test').addEventListener('click', async () => {
+      const msg = $('test-msg');
+      const btn = $('btn-purger-test');
+      const setMsg = (cls, txt) => { msg.hidden = false; msg.className = `admin-depan-msg admin-depan-msg--${cls}`; msg.textContent = txt; };
+
+      setMsg('info', 'Recherche du membre « test »…');
+      let personne;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const list = await res.json();
+        personne = (list || []).find(p => (p.prenom || '').trim().toLowerCase() === 'test');
+      } catch (err) {
+        setMsg('erreur', `Erreur : ${err.message}`);
+        return;
+      }
+      if (!personne) {
+        setMsg('erreur', 'Aucun membre du personnel nommé « test ». Ajoutez-le d\'abord dans la section Personnel.');
+        return;
+      }
+
+      if (!confirm('Supprimer TOUTES les entrées créées par « test » ?\n\nRéceptions, étiquettes, cuissons, tâches, formations, quiz… seront effacés définitivement.')) return;
+      if (!confirm('Confirmation finale : cette action est IRRÉVERSIBLE. Continuer ?')) return;
+
+      btn.disabled = true;
+      setMsg('info', 'Suppression en cours…');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel/${personne.id}/entrees`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.total === 0) {
+          setMsg('ok', '✓ Aucune entrée à supprimer : « test » n\'avait rien enregistré.');
+        } else {
+          const detail = Object.entries(data.detail || {})
+            .map(([t, n]) => `${t} : ${n}`).join(' · ');
+          setMsg('ok', `✓ ${data.total} entrée(s) supprimée(s). ${detail}`);
+        }
+        loadAlertes();
+      } catch (err) {
+        setMsg('erreur', `Erreur : ${err.message}`);
+      } finally {
+        btn.disabled = false;
       }
     });
 
