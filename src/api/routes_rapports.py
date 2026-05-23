@@ -133,51 +133,98 @@ async def rapport_interactif(boutique_id: int, jours: int = 90):
 # Collecte des données complémentaires pour le rapport inspecteur
 # ---------------------------------------------------------------------------
 
-async def _collecter_nettoyage(db, depuis_iso: str) -> dict:
-    """Historique du plan de nettoyage sur la période : validations par jour + plan."""
-    # Plan de nettoyage (référentiel des tâches attendues)
-    taches_rows = await db.execute_fetchall(
-        "SELECT id, zone, nom_tache, frequence FROM taches_nettoyage ORDER BY zone, id"
-    )
-    plan = [
-        {"id": r[0], "zone": r[1], "nom_tache": r[2], "frequence": r[3]}
-        for r in taches_rows
-    ]
+_JOURS_NOMS_RAPPORT = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
 
-    # Validations agrégées par jour sur la période
-    jours_rows = await db.execute_fetchall(
-        """
-        SELECT date_val,
-               GROUP_CONCAT(DISTINCT operateur) AS operateurs,
-               COUNT(DISTINCT tache_id)         AS nb_taches
-        FROM registre_nettoyage
-        WHERE date_val >= ?
-        GROUP BY date_val
-        ORDER BY date_val DESC
-        """,
+
+def _lundi_semaine_iso(annee_iso: int, semaine: int) -> date:
+    """Renvoie le lundi de la semaine ISO donnée (le 4 janvier est toujours en S1)."""
+    jan4 = date(annee_iso, 1, 4)
+    monday_sem1 = jan4 - timedelta(days=jan4.isoweekday() - 1)
+    return monday_sem1 + timedelta(weeks=semaine - 1)
+
+
+async def _collecter_nettoyage(db, depuis_iso: str) -> dict:
+    """
+    Historique du plan de nettoyage sur la période, présenté par semaine ISO
+    sous la forme d'un planning tâches × 7 jours (même format que le module).
+    """
+    # Plan de nettoyage (référentiel des tâches attendues), groupé par zone
+    taches_rows = await db.execute_fetchall(
+        "SELECT id, zone, nom_tache, frequence, methode_produit "
+        "FROM taches_nettoyage ORDER BY zone, id"
+    )
+    plan_total = len(taches_rows)
+
+    # Toutes les validations sur la période
+    val_rows = await db.execute_fetchall(
+        "SELECT date_val, tache_id, operateur FROM registre_nettoyage "
+        "WHERE date_val >= ? ORDER BY date_val",
         (depuis_iso,),
     )
-    jours = [
-        {
-            "date":       r[0],
-            "operateurs": [o.strip() for o in r[1].split(",")] if r[1] else [],
-            "nb_taches":  r[2],
-        }
-        for r in jours_rows
-    ]
 
-    nb_total_taches = sum(j["nb_taches"] for j in jours)
+    # Map validations : {date_str: {tache_id: "É."}}  (initiale opérateur)
+    validations: dict = {}
+    jours_distincts: set = set()
+    for dv, tid, op in val_rows:
+        jours_distincts.add(dv)
+        validations.setdefault(dv, {})
+        if tid not in validations[dv]:
+            validations[dv][tid] = (op[0].upper() + ".") if op else "?"
+
+    # Semaines ISO couvertes par les validations
+    semaines_couvertes: set = set()
+    for dv in jours_distincts:
+        d = datetime.strptime(dv, "%Y-%m-%d").date()
+        iso = d.isocalendar()
+        semaines_couvertes.add((iso[0], iso[1]))
+
+    # Construire un planning par semaine (plus récente en premier)
+    semaines = []
+    for annee_iso, num in sorted(semaines_couvertes, reverse=True):
+        monday = _lundi_semaine_iso(annee_iso, num)
+        dates_sem = [monday + timedelta(days=i) for i in range(7)]
+        date_strs = [d.isoformat() for d in dates_sem]
+
+        zones: dict = {}
+        nb_validations_sem = 0
+        for tid, zone, nom_tache, frequence, methode in taches_rows:
+            zones.setdefault(zone, [])
+            vals = {}
+            for ds in date_strs:
+                signet = validations.get(ds, {}).get(tid)
+                vals[ds] = signet
+                if signet:
+                    nb_validations_sem += 1
+            zones[zone].append({
+                "id":              tid,
+                "nom_tache":       nom_tache,
+                "frequence":       frequence,
+                "methode_produit": methode,
+                "validations":     vals,
+            })
+
+        semaines.append({
+            "annee_iso":  annee_iso,
+            "numero":     num,
+            "dates":      date_strs,
+            "jours_noms": [f"{_JOURS_NOMS_RAPPORT[i]} {dates_sem[i].day}" for i in range(7)],
+            "nb_validations": nb_validations_sem,
+            "zones":      [{"zone": z, "taches": t} for z, t in zones.items()],
+        })
+
     return {
-        "plan_total":      len(plan),
-        "jours_valides":   len(jours),
-        "nb_total_taches": nb_total_taches,
-        "plan":            plan,
-        "jours":           jours,
+        "plan_total":    plan_total,
+        "jours_valides": len(jours_distincts),
+        "nb_semaines":   len(semaines),
+        "semaines":      semaines,
     }
 
 
 async def _collecter_nuisibles(db, depuis: datetime) -> dict:
-    """Contrôles nuisibles couvrant la période (par année/type/semaine ISO)."""
+    """
+    Contrôles nuisibles couvrant la période, présentés par semaine ISO.
+    Convention métier : "O" = présence/anomalie détectée, "N" = RAS (conforme).
+    """
     annee_debut = depuis.year
     annee_fin = datetime.now(timezone.utc).year
     annees = list(range(annee_debut, annee_fin + 1))
@@ -193,33 +240,50 @@ async def _collecter_nuisibles(db, depuis: datetime) -> dict:
         annees,
     )
 
-    controles = []
+    # Regrouper par (annee, semaine) → {type_id: {...}}
+    par_semaine: dict = {}
     nb_anomalies = 0
-    for r in rows:
-        type_id, annee, semaine, resultats_json, visa, date_saisie = r
+    nb_controles = 0
+    for type_id, annee, semaine, resultats_json, visa, date_saisie in rows:
         try:
             resultats = json.loads(resultats_json) if resultats_json else {}
         except Exception:
             resultats = {}
-        # Une anomalie = un poste signalé "N" (non conforme)
-        anomalies = [k for k, v in resultats.items() if v == "N"]
+        # "O" = présence (anomalie). "N" = RAS.
+        anomalies = [k for k, v in resultats.items() if v == "O"]
         nb_anomalies += len(anomalies)
-        controles.append({
-            "type_id":     type_id,
-            "type_nom":    _TYPES_NUISIBLES.get(type_id, f"Type {type_id}"),
-            "annee":       annee,
-            "semaine":     semaine,
-            "resultats":   resultats,
-            "nb_postes":   len(resultats),
+        nb_controles += 1
+
+        key = (annee, semaine)
+        par_semaine.setdefault(key, {})[type_id] = {
+            "type_id":      type_id,
+            "type_nom":     _TYPES_NUISIBLES.get(type_id, f"Type {type_id}"),
+            "resultats":    resultats,
+            "nb_postes":    len(resultats),
             "nb_anomalies": len(anomalies),
-            "visa":        visa,
-            "date_saisie": date_saisie,
+            "visa":         visa,
+            "date_saisie":  date_saisie,
+        }
+
+    # Sérialiser par semaine (plus récente en premier)
+    semaines = []
+    for (annee, semaine) in sorted(par_semaine, reverse=True):
+        types = par_semaine[(annee, semaine)]
+        anomalies_sem = sum(t["nb_anomalies"] for t in types.values())
+        # Ordre fixe des types 1..4 ; n'inclure que ceux saisis
+        controles = [types[tid] for tid in sorted(types)]
+        semaines.append({
+            "annee":        annee,
+            "semaine":      semaine,
+            "nb_anomalies": anomalies_sem,
+            "controles":    controles,
         })
 
     return {
-        "nb_controles":  len(controles),
-        "nb_anomalies":  nb_anomalies,
-        "controles":     controles,
+        "nb_controles": nb_controles,
+        "nb_anomalies": nb_anomalies,
+        "nb_semaines":  len(semaines),
+        "semaines":     semaines,
     }
 
 

@@ -455,6 +455,138 @@
     font-size: 0.85rem;
   }
 
+  /* ---------- BLOCS SEMAINE (nettoyage / nuisibles) ---------- */
+  .sem-bloc {
+    border: 1px solid #e8ddd0;
+    border-radius: 10px;
+    margin-bottom: 0.8rem;
+    overflow: hidden;
+  }
+  .sem-bloc > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.7rem 1rem;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--brun-profond);
+    background: var(--creme-clair);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    user-select: none;
+  }
+  .sem-bloc > summary::-webkit-details-marker { display: none; }
+  .sem-bloc > summary::after {
+    content: '▸';
+    margin-left: auto;
+    color: var(--dore);
+    transition: transform 0.2s;
+  }
+  .sem-bloc[open] > summary::after { transform: rotate(90deg); }
+  .sem-bloc-corps { padding: 0.6rem 0.8rem 0.8rem; overflow-x: auto; }
+  .sem-pastille {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.55rem;
+    border-radius: 10px;
+  }
+  .sem-pastille.vert  { background: var(--vert-clair); color: var(--vert-fonce); }
+  .sem-pastille.rouge { background: var(--rouge-clair); color: var(--rouge); }
+
+  /* Planning nettoyage : secteur / tâche / fréquence / produit + 7 jours */
+  table.planning {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 720px;
+  }
+  table.planning th {
+    background: var(--brun-profond);
+    color: var(--creme);
+    padding: 0.4rem 0.5rem;
+    text-align: center;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,255,255,0.12);
+  }
+  table.planning th.col-gauche { text-align: left; }
+  table.planning td {
+    padding: 0.4rem 0.55rem;
+    border-bottom: 1px solid #f0ebe3;
+    border-right: 1px solid #f0ebe3;
+    vertical-align: middle;
+  }
+  table.planning td.secteur {
+    font-weight: 700;
+    color: var(--brun-profond);
+    background: var(--creme);
+    white-space: nowrap;
+    vertical-align: top;
+  }
+  table.planning td.tache { font-weight: 600; color: var(--brun-profond); }
+  table.planning td.freq, table.planning td.produit { color: var(--gris); font-size: 0.74rem; }
+  table.planning td.jour { text-align: center; white-space: nowrap; }
+  table.planning td.jour .check { color: var(--vert); font-weight: 700; }
+  table.planning td.jour .initiale { color: var(--gris); font-size: 0.7rem; margin-left: 2px; }
+  table.planning th.aujourdhui, table.planning td.jour.aujourdhui { background: var(--orange-clair); }
+
+  /* Grille nuisibles : ligne type, colonnes P1..P15 + visa */
+  table.nuisibles-grille {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    min-width: 720px;
+  }
+  table.nuisibles-grille th {
+    background: var(--brun-profond);
+    color: var(--creme);
+    padding: 0.35rem 0.3rem;
+    text-align: center;
+    font-size: 0.66rem;
+    font-weight: 600;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,255,255,0.12);
+  }
+  table.nuisibles-grille th.col-type { text-align: left; min-width: 130px; }
+  table.nuisibles-grille th.col-visa { background: #5a2e14; }
+  table.nuisibles-grille td {
+    padding: 0.35rem 0.3rem;
+    text-align: center;
+    font-weight: 700;
+    border-bottom: 1px solid #f0ebe3;
+    border-right: 1px solid #f0ebe3;
+  }
+  table.nuisibles-grille td.type-nom {
+    text-align: left;
+    font-weight: 700;
+    color: var(--brun-profond);
+    white-space: nowrap;
+  }
+  table.nuisibles-grille td.piege-O { background: var(--rouge-clair); color: var(--rouge); }
+  table.nuisibles-grille td.piege-N { background: var(--vert-clair); color: var(--vert-fonce); }
+  table.nuisibles-grille td.piege-vide { color: #ccc; }
+  table.nuisibles-grille td.visa {
+    font-weight: 600;
+    color: var(--brun);
+    border-left: 2px solid var(--dore);
+    white-space: nowrap;
+  }
+  .nuisibles-legende {
+    font-size: 0.72rem;
+    color: var(--gris);
+    margin: 0.2rem 0 0.7rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .nuisibles-legende span { display: inline-flex; align-items: center; gap: 0.3rem; }
+  .nuisibles-legende .pip { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  .nuisibles-legende .pip-O { background: var(--rouge-clair); border: 1px solid var(--rouge); }
+  .nuisibles-legende .pip-N { background: var(--vert-clair); border: 1px solid var(--vert); }
+
   /* ---------- PIED ---------- */
   .pied {
     text-align: center;
@@ -636,45 +768,19 @@
 
   <!-- NIVEAU 3 : NETTOYAGE -->
   <details class="section">
-    <summary>🧼 Plan de nettoyage &amp; désinfection (<span id="count-nettoyage">0</span> jour(s) tracé(s))</summary>
+    <summary>🧼 Plan de nettoyage &amp; désinfection (<span id="count-nettoyage">0</span> semaine(s) tracée(s))</summary>
     <div class="details-contenu">
       <div id="resume-nettoyage" class="resume-ligne"></div>
-      <div style="overflow-x: auto; max-height: 380px; overflow-y: auto;">
-        <table class="moderne">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Jour</th>
-              <th>Opérateur(s)</th>
-              <th>Tâches validées</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-nettoyage"></tbody>
-        </table>
-      </div>
+      <div id="semaines-nettoyage"></div>
     </div>
   </details>
 
   <!-- NIVEAU 3 : NUISIBLES -->
   <details class="section">
-    <summary>🐭 Lutte contre les nuisibles (<span id="count-nuisibles">0</span> contrôle(s))</summary>
+    <summary>🐭 Lutte contre les nuisibles (<span id="count-nuisibles">0</span> semaine(s) contrôlée(s))</summary>
     <div class="details-contenu">
       <div id="resume-nuisibles" class="resume-ligne"></div>
-      <div style="overflow-x: auto; max-height: 380px; overflow-y: auto;">
-        <table class="moderne">
-          <thead>
-            <tr>
-              <th>Type de nuisible</th>
-              <th>Année</th>
-              <th>Semaine</th>
-              <th>Résultat</th>
-              <th>Visa</th>
-              <th>Saisi le</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-nuisibles"></tbody>
-        </table>
-      </div>
+      <div id="semaines-nuisibles"></div>
     </div>
   </details>
 
@@ -1084,72 +1190,147 @@
   // ========================================================================
   //  NETTOYAGE / NUISIBLES / ÉTALONNAGE  (bornés à la période du rapport)
   // ========================================================================
-  const NOMS_JOUR_LONG = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const NB_PIEGES = 15;
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
 
   function rendreNettoyage() {
     const data = NETTOYAGE || {};
-    const jours = data.jours || [];
-    document.getElementById('count-nettoyage').textContent = data.jours_valides || 0;
+    const semaines = data.semaines || [];
+    document.getElementById('count-nettoyage').textContent = data.nb_semaines || 0;
 
     document.getElementById('resume-nettoyage').innerHTML = `
-      <span class="resume-chip ${jours.length ? 'vert' : ''}"><strong>${data.jours_valides || 0}</strong> jour(s) tracé(s)</span>
-      <span class="resume-chip"><strong>${data.nb_total_taches || 0}</strong> validation(s) de tâche</span>
+      <span class="resume-chip ${semaines.length ? 'vert' : ''}"><strong>${data.nb_semaines || 0}</strong> semaine(s) tracée(s)</span>
+      <span class="resume-chip"><strong>${data.jours_valides || 0}</strong> jour(s) avec validation</span>
       <span class="resume-chip"><strong>${data.plan_total || 0}</strong> tâche(s) au plan</span>`;
 
-    const tbody = document.getElementById('tbody-nettoyage');
-    if (!jours.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="aucune-donnee">Aucune validation de nettoyage sur la période</td></tr>';
+    const cont = document.getElementById('semaines-nettoyage');
+    if (!semaines.length) {
+      cont.innerHTML = '<div class="aucune-donnee">Aucune validation de nettoyage sur la période</div>';
       return;
     }
-    tbody.innerHTML = jours.map(j => {
-      const d = parseD(j.date);
-      const nomJour = NOMS_JOUR_LONG[d.getDay()];
-      const ops = (j.operateurs || []).join(', ') || '—';
-      const couvert = data.plan_total > 0 && j.nb_taches >= data.plan_total;
+
+    const todayISO = toISO(new Date());
+    cont.innerHTML = semaines.map((sem, idx) => {
+      const dates = sem.dates;       // 7 dates ISO (Lun→Dim)
+      const noms = sem.jours_noms;   // ex. "Lundi 12"
+      const periode = `${parseD(dates[0]).toLocaleDateString('fr-FR')} → ${parseD(dates[6]).toLocaleDateString('fr-FR')}`;
+
+      const entetesJours = noms.map((n, i) =>
+        `<th class="${dates[i] === todayISO ? 'aujourdhui' : ''}">${n}</th>`
+      ).join('');
+
+      let corps = '';
+      sem.zones.forEach(zone => {
+        zone.taches.forEach((t, ti) => {
+          corps += '<tr>';
+          if (ti === 0) {
+            corps += `<td class="secteur" rowspan="${zone.taches.length}">${escapeHtml(zone.zone)}</td>`;
+          }
+          corps += `<td class="tache">${escapeHtml(t.nom_tache)}</td>`;
+          corps += `<td class="freq">${escapeHtml(t.frequence)}</td>`;
+          corps += `<td class="produit">${escapeHtml(t.methode_produit)}</td>`;
+          dates.forEach(ds => {
+            const signet = t.validations[ds];
+            const cls = 'jour' + (ds === todayISO ? ' aujourdhui' : '');
+            corps += `<td class="${cls}">${signet ? `<span class="check">✅</span><span class="initiale">${escapeHtml(signet)}</span>` : ''}</td>`;
+          });
+          corps += '</tr>';
+        });
+      });
+
+      const ouvert = idx === 0 ? ' open' : '';
       return `
-        <tr>
-          <td><strong>${d.toLocaleDateString('fr-FR')}</strong></td>
-          <td style="color:var(--gris); font-size:0.8rem">${nomJour}</td>
-          <td>${ops}</td>
-          <td><span class="badge ${couvert ? 'vert' : ''}" ${couvert ? '' : 'style="background:var(--creme); color:var(--brun)"'}>${j.nb_taches}${data.plan_total ? ' / ' + data.plan_total : ''}</span></td>
-        </tr>`;
+        <details class="sem-bloc"${ouvert}>
+          <summary>
+            Semaine ${sem.numero} / ${sem.annee_iso}
+            <span style="font-weight:500; color:var(--gris); font-size:0.78rem">${periode}</span>
+            <span class="sem-pastille vert">${sem.nb_validations} validation(s)</span>
+          </summary>
+          <div class="sem-bloc-corps">
+            <table class="planning">
+              <thead>
+                <tr>
+                  <th class="col-gauche">Secteur</th>
+                  <th class="col-gauche">Tâche</th>
+                  <th class="col-gauche">Fréquence</th>
+                  <th class="col-gauche">Produit / Méthode</th>
+                  ${entetesJours}
+                </tr>
+              </thead>
+              <tbody>${corps}</tbody>
+            </table>
+          </div>
+        </details>`;
     }).join('');
   }
 
   function rendreNuisibles() {
     const data = NUISIBLES || {};
-    const controles = data.controles || [];
-    document.getElementById('count-nuisibles').textContent = data.nb_controles || 0;
+    const semaines = data.semaines || [];
+    document.getElementById('count-nuisibles').textContent = data.nb_semaines || 0;
 
     const anomCls = (data.nb_anomalies || 0) > 0 ? 'rouge' : 'vert';
     document.getElementById('resume-nuisibles').innerHTML = `
-      <span class="resume-chip"><strong>${data.nb_controles || 0}</strong> contrôle(s) hebdo</span>
-      <span class="resume-chip ${anomCls}"><strong>${data.nb_anomalies || 0}</strong> anomalie(s) signalée(s)</span>`;
+      <span class="resume-chip"><strong>${data.nb_semaines || 0}</strong> semaine(s) contrôlée(s)</span>
+      <span class="resume-chip"><strong>${data.nb_controles || 0}</strong> relevé(s) (espèce × semaine)</span>
+      <span class="resume-chip ${anomCls}"><strong>${data.nb_anomalies || 0}</strong> présence(s) détectée(s)</span>`;
 
-    const tbody = document.getElementById('tbody-nuisibles');
-    if (!controles.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="aucune-donnee">Aucun contrôle nuisibles sur la période</td></tr>';
+    const cont = document.getElementById('semaines-nuisibles');
+    if (!semaines.length) {
+      cont.innerHTML = '<div class="aucune-donnee">Aucun contrôle nuisibles sur la période</div>';
       return;
     }
-    tbody.innerHTML = controles.map(c => {
-      let resultatBadge;
-      if (c.nb_anomalies > 0) {
-        resultatBadge = `<span class="badge rouge">${c.nb_anomalies} anomalie(s)</span>`;
-      } else if (c.nb_postes > 0) {
-        resultatBadge = '<span class="badge vert">RAS</span>';
-      } else {
-        resultatBadge = '<span style="color:#bbb; font-size:.75rem">non renseigné</span>';
-      }
-      const dSaisie = c.date_saisie ? parseD(c.date_saisie).toLocaleDateString('fr-FR') : '—';
+
+    const entetesP = Array.from({length: NB_PIEGES}, (_, i) => `<th>P${i + 1}</th>`).join('');
+
+    cont.innerHTML = semaines.map((sem, idx) => {
+      let corps = '';
+      sem.controles.forEach(c => {
+        let cells = '';
+        for (let p = 1; p <= NB_PIEGES; p++) {
+          const v = c.resultats['p' + p] || null;
+          const cls = v === 'O' ? 'piege-O' : v === 'N' ? 'piege-N' : 'piege-vide';
+          cells += `<td class="${cls}">${v || '·'}</td>`;
+        }
+        corps += `
+          <tr>
+            <td class="type-nom">${escapeHtml(c.type_nom)}</td>
+            ${cells}
+            <td class="visa">${escapeHtml(c.visa) || '—'}</td>
+          </tr>`;
+      });
+
+      const pastille = sem.nb_anomalies > 0
+        ? `<span class="sem-pastille rouge">${sem.nb_anomalies} présence(s)</span>`
+        : '<span class="sem-pastille vert">RAS</span>';
+      const ouvert = idx === 0 ? ' open' : '';
+
       return `
-        <tr>
-          <td><strong>${c.type_nom}</strong></td>
-          <td>${c.annee}</td>
-          <td>S${c.semaine}</td>
-          <td>${resultatBadge}</td>
-          <td>${c.visa || '—'}</td>
-          <td style="color:var(--gris); font-size:0.8rem">${dSaisie}</td>
-        </tr>`;
+        <details class="sem-bloc"${ouvert}>
+          <summary>Semaine ${sem.semaine} / ${sem.annee} ${pastille}</summary>
+          <div class="sem-bloc-corps">
+            <table class="nuisibles-grille">
+              <thead>
+                <tr>
+                  <th class="col-type">Espèce ciblée</th>
+                  ${entetesP}
+                  <th class="col-visa">Visa</th>
+                </tr>
+              </thead>
+              <tbody>${corps}</tbody>
+            </table>
+            <div class="nuisibles-legende">
+              <span><span class="pip pip-N"></span> N = RAS (aucune présence)</span>
+              <span><span class="pip pip-O"></span> O = présence détectée</span>
+              <span>· = poste non relevé</span>
+            </div>
+          </div>
+        </details>`;
     }).join('');
   }
 
