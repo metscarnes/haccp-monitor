@@ -14,9 +14,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv  # pip install python-dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.database import init_db, get_db, purger_anciens_releves
@@ -198,10 +198,66 @@ async def purger():
 
 
 # ---------------------------------------------------------------------------
-# Servir le frontend statique
+# Servir les vidéos avec support des Range requests (seek dans le lecteur)
+#
+# StaticFiles ne publie pas correctement `Accept-Ranges` / `206 Partial
+# Content` dans cette config : sans ça le navigateur ne peut pas se
+# positionner dans la vidéo (le seek revient à la dernière position bufferisée).
+# Cette route dédiée doit être déclarée AVANT le mount /static pour avoir
+# la priorité sur les fichiers .mp4.
 # ---------------------------------------------------------------------------
 
 if STATIC_DIR.exists():
+
+    @app.get("/static/{file_path:path}.mp4", include_in_schema=False)
+    async def servir_video(file_path: str, request: Request):
+        """Sert les .mp4 avec Range requests pour permettre le seek."""
+        video = (STATIC_DIR / f"{file_path}.mp4").resolve()
+        if not str(video).startswith(str(STATIC_DIR.resolve())) or not video.is_file():
+            return RedirectResponse("/")
+
+        file_size = video.stat().st_size
+        range_header = request.headers.get("range")
+
+        if range_header is None:
+            return FileResponse(
+                str(video),
+                media_type="video/mp4",
+                headers={"Accept-Ranges": "bytes"},
+            )
+
+        # Parse "bytes=start-end"
+        try:
+            units, rng = range_header.split("=", 1)
+            start_s, end_s = rng.split("-", 1)
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else file_size - 1
+        except ValueError:
+            start, end = 0, file_size - 1
+
+        start = max(0, start)
+        end = min(end, file_size - 1)
+        chunk_size = end - start + 1
+
+        def iter_file():
+            with open(video, "rb") as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining > 0:
+                    data = f.read(min(1024 * 1024, remaining))
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_size),
+            "Content-Type": "video/mp4",
+        }
+        return StreamingResponse(iter_file(), status_code=206, headers=headers)
+
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/", include_in_schema=False)
