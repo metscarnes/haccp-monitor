@@ -65,7 +65,7 @@ Recherche par nom de produit ou code unique. Deux comportements :
 
 | Section | Contenu |
 |---|---|
-| **Produits en stock** | Produits ayant une réception dans les 21 derniers jours — triés par date de réception décroissante |
+| **Produits en stock** | Produits ayant une réception dans les 2 derniers mois — triés par date de réception décroissante |
 | **Catalogue** | Reste du catalogue matières premières (sans lot lié) |
 
 Chaque carte produit affiche :
@@ -163,10 +163,10 @@ Quand la traçabilité est complète (`source = "reception"`), l'historique affi
 
 L'API `/api/ouvertures/suggestions` ne retourne **que les produits de catégorie `matiere_premiere`**. Les produits finis (fabrications, recettes) ne sont pas proposés dans ce module.
 
-### 7.3 Fenêtre de 21 jours pour les produits "en stock"
+### 7.3 Fenêtre de 2 mois pour les produits "en stock"
 
 Un produit est affiché dans la section **"Produits en stock"** si :
-- Il a une réception clôturée dans les **21 derniers jours**
+- Il a une réception clôturée dans les **2 derniers mois**
 - La ligne de réception est conforme et la livraison n'a pas été refusée
 - La DLC n'est pas dépassée
 - Aucun enregistrement `dlc_devenir` n'existe pour ce lot

@@ -136,6 +136,9 @@ function allerEtape(cible) {
   // Pré-surligner le produit déjà sélectionné quand on arrive à l'étape 3
   if (cible === 3 && produitSelectionne) {
     requestAnimationFrame(highlightProduitSelectionne);
+    // Activer le bouton immédiatement — le highlight peut échouer si la carte n'est pas encore dans le DOM
+    elBtnEnregistrer.disabled = false;
+    elBtnEnregistrer.setAttribute('aria-disabled', 'false');
   }
 }
 
@@ -476,6 +479,9 @@ elBtnMemeProduit.addEventListener('click', () => {
       btn.classList.add('selectionne');
     }
   });
+
+  // Resélectionner visuellement le produit dans la liste (déjà rechargée par resetEtat)
+  highlightProduitSelectionne();
 
   allerEtape(2); // Reprise directe à la photo
 });
