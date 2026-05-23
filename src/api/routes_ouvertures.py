@@ -82,14 +82,10 @@ async def creer_ouverture(
     personnel_id: int = Form(...),
     reception_ligne_id: Optional[int] = Form(None),
 ):
-    import time as _t
-    _t0 = _t.perf_counter()
     # Lecture rapide des bytes bruts (l'UploadFile se ferme à la fin de la requête).
-    # La compression PIL — coûteuse — sera déportée en tâche de fond plus bas.
+    # La photo est déjà compressée côté navigateur ; on la ré-encode quand même
+    # en tâche de fond (sécurité + uniformité) sans bloquer la réponse.
     raw = await photo.read()
-    _t_read = _t.perf_counter()
-    logger.warning("[CHRONO ouverture] read() = %.3fs (taille=%d Ko)",
-                   _t_read - _t0, len(raw) // 1024)
 
     async with get_db() as db:
         # Vérifier que le produit et le personnel existent
@@ -155,8 +151,6 @@ async def creer_ouverture(
     loop = asyncio.get_event_loop()
     loop.run_in_executor(_executor, _compress_and_save, raw, filepath)
 
-    logger.warning("[CHRONO ouverture] total serveur = %.3fs (dont read=%.3fs)",
-                   _t.perf_counter() - _t0, _t_read - _t0)
     return dict(row)
 
 

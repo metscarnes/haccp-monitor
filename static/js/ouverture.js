@@ -49,6 +49,7 @@ const elBtnNouvelle      = document.getElementById('ouv-btn-nouvelle');
 // ── État ───────────────────────────────────────────────────
 let etape               = 1;
 let photoFile           = null;
+let photoPromise        = null; // Promise résolue avec le File compressé
 let photoObjectUrl      = null;
 let produitSelectionne  = null;
 let personnelId         = null;
@@ -187,16 +188,57 @@ elBtnCamera.addEventListener('click', () => {
   elInputPhoto.click();
 });
 
-elInputPhoto.addEventListener('change', () => {
+// Compression navigateur : redimensionne à PHOTO_MAX_SIDE et ré-encode en JPEG.
+// On envoie ainsi ~150-300 Ko au lieu de 3 Mo → upload quasi instantané sur la
+// connexion distante (le serveur, lui, répond déjà en <100 ms).
+const PHOTO_MAX_SIDE = 1280;
+const PHOTO_QUALITE  = 0.8;
+
+function compresserImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      if (Math.max(w, h) > PHOTO_MAX_SIDE) {
+        if (w >= h) { h = Math.round(h * PHOTO_MAX_SIDE / w); w = PHOTO_MAX_SIDE; }
+        else        { w = Math.round(w * PHOTO_MAX_SIDE / h); h = PHOTO_MAX_SIDE; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => resolve(blob
+          ? new File([blob], 'ouverture.jpg', { type: 'image/jpeg' })
+          : file),               // fallback : si toBlob échoue, on garde l'original
+        'image/jpeg',
+        PHOTO_QUALITE,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+elInputPhoto.addEventListener('change', async () => {
   const file = elInputPhoto.files[0];
   if (!file) return;
 
-  photoFile = file;
+  // Aperçu immédiat avec l'original (rapide, local)
   if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
   photoObjectUrl = URL.createObjectURL(file);
-
   elPhotoVignette.src = photoObjectUrl;
   elApercu.hidden = false;
+
+  // Compression lancée immédiatement, en parallèle du wizard. On garde la Promise
+  // pour l'attendre au moment de l'envoi (évite d'envoyer l'original si pas fini).
+  photoFile   = file; // repli
+  photoPromise = compresserImage(file).then((compressed) => {
+    photoFile = compressed;
+    return compressed;
+  });
 
   if (memeProduitMode) {
     // Mode "même produit" : enregistrement automatique, on saute l'étape 3
@@ -376,6 +418,9 @@ async function enregistrerOuverture() {
   elBtnEnregistrer.textContent = 'Enregistrement…';
 
   try {
+    // S'assurer que la compression est terminée avant l'envoi
+    if (photoPromise) { await photoPromise; }
+
     const fd = new FormData();
     fd.append('photo',        photoFile);
     fd.append('produit_id',   String(produitSelectionne.produit_id));
@@ -503,6 +548,7 @@ elBtnNouvelle.addEventListener('click', () => {
 // ── Reset état complet ─────────────────────────────────────
 function resetEtat() {
   photoFile = null;
+  photoPromise = null;
   if (photoObjectUrl) { URL.revokeObjectURL(photoObjectUrl); photoObjectUrl = null; }
   produitSelectionne    = null;
   personnelId           = null;
