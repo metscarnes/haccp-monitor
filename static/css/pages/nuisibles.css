@@ -167,12 +167,285 @@
   white-space: pre-line;
 }
 
+/* ─── BARRE DE VUE (Registre / Plan) + réglage ─── */
+.nu-vue-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .9rem;
+  background: #FAF4EC;
+  border-bottom: 1px solid #E8D5BC;
+}
+
+.nu-vue-switch {
+  display: flex;
+  gap: .35rem;
+  background: #EADFC9;
+  border-radius: 10px;
+  padding: 3px;
+  flex: 1;
+  max-width: 420px;
+}
+
+.nu-vue-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #6B3A1F;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .82rem;
+  font-weight: 700;
+  padding: .5rem .5rem;
+  white-space: nowrap;
+  transition: background .15s, color .15s, box-shadow .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.nu-vue-btn:active { opacity: .8; }
+.nu-vue-btn.actif {
+  background: #FFF;
+  color: #3D2008;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+
+.nu-config-btn {
+  background: #FFF;
+  border: 2px solid #D4A574;
+  border-radius: 8px;
+  color: #6B3A1F;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  height: 38px;
+  padding: 0 .7rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.nu-config-btn:active { background: #F0E4D0; }
+
 /* ─── TABLEAU ─── */
 .nu-table-wrap {
   flex: 1;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
+.nu-table-wrap[hidden] { display: none; }
+
+/* ─── PLAN DES PIÈGES (carte) ─── */
+.nu-carte-wrap {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  padding: .75rem .9rem 5rem;
+}
+.nu-carte-wrap[hidden] { display: none; }
+
+.nu-carte-toolbar {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.nu-carte-hint {
+  flex: 1;
+  min-width: 180px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: #6B3A1F;
+  line-height: 1.4;
+}
+
+.nu-carte-actions {
+  display: flex;
+  gap: .5rem;
+  flex-shrink: 0;
+}
+
+.nu-carte-btn {
+  background: #FFF;
+  border: 2px solid #D4A574;
+  border-radius: 8px;
+  color: #6B3A1F;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  height: 40px;
+  padding: 0 .85rem;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.nu-carte-btn:active { opacity: .8; }
+.nu-carte-btn--save {
+  background: #2D7D46;
+  border-color: #2D7D46;
+  color: #FFF;
+  box-shadow: 0 2px 8px rgba(45,125,70,.35);
+}
+.nu-carte-btn--save:active { background: #1f5c32; }
+.nu-carte-btn--save:disabled { background: #999; border-color: #999; box-shadow: none; cursor: not-allowed; }
+
+/* Palette des pièges à placer */
+.nu-carte-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  background: #FFF;
+  border: 1px solid #E8D5BC;
+  border-radius: 10px;
+  padding: .6rem;
+}
+
+.nu-palette-btn {
+  background: #F0E8DC;
+  border: 2px dashed #C7A983;
+  border-radius: 8px;
+  color: #8a6a47;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 800;
+  min-width: 44px;
+  height: 40px;
+  padding: 0 .5rem;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.nu-palette-btn:active { transform: scale(.95); }
+/* Piège déjà placé : trait plein */
+.nu-palette-btn--place {
+  background: #FFF;
+  border-style: solid;
+  border-color: #6B3A1F;
+  color: #3D2008;
+}
+/* Piège sélectionné (en attente de placement / repositionnement) */
+.nu-palette-btn--actif {
+  background: #E8913A;
+  border-color: #E8913A;
+  border-style: solid;
+  color: #FFF;
+  box-shadow: 0 2px 8px rgba(232,145,58,.5);
+}
+
+/* Plan : image + calque de pings */
+.nu-carte-stage {
+  position: relative;
+  width: 100%;
+  background: #FFF;
+  border: 1px solid #E8D5BC;
+  border-radius: 10px;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;       /* drag fiable sur tablette */
+  cursor: crosshair;
+}
+
+.nu-carte-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;     /* clics interceptés par le stage */
+  user-select: none;
+}
+
+.nu-carte-pings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;     /* seuls les pings sont cliquables */
+}
+
+/* Un ping = pastille numérotée */
+.nu-ping {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 50% 50% 50% 0;        /* forme « goutte » de marqueur */
+  background: #6B3A1F;
+  border: 2px solid #FFF;
+  box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  cursor: grab;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  rotate: -45deg;
+  touch-action: none;
+  transition: transform .08s, box-shadow .1s;
+}
+.nu-ping-num {
+  rotate: 45deg;                        /* texte redressé */
+  color: #FFF;
+  font-size: .72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+.nu-ping--drag {
+  cursor: grabbing;
+  box-shadow: 0 4px 14px rgba(0,0,0,.6);
+  z-index: 10;
+}
+.nu-ping--drag,
+.nu-ping:active { transform: translate(-50%, -50%) scale(1.15); }
+
+/* Couleurs selon le dernier contrôle connu */
+.nu-ping--O { background: #C93030; }     /* présence / anomalie */
+.nu-ping--N { background: #2D7D46; }     /* RAS */
+.nu-ping--vide { background: #8a6a47; }  /* jamais contrôlé */
+
+/* ─── MODAL CONFIG NB PIÈGES ─── */
+.nu-modal-config-panel { max-width: 420px; }
+
+.nu-config-aide {
+  font-size: .85rem;
+  line-height: 1.5;
+  color: #6B3A1F;
+  margin: 0;
+}
+
+.nu-config-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+.nu-config-val {
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #3D2008;
+  min-width: 70px;
+  text-align: center;
+}
+.nu-config-unite {
+  text-align: center;
+  font-size: .8rem;
+  font-weight: 700;
+  color: #8a6a47;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-top: -.5rem;
+}
+
+.nu-config-avert {
+  background: rgba(232,145,58,.12);
+  border-left: 4px solid #E8913A;
+  border-radius: 8px;
+  color: #8a4f12;
+  font-size: .78rem;
+  line-height: 1.5;
+  padding: .55rem .7rem;
+  margin: 0;
+}
+.nu-config-avert[hidden] { display: none; }
 
 .nu-table {
   border-collapse: collapse;

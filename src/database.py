@@ -593,6 +593,19 @@ CREATE TABLE IF NOT EXISTS nuisibles_controles (
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
+-- Position des pièges sur le plan de la boutique (un point par piège & par type).
+-- pos_x / pos_y sont des pourcentages (0..100) relatifs à l'image → responsive.
+CREATE TABLE IF NOT EXISTS nuisibles_pieges_carte (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id INTEGER NOT NULL DEFAULT 1,
+    type_id     INTEGER NOT NULL,    -- 1=rongeurs 2=ins.vol 3=ins.ramp 4=oiseaux
+    piege_num   INTEGER NOT NULL,    -- 1..N (correspond à P1..Pn du tableau)
+    pos_x       REAL    NOT NULL,    -- pourcentage horizontal 0..100
+    pos_y       REAL    NOT NULL,    -- pourcentage vertical 0..100
+    UNIQUE(boutique_id, type_id, piege_num),
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
 -- ===========================================================================
 -- Module DLC — devenir des produits expirés
 -- ===========================================================================
@@ -957,6 +970,17 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE cuissons ADD COLUMN fabrication_id INTEGER",
             # v4.0 — Signature opérateur sur les résultats de quiz (attestation)
             "ALTER TABLE quiz_resultats ADD COLUMN signature TEXT",
+            # v4.1 — Carte des pièges (positions sur le plan de la boutique)
+            """CREATE TABLE IF NOT EXISTS nuisibles_pieges_carte (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id INTEGER NOT NULL DEFAULT 1,
+                type_id     INTEGER NOT NULL,
+                piege_num   INTEGER NOT NULL,
+                pos_x       REAL    NOT NULL,
+                pos_y       REAL    NOT NULL,
+                UNIQUE(boutique_id, type_id, piege_num),
+                FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+            )""",
         ]
         for sql in migrations:
             try:

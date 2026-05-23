@@ -39,32 +39,49 @@
     </div>
   </div>
 
-  <!-- ── TABLEAU 52 SEMAINES ── -->
-  <div class="nu-table-wrap">
+  <!-- ── SÉLECTEUR DE VUE (Registre / Plan) + réglage nb pièges ── -->
+  <nav class="nu-vue-bar">
+    <div class="nu-vue-switch" role="tablist">
+      <button class="nu-vue-btn actif" id="nu-vue-tableau" data-vue="tableau" role="tab" aria-selected="true">📋 Registre</button>
+      <button class="nu-vue-btn" id="nu-vue-carte" data-vue="carte" role="tab" aria-selected="false">🗺️ Plan des pièges</button>
+    </div>
+    <button class="nu-config-btn" id="nu-config-btn" aria-label="Régler le nombre de pièges">
+      ⚙️ <span id="nu-config-label">15 pièges</span>
+    </button>
+  </nav>
+
+  <!-- ── VUE TABLEAU 52 SEMAINES ── -->
+  <div class="nu-table-wrap" id="nu-vue-tableau-corps">
     <table class="nu-table" id="nu-table">
       <thead>
-        <tr>
+        <tr id="nu-thead-row">
           <th>Sem</th>
-          <th class="nu-th-piege">P1</th>
-          <th class="nu-th-piege">P2</th>
-          <th class="nu-th-piege">P3</th>
-          <th class="nu-th-piege">P4</th>
-          <th class="nu-th-piege">P5</th>
-          <th class="nu-th-piege">P6</th>
-          <th class="nu-th-piege">P7</th>
-          <th class="nu-th-piege">P8</th>
-          <th class="nu-th-piege">P9</th>
-          <th class="nu-th-piege">P10</th>
-          <th class="nu-th-piege">P11</th>
-          <th class="nu-th-piege">P12</th>
-          <th class="nu-th-piege">P13</th>
-          <th class="nu-th-piege">P14</th>
-          <th class="nu-th-piege">P15</th>
+          <!-- colonnes P1..Pn injectées par JS -->
           <th class="nu-th-visa">VISA</th>
         </tr>
       </thead>
       <tbody id="nu-tbody"></tbody>
     </table>
+  </div>
+
+  <!-- ── VUE PLAN DES PIÈGES ── -->
+  <div class="nu-carte-wrap" id="nu-vue-carte-corps" hidden>
+    <div class="nu-carte-toolbar">
+      <span class="nu-carte-hint" id="nu-carte-hint">Touchez un piège dans la liste puis touchez le plan pour le placer.</span>
+      <div class="nu-carte-actions">
+        <button class="nu-carte-btn" id="nu-carte-reset">↺ Tout effacer</button>
+        <button class="nu-carte-btn nu-carte-btn--save" id="nu-carte-save">💾 Enregistrer</button>
+      </div>
+    </div>
+
+    <!-- Palette des pièges à placer / déjà placés -->
+    <div class="nu-carte-palette" id="nu-carte-palette"></div>
+
+    <!-- Le plan : image + calque des pings -->
+    <div class="nu-carte-stage" id="nu-carte-stage">
+      <img class="nu-carte-img" id="nu-carte-img" src="/static/docs/plan%20final.png" alt="Plan de la boutique" draggable="false">
+      <div class="nu-carte-pings" id="nu-carte-pings"><!-- pings injectés par JS --></div>
+    </div>
   </div>
 
   <!-- ── FAB SAISIE RAPIDE ── -->
@@ -159,6 +176,38 @@
       <div class="nu-modal-actions">
         <button class="nu-btn-annuler" id="nu-btn-rapide-annuler">Annuler</button>
         <button class="nu-btn-sauvegarder" id="nu-btn-rapide-save">✅ Enregistrer tout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MODAL RÉGLAGE NOMBRE DE PIÈGES ── -->
+  <div id="nu-modal-config" class="nu-modal" hidden role="dialog" aria-modal="true">
+    <div class="nu-modal-panel nu-modal-config-panel">
+      <div class="nu-modal-entete">
+        <div class="nu-modal-titre">⚙️ Nombre de pièges</div>
+        <button class="nu-modal-fermer" id="nu-config-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <p class="nu-config-aide">
+        Choisissez le nombre de pièges suivis (P1 à Pn). Ce réglage s'applique au registre
+        hebdomadaire, à la saisie rapide et au plan des pièges.
+      </p>
+
+      <div class="nu-config-stepper">
+        <button type="button" id="nu-config-moins" class="nu-sem-btn" aria-label="Moins">−</button>
+        <span id="nu-config-val" class="nu-config-val">15</span>
+        <button type="button" id="nu-config-plus" class="nu-sem-btn" aria-label="Plus">+</button>
+      </div>
+      <div class="nu-config-unite">piège(s)</div>
+
+      <p class="nu-config-avert" id="nu-config-avert" hidden>
+        ⚠️ Réduire le nombre de pièges masque les pièges supérieurs dans le registre, mais leur
+        historique reste conservé en base.
+      </p>
+
+      <div class="nu-modal-actions">
+        <button class="nu-btn-annuler" id="nu-config-annuler">Annuler</button>
+        <button class="nu-btn-sauvegarder" id="nu-config-save">✅ Appliquer</button>
       </div>
     </div>
   </div>

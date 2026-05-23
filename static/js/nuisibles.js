@@ -40,7 +40,9 @@ const TYPES = [
   },
 ];
 
-const NB_PIEGES = 15;
+// Nombre de pièges suivis (P1..Pn). Réglable via /api/nuisibles/config.
+// Valeur de départ écrasée par chargerConfig() au démarrage.
+let NB_PIEGES = 15;
 
 // ── État ──────────────────────────────────────────────────────
 let currentTypeId  = 1;
@@ -48,6 +50,14 @@ let currentAnnee   = new Date().getFullYear();
 let currentSemaine = getISOWeek(new Date());
 let donneesAnnee   = {};   // { "17": {resultats: {p1:"O",...}, visa:"Éric"}, ... }
 let personnel      = [];
+
+// Vue active : 'tableau' | 'carte'
+let currentVue = 'tableau';
+
+// Carte des pièges
+let cartePositions = {};   // { piegeNum: {pos_x, pos_y}, ... } pour le type courant
+let cartePiegeActif = null; // piège sélectionné dans la palette (à placer)
+let carteDirty = false;     // modifications non enregistrées
 
 // Édition simple (clic sur ligne tableau)
 let editSemaine   = null;
@@ -83,18 +93,74 @@ const elModalRapideTitre = document.getElementById('nu-modal-rapide-titre');
 const elVisaRapide       = document.getElementById('nu-visa-rapide');
 const elRapideSections   = document.getElementById('nu-rapide-sections');
 const elBtnRapideSave    = document.getElementById('nu-btn-rapide-save');
+const elTheadRow         = document.getElementById('nu-thead-row');
+
+// Vue / carte
+const elVueTableauBtn    = document.getElementById('nu-vue-tableau');
+const elVueCarteBtn      = document.getElementById('nu-vue-carte');
+const elVueTableauCorps  = document.getElementById('nu-vue-tableau-corps');
+const elVueCarteCorps    = document.getElementById('nu-vue-carte-corps');
+const elCartePalette     = document.getElementById('nu-carte-palette');
+const elCarteStage       = document.getElementById('nu-carte-stage');
+const elCartePings       = document.getElementById('nu-carte-pings');
+const elCarteHint        = document.getElementById('nu-carte-hint');
+const elCarteReset       = document.getElementById('nu-carte-reset');
+const elCarteSave        = document.getElementById('nu-carte-save');
+
+// Config nb pièges
+const elConfigBtn        = document.getElementById('nu-config-btn');
+const elConfigLabel      = document.getElementById('nu-config-label');
+const elModalConfig      = document.getElementById('nu-modal-config');
 
 // ── Init ──────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initAnnees();
   initTabs();
   initInfoToggle();
   initModal();
   initModalRapide();
   initFab();
+  initVueSwitch();
+  initCarte();
+  initConfig();
   chargerPersonnel();
+  await chargerConfig();      // règle NB_PIEGES avant le premier rendu
   chargerDonnees();
 });
+
+// ── Chargement de la configuration (nombre de pièges) ─────────
+async function chargerConfig() {
+  try {
+    const res = await fetch('/api/nuisibles/config');
+    if (res.ok) {
+      const data = await res.json();
+      if (Number.isInteger(data.nb_pieges) && data.nb_pieges > 0) {
+        NB_PIEGES = data.nb_pieges;
+      }
+    }
+  } catch { /* on garde la valeur par défaut */ }
+  globalNbPieges = NB_PIEGES;
+  majConfigLabel();
+  renderTheadPieges();
+}
+
+function majConfigLabel() {
+  if (elConfigLabel) elConfigLabel.textContent = `${NB_PIEGES} piège${NB_PIEGES > 1 ? 's' : ''}`;
+  if (elFabSub) elFabSub.textContent = `S${currentSemaine} · ${TYPES.length} espèces · ${NB_PIEGES} pièges`;
+}
+
+// En-tête du tableau : colonnes P1..Pn générées dynamiquement
+function renderTheadPieges() {
+  if (!elTheadRow) return;
+  elTheadRow.querySelectorAll('.nu-th-piege').forEach(th => th.remove());
+  const visaTh = elTheadRow.querySelector('.nu-th-visa');
+  for (let p = 1; p <= NB_PIEGES; p++) {
+    const th = document.createElement('th');
+    th.className = 'nu-th-piege';
+    th.textContent = `P${p}`;
+    elTheadRow.insertBefore(th, visaTh);
+  }
+}
 
 // ── Sélecteur d'années ────────────────────────────────────────
 function initAnnees() {
@@ -108,7 +174,7 @@ function initAnnees() {
   }
   elAnnee.addEventListener('change', () => {
     currentAnnee = parseInt(elAnnee.value, 10);
-    chargerDonnees();
+    chargerDonnees().then(() => { if (currentVue === 'carte') majPingsCouleurs(); });
   });
 }
 
@@ -125,6 +191,7 @@ function initTabs() {
       currentTypeId = parseInt(btn.dataset.type, 10);
       renderInfoCard();
       chargerDonnees();
+      if (currentVue === 'carte') chargerCarte();
     });
   });
 }
@@ -184,7 +251,7 @@ async function chargerDonnees() {
     renderInfoCard();
     renderTableau();
   } catch (err) {
-    elTbody.innerHTML = `<tr><td colspan="17" style="padding:2rem;text-align:center;color:#888;">
+    elTbody.innerHTML = `<tr><td colspan="${NB_PIEGES + 2}" style="padding:2rem;text-align:center;color:#888;">
       Erreur de chargement : ${err.message}</td></tr>`;
   }
 }
@@ -244,7 +311,7 @@ function mettreAJourLigne(semaine) {
 
 // ── FAB saisie rapide ─────────────────────────────────────────
 function initFab() {
-  elFabSub.textContent = `S${currentSemaine} · ${TYPES.length} espèces · ${NB_PIEGES} pièges`;
+  majConfigLabel();
 
   elFab.addEventListener('click', () => {
     const anneeActuelle = new Date().getFullYear();
@@ -633,6 +700,313 @@ async function sauvegarder() {
   } finally {
     elBtnSave.disabled = false;
     elBtnSave.textContent = '✅ Enregistrer';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  VUE : bascule Registre ↔ Plan des pièges
+// ══════════════════════════════════════════════════════════════
+function initVueSwitch() {
+  elVueTableauBtn.addEventListener('click', () => basculerVue('tableau'));
+  elVueCarteBtn.addEventListener('click',   () => basculerVue('carte'));
+}
+
+function basculerVue(vue) {
+  if (vue === currentVue) return;
+  if (currentVue === 'carte' && carteDirty &&
+      !confirm('Des modifications du plan ne sont pas enregistrées. Quitter quand même ?')) {
+    return;
+  }
+  currentVue = vue;
+
+  const estTableau = vue === 'tableau';
+  elVueTableauBtn.classList.toggle('actif', estTableau);
+  elVueCarteBtn.classList.toggle('actif', !estTableau);
+  elVueTableauBtn.setAttribute('aria-selected', String(estTableau));
+  elVueCarteBtn.setAttribute('aria-selected', String(!estTableau));
+
+  elVueTableauCorps.hidden = !estTableau;
+  elVueCarteCorps.hidden   = estTableau;
+  // Le FAB de saisie rapide n'a de sens que sur le registre
+  elFab.style.display = estTableau ? '' : 'none';
+
+  if (vue === 'carte') chargerCarte();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CONFIG : nombre de pièges
+// ══════════════════════════════════════════════════════════════
+let configValeur = NB_PIEGES;
+
+function initConfig() {
+  elConfigBtn.addEventListener('click', ouvrirModalConfig);
+  document.getElementById('nu-config-fermer').addEventListener('click', fermerModalConfig);
+  document.getElementById('nu-config-annuler').addEventListener('click', fermerModalConfig);
+  elModalConfig.addEventListener('click', e => { if (e.target === elModalConfig) fermerModalConfig(); });
+
+  const elVal = document.getElementById('nu-config-val');
+  document.getElementById('nu-config-moins').addEventListener('click', () => {
+    if (configValeur > 1) { configValeur--; elVal.textContent = configValeur; majAvertConfig(); }
+  });
+  document.getElementById('nu-config-plus').addEventListener('click', () => {
+    if (configValeur < 50) { configValeur++; elVal.textContent = configValeur; majAvertConfig(); }
+  });
+
+  document.getElementById('nu-config-save').addEventListener('click', sauvegarderConfig);
+}
+
+function majAvertConfig() {
+  const avert = document.getElementById('nu-config-avert');
+  avert.hidden = configValeur >= NB_PIEGES;
+}
+
+function ouvrirModalConfig() {
+  configValeur = NB_PIEGES;
+  document.getElementById('nu-config-val').textContent = configValeur;
+  majAvertConfig();
+  elModalConfig.hidden = false;
+  document.body.style.overflow = 'hidden';
+}
+
+function fermerModalConfig() {
+  elModalConfig.hidden = true;
+  document.body.style.overflow = '';
+}
+
+async function sauvegarderConfig() {
+  const btn = document.getElementById('nu-config-save');
+  if (configValeur === NB_PIEGES) { fermerModalConfig(); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ …';
+  try {
+    const res = await fetch('/api/nuisibles/config', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nb_pieges: configValeur }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    NB_PIEGES      = configValeur;
+    globalNbPieges = NB_PIEGES;
+    majConfigLabel();
+    renderTheadPieges();
+    renderTableau();
+    if (currentVue === 'carte') chargerCarte();
+    fermerModalConfig();
+    toast(`✅ ${NB_PIEGES} piège${NB_PIEGES > 1 ? 's' : ''} suivi${NB_PIEGES > 1 ? 's' : ''}`);
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ Appliquer';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PLAN DES PIÈGES (carte interactive)
+// ══════════════════════════════════════════════════════════════
+function initCarte() {
+  elCarteReset.addEventListener('click', resetCarte);
+  elCarteSave.addEventListener('click', sauvegarderCarte);
+
+  // Placer un piège sélectionné en touchant le plan
+  elCarteStage.addEventListener('click', e => {
+    // Ignorer les clics qui ciblent un ping existant (gérés par le ping lui-même)
+    if (e.target.closest('.nu-ping')) return;
+    if (cartePiegeActif === null) return;
+    const { x, y } = pointEnPourcentage(e.clientX, e.clientY);
+    cartePositions[cartePiegeActif] = { pos_x: x, pos_y: y };
+    carteDirty = true;
+    const placer = cartePiegeActif;
+    cartePiegeActif = null;
+    renderPalette();
+    renderPings();
+    elCarteHint.textContent = `P${placer} placé. Glissez-le pour ajuster, ou sélectionnez un autre piège.`;
+  });
+}
+
+// Charge positions + données de couleur pour le type courant
+async function chargerCarte() {
+  elCarteHint.textContent = 'Chargement du plan…';
+  cartePiegeActif = null;
+  carteDirty = false;
+  try {
+    const res = await fetch(`/api/nuisibles/carte?type_id=${currentTypeId}`);
+    const data = res.ok ? await res.json() : { pieges: [] };
+    cartePositions = {};
+    (data.pieges || []).forEach(p => {
+      if (p.piege_num <= NB_PIEGES) {
+        cartePositions[p.piege_num] = { pos_x: p.pos_x, pos_y: p.pos_y };
+      }
+    });
+  } catch {
+    cartePositions = {};
+  }
+  const type = TYPES.find(t => t.id === currentTypeId);
+  elCarteHint.textContent = `${type.emoji} ${type.nom} — touchez un piège puis le plan pour le placer.`;
+  renderPalette();
+  renderPings();
+}
+
+// Palette : un bouton par piège (P1..Pn). Indique placé / à placer / sélectionné.
+function renderPalette() {
+  elCartePalette.innerHTML = '';
+  for (let p = 1; p <= NB_PIEGES; p++) {
+    const place = cartePositions[p] !== undefined;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nu-palette-btn'
+      + (place ? ' nu-palette-btn--place' : '')
+      + (cartePiegeActif === p ? ' nu-palette-btn--actif' : '');
+    btn.textContent = `P${p}`;
+    btn.title = place ? `P${p} placé — cliquez pour repositionner` : `P${p} à placer`;
+    btn.addEventListener('click', () => {
+      cartePiegeActif = (cartePiegeActif === p) ? null : p;
+      renderPalette();
+      elCarteHint.textContent = cartePiegeActif === null
+        ? 'Sélection annulée.'
+        : (cartePositions[p] ? `Touchez le plan pour déplacer P${p}.` : `Touchez le plan pour placer P${p}.`);
+    });
+    elCartePalette.appendChild(btn);
+  }
+}
+
+// Rendu des pings sur le plan, colorés selon le dernier contrôle connu.
+function renderPings() {
+  elCartePings.innerHTML = '';
+  Object.keys(cartePositions).forEach(numStr => {
+    const num = parseInt(numStr, 10);
+    if (num > NB_PIEGES) return;
+    const pos = cartePositions[num];
+    const ping = document.createElement('div');
+    ping.className = 'nu-ping ' + classeEtatPing(num);
+    ping.style.left = pos.pos_x + '%';
+    ping.style.top  = pos.pos_y + '%';
+    ping.dataset.num = num;
+    ping.innerHTML = `<span class="nu-ping-num">${num}</span>`;
+    rendrePingDeplacable(ping, num);
+    elCartePings.appendChild(ping);
+  });
+}
+
+// Met à jour uniquement les couleurs (changement d'année / de données)
+function majPingsCouleurs() {
+  elCartePings.querySelectorAll('.nu-ping').forEach(ping => {
+    const num = parseInt(ping.dataset.num, 10);
+    ping.className = 'nu-ping ' + classeEtatPing(num);
+  });
+}
+
+// Dernier résultat connu du piège sur l'année courante → couleur du ping.
+function classeEtatPing(num) {
+  const key = `p${num}`;
+  let dernier = null;
+  // Parcourir les semaines décroissantes pour trouver le dernier état saisi
+  for (let sem = nombreSemainesAnnee(currentAnnee); sem >= 1; sem--) {
+    const data = donneesAnnee[String(sem)];
+    if (data && data.resultats && data.resultats[key]) {
+      dernier = data.resultats[key];
+      break;
+    }
+  }
+  if (dernier === 'O') return 'nu-ping--O';   // présence/anomalie
+  if (dernier === 'N') return 'nu-ping--N';   // RAS
+  return 'nu-ping--vide';
+}
+
+// Convertit des coordonnées écran en pourcentage relatif à l'image
+function pointEnPourcentage(clientX, clientY) {
+  const rect = elCarteStage.getBoundingClientRect();
+  let x = ((clientX - rect.left) / rect.width)  * 100;
+  let y = ((clientY - rect.top)  / rect.height) * 100;
+  x = Math.max(0, Math.min(100, x));
+  y = Math.max(0, Math.min(100, y));
+  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 };
+}
+
+// Rendre un ping déplaçable (souris + tactile)
+function rendrePingDeplacable(ping, num) {
+  let deplace = false;
+
+  const onDown = e => {
+    e.preventDefault();
+    deplace = false;
+    cartePiegeActif = null;   // un drag n'est pas une sélection de palette
+    ping.classList.add('nu-ping--drag');
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup',   onUp, { once: true });
+  };
+  const onMove = e => {
+    deplace = true;
+    const { x, y } = pointEnPourcentage(e.clientX, e.clientY);
+    ping.style.left = x + '%';
+    ping.style.top  = y + '%';
+    cartePositions[num] = { pos_x: x, pos_y: y };
+    carteDirty = true;
+  };
+  const onUp = () => {
+    ping.classList.remove('nu-ping--drag');
+    document.removeEventListener('pointermove', onMove);
+    if (deplace) {
+      renderPalette();
+      elCarteHint.textContent = `P${num} déplacé.`;
+    }
+  };
+
+  ping.addEventListener('pointerdown', onDown);
+  // Clic simple (sans déplacement) sur un ping = le retirer du plan
+  ping.addEventListener('click', e => {
+    e.stopPropagation();
+    if (deplace) return;       // c'était un drag, pas un clic
+    if (confirm(`Retirer le piège P${num} du plan ?`)) {
+      delete cartePositions[num];
+      carteDirty = true;
+      renderPalette();
+      renderPings();
+      elCarteHint.textContent = `P${num} retiré du plan.`;
+    }
+  });
+}
+
+function resetCarte() {
+  if (Object.keys(cartePositions).length === 0) return;
+  if (!confirm('Effacer tous les pièges placés sur le plan pour ce type ?')) return;
+  cartePositions = {};
+  cartePiegeActif = null;
+  carteDirty = true;
+  renderPalette();
+  renderPings();
+  elCarteHint.textContent = 'Tous les pièges ont été effacés. Pensez à enregistrer.';
+}
+
+async function sauvegarderCarte() {
+  elCarteSave.disabled = true;
+  elCarteSave.textContent = '⏳ …';
+  try {
+    const pieges = Object.keys(cartePositions).map(num => ({
+      piege_num: parseInt(num, 10),
+      pos_x:     cartePositions[num].pos_x,
+      pos_y:     cartePositions[num].pos_y,
+    }));
+    const res = await fetch('/api/nuisibles/carte', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type_id: currentTypeId, pieges }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    carteDirty = false;
+    toast(`✅ Plan enregistré — ${pieges.length} piège${pieges.length > 1 ? 's' : ''}`);
+  } catch (err) {
+    toast(`Erreur : ${err.message}`, true);
+  } finally {
+    elCarteSave.disabled = false;
+    elCarteSave.textContent = '💾 Enregistrer';
   }
 }
 
