@@ -288,7 +288,7 @@ async def lister_ouvertures(
                 o.source,
                 o.reception_ligne_id,
                 r.id               AS reception_id,
-                f.nom              AS fournisseur_nom,
+                COALESCE(fl.nom, fr.nom, rl.fournisseur_nom, r.fournisseur_nom) AS fournisseur_nom,
                 rl.numero_lot      AS numero_lot,
                 rl.dlc             AS dlc_fournisseur,
                 rl.origine         AS origine,
@@ -298,7 +298,8 @@ async def lister_ouvertures(
             JOIN personnel per ON per.id = o.personnel_id
             LEFT JOIN reception_lignes rl ON rl.id = o.reception_ligne_id
             LEFT JOIN receptions r        ON r.id  = rl.reception_id
-            LEFT JOIN fournisseurs f      ON f.id  = rl.fournisseur_id
+            LEFT JOIN fournisseurs fl     ON fl.id = rl.fournisseur_id
+            LEFT JOIN fournisseurs fr     ON fr.id = r.fournisseur_principal_id
             {where}
             ORDER BY o.timestamp DESC
             LIMIT ? OFFSET ?
