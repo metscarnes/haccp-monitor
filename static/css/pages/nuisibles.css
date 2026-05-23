@@ -367,11 +367,11 @@
 .nu-ping {
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border-radius: 50% 50% 50% 0;        /* forme « goutte » de marqueur */
   background: #6B3A1F;
-  border: 2px solid #FFF;
+  border: 1.5px solid #FFF;
   box-shadow: 0 2px 6px rgba(0,0,0,.45);
   cursor: grab;
   pointer-events: auto;
@@ -385,7 +385,7 @@
 .nu-ping-num {
   rotate: 45deg;                        /* texte redressé */
   color: #FFF;
-  font-size: .72rem;
+  font-size: .65rem;
   font-weight: 800;
   line-height: 1;
 }
