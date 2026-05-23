@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'haccp-v14';
+const CACHE_VERSION = 'haccp-v15';
 const STATIC_ASSETS = [
   '/',
   '/hub.html',
@@ -59,6 +59,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET') {
+    return;
+  }
+
+  // Les vidéos nécessitent les Range requests (seek) : toujours réseau direct
+  if (/\.mp4$/i.test(url.pathname)) {
     return;
   }
 

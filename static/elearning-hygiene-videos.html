@@ -496,6 +496,11 @@
         videoEl.play().catch(function () {});
       });
 
+      // Empêche les clics dans le modal de remonter vers d'autres listeners
+      document.getElementById('video-modal').querySelector('.video-modal-box').addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+
       function fermer() {
         videoEl.pause();
         srcEl.src = '';
