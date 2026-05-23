@@ -287,6 +287,7 @@ async def lister_ouvertures(
                 o.timestamp,
                 o.source,
                 o.reception_ligne_id,
+                r.id               AS reception_id,
                 f.nom              AS fournisseur_nom,
                 rl.numero_lot      AS numero_lot,
                 rl.dlc             AS dlc_fournisseur,

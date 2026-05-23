@@ -289,6 +289,28 @@
       color: var(--attention);
     }
 
+    /* Lot + DLC résumé (visible même sans traçabilité complète) */
+    .hist-lot-dlc {
+      font-size: 14px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    /* Lien fiche réception */
+    .hist-lien-reception {
+      color: var(--ok);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+    .hist-lien-reception:active { opacity: .7; }
+
+    .hist-info-ligne--full {
+      grid-column: 1 / -1;
+      margin-top: 4px;
+    }
+
     /* Infos réception */
     .hist-reception-infos {
       background: rgba(45,125,70,.06);

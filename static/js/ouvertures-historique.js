@@ -173,7 +173,7 @@ function majCompteur() {
 
 // ── Création d'une carte ─────────────────────────────────────
 function creerCarte(ouv) {
-  const estTracee = ouv.reception_ligne_id !== null && ouv.fournisseur_nom !== null;
+  const estTracee = ouv.reception_ligne_id !== null;
 
   const carte = document.createElement('div');
   carte.className = 'hist-carte ' + (estTracee ? 'hist-carte--tracee' : 'hist-carte--manuelle');
@@ -238,13 +238,24 @@ function creerCarte(ouv) {
   meta.textContent = `${formatDateHeureFR(ouv.timestamp)} — ${ouv.personnel_prenom}`;
   corps.appendChild(meta);
 
-  // Infos réception si traçabilité complète
+  // N° lot et DLC visibles sur toutes les ouvertures liées à une réception
+  if (ouv.numero_lot || ouv.dlc_fournisseur) {
+    const lotDlc = document.createElement('div');
+    lotDlc.className = 'hist-lot-dlc';
+    const parties = [];
+    if (ouv.numero_lot)      parties.push(`Lot : ${ouv.numero_lot}`);
+    if (ouv.dlc_fournisseur) parties.push(`DLC : ${formatDateFR(ouv.dlc_fournisseur)}`);
+    lotDlc.textContent = parties.join('  •  ');
+    corps.appendChild(lotDlc);
+  }
+
+  // Infos réception complètes si traçabilité complète
   if (estTracee) {
     const infos = document.createElement('div');
     infos.className = 'hist-reception-infos';
 
     const champs = [
-      { label: 'Fournisseur',      valeur: ouv.fournisseur_nom },
+      { label: 'Fournisseur',      valeur: ouv.fournisseur_nom || '—' },
       { label: 'N° lot',           valeur: ouv.numero_lot || '—' },
       { label: 'DLC fournisseur',  valeur: formatDateFR(ouv.dlc_fournisseur) },
       { label: 'Origine',          valeur: ouv.origine || '—' },
@@ -267,6 +278,21 @@ function creerCarte(ouv) {
       ligne.appendChild(val);
       infos.appendChild(ligne);
     });
+
+    // Lien vers la fiche de réception
+    if (ouv.reception_id) {
+      const lienWrap = document.createElement('div');
+      lienWrap.className = 'hist-info-ligne hist-info-ligne--full';
+
+      const lien = document.createElement('a');
+      lien.className = 'hist-lien-reception';
+      lien.href = `/reception-detail.html?id=${ouv.reception_id}`;
+      lien.textContent = '→ Voir la fiche de réception';
+      lien.setAttribute('aria-label', 'Voir la fiche de réception associée');
+
+      lienWrap.appendChild(lien);
+      infos.appendChild(lienWrap);
+    }
 
     corps.appendChild(infos);
   }
