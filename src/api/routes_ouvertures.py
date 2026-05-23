@@ -7,8 +7,10 @@ GET    /api/ouvertures/{id}/photo       → servir le fichier photo
 GET    /api/ouvertures/suggestions      → autocomplete produits (réceptions récentes en premier)
 """
 
+import asyncio
 import io
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -18,6 +20,8 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 
 from src.database import get_db
+
+_executor = ThreadPoolExecutor(max_workers=2)
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,8 @@ async def creer_ouverture(
     reception_ligne_id: Optional[int] = Form(None),
 ):
     raw = await photo.read()
-    jpeg_bytes = _compress_photo(raw)
+    loop = asyncio.get_event_loop()
+    jpeg_bytes = await loop.run_in_executor(_executor, _compress_photo, raw)
 
     async with get_db() as db:
         # Vérifier que le produit et le personnel existent

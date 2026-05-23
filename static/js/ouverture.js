@@ -58,6 +58,8 @@ let suggestions         = [];
 let timerInactivite     = null;
 let timerConfirmation   = null;
 let debounceTimer       = null;
+// Quand true : après photo, enregistrement automatique sans repasser par l'étape 3
+let memeProduitMode     = false;
 
 // ── Horloge ────────────────────────────────────────────────
 function majHorloge() {
@@ -133,12 +135,11 @@ function allerEtape(cible) {
   // Bouton retour masqué sur la confirmation
   elBtnRetour.hidden = (cible > 3);
 
-  // Pré-surligner le produit déjà sélectionné quand on arrive à l'étape 3
+  // Pré-surligner + activer bouton si produit déjà sélectionné à l'étape 3
   if (cible === 3 && produitSelectionne) {
-    requestAnimationFrame(highlightProduitSelectionne);
-    // Activer le bouton immédiatement — le highlight peut échouer si la carte n'est pas encore dans le DOM
     elBtnEnregistrer.disabled = false;
     elBtnEnregistrer.setAttribute('aria-disabled', 'false');
+    requestAnimationFrame(highlightProduitSelectionne);
   }
 }
 
@@ -197,7 +198,12 @@ elInputPhoto.addEventListener('change', () => {
   elPhotoVignette.src = photoObjectUrl;
   elApercu.hidden = false;
 
-  setTimeout(() => allerEtape(3), 450);
+  if (memeProduitMode) {
+    // Mode "même produit" : enregistrement automatique, on saute l'étape 3
+    setTimeout(() => enregistrerOuverture(), 450);
+  } else {
+    setTimeout(() => allerEtape(3), 450);
+  }
 });
 
 // ── ÉTAPE 3 : Suggestions produits ─────────────────────────
@@ -255,7 +261,7 @@ function afficherProduits(liste) {
     autres.forEach(p => elProduitsList.appendChild(creerCarte(p)));
   }
 
-  // Restaurer la sélection si un produit est déjà choisi (flux "même produit")
+  // Restaurer la sélection si un produit est déjà choisi
   if (produitSelectionne) highlightProduitSelectionne();
 }
 
@@ -365,12 +371,7 @@ elSearch.addEventListener('input', () => {
 });
 
 // ── Enregistrement ─────────────────────────────────────────
-elBtnEnregistrer.addEventListener('click', async () => {
-  if (!produitSelectionne) {
-    elErreur3.hidden = false;
-    return;
-  }
-
+async function enregistrerOuverture() {
   elBtnEnregistrer.disabled = true;
   elBtnEnregistrer.textContent = 'Enregistrement…';
 
@@ -388,13 +389,22 @@ elBtnEnregistrer.addEventListener('click', async () => {
 
     const data = await res.json();
     dernierSauvegardeData = data;
+    memeProduitMode = false;
     afficherConfirmation(data);
   } catch (err) {
     elErreur3.textContent = `Erreur : ${err.message}`;
     elErreur3.hidden = false;
     elBtnEnregistrer.disabled = false;
-    elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
+    elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
   }
+}
+
+elBtnEnregistrer.addEventListener('click', () => {
+  if (!produitSelectionne) {
+    elErreur3.hidden = false;
+    return;
+  }
+  enregistrerOuverture();
 });
 
 // ── Confirmation ───────────────────────────────────────────
@@ -407,7 +417,7 @@ function afficherConfirmation(data) {
   elConfirmDetail.innerHTML = lines.join('<br>');
 
   elBtnImprimer.disabled = false;
-  elBtnImprimer.textContent = '🖨️ Imprimer l\'étiquette';
+  elBtnImprimer.textContent = '🖨️ Imprimer l\'étiquette';
 
   allerEtape(4);
   demarrerCountdown();
@@ -472,6 +482,7 @@ elBtnMemeProduit.addEventListener('click', () => {
   produitSelectionne = produitGarde;
   personnelId        = idGarde;
   personnelPrenom    = prenomGarde;
+  memeProduitMode    = true;
 
   // Pré-sélectionner l'opérateur dans la grille
   elPersonnelGrille.querySelectorAll('.ouv-btn-prenom').forEach(btn => {
@@ -480,10 +491,7 @@ elBtnMemeProduit.addEventListener('click', () => {
     }
   });
 
-  // Resélectionner visuellement le produit dans la liste (déjà rechargée par resetEtat)
-  highlightProduitSelectionne();
-
-  allerEtape(2); // Reprise directe à la photo
+  allerEtape(2); // Reprise directe à la photo, enregistrement auto après
 });
 
 elBtnNouvelle.addEventListener('click', () => {
@@ -500,6 +508,7 @@ function resetEtat() {
   personnelId           = null;
   personnelPrenom       = null;
   dernierSauvegardeData = null;
+  memeProduitMode       = false;
 
   // Étape 1
   elPersonnelGrille.querySelectorAll('.ouv-btn-prenom')
@@ -515,7 +524,7 @@ function resetEtat() {
   afficherProduits(suggestions);
   elBtnEnregistrer.disabled = true;
   elBtnEnregistrer.setAttribute('aria-disabled', 'true');
-  elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
+  elBtnEnregistrer.textContent = '✔ Enregistrer l\'ouverture';
   elErreur3.hidden = true;
 }
 
