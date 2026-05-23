@@ -401,6 +401,60 @@
     font-weight: 600;
   }
 
+  /* ---------- RÉSUMÉ EN-TÊTE DE SECTION (chips) ---------- */
+  .resume-ligne {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .resume-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+    background: var(--creme-clair);
+    border: 1px solid #e8ddd0;
+    border-radius: 10px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.8rem;
+    color: var(--brun);
+  }
+  .resume-chip strong { font-size: 1.05rem; color: var(--brun-profond); }
+  .resume-chip.vert { background: var(--vert-clair); border-color: var(--vert); color: var(--vert-fonce); }
+  .resume-chip.vert strong { color: var(--vert-fonce); }
+  .resume-chip.rouge { background: var(--rouge-clair); border-color: var(--rouge); color: var(--rouge); }
+  .resume-chip.rouge strong { color: var(--rouge); }
+  .resume-chip.orange { background: var(--orange-clair); border-color: var(--orange); color: var(--orange); }
+  .resume-chip.orange strong { color: var(--orange); }
+
+  /* ---------- CARTES ÉTALONNAGE ---------- */
+  .etal-carte {
+    border: 1px solid #e8ddd0;
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 0.8rem;
+    background: var(--creme-clair);
+  }
+  .etal-carte-entete {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+  .etal-carte-titre { font-weight: 700; color: var(--brun-profond); font-size: 0.9rem; }
+  .etal-carte-meta { font-size: 0.78rem; color: var(--gris); }
+  .etal-carte table.moderne { background: white; border-radius: 6px; overflow: hidden; }
+  .etal-comparaisons { margin-top: 0.5rem; }
+
+  .aucune-donnee {
+    text-align: center;
+    padding: 1.25rem;
+    color: var(--gris);
+    font-size: 0.85rem;
+  }
+
   /* ---------- PIED ---------- */
   .pied {
     text-align: center;
@@ -580,6 +634,59 @@
     </div>
   </details>
 
+  <!-- NIVEAU 3 : NETTOYAGE -->
+  <details class="section">
+    <summary>🧼 Plan de nettoyage &amp; désinfection (<span id="count-nettoyage">0</span> jour(s) tracé(s))</summary>
+    <div class="details-contenu">
+      <div id="resume-nettoyage" class="resume-ligne"></div>
+      <div style="overflow-x: auto; max-height: 380px; overflow-y: auto;">
+        <table class="moderne">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Jour</th>
+              <th>Opérateur(s)</th>
+              <th>Tâches validées</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-nettoyage"></tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <!-- NIVEAU 3 : NUISIBLES -->
+  <details class="section">
+    <summary>🐭 Lutte contre les nuisibles (<span id="count-nuisibles">0</span> contrôle(s))</summary>
+    <div class="details-contenu">
+      <div id="resume-nuisibles" class="resume-ligne"></div>
+      <div style="overflow-x: auto; max-height: 380px; overflow-y: auto;">
+        <table class="moderne">
+          <thead>
+            <tr>
+              <th>Type de nuisible</th>
+              <th>Année</th>
+              <th>Semaine</th>
+              <th>Résultat</th>
+              <th>Visa</th>
+              <th>Saisi le</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-nuisibles"></tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+
+  <!-- NIVEAU 3 : ÉTALONNAGE -->
+  <details class="section">
+    <summary>📏 Étalonnage des thermomètres (<span id="count-etalonnage">0</span> session(s))</summary>
+    <div class="details-contenu">
+      <div id="resume-etalonnage" class="resume-ligne"></div>
+      <div id="liste-etalonnage"></div>
+    </div>
+  </details>
+
 </div>
 
 <!-- PIED -->
@@ -599,6 +706,9 @@
   const ENCEINTES = {{ enceintes_json | safe }};
   const RELEVES = {{ releves_json | safe }};
   const ALERTES = {{ alertes_json | safe }};
+  const NETTOYAGE = {{ nettoyage_json | safe }};
+  const NUISIBLES = {{ nuisibles_json | safe }};
+  const ETALONNAGE = {{ etalonnage_json | safe }};
 
   const COULEURS = ['#D4A574', '#6B3A1F', '#2D7D46', '#C93030', '#E8913A', '#5A7A9E', '#8B4789', '#3D2008'];
 
@@ -972,6 +1082,149 @@
   }
 
   // ========================================================================
+  //  NETTOYAGE / NUISIBLES / ÉTALONNAGE  (bornés à la période du rapport)
+  // ========================================================================
+  const NOMS_JOUR_LONG = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+
+  function rendreNettoyage() {
+    const data = NETTOYAGE || {};
+    const jours = data.jours || [];
+    document.getElementById('count-nettoyage').textContent = data.jours_valides || 0;
+
+    document.getElementById('resume-nettoyage').innerHTML = `
+      <span class="resume-chip ${jours.length ? 'vert' : ''}"><strong>${data.jours_valides || 0}</strong> jour(s) tracé(s)</span>
+      <span class="resume-chip"><strong>${data.nb_total_taches || 0}</strong> validation(s) de tâche</span>
+      <span class="resume-chip"><strong>${data.plan_total || 0}</strong> tâche(s) au plan</span>`;
+
+    const tbody = document.getElementById('tbody-nettoyage');
+    if (!jours.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="aucune-donnee">Aucune validation de nettoyage sur la période</td></tr>';
+      return;
+    }
+    tbody.innerHTML = jours.map(j => {
+      const d = parseD(j.date);
+      const nomJour = NOMS_JOUR_LONG[d.getDay()];
+      const ops = (j.operateurs || []).join(', ') || '—';
+      const couvert = data.plan_total > 0 && j.nb_taches >= data.plan_total;
+      return `
+        <tr>
+          <td><strong>${d.toLocaleDateString('fr-FR')}</strong></td>
+          <td style="color:var(--gris); font-size:0.8rem">${nomJour}</td>
+          <td>${ops}</td>
+          <td><span class="badge ${couvert ? 'vert' : ''}" ${couvert ? '' : 'style="background:var(--creme); color:var(--brun)"'}>${j.nb_taches}${data.plan_total ? ' / ' + data.plan_total : ''}</span></td>
+        </tr>`;
+    }).join('');
+  }
+
+  function rendreNuisibles() {
+    const data = NUISIBLES || {};
+    const controles = data.controles || [];
+    document.getElementById('count-nuisibles').textContent = data.nb_controles || 0;
+
+    const anomCls = (data.nb_anomalies || 0) > 0 ? 'rouge' : 'vert';
+    document.getElementById('resume-nuisibles').innerHTML = `
+      <span class="resume-chip"><strong>${data.nb_controles || 0}</strong> contrôle(s) hebdo</span>
+      <span class="resume-chip ${anomCls}"><strong>${data.nb_anomalies || 0}</strong> anomalie(s) signalée(s)</span>`;
+
+    const tbody = document.getElementById('tbody-nuisibles');
+    if (!controles.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="aucune-donnee">Aucun contrôle nuisibles sur la période</td></tr>';
+      return;
+    }
+    tbody.innerHTML = controles.map(c => {
+      let resultatBadge;
+      if (c.nb_anomalies > 0) {
+        resultatBadge = `<span class="badge rouge">${c.nb_anomalies} anomalie(s)</span>`;
+      } else if (c.nb_postes > 0) {
+        resultatBadge = '<span class="badge vert">RAS</span>';
+      } else {
+        resultatBadge = '<span style="color:#bbb; font-size:.75rem">non renseigné</span>';
+      }
+      const dSaisie = c.date_saisie ? parseD(c.date_saisie).toLocaleDateString('fr-FR') : '—';
+      return `
+        <tr>
+          <td><strong>${c.type_nom}</strong></td>
+          <td>${c.annee}</td>
+          <td>S${c.semaine}</td>
+          <td>${resultatBadge}</td>
+          <td>${c.visa || '—'}</td>
+          <td style="color:var(--gris); font-size:0.8rem">${dSaisie}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  function rendreEtalonnage() {
+    const data = ETALONNAGE || {};
+    const etals = data.etalonnages || [];
+    document.getElementById('count-etalonnage').textContent = data.nb_etalonnages || 0;
+
+    // Résumé : nb sessions + statut trimestriel
+    let chips = `<span class="resume-chip"><strong>${data.nb_etalonnages || 0}</strong> session(s) sur la période</span>`;
+    const st = data.statut;
+    if (st) {
+      const cls = st.en_retard ? 'rouge' : (st.jours_restants <= 14 ? 'orange' : 'vert');
+      const txtStatut = st.en_retard
+        ? `En retard de ${Math.abs(st.jours_restants)} j`
+        : `Prochain dû dans ${st.jours_restants} j`;
+      chips += `<span class="resume-chip ${cls}">Dernier : <strong>${parseD(st.dernier_date).toLocaleDateString('fr-FR')}</strong></span>
+                <span class="resume-chip ${cls}">${txtStatut} (≤ 92 j)</span>`;
+    }
+    document.getElementById('resume-etalonnage').innerHTML = chips;
+
+    const div = document.getElementById('liste-etalonnage');
+    if (!etals.length) {
+      div.innerHTML = '<div class="aucune-donnee">Aucun étalonnage de thermomètre sur la période</div>';
+      return;
+    }
+
+    div.innerHTML = etals.map(e => {
+      const dEtal = parseD(e.date_etalonnage).toLocaleDateString('fr-FR');
+      const refBadge = e.conforme
+        ? '<span class="badge vert">Réf. conforme</span>'
+        : `<span class="badge rouge">Réf. ${e.action_corrective}</span>`;
+
+      let compTable = '';
+      if (e.comparaisons && e.comparaisons.length) {
+        const lignes = e.comparaisons.map(c => `
+          <tr>
+            <td><strong>${c.enceinte_nom}</strong></td>
+            <td>${c.temp_reference != null ? c.temp_reference.toFixed(1) + '°C' : '—'}</td>
+            <td>${c.temp_zigbee != null ? c.temp_zigbee.toFixed(1) + '°C' : '—'}</td>
+            <td>${c.ecart != null ? (c.ecart > 0 ? '+' : '') + c.ecart.toFixed(1) + '°C' : '—'}</td>
+            <td><span class="badge ${c.conforme ? 'vert' : 'rouge'}">${c.conforme ? 'OK' : 'NC'}</span></td>
+          </tr>`).join('');
+        compTable = `
+          <div class="etal-comparaisons" style="overflow-x:auto">
+            <table class="moderne">
+              <thead>
+                <tr><th>Enceinte / Sonde</th><th>T° référence</th><th>T° sonde</th><th>Écart</th><th>Statut</th></tr>
+              </thead>
+              <tbody>${lignes}</tbody>
+            </table>
+          </div>`;
+      } else {
+        compTable = '<div style="font-size:0.8rem; color:var(--gris); padding:0.3rem 0">Aucune comparaison d\'enceinte enregistrée pour cette session.</div>';
+      }
+
+      return `
+        <div class="etal-carte">
+          <div class="etal-carte-entete">
+            <div>
+              <span class="etal-carte-titre">${dEtal} — ${e.thermometre_nom || 'Thermomètre'}</span>
+              <div class="etal-carte-meta">
+                ${e.reference ? e.reference + ' · ' : ''}Mesure eau glacée : ${e.temperature_mesuree != null ? e.temperature_mesuree.toFixed(1) + '°C' : '—'} (cible 0°C ±0,5)
+                · Opérateur : ${e.operateur || '—'}
+              </div>
+            </div>
+            ${refBadge}
+          </div>
+          ${e.commentaire ? `<div style="font-size:0.8rem; color:var(--brun); margin-bottom:0.5rem">💬 ${e.commentaire}</div>` : ''}
+          ${compTable}
+        </div>`;
+    }).join('');
+  }
+
+  // ========================================================================
   //  ORCHESTRATION
   // ========================================================================
   function actualiser() {
@@ -1021,6 +1274,11 @@
   // INIT
   appliquerPreset('7j');
   actualiser();
+
+  // Sections complémentaires (déjà bornées par la période du rapport, rendu unique)
+  rendreNettoyage();
+  rendreNuisibles();
+  rendreEtalonnage();
 </script>
 
 </body>

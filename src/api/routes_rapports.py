@@ -5,6 +5,14 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+# Libellés métier réutilisés dans le rapport interactif
+_TYPES_NUISIBLES = {
+    1: "Rongeurs",
+    2: "Insectes volants",
+    3: "Insectes rampants",
+    4: "Oiseaux",
+}
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from jinja2 import Environment, FileSystemLoader
@@ -99,6 +107,12 @@ async def rapport_interactif(boutique_id: int, jours: int = 90):
                     "seuil":       al.get("seuil"),
                 })
 
+        depuis_iso = depuis.date().isoformat()
+
+        nettoyage = await _collecter_nettoyage(db, depuis_iso)
+        nuisibles = await _collecter_nuisibles(db, depuis)
+        etalonnage = await _collecter_etalonnage(db, depuis_iso)
+
     template = _jinja_env.get_template("rapport_interactif.html")
     html = template.render(
         boutique=boutique,
@@ -108,8 +122,193 @@ async def rapport_interactif(boutique_id: int, jours: int = 90):
         enceintes_json=json.dumps(enceintes, default=_json_default),
         releves_json=json.dumps(releves_total, default=_json_default),
         alertes_json=json.dumps(alertes_total, default=_json_default),
+        nettoyage_json=json.dumps(nettoyage, default=_json_default),
+        nuisibles_json=json.dumps(nuisibles, default=_json_default),
+        etalonnage_json=json.dumps(etalonnage, default=_json_default),
     )
     return HTMLResponse(content=html)
+
+
+# ---------------------------------------------------------------------------
+# Collecte des données complémentaires pour le rapport inspecteur
+# ---------------------------------------------------------------------------
+
+async def _collecter_nettoyage(db, depuis_iso: str) -> dict:
+    """Historique du plan de nettoyage sur la période : validations par jour + plan."""
+    # Plan de nettoyage (référentiel des tâches attendues)
+    taches_rows = await db.execute_fetchall(
+        "SELECT id, zone, nom_tache, frequence FROM taches_nettoyage ORDER BY zone, id"
+    )
+    plan = [
+        {"id": r[0], "zone": r[1], "nom_tache": r[2], "frequence": r[3]}
+        for r in taches_rows
+    ]
+
+    # Validations agrégées par jour sur la période
+    jours_rows = await db.execute_fetchall(
+        """
+        SELECT date_val,
+               GROUP_CONCAT(DISTINCT operateur) AS operateurs,
+               COUNT(DISTINCT tache_id)         AS nb_taches
+        FROM registre_nettoyage
+        WHERE date_val >= ?
+        GROUP BY date_val
+        ORDER BY date_val DESC
+        """,
+        (depuis_iso,),
+    )
+    jours = [
+        {
+            "date":       r[0],
+            "operateurs": [o.strip() for o in r[1].split(",")] if r[1] else [],
+            "nb_taches":  r[2],
+        }
+        for r in jours_rows
+    ]
+
+    nb_total_taches = sum(j["nb_taches"] for j in jours)
+    return {
+        "plan_total":      len(plan),
+        "jours_valides":   len(jours),
+        "nb_total_taches": nb_total_taches,
+        "plan":            plan,
+        "jours":           jours,
+    }
+
+
+async def _collecter_nuisibles(db, depuis: datetime) -> dict:
+    """Contrôles nuisibles couvrant la période (par année/type/semaine ISO)."""
+    annee_debut = depuis.year
+    annee_fin = datetime.now(timezone.utc).year
+    annees = list(range(annee_debut, annee_fin + 1))
+    placeholders = ",".join("?" * len(annees))
+
+    rows = await db.execute_fetchall(
+        f"""
+        SELECT type_id, annee, semaine, resultats, visa, date_saisie
+        FROM nuisibles_controles
+        WHERE annee IN ({placeholders})
+        ORDER BY annee DESC, semaine DESC, type_id
+        """,
+        annees,
+    )
+
+    controles = []
+    nb_anomalies = 0
+    for r in rows:
+        type_id, annee, semaine, resultats_json, visa, date_saisie = r
+        try:
+            resultats = json.loads(resultats_json) if resultats_json else {}
+        except Exception:
+            resultats = {}
+        # Une anomalie = un poste signalé "N" (non conforme)
+        anomalies = [k for k, v in resultats.items() if v == "N"]
+        nb_anomalies += len(anomalies)
+        controles.append({
+            "type_id":     type_id,
+            "type_nom":    _TYPES_NUISIBLES.get(type_id, f"Type {type_id}"),
+            "annee":       annee,
+            "semaine":     semaine,
+            "resultats":   resultats,
+            "nb_postes":   len(resultats),
+            "nb_anomalies": len(anomalies),
+            "visa":        visa,
+            "date_saisie": date_saisie,
+        })
+
+    return {
+        "nb_controles":  len(controles),
+        "nb_anomalies":  nb_anomalies,
+        "controles":     controles,
+    }
+
+
+async def _collecter_etalonnage(db, depuis_iso: str) -> dict:
+    """Historique des étalonnages de thermomètres sur la période + comparaisons."""
+    from collections import defaultdict
+
+    rows = await db.execute_fetchall(
+        """
+        SELECT e.id, e.reference, e.date_etalonnage, t.nom AS thermometre_nom,
+               e.temperature_mesuree, e.conforme, e.action_corrective,
+               e.operateur, e.commentaire
+        FROM etalonnages e
+        JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+        WHERE e.date_etalonnage >= ?
+        ORDER BY e.date_etalonnage DESC, e.created_at DESC
+        """,
+        (depuis_iso,),
+    )
+
+    etalonnages = []
+    for r in rows:
+        etalonnages.append({
+            "id":                r[0],
+            "reference":         r[1],
+            "date_etalonnage":   r[2],
+            "thermometre_nom":   r[3],
+            "temperature_mesuree": r[4],
+            "conforme":          r[5],
+            "action_corrective": r[6],
+            "operateur":         r[7],
+            "commentaire":       r[8],
+            "comparaisons":      [],
+        })
+
+    if etalonnages:
+        ids = [e["id"] for e in etalonnages]
+        placeholders = ",".join("?" * len(ids))
+        comp_rows = await db.execute_fetchall(
+            f"""
+            SELECT etalonnage_id, enceinte_nom, temp_zigbee,
+                   temp_reference, ecart, conforme
+            FROM etalonnage_comparaisons
+            WHERE etalonnage_id IN ({placeholders})
+            ORDER BY enceinte_nom
+            """,
+            ids,
+        )
+        comps = defaultdict(list)
+        for cr in comp_rows:
+            comps[cr[0]].append({
+                "enceinte_nom":   cr[1],
+                "temp_zigbee":    cr[2],
+                "temp_reference": cr[3],
+                "ecart":          cr[4],
+                "conforme":       cr[5],
+            })
+        for e in etalonnages:
+            e["comparaisons"] = comps.get(e["id"], [])
+
+    # Statut trimestriel (dernier étalonnage tous périodes confondues)
+    statut_rows = await db.execute_fetchall(
+        """
+        SELECT e.date_etalonnage, t.nom
+        FROM etalonnages e
+        JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+        ORDER BY e.date_etalonnage DESC
+        LIMIT 1
+        """
+    )
+    DELAI_JOURS = 92
+    statut = None
+    if statut_rows:
+        dernier = date.fromisoformat(statut_rows[0][0])
+        prochain = dernier + timedelta(days=DELAI_JOURS)
+        jours_restants = (prochain - date.today()).days
+        statut = {
+            "dernier_date":   statut_rows[0][0],
+            "dernier_thermo": statut_rows[0][1],
+            "prochain_date":  prochain.isoformat(),
+            "jours_restants": jours_restants,
+            "en_retard":      jours_restants < 0,
+        }
+
+    return {
+        "nb_etalonnages": len(etalonnages),
+        "etalonnages":    etalonnages,
+        "statut":         statut,
+    }
 
 
 @router.get("/{rapport_id}/pdf")
