@@ -452,9 +452,7 @@
         <button class="video-modal-fermer" id="btn-modal-fermer" aria-label="Fermer">✕</button>
       </div>
       <div class="video-player-wrap">
-        <video id="video-player" controls playsinline preload="metadata">
-          <source id="video-src" src="" type="video/mp4">
-        </video>
+        <video id="video-player" controls playsinline preload="metadata"></video>
       </div>
     </div>
   </div>
@@ -482,28 +480,21 @@
       const modal     = document.getElementById('video-modal');
       const titreEl   = document.getElementById('modal-titre-text');
       const videoEl   = document.getElementById('video-player');
-      const srcEl     = document.getElementById('video-src');
       const btnFermer = document.getElementById('btn-modal-fermer');
 
       document.getElementById('videos-grille').addEventListener('click', function (e) {
         const card = e.target.closest('.video-card');
         if (!card) return;
         titreEl.textContent = card.dataset.titre || '';
-        srcEl.src = card.dataset.video || '';
-        videoEl.load();
+        videoEl.src = card.dataset.video || '';
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
         videoEl.play().catch(function () {});
       });
 
-      // Empêche les clics dans le modal de remonter vers d'autres listeners
-      document.getElementById('video-modal').querySelector('.video-modal-box').addEventListener('click', function (e) {
-        e.stopPropagation();
-      });
-
       function fermer() {
         videoEl.pause();
-        srcEl.src = '';
+        videoEl.src = '';
         modal.hidden = true;
         document.body.style.overflow = '';
       }
