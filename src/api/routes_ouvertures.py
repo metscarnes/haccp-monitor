@@ -61,6 +61,16 @@ def _compress_photo(raw_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _compress_and_save(raw_bytes: bytes, filepath: Path) -> None:
+    """Compresse puis écrit le JPEG sur disque. Exécuté en tâche de fond
+    (thread pool) pour ne pas faire attendre la réponse HTTP."""
+    try:
+        jpeg_bytes = _compress_photo(raw_bytes)
+        filepath.write_bytes(jpeg_bytes)
+    except Exception:
+        logger.exception("Échec compression/écriture photo ouverture : %s", filepath.name)
+
+
 # ---------------------------------------------------------------------------
 # POST /api/ouvertures
 # ---------------------------------------------------------------------------
@@ -72,9 +82,9 @@ async def creer_ouverture(
     personnel_id: int = Form(...),
     reception_ligne_id: Optional[int] = Form(None),
 ):
+    # Lecture rapide des bytes bruts (l'UploadFile se ferme à la fin de la requête).
+    # La compression PIL — coûteuse — sera déportée en tâche de fond plus bas.
     raw = await photo.read()
-    loop = asyncio.get_event_loop()
-    jpeg_bytes = await loop.run_in_executor(_executor, _compress_photo, raw)
 
     async with get_db() as db:
         # Vérifier que le produit et le personnel existent
@@ -95,7 +105,9 @@ async def creer_ouverture(
                 raise HTTPException(status_code=404, detail="reception_ligne_id introuvable")
             source = "reception"
 
-        # Insérer d'abord pour obtenir l'id
+        # Construire le nom de fichier définitif puis insérer en une passe.
+        # Le fichier image lui-même sera écrit en tâche de fond après la réponse.
+        now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
         cursor = await db.execute(
             """
             INSERT INTO ouvertures (produit_id, personnel_id, photo_filename, source, reception_ligne_id)
@@ -105,15 +117,7 @@ async def creer_ouverture(
         )
         ouverture_id = cursor.lastrowid
 
-        # Construire le nom de fichier avec l'id
-        now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         filename = f"OUV-{now_str}-{ouverture_id}.jpg"
-        filepath = PHOTOS_DIR / filename
-
-        # Sauvegarder sur disque
-        filepath.write_bytes(jpeg_bytes)
-
-        # Mettre à jour le nom de fichier en base
         await db.execute(
             "UPDATE ouvertures SET photo_filename = ? WHERE id = ?",
             (filename, ouverture_id),
@@ -139,7 +143,14 @@ async def creer_ouverture(
             (ouverture_id,),
         )
         row = await cursor.fetchone()
-        return dict(row)
+
+    # Compression + écriture disque en tâche de fond : la réponse part immédiatement,
+    # l'image arrive sur le disque ~1 s plus tard sans bloquer l'opérateur.
+    filepath = PHOTOS_DIR / filename
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_executor, _compress_and_save, raw, filepath)
+
+    return dict(row)
 
 
 # ---------------------------------------------------------------------------
