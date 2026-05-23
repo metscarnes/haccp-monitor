@@ -223,6 +223,42 @@ document.addEventListener('touchstart', resetInactivite, { passive: true, captur
 document.addEventListener('input',      resetInactivite, true);
 resetInactivite();
 
+// ── Compression photo navigateur ───────────────────────────
+// Redimensionne à PHOTO_MAX_SIDE et ré-encode en JPEG avant l'upload.
+// On envoie ~150-300 Ko au lieu de 3 Mo → upload quasi instantané sur la
+// connexion distante (BL de réception : 1 à plusieurs photos par livraison).
+const PHOTO_MAX_SIDE = 1280;
+const PHOTO_QUALITE  = 0.8;
+
+function compresserImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width: w, height: h } = img;
+      if (Math.max(w, h) > PHOTO_MAX_SIDE) {
+        if (w >= h) { h = Math.round(h * PHOTO_MAX_SIDE / w); w = PHOTO_MAX_SIDE; }
+        else        { w = Math.round(w * PHOTO_MAX_SIDE / h); h = PHOTO_MAX_SIDE; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => resolve(blob
+          ? new File([blob], (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg',
+                     { type: 'image/jpeg' })
+          : file),               // fallback : si toBlob échoue, on garde l'original
+        'image/jpeg',
+        PHOTO_QUALITE,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 elDialogContinuer.addEventListener('click', () => {
   elDialogInactivite.hidden = true;
   resetInactivite();
@@ -508,15 +544,16 @@ if (elPropretePhotoZone) {
   });
 }
 if (elPropretePhotoInput) {
-  elPropretePhotoInput.addEventListener('change', () => {
+  elPropretePhotoInput.addEventListener('change', async () => {
     const file = elPropretePhotoInput.files[0];
     if (!file) return;
-    propretePhotoFile = file;
+    propretePhotoFile = file; // repli avant fin de compression
     const url = URL.createObjectURL(file);
     elPropretePhotoVignette.src = url;
     elPropretePhotoVignette.hidden = false;
     elPropretePhotoIcone.textContent = '✅';
     elPropretePhotoZone.classList.remove('photo-requise');
+    propretePhotoFile = await compresserImage(file);
   });
 }
 
@@ -655,11 +692,11 @@ function initBlocRefusBl(idx) {
   photoZone.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); photoInput.click(); }
   });
-  photoInput.addEventListener('change', () => {
+  photoInput.addEventListener('change', async () => {
     const file = photoInput.files[0];
     if (!file) return;
     if (refusBlList[idx].photoUrl) URL.revokeObjectURL(refusBlList[idx].photoUrl);
-    refusBlList[idx].photoFile = file;
+    refusBlList[idx].photoFile = file; // repli avant fin de compression
     refusBlList[idx].photoUrl  = URL.createObjectURL(file);
     photoVign.src = refusBlList[idx].photoUrl;
     photoVign.hidden = false;
@@ -667,6 +704,7 @@ function initBlocRefusBl(idx) {
     photoTitre.textContent = 'Photo prise';
     photoZone.classList.remove('photo-requise');
     if (elErreurRefusBl) elErreurRefusBl.hidden = true;
+    refusBlList[idx].photoFile = await compresserImage(file);
     majBoutonRefusValider();
   });
 
@@ -873,10 +911,10 @@ function initBlocFourn(idx) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputPhoto.click(); }
   });
 
-  inputPhoto.addEventListener('change', () => {
+  inputPhoto.addEventListener('change', async () => {
     const file = inputPhoto.files[0];
     if (!file) return;
-    fournisseursListe[idx].photoFile = file;
+    fournisseursListe[idx].photoFile = file; // repli avant fin de compression
     if (fournisseursListe[idx].photoUrl) URL.revokeObjectURL(fournisseursListe[idx].photoUrl);
     fournisseursListe[idx].photoUrl = URL.createObjectURL(file);
     photoVign.src = fournisseursListe[idx].photoUrl;
@@ -884,6 +922,7 @@ function initBlocFourn(idx) {
     photoIcone.textContent = '✅';
     photoTitre.textContent = 'Photo prise';
     photoZone.classList.remove('photo-requise');
+    fournisseursListe[idx].photoFile = await compresserImage(file);
   });
 
   function afficherResultats(liste) {
