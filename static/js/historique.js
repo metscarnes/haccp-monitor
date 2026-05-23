@@ -305,7 +305,7 @@ function ouvAfficherMessage(icone, texte) {
 function ouvMasquerMessage() { ouvRefs.message.hidden = true; }
 
 function ouvCreerCarte(ouv) {
-  const estTracee = ouv.reception_ligne_id !== null && ouv.fournisseur_nom !== null;
+  const estTracee = ouv.reception_ligne_id !== null;
 
   const carte = document.createElement('div');
   carte.className = 'he-carte-ouv ' + (estTracee ? 'he-carte-ouv--tracee' : 'he-carte-ouv--manuelle');
@@ -364,12 +364,24 @@ function ouvCreerCarte(ouv) {
   meta.textContent = `${formatDateHeureFR(ouv.timestamp)} — ${ouv.personnel_prenom}`;
   corps.appendChild(meta);
 
+  // N° lot + DLC visibles dès qu'on les a (même sans le bloc traçabilité complet)
+  if (ouv.numero_lot || ouv.dlc_fournisseur) {
+    const lotDlc = document.createElement('div');
+    lotDlc.className = 'he-ouv-lotdlc';
+    lotDlc.style.cssText = 'font-size:14px;font-weight:600;color:var(--accent);margin-bottom:4px;';
+    const parties = [];
+    if (ouv.numero_lot)      parties.push(`Lot : ${ouv.numero_lot}`);
+    if (ouv.dlc_fournisseur) parties.push(`DLC : ${formatDateFR(ouv.dlc_fournisseur)}`);
+    lotDlc.textContent = parties.join('  •  ');
+    corps.appendChild(lotDlc);
+  }
+
   if (estTracee) {
     const infos = document.createElement('div');
     infos.className = 'he-reception-infos';
 
     const champs = [
-      { label: 'Fournisseur',      valeur: ouv.fournisseur_nom },
+      { label: 'Fournisseur',      valeur: ouv.fournisseur_nom || '—' },
       { label: 'N° lot',           valeur: ouv.numero_lot || '—' },
       { label: 'DLC fournisseur',  valeur: formatDateFR(ouv.dlc_fournisseur) },
       { label: 'Origine',          valeur: ouv.origine || '—' },
@@ -391,6 +403,16 @@ function ouvCreerCarte(ouv) {
     });
 
     corps.appendChild(infos);
+
+    // Lien vers la fiche de réception associée
+    if (ouv.reception_id) {
+      const lien = document.createElement('a');
+      lien.className = 'he-ouv-lien-reception';
+      lien.href = `/reception-detail.html?id=${ouv.reception_id}`;
+      lien.textContent = '→ Voir la fiche de réception';
+      lien.style.cssText = 'display:inline-block;margin-top:8px;color:var(--ok,#2D7D46);font-size:14px;font-weight:600;text-decoration:underline;';
+      corps.appendChild(lien);
+    }
   }
 
   carte.appendChild(photoWrap);
