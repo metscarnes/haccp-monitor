@@ -68,8 +68,9 @@
     }
 
     // Nom du participant (corps + pied signataire)
-    $('att-nom').textContent = best.personnel_prenom || '—';
-    $('att-operateur-nom').textContent = best.personnel_prenom || '—';
+    const nomComplet = [best.personnel_prenom, best.personnel_nom].filter(Boolean).join(' ');
+    $('att-nom').textContent = nomComplet || '—';
+    $('att-operateur-nom').textContent = nomComplet || '—';
 
     // Signature opérateur stockée (capturée à la réussite)
     const imgOp = $('att-signature-operateur');
@@ -85,7 +86,7 @@
       ? `Quiz ${quiz.id} — ${quiz.theme}`
       : (quiz.titre || `Quiz ${quiz.id}`);
     $('att-module').textContent = titreModule;
-    document.title = `Attestation — ${best.personnel_prenom} — ${titreModule}`;
+    document.title = `Attestation — ${nomComplet} — ${titreModule}`;
 
     // Résultats
     $('att-pct').textContent = `${best.pourcentage} %`;

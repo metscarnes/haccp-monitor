@@ -165,7 +165,7 @@ async def meilleur_resultat_quiz(
     """Meilleur résultat d'un membre pour un quiz (meilleur %, le plus récent
     en cas d'égalité). Retourne null si la personne n'a jamais passé ce quiz."""
     sql = (
-        "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
+        "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, p.nom AS personnel_nom, "
         "       r.score, r.total, r.pourcentage, r.reussi, r.signature, r.date_completion, "
         "       (SELECT COUNT(*) FROM quiz_resultats r2 "
         "        WHERE r2.boutique_id = r.boutique_id AND r2.quiz_id = r.quiz_id "
