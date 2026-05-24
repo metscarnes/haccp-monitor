@@ -8,6 +8,7 @@ GET    /api/admin/pieges                → configuration des pièges
 POST   /api/admin/pieges                → ajouter un piège
 """
 
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -407,6 +408,56 @@ async def purger_rapports():
 
 
 # ---------------------------------------------------------------------------
+# Purge exports CSV
+# ---------------------------------------------------------------------------
+
+EXPORTS_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
+
+
+@router.delete("/exports")
+async def purger_exports(avant_date: Optional[str] = None):
+    """Supprime les fichiers CSV d'export température.
+    avant_date (YYYY-MM-DD) : ne supprime que les fichiers antérieurs à cette date.
+    Sans paramètre : supprime tout.
+    """
+    supprime = 0
+    erreurs: list[str] = []
+
+    if not EXPORTS_DIR.exists():
+        return {"ok": True, "supprime": 0, "erreurs": []}
+
+    date_limite = None
+    if avant_date:
+        try:
+            from datetime import date
+            date_limite = date.fromisoformat(avant_date)
+        except ValueError:
+            raise HTTPException(400, "Format avant_date invalide, attendu YYYY-MM-DD")
+
+    for fichier in EXPORTS_DIR.rglob("*.csv"):
+        if not fichier.is_file():
+            continue
+        if date_limite:
+            # Le nom de fichier contient la date : NomSonde_YYYY-MM-DD.csv
+            stem = fichier.stem  # ex. "Chambre_froide_1_2026-03-21"
+            parts = stem.rsplit("_", 3)  # coupe sur les 3 derniers _
+            try:
+                from datetime import date
+                file_date = date.fromisoformat("-".join(parts[-3:]))
+                if file_date >= date_limite:
+                    continue
+            except (ValueError, IndexError):
+                pass  # Si on ne peut pas parser la date, on supprime quand même
+        try:
+            fichier.unlink()
+            supprime += 1
+        except Exception as exc:  # noqa: BLE001
+            erreurs.append(f"{fichier.name}: {exc}")
+
+    return {"ok": True, "supprime": supprime, "erreurs": erreurs}
+
+
+# ---------------------------------------------------------------------------
 # Stats espace disque
 # ---------------------------------------------------------------------------
 
@@ -449,20 +500,25 @@ async def stats_disque():
 
     total_data_mo = sum(s["taille_mo"] for s in stats.values())
 
-    # Espace disque du système
+    # Espace disque du système (shutil.disk_usage = stdlib, pas de dépendance externe)
     disque_total_gb = 0
     disque_libre_gb = 0
     disque_utilise_pct = 0
 
-    if HAS_PSUTIL:
-        try:
-            # Utilise le répertoire parent du projet (la partition)
-            usage = psutil.disk_usage(str(DATA_DIR.parent.parent))
-            disque_total_gb = round(usage.total / (1024**3), 2)
-            disque_libre_gb = round(usage.free / (1024**3), 2)
-            disque_utilise_pct = usage.percent
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        usage = shutil.disk_usage(str(DATA_DIR))
+        disque_total_gb = round(usage.total / (1024**3), 2)
+        disque_libre_gb = round(usage.free / (1024**3), 2)
+        disque_utilise_pct = round(usage.used / usage.total * 100, 1) if usage.total else 0
+    except Exception:  # noqa: BLE001
+        if HAS_PSUTIL:
+            try:
+                usage = psutil.disk_usage(str(DATA_DIR.parent.parent))
+                disque_total_gb = round(usage.total / (1024**3), 2)
+                disque_libre_gb = round(usage.free / (1024**3), 2)
+                disque_utilise_pct = usage.percent
+            except Exception:  # noqa: BLE001
+                pass
 
     return {
         "dossiers": stats,

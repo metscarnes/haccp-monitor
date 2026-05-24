@@ -396,6 +396,24 @@
 
         <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
 
+        <!-- Purge exports CSV -->
+        <p class="admin-info-text">
+          Supprime les fichiers CSV d'export des relevés de température. Ces fichiers s'accumulent automatiquement et ne sont pas liés à un utilisateur.
+        </p>
+        <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.5rem">
+          <button class="btn btn-danger" id="btn-purger-exports">
+            📊 Supprimer tous les exports CSV
+          </button>
+          <label style="font-size:.88rem; display:flex; align-items:center; gap:.4rem">
+            <input type="checkbox" id="exports-filtre-date" style="accent-color:#8b3a0f">
+            Uniquement avant le
+          </label>
+          <input type="date" id="exports-avant-date" style="font-size:.88rem; padding:.3rem .5rem; border:1px solid #e0d5c5; border-radius:4px">
+        </div>
+        <div id="exports-msg" class="admin-depan-msg" hidden></div>
+
+        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+
         <!-- Espace disque -->
         <p class="admin-info-text">
           Détail de l'utilisation de l'espace disque par catégorie de données.
@@ -1362,6 +1380,52 @@
           let txt = `✓ ${data.supprime_db} rapport(s) supprimé(s) en base`;
           if (data.supprime_disk) txt += `, ${data.supprime_disk} fichier(s) PDF supprimé(s)`;
           if (nbErrs) txt += ` — ${nbErrs} fichier(s) non trouvé(s) sur disque (entrées BDD supprimées quand même)`;
+          setMsg(nbErrs ? 'info' : 'ok', txt);
+        }
+      } catch (err) {
+        setMsg('erreur', `Erreur : ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ── Purge exports CSV ─────────────────────────────────
+    $('btn-purger-exports').addEventListener('click', async () => {
+      const msg = $('exports-msg');
+      const btn = $('btn-purger-exports');
+      const setMsg = (cls, txt) => {
+        msg.hidden = false;
+        msg.className = `admin-depan-msg admin-depan-msg--${cls}`;
+        msg.textContent = txt;
+      };
+
+      const useDate = $('exports-filtre-date').checked;
+      const avantDate = $('exports-avant-date').value;
+      if (useDate && !avantDate) {
+        setMsg('erreur', 'Veuillez saisir une date limite.');
+        return;
+      }
+
+      const confirmMsg = useDate
+        ? `Supprimer tous les exports CSV antérieurs au ${avantDate} ?\n\nCette action est IRRÉVERSIBLE.`
+        : 'Supprimer TOUS les exports CSV (températures) ?\n\nCette action est IRRÉVERSIBLE.';
+      if (!confirm(confirmMsg)) return;
+
+      btn.disabled = true;
+      setMsg('info', 'Suppression en cours…');
+      try {
+        const url = useDate
+          ? `${API_BASE}/api/admin/exports?avant_date=${avantDate}`
+          : `${API_BASE}/api/admin/exports`;
+        const res = await fetch(url, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        const data = await res.json();
+        const nbErrs = (data.erreurs || []).length;
+        if (data.supprime === 0) {
+          setMsg('ok', '✓ Aucun export à supprimer.');
+        } else {
+          let txt = `✓ ${data.supprime} fichier(s) CSV supprimé(s)`;
+          if (nbErrs) txt += ` — ${nbErrs} erreur(s)`;
           setMsg(nbErrs ? 'info' : 'ok', txt);
         }
       } catch (err) {
