@@ -295,6 +295,7 @@ CREATE TABLE IF NOT EXISTS personnel (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     boutique_id INTEGER NOT NULL,
     prenom      TEXT    NOT NULL,
+    nom         TEXT,
     actif       BOOLEAN DEFAULT 1,
     UNIQUE(boutique_id, prenom),
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
@@ -768,6 +769,14 @@ async def init_db() -> None:
         await db.executescript(SCHEMA_SQL)
         await db.executescript(SEED_SQL)
         await db.executescript(SEED_SQL_PHASE2)
+        # Migration : ajout colonne nom dans personnel (nullable, rétrocompatible)
+        cur = await db.execute("PRAGMA table_info(personnel)")
+        cols_pers = {row[1] for row in await cur.fetchall()}
+        if "nom" not in cols_pers:
+            logger.info("Migration : ajout colonne nom dans personnel")
+            await db.execute("ALTER TABLE personnel ADD COLUMN nom TEXT")
+            await db.commit()
+
         # Migration : refonte schéma réception (tables vides en prod, recréation si ancien schéma)
         cur = await db.execute("PRAGMA table_info(receptions)")
         cols_rec = {row[1] for row in await cur.fetchall()}
@@ -2642,19 +2651,19 @@ async def get_personnel(db: aiosqlite.Connection, boutique_id: int) -> list[dict
 
 async def create_personnel(db: aiosqlite.Connection, data: dict) -> int:
     cursor = await db.execute(
-        "INSERT INTO personnel (boutique_id, prenom) VALUES (?, ?)",
-        (data["boutique_id"], data["prenom"]),
+        "INSERT INTO personnel (boutique_id, prenom, nom) VALUES (?, ?, ?)",
+        (data["boutique_id"], data["prenom"], data.get("nom")),
     )
     await db.commit()
     return cursor.lastrowid
 
 
 async def update_personnel(db: aiosqlite.Connection, personnel_id: int, data: dict) -> bool:
-    fields = {k: v for k, v in data.items() if k in ("prenom", "actif")}
+    fields = {k: v for k, v in data.items() if k in ("prenom", "nom", "actif")}
     if not fields:
         return False
 
-    # Si le prénom change, récupérer l'ancien pour mettre à jour tache_validations.operateur
+    # Si le prénom change, propager dans les tables qui stockent l'opérateur en TEXT
     ancien_prenom = None
     nouveau_prenom = fields.get("prenom")
     if nouveau_prenom:
@@ -2670,11 +2679,17 @@ async def update_personnel(db: aiosqlite.Connection, personnel_id: int, data: di
     values = list(fields.values()) + [personnel_id]
     await db.execute(f"UPDATE personnel SET {set_clause} WHERE id = ?", values)
 
-    # Propager le changement de prénom dans tache_validations (stocké en TEXT)
+    # Propager le changement de prénom dans les tables qui stockent l'opérateur en TEXT
     if ancien_prenom is not None:
+        for table in ("tache_validations", "etiquettes_generees", "non_conformites_fournisseur", "registre_nettoyage"):
+            await db.execute(
+                f"UPDATE {table} SET operateur = ? WHERE operateur = ? AND boutique_id = ?",
+                (nouveau_prenom, ancien_prenom, boutique_id),
+            )
+        # etalonnages n'a pas de boutique_id — on met à jour tous les enregistrements correspondants
         await db.execute(
-            "UPDATE tache_validations SET operateur = ? WHERE operateur = ? AND boutique_id = ?",
-            (nouveau_prenom, ancien_prenom, boutique_id),
+            "UPDATE etalonnages SET operateur = ? WHERE operateur = ?",
+            (nouveau_prenom, ancien_prenom),
         )
 
     await db.commit()

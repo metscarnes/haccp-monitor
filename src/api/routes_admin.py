@@ -40,10 +40,12 @@ BOUTIQUE_ID = 1
 
 class PersonnelCreate(BaseModel):
     prenom: str
+    nom: Optional[str] = None
 
 
 class PersonnelUpdate(BaseModel):
     prenom: Optional[str] = None
+    nom: Optional[str] = None
     actif: Optional[bool] = None
 
 
@@ -66,7 +68,7 @@ async def lister_personnel():
 @router.post("/personnel", status_code=201)
 async def ajouter_personnel(body: PersonnelCreate, _=Depends(verify_token)):
     async with get_db() as db:
-        pid = await create_personnel(db, {"boutique_id": BOUTIQUE_ID, "prenom": body.prenom})
+        pid = await create_personnel(db, {"boutique_id": BOUTIQUE_ID, "prenom": body.prenom, "nom": body.nom})
         cursor = await db.execute("SELECT * FROM personnel WHERE id = ?", (pid,))
         row = await cursor.fetchone()
     return dict(row) if row else {"id": pid}

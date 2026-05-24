@@ -84,12 +84,12 @@
           <form class="admin-form" id="personnel-form">
             <div class="admin-form-row">
               <div class="admin-field">
-                <label for="pers-nom">Nom</label>
-                <input type="text" id="pers-nom" name="nom" placeholder="Nom de famille" required>
+                <label for="pers-prenom">Prénom <span style="color:var(--color-danger)">*</span></label>
+                <input type="text" id="pers-prenom" name="prenom" placeholder="Prénom" required>
               </div>
               <div class="admin-field">
-                <label for="pers-prenom">Prénom</label>
-                <input type="text" id="pers-prenom" name="prenom" placeholder="Prénom" required>
+                <label for="pers-nom">Nom de famille</label>
+                <input type="text" id="pers-nom" name="nom" placeholder="Nom de famille (optionnel)">
               </div>
               <button type="submit" class="btn btn-primaire">Ajouter</button>
             </div>
@@ -558,36 +558,39 @@
         return;
       }
       list.forEach(p => {
+        const nomComplet = [p.prenom, p.nom].filter(Boolean).join(' ');
         const li = document.createElement('li');
         li.className = 'admin-list-item';
         li.dataset.id = p.id;
         li.innerHTML = `
-          <span class="admin-list-nom pers-display">${escHtml(p.prenom)}</span>
+          <span class="admin-list-nom pers-display">${escHtml(nomComplet)}</span>
           <span class="pers-edit-form" hidden>
-            <input type="text" class="pers-edit-input" value="${escHtml(p.prenom)}" aria-label="Modifier le prénom">
+            <input type="text" class="pers-edit-input pers-edit-prenom" value="${escHtml(p.prenom)}" placeholder="Prénom" aria-label="Prénom">
+            <input type="text" class="pers-edit-input pers-edit-nom" value="${escHtml(p.nom || '')}" placeholder="Nom" aria-label="Nom de famille">
             <button class="btn btn-sm btn-primaire pers-save-btn">✓</button>
             <button class="btn btn-sm pers-cancel-btn">✕</button>
           </span>
           <div class="admin-list-actions">
-            <button class="btn btn-sm btn-secondary pers-edit-btn" data-id="${p.id}" aria-label="Modifier ${escHtml(p.prenom)}">✏️</button>
-            <button class="btn btn-sm btn-danger pers-del-btn" data-id="${p.id}" aria-label="Supprimer ${escHtml(p.prenom)}">✕</button>
+            <button class="btn btn-sm btn-secondary pers-edit-btn" data-id="${p.id}" aria-label="Modifier ${escHtml(nomComplet)}">✏️</button>
+            <button class="btn btn-sm btn-danger pers-del-btn" data-id="${p.id}" aria-label="Supprimer ${escHtml(nomComplet)}">✕</button>
           </div>
         `;
         ul.appendChild(li);
 
-        const display = li.querySelector('.pers-display');
-        const editForm = li.querySelector('.pers-edit-form');
-        const editInput = li.querySelector('.pers-edit-input');
-        const editBtn = li.querySelector('.pers-edit-btn');
-        const saveBtn = li.querySelector('.pers-save-btn');
+        const display   = li.querySelector('.pers-display');
+        const editForm  = li.querySelector('.pers-edit-form');
+        const inputPrenom = li.querySelector('.pers-edit-prenom');
+        const inputNom    = li.querySelector('.pers-edit-nom');
+        const editBtn   = li.querySelector('.pers-edit-btn');
+        const saveBtn   = li.querySelector('.pers-save-btn');
         const cancelBtn = li.querySelector('.pers-cancel-btn');
-        const delBtn = li.querySelector('.pers-del-btn');
+        const delBtn    = li.querySelector('.pers-del-btn');
 
         editBtn.addEventListener('click', () => {
           display.hidden = true;
           editForm.hidden = false;
-          editInput.focus();
-          editInput.select();
+          inputPrenom.focus();
+          inputPrenom.select();
         });
 
         cancelBtn.addEventListener('click', () => {
@@ -595,23 +598,26 @@
           editForm.hidden = true;
         });
 
-        saveBtn.addEventListener('click', () => renamePersonnel(p.id, editInput.value.trim(), li));
-        editInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') renamePersonnel(p.id, editInput.value.trim(), li);
-          if (e.key === 'Escape') cancelBtn.click();
+        const doSave = () => savePersonnel(p.id, inputPrenom.value.trim(), inputNom.value.trim());
+        saveBtn.addEventListener('click', doSave);
+        [inputPrenom, inputNom].forEach(inp => {
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doSave();
+            if (e.key === 'Escape') cancelBtn.click();
+          });
         });
 
         delBtn.addEventListener('click', () => deletePersonnel(p.id));
       });
     }
 
-    async function renamePersonnel(id, nouveauPrenom, li) {
-      if (!nouveauPrenom) return;
+    async function savePersonnel(id, prenom, nom) {
+      if (!prenom) return;
       try {
         const res = await authFetch(`${API_BASE}/api/admin/personnel/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prenom: nouveauPrenom }),
+          body: JSON.stringify({ prenom, nom: nom || null }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         loadPersonnel();
@@ -633,14 +639,14 @@
 
     $('personnel-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const nom    = $('pers-nom').value.trim();
       const prenom = $('pers-prenom').value.trim();
-      if (!nom || !prenom) return;
+      const nom    = $('pers-nom').value.trim() || null;
+      if (!prenom) return;
       try {
         const res = await authFetch(`${API_BASE}/api/admin/personnel`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nom, prenom })
+          body: JSON.stringify({ prenom, nom })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         $('pers-nom').value = '';
