@@ -170,6 +170,8 @@ async def purger_entrees_personnel(personnel_id: int):
                        f"reception_id IN ({placeholders})", tuple(rec_ids))
             await _del("non_conformites_fournisseur", "reception_id",
                        f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("reception_bls_supplementaires", "reception_id",
+                       f"reception_id IN ({placeholders})", tuple(rec_ids))
             await _del("ouvertures", "reception_ligne_id",
                        f"reception_ligne_id IN (SELECT id FROM reception_lignes WHERE reception_id IN ({placeholders}))",
                        tuple(rec_ids))
