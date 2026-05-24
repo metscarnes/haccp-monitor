@@ -79,11 +79,34 @@ def _decode_token(token: str) -> dict:
         )
 
 
+_ENV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+
+
 def _set_password(new_password: str):
-    """Met à jour le hash en mémoire (persiste jusqu'au prochain redémarrage
-    sauf si ADMIN_PASSWORD est aussi mis à jour dans .env)."""
+    """Met à jour le hash en mémoire ET écrit le nouveau mot de passe en clair dans .env."""
     global _ADMIN_PASSWORD_HASH
     _ADMIN_PASSWORD_HASH = hashlib.sha256(new_password.encode()).hexdigest()
+
+    env_path = os.path.abspath(_ENV_PATH)
+    try:
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            updated = False
+            for i, line in enumerate(lines):
+                if line.startswith("ADMIN_PASSWORD="):
+                    lines[i] = f"ADMIN_PASSWORD={new_password}\n"
+                    updated = True
+                    break
+            if not updated:
+                lines.append(f"ADMIN_PASSWORD={new_password}\n")
+        else:
+            lines = [f"ADMIN_PASSWORD={new_password}\n"]
+
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+    except Exception:
+        pass  # Si écriture impossible, le changement reste actif en mémoire uniquement
 
 
 def _send_reset_email(reset_url: str):
