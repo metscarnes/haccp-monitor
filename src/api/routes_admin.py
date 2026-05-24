@@ -83,6 +83,66 @@ async def modifier_personnel(personnel_id: int, body: PersonnelUpdate, _=Depends
     return {"ok": True}
 
 
+# Tables référençant un membre du personnel (colonne, table).
+# Sert à décider si on peut supprimer physiquement ou s'il faut désactiver.
+_PERSONNEL_REFS = [
+    ("personnel_id", "receptions"),
+    ("personnel_id", "ouvertures"),
+    ("personnel_id", "fabrications"),
+    ("personnel_id", "etalonnages"),
+    ("personnel_id", "cuissons"),
+    ("personnel_id", "refroidissements"),
+    ("personnel_id", "tache_validations"),
+    ("personnel_id", "registre_nettoyage"),
+    ("personnel_id", "nuisibles_controles"),
+    ("personnel_id", "dlc_devenir"),
+    ("personnel_id", "elearning_completions"),
+    ("personnel_id", "quiz_resultats"),
+    ("personnel_id", "quiz_progression"),
+    ("cloturee_par", "fiches_incident"),
+]
+
+
+@router.delete("/personnel/{personnel_id}")
+async def supprimer_personnel(personnel_id: int, _=Depends(verify_token)):
+    """Supprime un membre du personnel.
+
+    - Si aucun enregistrement ne le référence → suppression physique.
+    - Sinon → désactivation (actif=0) pour préserver l'historique et les FK.
+      Le membre disparaît des sélecteurs mais ses anciens enregistrements
+      restent intacts et affichent toujours son nom.
+    """
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM personnel WHERE id = ?", (personnel_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Personnel non trouvé")
+
+        nb_refs = 0
+        for col, table in _PERSONNEL_REFS:
+            try:
+                c = await db.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (personnel_id,)
+                )
+                nb_refs += (await c.fetchone())[0]
+            except Exception:
+                # Table absente sur cette base → on ignore
+                pass
+            if nb_refs > 0:
+                break
+
+        if nb_refs > 0:
+            await db.execute(
+                "UPDATE personnel SET actif = 0 WHERE id = ?", (personnel_id,)
+            )
+            await db.commit()
+            return {"ok": True, "mode": "desactive",
+                    "message": "Membre désactivé (des enregistrements y sont liés)."}
+
+        await db.execute("DELETE FROM personnel WHERE id = ?", (personnel_id,))
+        await db.commit()
+        return {"ok": True, "mode": "supprime"}
+
+
 # Sous-catégories disponibles pour la purge sélective.
 # Clé = identifiant envoyé par le frontend.
 # Les suppressions qui ont des dépendances FK sont gérées dans l'endpoint.
