@@ -91,23 +91,49 @@ async def purger_entrees_personnel(personnel_id: int):
         prenom = row["prenom"]
 
         supprime: dict[str, int] = {}
+        erreurs: dict[str, str] = {}
 
-        async def _del(table: str, where: str, params: tuple) -> None:
-            c = await db.execute(f"DELETE FROM {table} WHERE {where}", params)
-            if c.rowcount:
-                supprime[table] = supprime.get(table, 0) + c.rowcount
+        # Schéma réel de la base : on n'efface que dans les tables/colonnes
+        # qui existent vraiment (la prod peut différer du dev).
+        existing_tables = {
+            r[0] for r in await db.execute_fetchall(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+
+        async def _cols(table: str) -> set:
+            rows = await db.execute_fetchall(f"PRAGMA table_info({table})")
+            return {r[1] for r in rows}
+
+        async def _del(table: str, col: str, where: str, params: tuple) -> None:
+            """DELETE défensif : ignore table/colonne absente, capture les erreurs."""
+            if table not in existing_tables:
+                return
+            if col not in await _cols(table):
+                return
+            try:
+                c = await db.execute(f"DELETE FROM {table} WHERE {where}", params)
+                if c.rowcount:
+                    supprime[table] = supprime.get(table, 0) + c.rowcount
+            except Exception as exc:  # noqa: BLE001 — on continue la purge
+                erreurs[table] = str(exc)
 
         # 1) Enfants des réceptions de l'utilisateur (évite les orphelins) ----
         #    On récupère d'abord les réceptions concernées.
-        rec_rows = await db.execute_fetchall(
-            "SELECT id FROM receptions WHERE personnel_id = ?", (personnel_id,)
-        )
-        rec_ids = [r[0] for r in rec_rows]
+        rec_ids: list = []
+        if "receptions" in existing_tables and "personnel_id" in await _cols("receptions"):
+            rec_rows = await db.execute_fetchall(
+                "SELECT id FROM receptions WHERE personnel_id = ?", (personnel_id,)
+            )
+            rec_ids = [r[0] for r in rec_rows]
         if rec_ids:
             placeholders = ",".join("?" * len(rec_ids))
-            await _del("fiches_incident", f"reception_id IN ({placeholders})", tuple(rec_ids))
-            await _del("non_conformites_fournisseur", f"reception_id IN ({placeholders})", tuple(rec_ids))
-            await _del("reception_lignes", f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("fiches_incident", "reception_id",
+                       f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("non_conformites_fournisseur", "reception_id",
+                       f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("reception_lignes", "reception_id",
+                       f"reception_id IN ({placeholders})", tuple(rec_ids))
 
         # 2) Tables liées par clé étrangère personnel_id ----------------------
         for table in (
@@ -115,26 +141,26 @@ async def purger_entrees_personnel(personnel_id: int):
             "fabrications", "dlc_devenir", "elearning_completions",
             "quiz_resultats", "quiz_progression",
         ):
-            await _del(table, "personnel_id = ?", (personnel_id,))
+            await _del(table, "personnel_id", "personnel_id = ?", (personnel_id,))
 
         # 3) Fiches incident clôturées par l'utilisateur (FK cloturee_par) ----
-        await _del("fiches_incident", "cloturee_par = ?", (personnel_id,))
+        await _del("fiches_incident", "cloturee_par", "cloturee_par = ?", (personnel_id,))
 
         # 4) Tables liées par texte operateur = prénom ------------------------
         for table in (
             "etiquettes_generees", "tache_validations", "etalonnages",
             "registre_nettoyage", "non_conformites_fournisseur",
         ):
-            await _del(table, "operateur = ?", (prenom,))
+            await _del(table, "operateur", "operateur = ?", (prenom,))
 
         # 5) Contrôles nuisibles visés par l'utilisateur (texte visa) ---------
-        await _del("nuisibles_controles", "visa = ?", (prenom,))
+        await _del("nuisibles_controles", "visa", "visa = ?", (prenom,))
 
         await db.commit()
 
     total = sum(supprime.values())
     return {"ok": True, "personnel_id": personnel_id, "prenom": prenom,
-            "total": total, "detail": supprime}
+            "total": total, "detail": supprime, "erreurs": erreurs}
 
 
 # ---------------------------------------------------------------------------
