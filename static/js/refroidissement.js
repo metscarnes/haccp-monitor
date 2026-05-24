@@ -340,13 +340,15 @@ function afficherOperateurs() {
     elOperateursGrid.innerHTML = `<div class="cu-tuiles-vide">Aucun opérateur actif.</div>`;
     return;
   }
-  elOperateursGrid.innerHTML = state.personnel.map(p => `
+  elOperateursGrid.innerHTML = state.personnel.map(p => {
+    const nomComplet = [p.prenom, p.nom].filter(Boolean).join(' ');
+    return `
     <button type="button" class="cu-tuile" role="listitem"
-            data-op-id="${p.id}" data-op-prenom="${escHtml(p.prenom)}">
+            data-op-id="${p.id}" data-op-prenom="${escHtml(nomComplet)}">
       <div class="cu-tuile-icone">${escHtml(initialePrenom(p.prenom))}</div>
-      <div class="cu-tuile-nom">${escHtml(p.prenom)}</div>
-    </button>
-  `).join('');
+      <div class="cu-tuile-nom">${escHtml(nomComplet)}</div>
+    </button>`;
+  }).join('');
 }
 
 elOperateursGrid.addEventListener('click', e => {

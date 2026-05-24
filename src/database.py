@@ -2514,7 +2514,7 @@ async def get_receptions(
         f"""
         SELECT
             r.*,
-            p.prenom            AS personnel_prenom,
+            TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
             COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
             COUNT(rl.id)        AS nb_lignes,
             SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc,
@@ -2555,7 +2555,7 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
     cursor = await db.execute(
         """
         SELECT r.*,
-               p.prenom AS personnel_prenom,
+               TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
                COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom
         FROM receptions r
         LEFT JOIN personnel    p ON p.id = r.personnel_id
@@ -3081,7 +3081,7 @@ async def get_fiches_incident(
             COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
             rl.origine AS origine,
-            per.prenom AS cloturee_par_prenom
+            TRIM(per.prenom || ' ' || COALESCE(per.nom, '')) AS cloturee_par_prenom
         FROM fiches_incident fi
         LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
         LEFT JOIN produits     p   ON p.id  = fi.produit_id
@@ -3105,7 +3105,7 @@ async def get_fiche_incident(db: aiosqlite.Connection, fiche_id: int) -> Optiona
             COALESCE(NULLIF(fi.fournisseur_nom, ''), f.nom) AS fournisseur_nom,
             p.nom  AS produit_nom,
             rl.origine AS origine,
-            per.prenom AS cloturee_par_prenom
+            TRIM(per.prenom || ' ' || COALESCE(per.nom, '')) AS cloturee_par_prenom
         FROM fiches_incident fi
         LEFT JOIN fournisseurs f   ON f.id  = fi.fournisseur_id
         LEFT JOIN produits     p   ON p.id  = fi.produit_id
@@ -3493,7 +3493,7 @@ async def get_fabrications_historique(
             f.info_complementaire,
             r.nom           AS recette_nom,
             r.instructions  AS recette_instructions,
-            pe.prenom       AS personnel_prenom
+            TRIM(pe.prenom || ' ' || COALESCE(pe.nom, '')) AS personnel_prenom
         FROM fabrications f
         JOIN recettes  r  ON r.id  = f.recette_id
         JOIN personnel pe ON pe.id = f.personnel_id
@@ -3612,12 +3612,12 @@ async def get_dlc_calendrier(
                 f.nom                AS fournisseur_nom,
                 r.date_reception     AS date_origine,
                 r.heure_reception    AS heure_origine,
-                pers_recep.prenom    AS receveur_prenom,
+                TRIM(pers_recep.prenom || ' ' || COALESCE(pers_recep.nom, '')) AS receveur_prenom,
                 r.id                 AS reception_id,
                 dd.statut            AS devenir_statut,
                 dd.commentaire       AS devenir_commentaire,
                 dd.created_at        AS devenir_at,
-                pers.prenom          AS devenir_prenom
+                TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM reception_lignes rl
             JOIN receptions r       ON r.id  = rl.reception_id
             JOIN produits   p       ON p.id  = rl.produit_id
@@ -3663,7 +3663,7 @@ async def get_dlc_calendrier(
                 dd.statut            AS devenir_statut,
                 dd.commentaire       AS devenir_commentaire,
                 dd.created_at        AS devenir_at,
-                pers.prenom          AS devenir_prenom
+                TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM fabrications fab
             JOIN recettes   r ON r.id = fab.recette_id
             JOIN produits   p ON p.id = r.produit_fini_id
@@ -3729,7 +3729,7 @@ async def get_dlc_calendrier(
                 dd.statut            AS devenir_statut,
                 dd.commentaire       AS devenir_commentaire,
                 dd.created_at        AS devenir_at,
-                pers.prenom          AS devenir_prenom
+                TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM cuissons c
             JOIN produits p ON p.id = c.produit_id
             LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
@@ -3777,7 +3777,7 @@ async def get_dlc_calendrier(
                 dd.statut              AS devenir_statut,
                 dd.commentaire         AS devenir_commentaire,
                 dd.created_at          AS devenir_at,
-                pers.prenom            AS devenir_prenom
+                TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM refroidissements rf
             JOIN produits p ON p.id = rf.produit_id
             LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
@@ -3888,7 +3888,7 @@ async def get_stock_unifie(
                 'kg'               AS unite,
                 r.date_reception   AS date_origine,
                 r.heure_reception  AS heure_origine,
-                pers_recep.prenom  AS receveur_prenom,
+                TRIM(pers_recep.prenom || ' ' || COALESCE(pers_recep.nom, '')) AS receveur_prenom,
                 f.nom              AS fournisseur_nom
             FROM reception_lignes rl
             JOIN receptions   r ON r.id = rl.reception_id

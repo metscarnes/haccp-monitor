@@ -292,7 +292,7 @@ async def lister_refroidissements(
             SELECT r.*,
                    p.nom        AS produit_nom,
                    p.espece     AS espece,
-                   pers.prenom  AS personnel_prenom,
+                   TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_prenom,
                    rl.numero_lot AS reception_numero_lot,
                    rl.origine    AS origine,
                    rl.reception_id AS reception_id

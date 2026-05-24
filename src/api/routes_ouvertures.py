@@ -132,7 +132,7 @@ async def creer_ouverture(
                 o.id, o.produit_id, o.personnel_id, o.photo_filename,
                 o.source, o.reception_ligne_id, o.timestamp,
                 p.nom           AS produit_nom,
-                per.prenom      AS personnel_prenom,
+                TRIM(per.prenom || ' ' || COALESCE(per.nom, '')) AS personnel_prenom,
                 rl.numero_lot,
                 COALESCE(rl.dlc, rl.dluo) AS dlc
             FROM ouvertures o
@@ -282,7 +282,7 @@ async def lister_ouvertures(
                 p.espece           AS produit_espece,
                 p.code_unique,
                 o.personnel_id,
-                per.prenom         AS personnel_prenom,
+                TRIM(per.prenom || ' ' || COALESCE(per.nom, '')) AS personnel_prenom,
                 o.photo_filename,
                 o.timestamp,
                 o.source,
@@ -324,7 +324,7 @@ async def imprimer_etiquette_ouverture(ouverture_id: int):
             SELECT
                 o.timestamp,
                 p.nom           AS produit_nom,
-                per.prenom      AS operateur,
+                TRIM(per.prenom || ' ' || COALESCE(per.nom, '')) AS operateur,
                 rl.numero_lot,
                 COALESCE(rl.dlc, rl.dluo) AS dlc
             FROM ouvertures o

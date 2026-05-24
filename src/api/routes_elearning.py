@@ -59,7 +59,7 @@ async def lister_completions(
 ):
     """Retourne l'historique des formations validées, le plus récent en premier."""
     sql = (
-        "SELECT c.id, c.module, c.personnel_id, p.prenom AS personnel_prenom, "
+        "SELECT c.id, c.module, c.personnel_id, TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom, "
         "       c.date_completion "
         "FROM elearning_completions c "
         "JOIN personnel p ON p.id = c.personnel_id "
@@ -103,7 +103,7 @@ async def enregistrer_completion(body: CompletionCreate):
         new_id = cursor.lastrowid
 
         row = await db.execute(
-            "SELECT c.id, c.module, c.personnel_id, p.prenom AS personnel_prenom, "
+            "SELECT c.id, c.module, c.personnel_id, TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom, "
             "       c.date_completion "
             "FROM elearning_completions c "
             "JOIN personnel p ON p.id = c.personnel_id "
@@ -131,7 +131,7 @@ async def lister_resultats_quiz(
 ):
     """Historique des résultats de quiz, le plus récent en premier."""
     sql = (
-        "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
+        "SELECT r.id, r.quiz_id, r.personnel_id, TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom, "
         "       r.score, r.total, r.pourcentage, r.reussi, r.date_completion "
         "FROM quiz_resultats r "
         "JOIN personnel p ON p.id = r.personnel_id "
@@ -225,7 +225,7 @@ async def enregistrer_resultat_quiz(body: QuizResultatCreate):
         new_id = cursor.lastrowid
 
         row = await db.execute(
-            "SELECT r.id, r.quiz_id, r.personnel_id, p.prenom AS personnel_prenom, "
+            "SELECT r.id, r.quiz_id, r.personnel_id, TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom, "
             "       r.score, r.total, r.pourcentage, r.reussi, r.signature, r.date_completion "
             "FROM quiz_resultats r "
             "JOIN personnel p ON p.id = r.personnel_id "

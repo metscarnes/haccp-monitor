@@ -214,7 +214,7 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
                    s.dlc_finale    AS dlc,
                    p.nom           AS produit_nom,
                    p.temperature_conservation AS temperature_conservation,
-                   pers.prenom     AS operateur,
+                   TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS operateur,
                    {lot_select},
                    {qte_select},
                    {temp_select}

@@ -159,12 +159,13 @@ async function chargerPersonnel() {
     const liste = await apiFetch('/api/admin/personnel');
     elPersonnelGrille.innerHTML = '';
     liste.forEach(p => {
+      const nomComplet = [p.prenom, p.nom].filter(Boolean).join(' ');
       const btn = document.createElement('button');
       btn.className = 'ouv-btn-prenom';
-      btn.textContent = p.prenom;
+      btn.textContent = nomComplet;
       btn.dataset.id     = p.id;
-      btn.dataset.prenom = p.prenom;
-      btn.addEventListener('click', () => selectionnerPersonnel(p.id, p.prenom, btn));
+      btn.dataset.prenom = nomComplet;
+      btn.addEventListener('click', () => selectionnerPersonnel(p.id, nomComplet, btn));
       elPersonnelGrille.appendChild(btn);
     });
   } catch {

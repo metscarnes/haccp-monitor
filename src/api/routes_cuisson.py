@@ -177,7 +177,7 @@ async def lister_cuissons(
             SELECT c.*,
                    p.nom       AS produit_nom,
                    p.espece    AS espece,
-                   pers.prenom AS personnel_prenom,
+                   TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_prenom,
                    COALESCE(rl.numero_lot, fab.lot_interne) AS numero_lot,
                    rl.origine  AS origine,
                    rl.reception_id AS reception_id

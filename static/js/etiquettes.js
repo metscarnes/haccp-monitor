@@ -1178,7 +1178,7 @@ async function chargerPersonnel() {
     personnel.forEach(p => {
       const opt = document.createElement('option');
       opt.value       = p.id;
-      opt.textContent = p.prenom;
+      opt.textContent = [p.prenom, p.nom].filter(Boolean).join(' ');
       elOperateur.appendChild(opt);
     });
   } catch {

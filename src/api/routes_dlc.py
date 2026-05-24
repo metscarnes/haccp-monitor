@@ -202,7 +202,7 @@ async def historique_devenir(
             d.statut,
             d.commentaire,
             d.created_at,
-            pers.prenom AS personnel_prenom,
+            TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_prenom,
             CASE d.source_type
                 WHEN 'reception_ligne'  THEN p.nom
                 WHEN 'fabrication'      THEN r.nom

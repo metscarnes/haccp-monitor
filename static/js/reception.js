@@ -358,14 +358,15 @@ async function chargerPersonnel() {
     const liste = await apiFetch('/api/admin/personnel');
     elChargementPerso.remove();
     liste.forEach(p => {
+      const nomComplet = [p.prenom, p.nom].filter(Boolean).join(' ');
       const btn = document.createElement('button');
       btn.className    = 'rec-btn-prenom';
-      btn.textContent  = p.prenom;
+      btn.textContent  = nomComplet;
       btn.dataset.id   = p.id;
-      btn.dataset.prenom = p.prenom;
+      btn.dataset.prenom = nomComplet;
       btn.addEventListener('click', () => {
         personnelId     = p.id;
-        personnelPrenom = p.prenom;
+        personnelPrenom = nomComplet;
         // Initialiser date + heure à maintenant
         const now = new Date();
         elHeure.value = now.toTimeString().slice(0, 5);
