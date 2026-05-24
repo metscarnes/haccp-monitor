@@ -409,6 +409,24 @@
           <div id="stats-disque-loader" style="text-align:center; padding:1rem">
             <div class="spinner" style="display:inline-block"></div> Calcul en cours…
           </div>
+
+          <div id="stats-disque-summary" style="display:none; padding:1rem; background:#fef8f0; border:1px solid #e0d5c5; border-radius:8px; margin-bottom:1rem">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; font-size:.95rem">
+              <div>
+                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Espace total</div>
+                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-total-espace">—</div>
+              </div>
+              <div>
+                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Utilisé</div>
+                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-utilise-pct">—</div>
+              </div>
+              <div>
+                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Disponible</div>
+                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-dispo">—</div>
+              </div>
+            </div>
+          </div>
+
           <table id="stats-disque-table" style="display:none; width:100%; border-collapse:collapse; font-size:.9rem">
             <thead>
               <tr style="background:#f5ece0; border-bottom:2px solid #e0d5c5">
@@ -448,6 +466,30 @@
     </section>
 
   </main>
+
+  <!-- Modal: Détail des fichiers d'une catégorie -->
+  <div id="detail-fichiers-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; overflow:auto; padding:2rem 1rem">
+    <div style="background:#fff; border-radius:8px; max-width:800px; margin:2rem auto; box-shadow:0 4px 16px rgba(0,0,0,0.15)">
+      <div style="padding:1.5rem; border-bottom:1px solid #e0d5c5; display:flex; justify-content:space-between; align-items:center">
+        <h3 style="margin:0; font-size:1.1rem" id="detail-fichiers-titre">Détail des fichiers</h3>
+        <button id="detail-fichiers-close" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#666">&times;</button>
+      </div>
+      <div style="padding:1.5rem; max-height:500px; overflow-y:auto">
+        <div id="detail-fichiers-loader" style="text-align:center; padding:2rem">
+          <div class="spinner" style="display:inline-block"></div> Chargement…
+        </div>
+        <table id="detail-fichiers-table" style="display:none; width:100%; border-collapse:collapse; font-size:.85rem">
+          <thead>
+            <tr style="background:#f5ece0; border-bottom:1px solid #e0d5c5; position:sticky; top:0">
+              <th style="padding:.5rem; text-align:left; font-weight:600">Fichier</th>
+              <th style="padding:.5rem; text-align:right; font-weight:600; width:120px">Taille</th>
+            </tr>
+          </thead>
+          <tbody id="detail-fichiers-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <script>
     "use strict";
@@ -1333,17 +1375,32 @@
     $('btn-stats-disque').addEventListener('click', async () => {
       const container = $('stats-disque-container');
       const loader = $('stats-disque-loader');
+      const summary = $('stats-disque-summary');
       const table = $('stats-disque-table');
       const tbody = $('stats-disque-tbody');
 
       container.style.display = 'block';
       loader.style.display = 'block';
+      summary.style.display = 'none';
       table.style.display = 'none';
 
       try {
         const res = await fetch(`${API_BASE}/api/admin/stats-disque`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+
+        // Afficher résumé des stats système
+        if (data.disque_total_gb !== undefined && data.disque_total_gb > 0) {
+          const totalGb = parseFloat(data.disque_total_gb).toFixed(2);
+          const utilisePct = Math.round(data.disque_utilise_pct || 0);
+          const disponiblePct = 100 - utilisePct;
+          const disponibleGb = parseFloat(data.disque_libre_gb || 0).toFixed(2);
+
+          $('stats-disque-total-espace').textContent = `${totalGb} GB`;
+          $('stats-disque-utilise-pct').textContent = `${utilisePct}%`;
+          $('stats-disque-dispo').textContent = `${disponibleGb} GB (${disponiblePct}%)`;
+          summary.style.display = 'block';
+        }
 
         tbody.innerHTML = '';
         let totalFichiers = 0;
@@ -1355,11 +1412,16 @@
         dossiers.forEach(([nom, stats]) => {
           const tr = document.createElement('tr');
           tr.style.borderBottom = '1px solid #e0d5c5';
+          tr.style.cursor = 'pointer';
+          tr.style.transition = 'background-color .2s';
+          tr.addEventListener('mouseenter', () => { tr.style.background = '#f9f3eb'; });
+          tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
           tr.innerHTML = `
             <td style="padding:.5rem">${escHtml(nom)}</td>
             <td style="padding:.5rem; text-align:right">${stats.taille_mo}</td>
             <td style="padding:.5rem; text-align:right">${stats.nb_fichiers}</td>
           `;
+          tr.addEventListener('click', () => { ouvrirDetailFichiers(nom); });
           tbody.appendChild(tr);
           totalFichiers += stats.nb_fichiers;
         });
@@ -1372,6 +1434,54 @@
       } catch (err) {
         loader.style.display = 'none';
         loader.innerHTML = `<div style="color:#c93030">Erreur : ${err.message}</div>`;
+      }
+    });
+
+    // Ouvrir le modal de détail des fichiers
+    const ouvrirDetailFichiers = async (dossier) => {
+      const modal = $('detail-fichiers-modal');
+      const titre = $('detail-fichiers-titre');
+      const loader = $('detail-fichiers-loader');
+      const table = $('detail-fichiers-table');
+      const tbody = $('detail-fichiers-tbody');
+
+      modal.style.display = 'block';
+      titre.textContent = `Détail : ${escHtml(dossier)}`;
+      loader.style.display = 'block';
+      table.style.display = 'none';
+      tbody.innerHTML = '';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/stats-disque/${encodeURIComponent(dossier)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Les fichiers sont déjà triés par le serveur
+        data.fichiers.forEach(file => {
+          const tr = document.createElement('tr');
+          tr.style.borderBottom = '1px solid #ecdfc9';
+          tr.innerHTML = `
+            <td style="padding:.5rem; word-break:break-all">${escHtml(file.chemin)}</td>
+            <td style="padding:.5rem; text-align:right; white-space:nowrap">${file.taille_mo} Mo</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        loader.style.display = 'none';
+        table.style.display = 'table';
+      } catch (err) {
+        loader.style.display = 'none';
+        loader.innerHTML = `<div style="color:#c93030">Erreur : ${err.message}</div>`;
+      }
+    };
+
+    // Fermer le modal
+    $('detail-fichiers-close').addEventListener('click', () => {
+      $('detail-fichiers-modal').style.display = 'none';
+    });
+    $('detail-fichiers-modal').addEventListener('click', (e) => {
+      if (e.target === $('detail-fichiers-modal')) {
+        $('detail-fichiers-modal').style.display = 'none';
       }
     });
 

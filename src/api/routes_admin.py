@@ -14,6 +14,12 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 from src.database import (
     get_db,
     get_personnel, create_personnel, update_personnel,
@@ -409,12 +415,19 @@ DATA_DIR = Path(__file__).parent.parent.parent / "data"
 
 @router.get("/stats-disque")
 async def stats_disque():
-    """Retourne les statistiques d'espace disque par dossier dans data/."""
+    """Retourne les stats d'espace disque par dossier + infos disque total."""
     stats = {}
 
     if not DATA_DIR.exists():
-        return {"dossiers": stats, "total_mo": 0}
+        return {
+            "dossiers": stats,
+            "total_data_mo": 0,
+            "disque_total_gb": 0,
+            "disque_libre_gb": 0,
+            "disque_utilise_pct": 0,
+        }
 
+    # Stats par dossier
     for subdir in DATA_DIR.iterdir():
         if subdir.is_dir():
             nom = subdir.name
@@ -431,12 +444,70 @@ async def stats_disque():
 
             stats[nom] = {
                 "taille_mo": round(taille_bytes / (1024 * 1024), 2),
-                "taille_ko": round(taille_bytes / 1024, 1),
                 "nb_fichiers": nb_fichiers,
             }
 
-    total_mo = sum(s["taille_mo"] for s in stats.values())
-    return {"dossiers": stats, "total_mo": round(total_mo, 2)}
+    total_data_mo = sum(s["taille_mo"] for s in stats.values())
+
+    # Espace disque du système
+    disque_total_gb = 0
+    disque_libre_gb = 0
+    disque_utilise_pct = 0
+
+    if HAS_PSUTIL:
+        try:
+            # Utilise le répertoire parent du projet (la partition)
+            usage = psutil.disk_usage(str(DATA_DIR.parent.parent))
+            disque_total_gb = round(usage.total / (1024**3), 2)
+            disque_libre_gb = round(usage.free / (1024**3), 2)
+            disque_utilise_pct = usage.percent
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {
+        "dossiers": stats,
+        "total_mo": round(total_data_mo, 2),
+        "total_data_mo": round(total_data_mo, 2),
+        "disque_total_gb": disque_total_gb,
+        "disque_libre_gb": disque_libre_gb,
+        "disque_utilise_pct": disque_utilise_pct,
+    }
+
+
+@router.get("/stats-disque/{dossier}")
+async def stats_disque_detail(dossier: str):
+    """Retourne le détail des fichiers d'un dossier spécifique."""
+    # Sécurité : évite les traversées de répertoire
+    if "/" in dossier or "\\" in dossier or dossier == "..":
+        raise HTTPException(400, "Dossier invalide")
+
+    subdir = DATA_DIR / dossier
+    if not subdir.exists() or not subdir.is_dir():
+        raise HTTPException(404, "Dossier non trouvé")
+
+    fichiers = []
+    try:
+        for fichier in sorted(subdir.rglob("*")):
+            if fichier.is_file():
+                taille_bytes = fichier.stat().st_size
+                fichiers.append({
+                    "chemin": str(fichier.relative_to(subdir)).replace("\\", "/"),
+                    "taille_mo": round(taille_bytes / (1024 * 1024), 2),
+                    "taille_ko": round(taille_bytes / 1024, 1),
+                })
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Tri par taille décroissante
+    fichiers.sort(key=lambda f: f["taille_mo"], reverse=True)
+    total_mo = sum(f["taille_mo"] for f in fichiers)
+
+    return {
+        "dossier": dossier,
+        "fichiers": fichiers,
+        "total_mo": round(total_mo, 2),
+        "nb_fichiers": len(fichiers),
+    }
 
 
 # ---------------------------------------------------------------------------
