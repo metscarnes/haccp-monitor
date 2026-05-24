@@ -2653,9 +2653,30 @@ async def update_personnel(db: aiosqlite.Connection, personnel_id: int, data: di
     fields = {k: v for k, v in data.items() if k in ("prenom", "actif")}
     if not fields:
         return False
+
+    # Si le prénom change, récupérer l'ancien pour mettre à jour tache_validations.operateur
+    ancien_prenom = None
+    nouveau_prenom = fields.get("prenom")
+    if nouveau_prenom:
+        cursor = await db.execute(
+            "SELECT prenom, boutique_id FROM personnel WHERE id = ?", (personnel_id,)
+        )
+        row = await cursor.fetchone()
+        if row and row["prenom"] != nouveau_prenom:
+            ancien_prenom = row["prenom"]
+            boutique_id = row["boutique_id"]
+
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [personnel_id]
     await db.execute(f"UPDATE personnel SET {set_clause} WHERE id = ?", values)
+
+    # Propager le changement de prénom dans tache_validations (stocké en TEXT)
+    if ancien_prenom is not None:
+        await db.execute(
+            "UPDATE tache_validations SET operateur = ? WHERE operateur = ? AND boutique_id = ?",
+            (nouveau_prenom, ancien_prenom, boutique_id),
+        )
+
     await db.commit()
     return True
 

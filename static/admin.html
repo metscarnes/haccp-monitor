@@ -560,15 +560,64 @@
       list.forEach(p => {
         const li = document.createElement('li');
         li.className = 'admin-list-item';
+        li.dataset.id = p.id;
         li.innerHTML = `
-          <span class="admin-list-nom">${escHtml(p.prenom)} ${escHtml(p.nom)}</span>
-          <button class="btn btn-sm btn-danger" data-id="${p.id}" aria-label="Supprimer ${escHtml(p.prenom)} ${escHtml(p.nom)}">✕</button>
+          <span class="admin-list-nom pers-display">${escHtml(p.prenom)}</span>
+          <span class="pers-edit-form" hidden>
+            <input type="text" class="pers-edit-input" value="${escHtml(p.prenom)}" aria-label="Modifier le prénom">
+            <button class="btn btn-sm btn-primaire pers-save-btn">✓</button>
+            <button class="btn btn-sm pers-cancel-btn">✕</button>
+          </span>
+          <div class="admin-list-actions">
+            <button class="btn btn-sm btn-secondary pers-edit-btn" data-id="${p.id}" aria-label="Modifier ${escHtml(p.prenom)}">✏️</button>
+            <button class="btn btn-sm btn-danger pers-del-btn" data-id="${p.id}" aria-label="Supprimer ${escHtml(p.prenom)}">✕</button>
+          </div>
         `;
         ul.appendChild(li);
+
+        const display = li.querySelector('.pers-display');
+        const editForm = li.querySelector('.pers-edit-form');
+        const editInput = li.querySelector('.pers-edit-input');
+        const editBtn = li.querySelector('.pers-edit-btn');
+        const saveBtn = li.querySelector('.pers-save-btn');
+        const cancelBtn = li.querySelector('.pers-cancel-btn');
+        const delBtn = li.querySelector('.pers-del-btn');
+
+        editBtn.addEventListener('click', () => {
+          display.hidden = true;
+          editForm.hidden = false;
+          editInput.focus();
+          editInput.select();
+        });
+
+        cancelBtn.addEventListener('click', () => {
+          display.hidden = false;
+          editForm.hidden = true;
+        });
+
+        saveBtn.addEventListener('click', () => renamePersonnel(p.id, editInput.value.trim(), li));
+        editInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') renamePersonnel(p.id, editInput.value.trim(), li);
+          if (e.key === 'Escape') cancelBtn.click();
+        });
+
+        delBtn.addEventListener('click', () => deletePersonnel(p.id));
       });
-      ul.querySelectorAll('.btn-danger').forEach(btn => {
-        btn.addEventListener('click', () => deletePersonnel(parseInt(btn.dataset.id)));
-      });
+    }
+
+    async function renamePersonnel(id, nouveauPrenom, li) {
+      if (!nouveauPrenom) return;
+      try {
+        const res = await authFetch(`${API_BASE}/api/admin/personnel/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prenom: nouveauPrenom }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        loadPersonnel();
+      } catch (err) {
+        alert(`Erreur modification : ${err.message}`);
+      }
     }
 
     async function deletePersonnel(id) {

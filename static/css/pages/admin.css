@@ -287,6 +287,30 @@
   border: 1px dashed #ddd0bb;
 }
 
+.admin-list-actions {
+  display: flex;
+  gap: .35rem;
+  flex-shrink: 0;
+}
+
+.pers-edit-form {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex: 1;
+}
+
+.pers-edit-input {
+  flex: 1;
+  font-size: var(--text-sm);
+  padding: .25rem .5rem;
+  border: 1px solid var(--color-secondary);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-text);
+  min-width: 0;
+}
+
 /* ─────────────────────────────────────────────
    FORMULAIRES
 ───────────────────────────────────────────── */
