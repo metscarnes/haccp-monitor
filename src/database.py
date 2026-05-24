@@ -1621,6 +1621,24 @@ async def create_destinataire(db: aiosqlite.Connection, data: dict) -> int:
     return cursor.lastrowid
 
 
+async def update_destinataire(db: aiosqlite.Connection, dest_id: int, data: dict) -> bool:
+    cursor = await db.execute(
+        "UPDATE destinataires SET nom=?, email=?, telephone=? WHERE id=? AND actif=1",
+        (data["nom"], data.get("email"), data.get("telephone"), dest_id),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def delete_destinataire(db: aiosqlite.Connection, dest_id: int) -> bool:
+    cursor = await db.execute(
+        "UPDATE destinataires SET actif=0 WHERE id=?",
+        (dest_id,),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
 # ---------------------------------------------------------------------------
 # Rapports
 # ---------------------------------------------------------------------------

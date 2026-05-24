@@ -189,6 +189,47 @@
       </div>
     </section>
 
+    <!-- ── Destinataires alertes email ── -->
+    <section class="admin-section" id="section-destinataires">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">📧 Alertes email — Destinataires</h2>
+        <span class="admin-badge admin-badge--warning">Notifications</span>
+      </div>
+      <div class="admin-section-body">
+        <p class="admin-info-text">
+          Ces contacts reçoivent un email automatique dès qu'une enceinte dépasse ses seuils de température (après le délai configuré).
+        </p>
+
+        <!-- Liste des destinataires -->
+        <div id="dest-liste" style="margin-bottom:1rem"></div>
+        <div id="dest-msg" class="admin-depan-msg" hidden></div>
+
+        <!-- Formulaire ajout / modification -->
+        <form class="admin-form" id="dest-form" style="margin-top:1rem">
+          <input type="hidden" id="dest-edit-id">
+          <div class="admin-form-row">
+            <div class="admin-field">
+              <label for="dest-nom">Nom</label>
+              <input type="text" id="dest-nom" placeholder="Ex : Ulyssse" required>
+            </div>
+            <div class="admin-field">
+              <label for="dest-email">Email</label>
+              <input type="email" id="dest-email" placeholder="contact@example.com">
+            </div>
+            <div class="admin-field">
+              <label for="dest-tel">Téléphone (SMS)</label>
+              <input type="tel" id="dest-tel" placeholder="+33612345678">
+            </div>
+          </div>
+          <div class="admin-form-actions">
+            <button type="submit" class="btn btn-primary" id="dest-btn-sauver">Ajouter le destinataire</button>
+            <button type="button" class="btn btn-secondary" id="dest-btn-annuler" hidden>Annuler</button>
+            <button type="button" class="btn btn-secondary" id="dest-btn-test" style="margin-left:auto">📨 Envoyer un email de test</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
     <!-- ── Alertes DLC ── -->
     <section class="admin-section" id="section-dlc-seuils">
       <div class="admin-section-header">
@@ -734,6 +775,126 @@
         alert(`Erreur ajout : ${err.message}`);
       }
     });
+
+    // ── Destinataires alertes email ────────────────────────
+    let destEnEdition = null;
+
+    function destSetMsg(type, txt) {
+      const el = $('dest-msg');
+      el.textContent = txt;
+      el.className = `admin-depan-msg admin-depan-msg--${type}`;
+      el.hidden = false;
+      if (type === 'ok') setTimeout(() => { el.hidden = true; }, 3000);
+    }
+
+    function destResetForm() {
+      destEnEdition = null;
+      $('dest-edit-id').value = '';
+      $('dest-nom').value = '';
+      $('dest-email').value = '';
+      $('dest-tel').value = '';
+      $('dest-btn-sauver').textContent = 'Ajouter le destinataire';
+      $('dest-btn-annuler').hidden = true;
+    }
+
+    async function loadDestinaires() {
+      try {
+        const res = await authFetch(`${API_BASE}/api/destinataires`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const liste = await res.json();
+        const cont = $('dest-liste');
+        if (!liste.length) {
+          cont.innerHTML = '<p class="admin-info-text" style="color:#bbb">Aucun destinataire configuré.</p>';
+          return;
+        }
+        cont.innerHTML = `<table class="admin-table"><thead><tr>
+          <th>Nom</th><th>Email</th><th>Téléphone</th><th></th>
+        </tr></thead><tbody>${liste.map(d => `
+          <tr>
+            <td>${escHtml(d.nom)}</td>
+            <td>${d.email ? escHtml(d.email) : '<em style="color:#bbb">—</em>'}</td>
+            <td>${d.telephone ? escHtml(d.telephone) : '<em style="color:#bbb">—</em>'}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-sm btn-secondary" onclick="destEditer(${d.id})">Modifier</button>
+              <button class="btn btn-sm btn-danger" onclick="destSupprimer(${d.id})">Supprimer</button>
+            </td>
+          </tr>`).join('')}</tbody></table>`;
+      } catch (err) {
+        destSetMsg('error', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    window.destEditer = async function(id) {
+      const res = await authFetch(`${API_BASE}/api/destinataires`);
+      const liste = await res.json();
+      const d = liste.find(x => x.id === id);
+      if (!d) return;
+      destEnEdition = id;
+      $('dest-edit-id').value = id;
+      $('dest-nom').value = d.nom;
+      $('dest-email').value = d.email || '';
+      $('dest-tel').value = d.telephone || '';
+      $('dest-btn-sauver').textContent = 'Enregistrer les modifications';
+      $('dest-btn-annuler').hidden = false;
+      $('dest-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    window.destSupprimer = async function(id) {
+      if (!confirm('Supprimer ce destinataire ?')) return;
+      try {
+        const res = await authFetch(`${API_BASE}/api/destinataires/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        destSetMsg('ok', 'Destinataire supprimé.');
+        loadDestinaires();
+      } catch (err) {
+        destSetMsg('error', `Erreur suppression : ${err.message}`);
+      }
+    };
+
+    $('dest-btn-annuler').addEventListener('click', destResetForm);
+
+    $('dest-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const payload = {
+        nom:       $('dest-nom').value.trim(),
+        email:     $('dest-email').value.trim() || null,
+        telephone: $('dest-tel').value.trim() || null,
+      };
+      if (!payload.email && !payload.telephone) {
+        destSetMsg('error', 'Renseignez au moins un email ou un téléphone.');
+        return;
+      }
+      try {
+        const url    = destEnEdition ? `${API_BASE}/api/destinataires/${destEnEdition}` : `${API_BASE}/api/destinataires`;
+        const method = destEnEdition ? 'PUT' : 'POST';
+        const res = await authFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        destSetMsg('ok', destEnEdition ? 'Destinataire mis à jour.' : 'Destinataire ajouté.');
+        destResetForm();
+        loadDestinaires();
+      } catch (err) {
+        destSetMsg('error', `Erreur : ${err.message}`);
+      }
+    });
+
+    $('dest-btn-test').addEventListener('click', async () => {
+      const btn = $('dest-btn-test');
+      btn.disabled = true;
+      btn.textContent = '⏳ Envoi…';
+      try {
+        const res = await authFetch(`${API_BASE}/api/alertes/test-email`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        destSetMsg('ok', `Email de test envoyé à : ${data.destinataires.join(', ')}`);
+      } catch (err) {
+        destSetMsg('error', `Échec : ${err.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '📨 Envoyer un email de test';
+      }
+    });
+
+    loadDestinaires();
 
     // ── Enceintes ───────────────────────────────────────────
     let enceinteEnEdition = null;
