@@ -245,19 +245,6 @@
       </div>
     </section>
 
-    <!-- ── Seuils ── -->
-    <section class="admin-section" id="section-seuils">
-      <div class="admin-section-header">
-        <h2 class="admin-section-titre">📊 Seuils de température</h2>
-        <span class="admin-badge admin-badge--info">Lecture seule</span>
-      </div>
-      <div class="admin-section-body">
-        <div id="seuils-content">
-          <p class="admin-info-text">Les seuils sont configurés par sonde. Consultez la section Enceintes pour les valeurs actuelles.</p>
-        </div>
-      </div>
-    </section>
-
     <!-- ── Alertes DLC (seuils configurables) ── -->
     <section class="admin-section" id="section-dlc-seuils">
       <div class="admin-section-header">
@@ -289,52 +276,6 @@
             </div>
           </form>
           <div id="dlc-seuils-msg" class="admin-depan-msg" hidden></div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Alertes ── -->
-    <section class="admin-section" id="section-alertes">
-      <div class="admin-section-header">
-        <h2 class="admin-section-titre">🔔 Alertes récentes</h2>
-      </div>
-      <div class="admin-section-body">
-        <div id="alertes-loader" class="admin-loader">
-          <div class="spinner"></div>
-        </div>
-        <div id="alertes-error" class="admin-error" hidden></div>
-        <div id="alertes-content" hidden>
-          <div class="admin-alertes-list" id="alertes-list"></div>
-        </div>
-        <div id="alertes-vide" class="admin-vide" hidden>
-          Aucune alerte récentes
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Serveur ── -->
-    <section class="admin-section" id="section-serveur">
-      <div class="admin-section-header">
-        <h2 class="admin-section-titre">🖥️ Serveur</h2>
-      </div>
-      <div class="admin-section-body">
-        <div class="admin-serveur-grid">
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">Statut</span>
-            <span class="admin-serveur-valeur" id="srv-statut">—</span>
-          </div>
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">API</span>
-            <span class="admin-serveur-valeur" id="srv-api">—</span>
-          </div>
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">Broker MQTT</span>
-            <span class="admin-serveur-valeur" id="srv-mqtt">—</span>
-          </div>
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">Dernier relevé</span>
-            <span class="admin-serveur-valeur" id="srv-derniere-temp">—</span>
-          </div>
         </div>
       </div>
     </section>
@@ -613,14 +554,12 @@
         if (dot) dot.className = 'admin-connexion-dot admin-connexion-dot--ok';
         if (msg) msg.textContent = `Connecté (${ms}ms)`;
         if (panel) panel.hidden = true;
-        document.getElementById('srv-ping').textContent = `${ms}ms`;
         return true;
       } catch {
         connexionOk = false;
         if (dot) dot.className = 'admin-connexion-dot admin-connexion-dot--off';
         if (msg) msg.textContent = 'Serveur injoignable';
         if (panel) panel.hidden = false;
-        document.getElementById('srv-ping').textContent = '—';
         return false;
       }
     }
@@ -968,82 +907,6 @@
     });
 
     $('enc-btn-annuler').addEventListener('click', resetFormEnceinte);
-
-    // ── Alertes ─────────────────────────────────────────────
-    async function loadAlertes() {
-      showLoader('alertes');
-      try {
-        const res = await fetch(`${API_BASE}/api/alertes?limit=20`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderAlertes(data);
-        showContent('alertes');
-      } catch (err) {
-        showError('alertes', `Erreur chargement : ${err.message}`);
-      }
-    }
-
-    function renderAlertes(list) {
-      const container = $('alertes-list');
-      const vide = $('alertes-vide');
-      if (!list || list.length === 0) {
-        container.innerHTML = '';
-        if (vide) vide.hidden = false;
-        return;
-      }
-      if (vide) vide.hidden = true;
-      container.innerHTML = '';
-      list.forEach(a => {
-        const statusClass = a.statut === 'active' || a.statut === 'en_cours' ? 'en-cours' : 'fermee';
-        const dateStr = a.created_at ? new Date(a.created_at).toLocaleString('fr-FR') : '';
-        const alerteNom = a.enceinte_nom || a.type || 'Alerte';
-        const message = a.message || '';
-        const div = document.createElement('div');
-        div.className = `alerte-ligne ${statusClass}`;
-        div.innerHTML = `
-          <div class="alerte-icone">${statusClass === 'en-cours' ? '🚨' : '✅'}</div>
-          <div class="alerte-info">
-            <strong>${escHtml(alerteNom)}</strong>
-            <p>${escHtml(message)}</p>
-          </div>
-          <div class="alerte-duree">${escHtml(dateStr)}</div>
-        `;
-        container.appendChild(div);
-      });
-    }
-
-    // ── Serveur ─────────────────────────────────────────────
-    async function loadServeurInfo() {
-      try {
-        const res = await fetch(`${API_BASE}/api/boutiques/1/dashboard`);
-        if (res.ok) {
-          const data = await res.json();
-          const el = $('srv-statut');
-          if (el) el.textContent = 'Opérationnel';
-          const last = data.derniere_mise_a_jour || data.last_update;
-          if (last) {
-            const d = new Date(last);
-            const now = new Date();
-            const diff = Math.floor((now - d) / 1000);
-            let tempsStr = diff < 60 ? `il y a ${diff}s` : `il y a ${Math.floor(diff/60)}min`;
-            $('srv-derniere-temp').textContent = tempsStr;
-          }
-        }
-      } catch { /* silent */ }
-      try {
-        const res = await fetch(`${API_BASE}/api/impression/status`);
-        if (res.ok) {
-          const data = await res.json();
-          $('srv-api').textContent = data.status === 'ready' || data.etat === 'pret' ? 'Imprimante prête' : 'Imprimante indisponible';
-        } else {
-          $('srv-api').textContent = '—';
-        }
-      } catch {
-        $('srv-api').textContent = '—';
-      }
-      $('srv-mqtt').textContent = connexionOk ? 'Connecté' : 'Déconnecté';
-      $('srv-version').textContent = '—';
-    }
 
     // ── Helpers ─────────────────────────────────────────────
     function escHtml(str) {
@@ -1710,8 +1573,6 @@
     loadPersonnel();
     loadThermometres();
     loadEnceintes();
-    loadAlertes();
-    loadServeurInfo();
     loadDlcSeuils();
     loadTestPersonnel();
 
