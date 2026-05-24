@@ -608,15 +608,27 @@ document.addEventListener('DOMContentLoaded', () => {
 //   Le N° de lot est affiché mais NON modifiable
 // ══════════════════════════════════════════════════════════════
 
-async function ouvrirEditModal(it) {
-  const token = await demanderMotDePasse();
-  if (!token) return;
-  editState.token = token;
+function ouvrirEditModal(it) {
+  editState.token = null;
   editState.cible = it;
 
   $('inv-edit-nom').textContent  = it.produit_nom;
   $('inv-edit-lot').textContent  = it.numero_lot || '—';
-  $('inv-edit-dlc').value        = it.dlc || '';
+  const dlcInput = $('inv-edit-dlc');
+  dlcInput.value    = it.dlc || '';
+  dlcInput.readOnly = true;
+  dlcInput.style.cursor = 'pointer';
+  dlcInput.onclick = async (e) => {
+    if (!dlcInput.readOnly) return;
+    e.preventDefault();
+    const token = await demanderMotDePasse();
+    if (!token) return;
+    editState.token   = token;
+    dlcInput.readOnly = false;
+    dlcInput.style.cursor = '';
+    dlcInput.onclick  = null;
+    dlcInput.showPicker?.();
+  };
 
   // Quantité : masquée pour les refroidissements (pas de champ quantité dans la table)
   const qtBloc = $('inv-edit-qte-bloc');
@@ -757,7 +769,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const token = editState.token;
-    if (!token) { alert('Session expirée, recommencez.'); fermerEditModal(); return; }
+    if (!token) {
+      alert('Veuillez d\'abord cliquer sur la date pour la modifier.');
+      return;
+    }
 
     btn.disabled = true;
     btn.textContent = 'Enregistrement…';
