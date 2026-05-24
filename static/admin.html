@@ -9,59 +9,17 @@
   <meta name="theme-color" content="#3D2008">
   <title>Administration — HACCP Monitor</title>
   <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/base.css">
   <link rel="stylesheet" href="/static/css/pages/admin.css">
-  <style>
-    /* ── Zone de test : groupes & sous-catégories ── */
-    .test-select-all-label { cursor:pointer; display:flex; align-items:center; gap:.4rem; }
-    .test-groups { display:flex; flex-direction:column; gap:.6rem; }
-
-    .test-group { border:1px solid #e0d5c5; border-radius:8px; overflow:hidden; }
-
-    .test-group-header {
-      display:flex; align-items:center; gap:.6rem;
-      padding:.55rem .75rem;
-      background:#f5ece0;
-      cursor:pointer;
-      user-select:none;
-      font-weight:600; font-size:.92rem;
-    }
-    .test-group-header:hover { background:#eddfc8; }
-    .test-group-header input[type=checkbox] { accent-color:#8b3a0f; cursor:pointer; flex-shrink:0; }
-    .test-group-toggle {
-      margin-left:auto; font-size:.8rem; color:#8b3a0f;
-      transition:transform .2s;
-    }
-    .test-group-toggle.open { transform:rotate(180deg); }
-
-    .test-group-body {
-      display:grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap:.4rem;
-      padding:.6rem .75rem;
-      background:#fdf8f2;
-    }
-    .test-group-body.collapsed { display:none; }
-
-    .test-subcat-item {
-      display:flex; align-items:center; gap:.45rem;
-      padding:.35rem .5rem;
-      border:1px solid #ecdfc9;
-      border-radius:5px;
-      cursor:pointer;
-      user-select:none;
-      font-size:.88rem;
-      background:#fff;
-    }
-    .test-subcat-item:hover { background:#fef3e8; }
-    .test-subcat-item input[type=checkbox] { accent-color:#8b3a0f; cursor:pointer; }
-  </style>
 </head>
 <body class="admin-body">
+
 <script>
   (function(){
     var PAGE = '/admin.html';
-    var INACTIVITE_MS = 5 * 60 * 1000;   // 5 min
+    var INACTIVITE_MS = 5 * 60 * 1000;
 
     function deconnecter(){
       localStorage.removeItem('admin_token');
@@ -71,26 +29,23 @@
       window.location.replace('/login.html');
     }
 
-    var exp      = Number(localStorage.getItem('admin_token_expires')||0);
-    var lastAct  = Number(localStorage.getItem('admin_last_activity')||0);
+    var exp     = Number(localStorage.getItem('admin_token_expires')||0);
+    var lastAct = Number(localStorage.getItem('admin_last_activity')||0);
     if(!localStorage.getItem('admin_token') || Date.now()>exp || (Date.now()-lastAct)>INACTIVITE_MS){
       deconnecter();
       return;
     }
 
-    // Marque l'activité à chaque interaction
     function touch(){ localStorage.setItem('admin_last_activity', String(Date.now())); }
     ['click','keydown','mousemove','touchstart','scroll'].forEach(function(ev){
       window.addEventListener(ev, touch, { passive:true });
     });
 
-    // Vérifie l'inactivité toutes les 30 s
     setInterval(function(){
       var la = Number(localStorage.getItem('admin_last_activity')||0);
       if((Date.now()-la)>INACTIVITE_MS) deconnecter();
     }, 30000);
 
-    // Quitter la page → re-login obligatoire au retour
     window.addEventListener('pagehide', function(){
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_token_expires');
@@ -99,27 +54,21 @@
   })();
 </script>
 
-  <!-- ========================================================
-       EN-TÊTE
-  ========================================================= -->
+  <!-- ── En-tête ── -->
   <header class="admin-header">
     <a href="/hub.html" class="btn-retour-hub">← Hub</a>
-    <div class="admin-titre">ADMINISTRATION</div>
+    <div class="admin-titre">Administration</div>
     <div id="admin-horloge" class="admin-horloge" aria-live="polite"></div>
-    <button id="admin-logout-btn" style="margin-left:auto;padding:.35rem .75rem;border:1.5px solid #fff;border-radius:6px;background:transparent;color:#fff;font-size:.82rem;cursor:pointer;opacity:.85" title="Se déconnecter">🔓 Déco</button>
+    <button id="admin-logout-btn" class="btn-logout" title="Se déconnecter">🔓 Déco</button>
   </header>
 
-  <!-- ========================================================
-       INDICATEUR CONNEXION SERVEUR
-  ========================================================= -->
+  <!-- ── Indicateur connexion ── -->
   <div id="admin-connexion" class="admin-connexion" hidden>
     <span class="admin-connexion-dot"></span>
     <span id="admin-connexion-msg">Connexion…</span>
   </div>
 
-  <!-- ========================================================
-       CONTENU PRINCIPAL
-  ========================================================= -->
+  <!-- ── Contenu principal ── -->
   <main class="admin-main">
 
     <!-- ── Personnel ── -->
@@ -128,9 +77,7 @@
         <h2 class="admin-section-titre">👥 Personnel</h2>
       </div>
       <div class="admin-section-body">
-        <div id="personnel-loader" class="admin-loader">
-          <div class="spinner"></div>
-        </div>
+        <div id="personnel-loader" class="admin-loader"><div class="spinner"></div></div>
         <div id="personnel-error" class="admin-error" hidden></div>
         <div id="personnel-content" hidden>
           <ul class="admin-list" id="personnel-list"></ul>
@@ -154,12 +101,11 @@
     <!-- ── Thermomètres de référence ── -->
     <section class="admin-section" id="section-thermometres">
       <div class="admin-section-header">
-        <h2 class="admin-section-titre">🌡️ Thermomètres de référence <span class="admin-badge admin-badge--info">EET01</span></h2>
+        <h2 class="admin-section-titre">🌡️ Thermomètres de référence</h2>
+        <span class="admin-badge admin-badge--info">EET01</span>
       </div>
       <div class="admin-section-body">
-        <div id="thermometres-loader" class="admin-loader">
-          <div class="spinner"></div>
-        </div>
+        <div id="thermometres-loader" class="admin-loader"><div class="spinner"></div></div>
         <div id="thermometres-error" class="admin-error" hidden></div>
         <div id="thermometres-content" hidden>
           <ul class="admin-list" id="thermometres-list"></ul>
@@ -183,18 +129,16 @@
     <!-- ── Enceintes / Sondes ── -->
     <section class="admin-section" id="section-enceintes">
       <div class="admin-section-header">
-        <h2 class="admin-section-titre">🌡️ Enceintes — Sondes</h2>
+        <h2 class="admin-section-titre">🏠 Enceintes — Sondes</h2>
       </div>
       <div class="admin-section-body">
-        <div id="enceintes-loader" class="admin-loader">
-          <div class="spinner"></div>
-        </div>
+        <div id="enceintes-loader" class="admin-loader"><div class="spinner"></div></div>
         <div id="enceintes-error" class="admin-error" hidden></div>
         <div id="enceintes-content" hidden>
           <div class="admin-enceintes-grid" id="enceintes-grid"></div>
 
-          <form class="admin-form" id="enceintes-form" style="margin-top:1rem">
-            <h3 class="admin-form-titre" id="enceintes-form-titre" style="margin:0 0 .75rem">Ajouter une enceinte</h3>
+          <form class="admin-form" id="enceintes-form" style="margin-top:1.5rem">
+            <h3 class="admin-form-titre" id="enceintes-form-titre">Ajouter une enceinte</h3>
             <div class="admin-form-row">
               <div class="admin-field">
                 <label for="enc-nom">Nom *</label>
@@ -217,7 +161,7 @@
                 <input type="text" id="enc-sonde" placeholder="Ex : chambre_froide_1">
               </div>
             </div>
-            <div class="admin-form-row">
+            <div class="admin-form-row" style="margin-top:.75rem">
               <div class="admin-field">
                 <label for="enc-temp-min">T° min (°C)</label>
                 <input type="number" id="enc-temp-min" value="0" step="0.5">
@@ -235,7 +179,7 @@
                 <input type="number" id="enc-delai" value="5" min="1">
               </div>
             </div>
-            <div class="admin-form-row">
+            <div class="admin-form-row" style="margin-top:.75rem">
               <button type="submit" class="btn btn-primaire" id="enc-btn-sauver">Ajouter l'enceinte</button>
               <button type="button" class="btn btn-secondaire" id="enc-btn-annuler" hidden>Annuler</button>
             </div>
@@ -245,7 +189,7 @@
       </div>
     </section>
 
-    <!-- ── Alertes DLC (seuils configurables) ── -->
+    <!-- ── Alertes DLC ── -->
     <section class="admin-section" id="section-dlc-seuils">
       <div class="admin-section-header">
         <h2 class="admin-section-titre">📅 Alertes DLC</h2>
@@ -256,20 +200,20 @@
         <div id="dlc-seuils-error" class="admin-error" hidden></div>
         <div id="dlc-seuils-content" hidden>
           <p class="admin-info-text">
-            Définit le nombre de jours avant la DLC à partir duquel le produit passe en alerte rouge / orange / jaune dans le calendrier DLC.
+            Nombre de jours avant la DLC à partir duquel le produit passe en alerte rouge / orange / jaune dans le calendrier.
           </p>
           <form class="admin-form" id="dlc-seuils-form">
             <div class="admin-form-row">
               <div class="admin-field">
-                <label for="dlc-rouge">🔴 Rouge — critique (jours)</label>
+                <label for="dlc-rouge">🔴 Rouge — critique (j)</label>
                 <input type="number" id="dlc-rouge" name="rouge_jours" min="0" max="30" required>
               </div>
               <div class="admin-field">
-                <label for="dlc-orange">🟠 Orange — urgent (jours)</label>
+                <label for="dlc-orange">🟠 Orange — urgent (j)</label>
                 <input type="number" id="dlc-orange" name="orange_jours" min="0" max="60" required>
               </div>
               <div class="admin-field">
-                <label for="dlc-jaune">🟡 Jaune — attention (jours)</label>
+                <label for="dlc-jaune">🟡 Jaune — attention (j)</label>
                 <input type="number" id="dlc-jaune" name="jaune_jours" min="0" max="180" required>
               </div>
               <button type="submit" class="btn btn-primaire">Enregistrer</button>
@@ -286,23 +230,23 @@
         <h2 class="admin-section-titre">🔐 Sécurité</h2>
       </div>
       <div class="admin-section-body">
-        <form id="form-chg-pwd" autocomplete="off" style="display:flex;flex-direction:column;gap:.9rem;max-width:360px;">
-          <div style="display:flex;flex-direction:column;gap:.3rem;">
-            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-old">Ancien mot de passe</label>
-            <input type="password" id="chg-old" placeholder="••••••••" required style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+        <form id="form-chg-pwd" autocomplete="off" class="security-form">
+          <div class="security-field">
+            <label for="chg-old">Ancien mot de passe</label>
+            <input type="password" id="chg-old" placeholder="••••••••" required>
           </div>
-          <div style="display:flex;flex-direction:column;gap:.3rem;">
-            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-new">Nouveau mot de passe</label>
-            <input type="password" id="chg-new" placeholder="••••••••" required minlength="6" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+          <div class="security-field">
+            <label for="chg-new">Nouveau mot de passe</label>
+            <input type="password" id="chg-new" placeholder="••••••••" required minlength="6">
           </div>
-          <div style="display:flex;flex-direction:column;gap:.3rem;">
-            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-confirm">Confirmer le nouveau mot de passe</label>
-            <input type="password" id="chg-confirm" placeholder="••••••••" required minlength="6" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+          <div class="security-field">
+            <label for="chg-confirm">Confirmer le nouveau mot de passe</label>
+            <input type="password" id="chg-confirm" placeholder="••••••••" required minlength="6">
           </div>
-          <div id="chg-msg" style="display:none;border-radius:8px;padding:.6rem .85rem;font-size:.88rem;font-weight:600;text-align:center;"></div>
-          <button type="submit" class="btn btn-primaire" id="chg-btn" style="align-self:flex-start;">Changer le mot de passe</button>
+          <div id="chg-msg" class="security-msg"></div>
+          <button type="submit" class="btn btn-primaire" id="chg-btn" style="align-self:flex-start">Changer le mot de passe</button>
         </form>
-        <p style="margin-top:1rem;font-size:.82rem;color:#888;">
+        <p class="admin-info-text" style="margin-top:1rem">
           Le changement est actif immédiatement et sauvegardé dans le fichier <code>.env</code> du serveur.
         </p>
       </div>
@@ -312,7 +256,7 @@
     <section class="admin-section" id="section-test">
       <div class="admin-section-header">
         <h2 class="admin-section-titre">🧪 Zone de test &amp; formation</h2>
-        <span class="admin-badge admin-badge--info">Purge sélective</span>
+        <span class="admin-badge admin-badge--warning">Purge sélective</span>
       </div>
       <div class="admin-section-body">
         <p class="admin-info-text">
@@ -320,9 +264,8 @@
           Le membre lui-même est conservé. Cette action est <strong>irréversible</strong>.
         </p>
 
-        <!-- Sélection du personnel -->
         <div class="admin-form-row" style="margin-bottom:1.25rem">
-          <div class="admin-field" style="max-width:280px">
+          <div class="admin-field" style="max-width:300px">
             <label for="test-personnel-select">👤 Membre du personnel</label>
             <select id="test-personnel-select">
               <option value="">— choisir —</option>
@@ -330,14 +273,13 @@
           </div>
         </div>
 
-        <!-- Sélection des sous-catégories -->
         <div id="test-categories" style="display:none">
-          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:.75rem; flex-wrap:wrap">
+          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:.85rem; flex-wrap:wrap">
             <label class="test-select-all-label">
-              <input type="checkbox" id="test-select-all"> <strong>Tout sélectionner / désélectionner</strong>
+              <input type="checkbox" id="test-select-all"> Tout sélectionner / désélectionner
             </label>
           </div>
-          <div id="test-groups"></div>
+          <div id="test-groups" class="test-groups"></div>
           <div style="margin-top:1.25rem">
             <button class="btn btn-danger" id="btn-purger-test" disabled>🗑️ Supprimer les entrées sélectionnées</button>
           </div>
@@ -345,28 +287,28 @@
 
         <div id="test-msg" class="admin-depan-msg" hidden></div>
 
-        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+        <hr class="admin-divider">
 
         <!-- Purge historique température -->
         <p class="admin-info-text">
           Supprime les relevés de température (et alertes associées) enregistrés pendant
           la phase de test, quand les sondes affichaient des valeurs anormales.
         </p>
-        <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem; margin-bottom:.75rem">
-          <div class="admin-field" style="max-width:200px">
+        <div class="admin-form-row" style="align-items:flex-end; margin-bottom:.75rem">
+          <div class="admin-field" style="max-width:220px">
             <label for="temp-avant-date">Supprimer avant le (facultatif)</label>
             <input type="date" id="temp-avant-date">
           </div>
-          <label style="display:flex; align-items:center; gap:.4rem; font-size:.9rem; padding-bottom:.1rem">
-            <input type="checkbox" id="temp-inclure-alertes" checked> Inclure les alertes
+          <label style="display:flex; align-items:center; gap:.4rem; font-size:var(--text-sm); padding-bottom:.15rem">
+            <input type="checkbox" id="temp-inclure-alertes" checked style="accent-color:var(--color-accent)"> Inclure les alertes
           </label>
-          <button class="btn btn-danger" id="btn-purger-temp" style="white-space:nowrap">
+          <button class="btn btn-danger" id="btn-purger-temp">
             🌡️ Supprimer l'historique de température
           </button>
         </div>
         <div id="temp-msg" class="admin-depan-msg" hidden></div>
 
-        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+        <hr class="admin-divider">
 
         <!-- Purge rapports -->
         <p class="admin-info-text">
@@ -380,25 +322,25 @@
         </div>
         <div id="rapports-msg" class="admin-depan-msg" hidden></div>
 
-        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+        <hr class="admin-divider">
 
         <!-- Purge exports CSV -->
         <p class="admin-info-text">
           Supprime les fichiers CSV d'export des relevés de température. Ces fichiers s'accumulent automatiquement et ne sont pas liés à un utilisateur.
         </p>
-        <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.5rem">
+        <div class="admin-form-row" style="align-items:center; margin-bottom:.5rem">
           <button class="btn btn-danger" id="btn-purger-exports">
             📊 Supprimer tous les exports CSV
           </button>
-          <label style="font-size:.88rem; display:flex; align-items:center; gap:.4rem">
-            <input type="checkbox" id="exports-filtre-date" style="accent-color:#8b3a0f">
+          <label style="font-size:var(--text-sm); display:flex; align-items:center; gap:.4rem">
+            <input type="checkbox" id="exports-filtre-date" style="accent-color:var(--color-accent)">
             Uniquement avant le
           </label>
-          <input type="date" id="exports-avant-date" style="font-size:.88rem; padding:.3rem .5rem; border:1px solid #e0d5c5; border-radius:4px">
+          <input type="date" id="exports-avant-date" style="font-size:var(--text-sm); padding:.45rem .65rem; border:1.5px solid #d8c9b2; border-radius:var(--radius-sm); background:#fff; font-family:inherit">
         </div>
         <div id="exports-msg" class="admin-depan-msg" hidden></div>
 
-        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+        <hr class="admin-divider">
 
         <!-- Espace disque -->
         <p class="admin-info-text">
@@ -410,58 +352,56 @@
           </button>
         </div>
         <div id="stats-disque-container" style="display:none; margin-bottom:1.5rem">
-          <div id="stats-disque-loader" style="text-align:center; padding:1rem">
-            <div class="spinner" style="display:inline-block"></div> Calcul en cours…
+          <div id="stats-disque-loader" style="text-align:center; padding:1.5rem">
+            <div class="spinner"></div>
           </div>
 
-          <div id="stats-disque-summary" style="display:none; padding:1rem; background:#fef8f0; border:1px solid #e0d5c5; border-radius:8px; margin-bottom:1rem">
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; font-size:.95rem">
-              <div>
-                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Espace total</div>
-                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-total-espace">—</div>
-              </div>
-              <div>
-                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Utilisé</div>
-                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-utilise-pct">—</div>
-              </div>
-              <div>
-                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Disponible</div>
-                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-dispo">—</div>
-              </div>
-              <div>
-                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Dernière sauvegarde</div>
-                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-backup">—</div>
-              </div>
+          <div id="stats-disque-summary" class="stats-summary" style="display:none">
+            <div class="stats-summary-item">
+              <div class="stats-summary-label">Espace total</div>
+              <div class="stats-summary-value" id="stats-disque-total-espace">—</div>
+            </div>
+            <div class="stats-summary-item">
+              <div class="stats-summary-label">Utilisé</div>
+              <div class="stats-summary-value" id="stats-disque-utilise-pct">—</div>
+            </div>
+            <div class="stats-summary-item">
+              <div class="stats-summary-label">Disponible</div>
+              <div class="stats-summary-value" id="stats-disque-dispo">—</div>
+            </div>
+            <div class="stats-summary-item">
+              <div class="stats-summary-label">Dernière sauvegarde</div>
+              <div class="stats-summary-value" id="stats-disque-backup">—</div>
             </div>
           </div>
 
-          <table id="stats-disque-table" style="display:none; width:100%; border-collapse:collapse; font-size:.9rem">
+          <table id="stats-disque-table" class="stats-table">
             <thead>
-              <tr style="background:#f5ece0; border-bottom:2px solid #e0d5c5">
-                <th style="padding:.5rem; text-align:left; font-weight:600">Catégorie</th>
-                <th style="padding:.5rem; text-align:right; font-weight:600">Taille (Mo)</th>
-                <th style="padding:.5rem; text-align:right; font-weight:600">Fichiers</th>
+              <tr>
+                <th>Catégorie</th>
+                <th>Taille (Mo)</th>
+                <th>Fichiers</th>
               </tr>
             </thead>
             <tbody id="stats-disque-tbody"></tbody>
             <tfoot>
-              <tr style="border-top:2px solid #e0d5c5; font-weight:600; background:#fef8f0">
-                <td style="padding:.5rem">TOTAL</td>
-                <td style="padding:.5rem; text-align:right" id="stats-disque-total">—</td>
-                <td style="padding:.5rem; text-align:right" id="stats-disque-total-fichiers">—</td>
+              <tr>
+                <td>TOTAL</td>
+                <td id="stats-disque-total">—</td>
+                <td id="stats-disque-total-fichiers">—</td>
               </tr>
             </tfoot>
           </table>
         </div>
 
-        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+        <hr class="admin-divider">
 
         <!-- Photos orphelines -->
         <p class="admin-info-text">
           Vérifie et supprime les photos de test orphelines (fichiers sur disque non référencés en base).
         </p>
-        <div style="margin-bottom:.75rem">
-          <button class="btn btn-secondaire" id="btn-verifier-photos" style="margin-right:.5rem">
+        <div style="display:flex; gap:.65rem; flex-wrap:wrap; margin-bottom:.75rem">
+          <button class="btn btn-secondaire" id="btn-verifier-photos">
             🔍 Vérifier les photos orphelines
           </button>
           <button class="btn btn-danger" id="btn-supprimer-photos" hidden>
@@ -475,22 +415,22 @@
 
   </main>
 
-  <!-- Modal: Détail des fichiers d'une catégorie -->
-  <div id="detail-fichiers-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; overflow:auto; padding:2rem 1rem">
-    <div style="background:#fff; border-radius:8px; max-width:800px; margin:2rem auto; box-shadow:0 4px 16px rgba(0,0,0,0.15)">
-      <div style="padding:1.5rem; border-bottom:1px solid #e0d5c5; display:flex; justify-content:space-between; align-items:center">
-        <h3 style="margin:0; font-size:1.1rem" id="detail-fichiers-titre">Détail des fichiers</h3>
-        <button id="detail-fichiers-close" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:#666">&times;</button>
+  <!-- ── Modal: Détail des fichiers ── -->
+  <div id="detail-fichiers-modal" class="admin-modal-overlay">
+    <div class="admin-modal">
+      <div class="admin-modal-header">
+        <h3 class="admin-modal-titre" id="detail-fichiers-titre">Détail des fichiers</h3>
+        <button id="detail-fichiers-close" class="admin-modal-close" aria-label="Fermer">&times;</button>
       </div>
-      <div style="padding:1.5rem; max-height:500px; overflow-y:auto">
+      <div class="admin-modal-body">
         <div id="detail-fichiers-loader" style="text-align:center; padding:2rem">
-          <div class="spinner" style="display:inline-block"></div> Chargement…
+          <div class="spinner"></div>
         </div>
-        <table id="detail-fichiers-table" style="display:none; width:100%; border-collapse:collapse; font-size:.85rem">
+        <table id="detail-fichiers-table" class="admin-modal-table">
           <thead>
-            <tr style="background:#f5ece0; border-bottom:1px solid #e0d5c5; position:sticky; top:0">
-              <th style="padding:.5rem; text-align:left; font-weight:600">Fichier</th>
-              <th style="padding:.5rem; text-align:right; font-weight:600; width:120px">Taille</th>
+            <tr>
+              <th>Fichier</th>
+              <th>Taille</th>
             </tr>
           </thead>
           <tbody id="detail-fichiers-tbody"></tbody>
@@ -533,8 +473,7 @@
     function updateClock() {
       const el = document.getElementById('admin-horloge');
       if (!el) return;
-      const now = new Date();
-      el.textContent = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     setInterval(updateClock, 1000);
     updateClock();
@@ -548,7 +487,7 @@
       const panel = document.getElementById('admin-connexion');
       try {
         const t0 = Date.now();
-        const res = await fetch(`${API_BASE}/api/boutiques/1/dashboard`, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+        await fetch(`${API_BASE}/api/boutiques/1/dashboard`, { method: 'HEAD', signal: AbortSignal.timeout(5000) });
         const ms = Date.now() - t0;
         connexionOk = true;
         if (dot) dot.className = 'admin-connexion-dot admin-connexion-dot--ok';
@@ -603,8 +542,7 @@
       try {
         const res = await fetch(`${API_BASE}/api/admin/personnel`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderPersonnel(data);
+        renderPersonnel(await res.json());
         showContent('personnel');
       } catch (err) {
         showError('personnel', `Erreur chargement : ${err.message}`);
@@ -723,8 +661,8 @@
 
     $('thermometres-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const nom    = $('thermo-nom').value.trim();
-      const serie  = $('thermo-serie').value.trim();
+      const nom   = $('thermo-nom').value.trim();
+      const serie = $('thermo-serie').value.trim();
       if (!nom) return;
       try {
         const res = await authFetch(`${API_BASE}/api/admin/thermometres`, {
@@ -742,15 +680,14 @@
     });
 
     // ── Enceintes ───────────────────────────────────────────
-    let enceinteEnEdition = null; // null = mode création, id = mode édition
+    let enceinteEnEdition = null;
 
     async function loadEnceintes() {
       showLoader('enceintes');
       try {
         const res = await fetch(`${API_BASE}/api/boutiques/1/enceintes`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        renderEnceintes(data);
+        renderEnceintes(await res.json());
         showContent('enceintes');
       } catch (err) {
         showError('enceintes', `Erreur chargement : ${err.message}`);
@@ -765,13 +702,13 @@
         return;
       }
       list.forEach(e => {
-        const min = e.seuil_temp_min ?? '—';
-        const max = e.seuil_temp_max ?? '—';
-        const hum = e.seuil_hum_max ?? '—';
+        const min   = e.seuil_temp_min ?? '—';
+        const max   = e.seuil_temp_max ?? '—';
+        const hum   = e.seuil_hum_max ?? '—';
         const delai = e.delai_alerte_minutes ?? '—';
         const zigbee = e.sonde_zigbee_id
           ? `📡 ${escHtml(e.sonde_zigbee_id)}`
-          : '<em style="color:#aaa">Aucune sonde</em>';
+          : '<em style="color:#bbb;font-style:normal">Aucune sonde</em>';
         const carte = document.createElement('div');
         carte.className = 'admin-enceinte-carte';
         carte.dataset.id = e.id;
@@ -783,15 +720,14 @@
             </div>
           </div>
           <div class="admin-enceinte-seuils">
-            T° : ${min}°C → ${max}°C · Hum. max : ${hum}% · Délai : ${delai} min
+            T° : ${min}°C → ${max}°C &nbsp;·&nbsp; Hum. max : ${hum}% &nbsp;·&nbsp; Délai : ${delai} min
           </div>
           <div class="admin-enceinte-meta">
             <span>${escHtml((e.type || 'sonde').replace(/_/g, ' '))}</span>
           </div>
-          <div class="admin-enceinte-actions" style="display:flex; gap:.5rem; margin-top:.5rem;">
+          <div class="admin-enceinte-actions">
             <button class="btn btn-secondaire btn-sm btn-editer-enceinte" data-id="${e.id}">Modifier</button>
-            <button class="btn btn-sm btn-supprimer-enceinte" data-id="${e.id}" data-nom="${escHtml(e.nom)}"
-              style="background:#fdecea; color:#c93030; border:1px solid #f5c6c6;">Supprimer</button>
+            <button class="btn btn-danger btn-sm btn-supprimer-enceinte" data-id="${e.id}" data-nom="${escHtml(e.nom)}">Supprimer</button>
           </div>
         `;
         grid.appendChild(carte);
@@ -848,7 +784,7 @@
       $('enc-hum-max').value  = 90;
       $('enc-delai').value    = 5;
       $('enceintes-form-titre').textContent = 'Ajouter une enceinte';
-      $('enc-btn-sauver').textContent = 'Ajouter l\'enceinte';
+      $('enc-btn-sauver').textContent = "Ajouter l'enceinte";
       $('enc-btn-annuler').hidden = true;
       afficherMsgEnceinte('', '');
     }
@@ -1041,7 +977,6 @@
         const div = document.createElement('div');
         div.className = 'test-group';
 
-        // En-tête du groupe
         const header = document.createElement('div');
         header.className = 'test-group-header';
         header.innerHTML = `
@@ -1051,7 +986,6 @@
         `;
         div.appendChild(header);
 
-        // Corps (sous-catégories)
         const body = document.createElement('div');
         body.className = 'test-group-body';
         body.id = 'body-' + grp.id;
@@ -1063,7 +997,6 @@
         });
         div.appendChild(body);
 
-        // Toggle dépliage
         header.addEventListener('click', (e) => {
           if (e.target.type === 'checkbox') return;
           const isOpen = !body.classList.contains('collapsed');
@@ -1071,7 +1004,6 @@
           header.querySelector('.test-group-toggle').classList.toggle('open', !isOpen);
         });
 
-        // Clic sur la coche de groupe → coche/décoche toutes les sous-cats
         header.querySelector('.test-grp-cb').addEventListener('change', function () {
           body.querySelectorAll('.test-sub-cb').forEach(cb => { cb.checked = this.checked; });
           syncGlobalSelectAll();
@@ -1081,7 +1013,6 @@
         container.appendChild(div);
       });
 
-      // Délégation : changement d'une sous-cat → met à jour la coche du groupe + global
       container.addEventListener('change', (e) => {
         if (!e.target.classList.contains('test-sub-cb')) return;
         const grpId = e.target.dataset.grp;
@@ -1106,7 +1037,7 @@
     }
 
     function updatePurgeBtn() {
-      const hasPers = !!$('test-personnel-select').value;
+      const hasPers  = !!$('test-personnel-select').value;
       const anySubOn = document.querySelectorAll('.test-sub-cb:checked').length > 0;
       $('btn-purger-test').disabled = !(hasPers && anySubOn);
     }
@@ -1164,7 +1095,6 @@
       const subcats = Array.from(document.querySelectorAll('.test-sub-cb:checked')).map(cb => cb.value);
       if (subcats.length === 0) { setMsg('erreur', 'Cochez au moins une sous-catégorie.'); return; }
 
-      // Résumé lisible pour la confirmation
       const lignes = GROUPES_PURGE
         .map(grp => {
           const sel = grp.subs.filter(s => subcats.includes(s.id)).map(s => s.label);
@@ -1215,11 +1145,8 @@
 
       const avantDate      = $('temp-avant-date').value || null;
       const inclureAlertes = $('temp-inclure-alertes').checked;
-
-      const periode = avantDate
-        ? `avant le ${avantDate}`
-        : 'TOUT l\'historique';
-      const alertesTxt = inclureAlertes ? ' + alertes associées' : '';
+      const periode        = avantDate ? `avant le ${avantDate}` : "TOUT l'historique";
+      const alertesTxt     = inclureAlertes ? ' + alertes associées' : '';
 
       if (!confirm(`Supprimer ${periode}${alertesTxt} ?\n\nCette action est IRRÉVERSIBLE.`)) return;
 
@@ -1268,7 +1195,7 @@
       try {
         const res = await authFetch(`${API_BASE}/api/admin/rapports`, { method: 'DELETE' });
         if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-        const data = await res.json();
+        const data   = await res.json();
         const nbErrs = (data.erreurs || []).length;
         if (data.supprime_db === 0 && data.supprime_disk === 0) {
           setMsg('ok', '✓ Aucun rapport à supprimer.');
@@ -1295,12 +1222,9 @@
         msg.textContent = txt;
       };
 
-      const useDate = $('exports-filtre-date').checked;
+      const useDate   = $('exports-filtre-date').checked;
       const avantDate = $('exports-avant-date').value;
-      if (useDate && !avantDate) {
-        setMsg('erreur', 'Veuillez saisir une date limite.');
-        return;
-      }
+      if (useDate && !avantDate) { setMsg('erreur', 'Veuillez saisir une date limite.'); return; }
 
       const confirmMsg = useDate
         ? `Supprimer tous les exports CSV antérieurs au ${avantDate} ?\n\nCette action est IRRÉVERSIBLE.`
@@ -1315,7 +1239,7 @@
           : `${API_BASE}/api/admin/exports`;
         const res = await authFetch(url, { method: 'DELETE' });
         if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-        const data = await res.json();
+        const data   = await res.json();
         const nbErrs = (data.erreurs || []).length;
         if (data.supprime === 0) {
           setMsg('ok', '✓ Aucun export à supprimer.');
@@ -1334,10 +1258,10 @@
     // ── Stats espace disque ────────────────────────────────
     $('btn-stats-disque').addEventListener('click', async () => {
       const container = $('stats-disque-container');
-      const loader = $('stats-disque-loader');
-      const summary = $('stats-disque-summary');
-      const table = $('stats-disque-table');
-      const tbody = $('stats-disque-tbody');
+      const loader    = $('stats-disque-loader');
+      const summary   = $('stats-disque-summary');
+      const table     = $('stats-disque-table');
+      const tbody     = $('stats-disque-tbody');
 
       container.style.display = 'block';
       loader.style.display = 'block';
@@ -1349,34 +1273,29 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
-        // Afficher résumé des stats système
         if (data.disque_total_gb !== undefined && data.disque_total_gb > 0) {
-          const totalGb = parseFloat(data.disque_total_gb).toFixed(2);
-          const utilisePct = Math.round(data.disque_utilise_pct || 0);
+          const totalGb       = parseFloat(data.disque_total_gb).toFixed(2);
+          const utilisePct    = Math.round(data.disque_utilise_pct || 0);
           const disponiblePct = 100 - utilisePct;
-          const disponibleGb = parseFloat(data.disque_libre_gb || 0).toFixed(2);
+          const disponibleGb  = parseFloat(data.disque_libre_gb || 0).toFixed(2);
 
           $('stats-disque-total-espace').textContent = `${totalGb} GB`;
-          $('stats-disque-utilise-pct').textContent = `${utilisePct}%`;
-          $('stats-disque-dispo').textContent = `${disponibleGb} GB (${disponiblePct}%)`;
-          summary.style.display = 'block';
+          $('stats-disque-utilise-pct').textContent  = `${utilisePct}%`;
+          $('stats-disque-dispo').textContent        = `${disponibleGb} GB (${disponiblePct}%)`;
+          summary.style.display = 'grid';
         }
 
-        // Dernière sauvegarde (n'interrompt pas l'affichage des stats si erreur)
         chargerDerniereSauvegarde();
 
         tbody.innerHTML = '';
         let totalFichiers = 0;
 
-        // Tri par taille décroissante
         const dossiers = Object.entries(data.dossiers)
           .sort(([, a], [, b]) => b.taille_mo - a.taille_mo);
 
         dossiers.forEach(([cle, stats]) => {
           const hasDetail = cle !== 'os';
           const tr = document.createElement('tr');
-          tr.style.borderBottom = '1px solid #e0d5c5';
-          tr.style.transition = 'background-color .2s';
           if (hasDetail) {
             tr.style.cursor = 'pointer';
             tr.addEventListener('mouseenter', () => { tr.style.background = '#f9f3eb'; });
@@ -1384,39 +1303,38 @@
             tr.addEventListener('click', () => { ouvrirDetailFichiers(cle, stats.label || cle); });
           }
           const nbAffiche = stats.nb_fichiers === null ? '—' : stats.nb_fichiers;
-          const hint = hasDetail ? ' <span style="color:#aaa;font-size:.8rem">▶</span>' : '';
+          const hint = hasDetail ? ' <span style="color:#bbb;font-size:.75rem">▶</span>' : '';
           tr.innerHTML = `
-            <td style="padding:.5rem">${escHtml(stats.label || cle)}${hint}</td>
-            <td style="padding:.5rem; text-align:right">${stats.taille_mo} Mo</td>
-            <td style="padding:.5rem; text-align:right">${nbAffiche}</td>
+            <td>${escHtml(stats.label || cle)}${hint}</td>
+            <td>${stats.taille_mo} Mo</td>
+            <td>${nbAffiche}</td>
           `;
           tbody.appendChild(tr);
           if (stats.nb_fichiers !== null) totalFichiers += stats.nb_fichiers;
         });
 
-        $('stats-disque-total').textContent = data.total_mo + ' Mo';
+        $('stats-disque-total').textContent          = data.total_mo + ' Mo';
         $('stats-disque-total-fichiers').textContent = totalFichiers;
 
-        loader.style.display = 'none';
-        table.style.display = 'table';
+        loader.style.display  = 'none';
+        table.style.display   = 'table';
       } catch (err) {
         loader.style.display = 'none';
-        loader.innerHTML = `<div style="color:#c93030">Erreur : ${err.message}</div>`;
+        loader.innerHTML = `<div class="admin-error">Erreur : ${err.message}</div>`;
       }
     });
 
-    // Ouvrir le modal de détail des fichiers
     const ouvrirDetailFichiers = async (dossier, label) => {
-      const modal = $('detail-fichiers-modal');
-      const titre = $('detail-fichiers-titre');
+      const modal  = $('detail-fichiers-modal');
+      const titre  = $('detail-fichiers-titre');
       const loader = $('detail-fichiers-loader');
-      const table = $('detail-fichiers-table');
-      const tbody = $('detail-fichiers-tbody');
+      const table  = $('detail-fichiers-table');
+      const tbody  = $('detail-fichiers-tbody');
 
       modal.style.display = 'block';
-      titre.textContent = label || dossier;
+      titre.textContent   = label || dossier;
       loader.style.display = 'block';
-      table.style.display = 'none';
+      table.style.display  = 'none';
       tbody.innerHTML = '';
 
       try {
@@ -1424,26 +1342,23 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
-        // Les fichiers sont déjà triés par le serveur
         data.fichiers.forEach(file => {
           const tr = document.createElement('tr');
-          tr.style.borderBottom = '1px solid #ecdfc9';
           tr.innerHTML = `
-            <td style="padding:.5rem; word-break:break-all">${escHtml(file.chemin)}</td>
-            <td style="padding:.5rem; text-align:right; white-space:nowrap">${file.taille_mo} Mo</td>
+            <td>${escHtml(file.chemin)}</td>
+            <td>${file.taille_mo} Mo</td>
           `;
           tbody.appendChild(tr);
         });
 
         loader.style.display = 'none';
-        table.style.display = 'table';
+        table.style.display  = 'table';
       } catch (err) {
         loader.style.display = 'none';
-        loader.innerHTML = `<div style="color:#c93030">Erreur : ${err.message}</div>`;
+        loader.innerHTML = `<div class="admin-error">Erreur : ${err.message}</div>`;
       }
     };
 
-    // Fermer le modal
     $('detail-fichiers-close').addEventListener('click', () => {
       $('detail-fichiers-modal').style.display = 'none';
     });
@@ -1453,7 +1368,6 @@
       }
     });
 
-    // Charger la date de la dernière sauvegarde
     const chargerDerniereSauvegarde = async () => {
       const el = $('stats-disque-backup');
       el.textContent = '…';
@@ -1465,7 +1379,7 @@
 
         if (!data.existe) {
           el.textContent = '⚠️ Jamais';
-          el.style.color = '#c93030';
+          el.style.color = 'var(--color-alert)';
           el.title = data.message || '';
           return;
         }
@@ -1476,20 +1390,19 @@
           hour: '2-digit', minute: '2-digit',
         });
 
-        // Texte relatif (il y a X h / X j)
         const h = data.heures_ecoulees;
         let relatif;
-        if (h < 1)        relatif = "à l'instant";
-        else if (h < 24)  relatif = `il y a ${Math.round(h)} h`;
-        else              relatif = `il y a ${Math.round(h / 24)} j`;
+        if (h < 1)       relatif = "à l'instant";
+        else if (h < 24) relatif = `il y a ${Math.round(h)} h`;
+        else             relatif = `il y a ${Math.round(h / 24)} j`;
 
         if (data.obsolete) {
           el.innerHTML = `⚠️ ${dateStr}<br><span style="font-size:.8rem;font-weight:400">${relatif}</span>`;
-          el.style.color = '#c93030';
+          el.style.color = 'var(--color-alert)';
           el.title = 'Sauvegarde possiblement obsolète (> 30h)';
         } else {
           el.innerHTML = `✓ ${dateStr}<br><span style="font-size:.8rem;font-weight:400;color:#666">${relatif}</span>`;
-          el.style.color = '#2e7d32';
+          el.style.color = 'var(--color-ok)';
           el.title = '';
         }
       } catch (err) {
@@ -1504,10 +1417,11 @@
 
     $('btn-verifier-photos').addEventListener('click', async () => {
       const status = $('photos-status');
-      const btn = $('btn-verifier-photos');
+      const btn    = $('btn-verifier-photos');
       btn.disabled = true;
       status.textContent = 'Vérification en cours…';
       status.hidden = false;
+      status.className = 'admin-depan-msg admin-depan-msg--info';
       try {
         const res = await fetch(`${API_BASE}/api/admin/photos-orphelines`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1520,10 +1434,8 @@
         } else {
           const tailleTot = Math.round(photosOrphelines.reduce((a, p) => a + p.taille_ko, 0) / 1024 * 10) / 10;
           status.className = 'admin-depan-msg admin-depan-msg--info';
-          status.innerHTML = `
-            ⚠️ ${data.total} photo(s) orpheline(s) trouvée(s) (${tailleTot} Mo).<br>
-            <small>${photosOrphelines.map(p => p.chemin).join(', ')}</small>
-          `;
+          status.innerHTML = `⚠️ ${data.total} photo(s) orpheline(s) trouvée(s) (${tailleTot} Mo).<br>
+            <small style="font-weight:400">${photosOrphelines.map(p => p.chemin).join(', ')}</small>`;
           $('btn-supprimer-photos').hidden = false;
         }
       } catch (err) {
@@ -1551,7 +1463,7 @@
       try {
         const res = await authFetch(`${API_BASE}/api/admin/photos-orphelines`, { method: 'DELETE' });
         if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-        const data = await res.json();
+        const data   = await res.json();
         const nbErrs = (data.erreurs || []).length;
         if (data.supprime === 0) {
           setMsg('ok', '✓ Aucune photo à supprimer.');
@@ -1589,7 +1501,9 @@
 
       if (newPwd !== confPwd) {
         msgEl.textContent = 'Les mots de passe ne correspondent pas.';
-        msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+        msgEl.style.background = '#fde8e8';
+        msgEl.style.color = 'var(--color-alert)';
+        msgEl.style.borderColor = 'var(--color-alert)';
         msgEl.style.display = 'block';
         return;
       }
@@ -1604,17 +1518,23 @@
         const data = await res.json().catch(() => ({}));
         if (res.ok) {
           msgEl.textContent = '✅ Mot de passe modifié avec succès !';
-          msgEl.style.background = '#d1fae5'; msgEl.style.color = '#065f46';
+          msgEl.style.background = '#d1fae5';
+          msgEl.style.color = 'var(--color-ok)';
+          msgEl.style.borderColor = 'var(--color-ok)';
           document.getElementById('chg-old').value = '';
           document.getElementById('chg-new').value = '';
           document.getElementById('chg-confirm').value = '';
         } else {
           msgEl.textContent = data.detail || 'Erreur lors du changement.';
-          msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+          msgEl.style.background = '#fde8e8';
+          msgEl.style.color = 'var(--color-alert)';
+          msgEl.style.borderColor = 'var(--color-alert)';
         }
       } catch {
         msgEl.textContent = 'Erreur réseau.';
-        msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+        msgEl.style.background = '#fde8e8';
+        msgEl.style.color = 'var(--color-alert)';
+        msgEl.style.borderColor = 'var(--color-alert)';
       }
       msgEl.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Changer le mot de passe';
