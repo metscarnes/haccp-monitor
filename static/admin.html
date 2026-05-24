@@ -11,6 +11,28 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="stylesheet" href="/static/css/pages/admin.css">
+  <style>
+    .test-categories-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: .5rem .75rem;
+    }
+    .test-cat-item {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .45rem .6rem;
+      border: 1px solid #e0d5c5;
+      border-radius: 6px;
+      background: #fdf8f2;
+      cursor: pointer;
+      user-select: none;
+      font-size: .9rem;
+    }
+    .test-cat-item:hover { background: #f5ece0; }
+    .test-cat-item input[type=checkbox] { cursor: pointer; accent-color: #8b3a0f; }
+    .test-cat-item.disabled { opacity: .45; cursor: not-allowed; }
+  </style>
 </head>
 <body class="admin-body">
 
@@ -280,19 +302,39 @@
     <!-- ── Zone de test ── -->
     <section class="admin-section" id="section-test">
       <div class="admin-section-header">
-        <h2 class="admin-section-titre">🧪 Zone de test</h2>
-        <span class="admin-badge admin-badge--info">Formations &amp; essais</span>
+        <h2 class="admin-section-titre">🧪 Zone de test &amp; formation</h2>
+        <span class="admin-badge admin-badge--info">Purge sélective</span>
       </div>
       <div class="admin-section-body">
         <p class="admin-info-text">
-          Supprime <strong>toutes les entrées</strong> créées par le membre du personnel nommé
-          « test » (réceptions, étiquettes, cuissons, tâches, formations, quiz, etc.).
-          Le membre « test » lui-même est conservé pour pouvoir continuer les essais.
-          <br>Cette action est <strong>irréversible</strong>.
+          Supprime les entrées d'un membre du personnel selon les catégories choisies.
+          Le membre lui-même est conservé. Cette action est <strong>irréversible</strong>.
         </p>
-        <div class="admin-depannage-grid">
-          <button class="btn btn-danger" id="btn-purger-test">🗑️ Supprimer les entrées de « test »</button>
+
+        <!-- Sélection du personnel -->
+        <div class="admin-form-row" style="margin-bottom:1rem">
+          <div class="admin-field" style="max-width:280px">
+            <label for="test-personnel-select">👤 Membre du personnel</label>
+            <select id="test-personnel-select">
+              <option value="">— choisir —</option>
+            </select>
+          </div>
         </div>
+
+        <!-- Cases à cocher par catégorie -->
+        <div id="test-categories" style="display:none">
+          <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem">
+            <label style="font-weight:600; cursor:pointer">
+              <input type="checkbox" id="test-select-all" checked> Tout sélectionner
+            </label>
+          </div>
+          <div class="test-categories-grid" id="test-cats-grid"></div>
+
+          <div style="margin-top:1rem">
+            <button class="btn btn-danger" id="btn-purger-test" disabled>🗑️ Supprimer les entrées sélectionnées</button>
+          </div>
+        </div>
+
         <div id="test-msg" class="admin-depan-msg" hidden></div>
       </div>
     </section>
@@ -860,57 +902,119 @@
       }
     });
 
-    // ── Zone de test : purge des entrées de « test » ────────
+    // ── Zone de test : purge sélective ──────────────────────
+    const CATEGORIES_PURGE = [
+      { id: 'receptions',  label: '📦 Réceptions',             desc: 'réceptions, lignes, BLs, fiches incident, non-conformités' },
+      { id: 'production',  label: '🍳 Production',             desc: 'cuissons, refroidissements, fabrications' },
+      { id: 'etiquettes',  label: '🏷️ Étiquettes',            desc: 'étiquettes générées' },
+      { id: 'taches',      label: '✅ Tâches & nettoyage',     desc: 'validations tâches, registre nettoyage' },
+      { id: 'etalonnage',  label: '🌡️ Étalonnage',            desc: 'étalonnages et comparaisons' },
+      { id: 'nuisibles',   label: '🐀 Nuisibles',              desc: 'contrôles nuisibles (visa)' },
+      { id: 'dlc',         label: '📅 DLC',                    desc: 'devenirs DLC enregistrés' },
+      { id: 'formation',   label: '🎓 Formation',              desc: 'e-learning, quiz résultats et progression' },
+      { id: 'ouvertures',  label: '🔓 Ouvertures',             desc: 'contrôles ouvertures produits' },
+    ];
+
+    // Peupler la grille de catégories
+    function buildCategoriesGrid() {
+      const grid = $('test-cats-grid');
+      grid.innerHTML = '';
+      CATEGORIES_PURGE.forEach(cat => {
+        const label = document.createElement('label');
+        label.className = 'test-cat-item';
+        label.title = cat.desc;
+        label.innerHTML = `<input type="checkbox" class="test-cat-cb" value="${cat.id}" checked> ${cat.label}`;
+        grid.appendChild(label);
+      });
+      // Sync "tout sélectionner"
+      grid.querySelectorAll('.test-cat-cb').forEach(cb => {
+        cb.addEventListener('change', syncSelectAll);
+      });
+    }
+
+    function syncSelectAll() {
+      const cbs = Array.from(document.querySelectorAll('.test-cat-cb'));
+      $('test-select-all').checked = cbs.every(cb => cb.checked);
+      $('test-select-all').indeterminate = !cbs.every(cb => cb.checked) && cbs.some(cb => cb.checked);
+      $('btn-purger-test').disabled = !cbs.some(cb => cb.checked) || !$('test-personnel-select').value;
+    }
+
+    $('test-select-all') && $('test-select-all').addEventListener('change', function () {
+      document.querySelectorAll('.test-cat-cb').forEach(cb => { cb.checked = this.checked; });
+      $('btn-purger-test').disabled = !this.checked || !$('test-personnel-select').value;
+    });
+
+    // Peupler le sélecteur de personnel
+    async function loadTestPersonnel() {
+      const sel = $('test-personnel-select');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/personnel`);
+        if (!res.ok) return;
+        const list = await res.json();
+        sel.innerHTML = '<option value="">— choisir —</option>';
+        (list || []).forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.prenom + (p.nom ? ' ' + p.nom : '');
+          if ((p.prenom || '').toLowerCase() === 'test') opt.selected = true;
+          sel.appendChild(opt);
+        });
+        // Afficher les catégories seulement si un personnel est sélectionné
+        toggleCategoriesVisibility();
+      } catch { /* silent */ }
+    }
+
+    function toggleCategoriesVisibility() {
+      const hasPers = !!$('test-personnel-select').value;
+      $('test-categories').style.display = hasPers ? '' : 'none';
+      if (hasPers) syncSelectAll();
+    }
+
+    $('test-personnel-select').addEventListener('change', toggleCategoriesVisibility);
+
+    buildCategoriesGrid();
+
     $('btn-purger-test').addEventListener('click', async () => {
       const msg = $('test-msg');
       const btn = $('btn-purger-test');
       const setMsg = (cls, txt) => { msg.hidden = false; msg.className = `admin-depan-msg admin-depan-msg--${cls}`; msg.textContent = txt; };
 
-      setMsg('info', 'Recherche du membre « test »…');
-      let personne;
-      try {
-        const res = await fetch(`${API_BASE}/api/admin/personnel`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const list = await res.json();
-        personne = (list || []).find(p => (p.prenom || '').trim().toLowerCase() === 'test');
-      } catch (err) {
-        setMsg('erreur', `Erreur : ${err.message}`);
-        return;
-      }
-      if (!personne) {
-        setMsg('erreur', 'Aucun membre du personnel nommé « test ». Ajoutez-le d\'abord dans la section Personnel.');
-        return;
-      }
+      const persId = $('test-personnel-select').value;
+      const persNom = $('test-personnel-select').options[$('test-personnel-select').selectedIndex]?.text || '';
+      if (!persId) { setMsg('erreur', 'Choisissez un membre du personnel.'); return; }
 
-      if (!confirm('Supprimer TOUTES les entrées créées par « test » ?\n\nRéceptions, étiquettes, cuissons, tâches, formations, quiz… seront effacés définitivement.')) return;
-      if (!confirm('Confirmation finale : cette action est IRRÉVERSIBLE. Continuer ?')) return;
+      const cats = Array.from(document.querySelectorAll('.test-cat-cb:checked')).map(cb => cb.value);
+      if (cats.length === 0) { setMsg('erreur', 'Cochez au moins une catégorie.'); return; }
+
+      const catLabels = cats.map(id => CATEGORIES_PURGE.find(c => c.id === id)?.label || id).join(', ');
+      if (!confirm(`Supprimer les entrées de « ${persNom} » pour :\n${catLabels}\n\nCette action est IRRÉVERSIBLE.`)) return;
 
       btn.disabled = true;
       setMsg('info', 'Suppression en cours…');
       try {
-        const res = await fetch(`${API_BASE}/api/admin/personnel/${personne.id}/entrees`, { method: 'DELETE' });
+        const res = await fetch(`${API_BASE}/api/admin/personnel/${persId}/entrees`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categories: cats }),
+        });
         if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
         const data = await res.json();
         const erreurs = data.erreurs || {};
         const nbErreurs = Object.keys(erreurs).length;
-        if (data.total === 0 && nbErreurs === 0) {
-          setMsg('ok', '✓ Aucune entrée à supprimer : « test » n\'avait rien enregistré.');
+        const detail = Object.entries(data.detail || {}).map(([t, n]) => `${t} : ${n}`).join(' · ');
+        if (nbErreurs > 0) {
+          const errTxt = Object.entries(erreurs).map(([t, e]) => `${t} → ${e}`).join(' | ');
+          setMsg('erreur', `⚠️ ${data.total} entrée(s) supprimée(s)${detail ? ' (' + detail + ')' : ''}, mais ${nbErreurs} table(s) en erreur : ${errTxt}`);
+        } else if (data.total === 0) {
+          setMsg('ok', `✓ Aucune entrée à supprimer pour « ${persNom} » dans ces catégories.`);
         } else {
-          const detail = Object.entries(data.detail || {})
-            .map(([t, n]) => `${t} : ${n}`).join(' · ');
-          if (nbErreurs > 0) {
-            const errTxt = Object.entries(erreurs)
-              .map(([t, e]) => `${t} → ${e}`).join(' | ');
-            setMsg('erreur', `⚠️ ${data.total} entrée(s) supprimée(s)${detail ? ' (' + detail + ')' : ''}, mais ${nbErreurs} table(s) en erreur : ${errTxt}`);
-          } else {
-            setMsg('ok', `✓ ${data.total} entrée(s) supprimée(s). ${detail}`);
-          }
+          setMsg('ok', `✓ ${data.total} entrée(s) supprimée(s) pour « ${persNom} ». ${detail}`);
         }
-        loadAlertes();
       } catch (err) {
         setMsg('erreur', `Erreur : ${err.message}`);
       } finally {
         btn.disabled = false;
+        syncSelectAll();
       }
     });
 
@@ -921,6 +1025,7 @@
     loadAlertes();
     loadServeurInfo();
     loadDlcSeuils();
+    loadTestPersonnel();
   </script>
 </body>
 </html>
