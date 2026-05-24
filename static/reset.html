@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#3D2008">
+  <title>Réinitialisation mot de passe — HACCP Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5ece0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(61,32,8,.15);
+      padding: 2.5rem 2rem;
+      width: min(360px, 92vw);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .logo { text-align: center; font-size: 2.4rem; }
+    .title { text-align: center; font-size: 1.15rem; font-weight: 700; color: #3D2008; }
+    .subtitle { text-align: center; font-size: .85rem; color: #888; margin-top: -.9rem; }
+    .field { display: flex; flex-direction: column; gap: .4rem; }
+    .field label { font-size: .82rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+    .field input {
+      border: 1.5px solid #d5c9b8; border-radius: 8px; padding: .7rem 1rem;
+      font-size: 1rem; color: #2c1a0e; outline: none; transition: border-color .15s;
+    }
+    .field input:focus { border-color: #8b3a0f; }
+    .btn {
+      background: #8b3a0f; color: #fff; border: none; border-radius: 8px;
+      padding: .85rem 1rem; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background .15s, opacity .15s;
+    }
+    .btn:hover { background: #a04512; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .msg {
+      border-radius: 8px; padding: .65rem .9rem;
+      font-size: .88rem; font-weight: 600; text-align: center; display: none;
+    }
+    .msg.error { background: #fde8e8; color: #b91c1c; }
+    .msg.success { background: #d1fae5; color: #065f46; }
+    .msg.visible { display: block; }
+    .back { text-align: center; font-size: .83rem; }
+    .back a { color: #8b3a0f; text-decoration: none; font-weight: 600; }
+    .back a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🔑</div>
+  <div>
+    <div class="title">Nouveau mot de passe</div>
+    <div class="subtitle">HACCP Monitor — Au Comptoir des Lilas</div>
+  </div>
+
+  <div id="msg-error" class="msg error">Lien invalide ou expiré.</div>
+  <div id="msg-success" class="msg success">Mot de passe modifié ! Redirection…</div>
+
+  <form id="reset-form" autocomplete="off">
+    <div class="field" style="margin-bottom:1rem">
+      <label for="new-pwd">Nouveau mot de passe</label>
+      <input type="password" id="new-pwd" placeholder="••••••••" required autofocus minlength="6">
+    </div>
+    <div class="field" style="margin-bottom:1.2rem">
+      <label for="confirm-pwd">Confirmer le mot de passe</label>
+      <input type="password" id="confirm-pwd" placeholder="••••••••" required minlength="6">
+    </div>
+    <button type="submit" class="btn" id="reset-btn">Enregistrer</button>
+  </form>
+
+  <div class="back"><a href="/login.html">← Retour à la connexion</a></div>
+</div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const token  = params.get('token');
+
+  if (!token) {
+    document.getElementById('msg-error').textContent = 'Lien invalide.';
+    document.getElementById('msg-error').classList.add('visible');
+    document.getElementById('reset-form').hidden = true;
+  }
+
+  document.getElementById('reset-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn     = document.getElementById('reset-btn');
+    const errEl   = document.getElementById('msg-error');
+    const okEl    = document.getElementById('msg-success');
+    const newPwd  = document.getElementById('new-pwd').value;
+    const confPwd = document.getElementById('confirm-pwd').value;
+
+    errEl.classList.remove('visible');
+
+    if (newPwd !== confPwd) {
+      errEl.textContent = 'Les mots de passe ne correspondent pas.';
+      errEl.classList.add('visible');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement…';
+
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, new_password: newPwd }),
+      });
+      if (res.ok) {
+        okEl.classList.add('visible');
+        setTimeout(() => window.location.href = '/login.html', 2000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        errEl.textContent = data.detail || 'Lien invalide ou expiré.';
+        errEl.classList.add('visible');
+        btn.disabled = false;
+        btn.textContent = 'Enregistrer';
+      }
+    } catch {
+      errEl.textContent = 'Erreur réseau, réessaye.';
+      errEl.classList.add('visible');
+      btn.disabled = false;
+      btn.textContent = 'Enregistrer';
+    }
+  });
+</script>
+</body>
+</html>

@@ -145,7 +145,11 @@
     <button type="submit" class="login-btn" id="login-btn">Se connecter</button>
   </form>
 
-  <div class="login-back"><a href="/hub.html">← Retour à l'accueil</a></div>
+  <div class="login-back" style="display:flex;flex-direction:column;gap:.5rem;align-items:center;">
+    <a href="/hub.html">← Retour à l'accueil</a>
+    <a href="#" id="login-forgot" style="font-size:.8rem;color:#888;">Mot de passe oublié ?</a>
+  </div>
+  <div id="login-forgot-msg" style="display:none;background:#d1fae5;color:#065f46;border-radius:8px;padding:.65rem .9rem;font-size:.85rem;font-weight:600;text-align:center;"></div>
 </div>
 
 <script>
@@ -191,6 +195,35 @@
       btn.disabled = false;
       btn.textContent = 'Se connecter';
     }
+  });
+
+  document.getElementById('login-forgot').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const link = e.target;
+    const msgEl = document.getElementById('login-forgot-msg');
+    link.style.pointerEvents = 'none';
+    link.textContent = 'Envoi…';
+    msgEl.style.display = 'none';
+    try {
+      const res = await fetch('/api/auth/forgot-password', { method: 'POST' });
+      if (res.ok) {
+        msgEl.textContent = 'Mail envoyé à l\'adresse admin. Vérifie ta boîte mail.';
+        msgEl.style.background = '#d1fae5';
+        msgEl.style.color = '#065f46';
+      } else {
+        const data = await res.json().catch(() => ({}));
+        msgEl.textContent = data.detail || 'Erreur lors de l\'envoi.';
+        msgEl.style.background = '#fde8e8';
+        msgEl.style.color = '#b91c1c';
+      }
+    } catch {
+      msgEl.textContent = 'Erreur réseau.';
+      msgEl.style.background = '#fde8e8';
+      msgEl.style.color = '#b91c1c';
+    }
+    msgEl.style.display = 'block';
+    link.style.pointerEvents = '';
+    link.textContent = 'Mot de passe oublié ?';
   });
 </script>
 </body>

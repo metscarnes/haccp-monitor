@@ -339,6 +339,35 @@
       </div>
     </section>
 
+    <!-- ── Sécurité ── -->
+    <section class="admin-section" id="section-securite">
+      <div class="admin-section-header">
+        <h2 class="admin-section-titre">🔐 Sécurité</h2>
+      </div>
+      <div class="admin-section-body">
+        <form id="form-chg-pwd" autocomplete="off" style="display:flex;flex-direction:column;gap:.9rem;max-width:360px;">
+          <div style="display:flex;flex-direction:column;gap:.3rem;">
+            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-old">Ancien mot de passe</label>
+            <input type="password" id="chg-old" placeholder="••••••••" required style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.3rem;">
+            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-new">Nouveau mot de passe</label>
+            <input type="password" id="chg-new" placeholder="••••••••" required minlength="6" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.3rem;">
+            <label style="font-size:.82rem;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.04em;" for="chg-confirm">Confirmer le nouveau mot de passe</label>
+            <input type="password" id="chg-confirm" placeholder="••••••••" required minlength="6" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.65rem .9rem;font-size:.95rem;color:#2c1a0e;outline:none;">
+          </div>
+          <div id="chg-msg" style="display:none;border-radius:8px;padding:.6rem .85rem;font-size:.88rem;font-weight:600;text-align:center;"></div>
+          <button type="submit" class="btn btn-primaire" id="chg-btn" style="align-self:flex-start;">Changer le mot de passe</button>
+        </form>
+        <p style="margin-top:1rem;font-size:.82rem;color:#888;">
+          ⚠️ Le changement est actif immédiatement mais temporaire jusqu'au prochain redémarrage du serveur.<br>
+          Pour le rendre permanent, mettez à jour <code>ADMIN_PASSWORD</code> dans le fichier <code>.env</code> sur le Raspberry Pi.
+        </p>
+      </div>
+    </section>
+
     <!-- ── Dépannage ── -->
     <section class="admin-section" id="section-depannage">
       <div class="admin-section-header">
@@ -1751,6 +1780,50 @@
     loadServeurInfo();
     loadDlcSeuils();
     loadTestPersonnel();
+
+    // ── Changement de mot de passe ───────────────────────────
+    document.getElementById('form-chg-pwd').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn     = document.getElementById('chg-btn');
+      const msgEl   = document.getElementById('chg-msg');
+      const oldPwd  = document.getElementById('chg-old').value;
+      const newPwd  = document.getElementById('chg-new').value;
+      const confPwd = document.getElementById('chg-confirm').value;
+
+      msgEl.style.display = 'none';
+
+      if (newPwd !== confPwd) {
+        msgEl.textContent = 'Les mots de passe ne correspondent pas.';
+        msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+        msgEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Enregistrement…';
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ old_password: oldPwd, new_password: newPwd }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          msgEl.textContent = '✅ Mot de passe modifié avec succès !';
+          msgEl.style.background = '#d1fae5'; msgEl.style.color = '#065f46';
+          document.getElementById('chg-old').value = '';
+          document.getElementById('chg-new').value = '';
+          document.getElementById('chg-confirm').value = '';
+        } else {
+          msgEl.textContent = data.detail || 'Erreur lors du changement.';
+          msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+        }
+      } catch {
+        msgEl.textContent = 'Erreur réseau.';
+        msgEl.style.background = '#fde8e8'; msgEl.style.color = '#b91c1c';
+      }
+      msgEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Changer le mot de passe';
+    });
   </script>
 </body>
 </html>
