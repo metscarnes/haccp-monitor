@@ -12,7 +12,7 @@ POST /api/nuisibles/carte                            → enregistrer les positio
 import json
 import logging
 from datetime import date as _date
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -36,11 +36,11 @@ NB_PIEGES_MAX = 50
 # ---------------------------------------------------------------------------
 
 class ControleNuisible(BaseModel):
-    type_id:   int         # 1=rongeurs  2=ins.volants  3=ins.rampants  4=oiseaux
-    annee:     int
-    semaine:   int         # 1-53
-    resultats: dict        # {"p1": "O"/"N"/None, "p2": ..., ...}
-    visa:      str = ""
+    type_id:      int      # 1=rongeurs  2=ins.volants  3=ins.rampants  4=oiseaux
+    annee:        int
+    semaine:      int      # 1-53
+    resultats:    dict     # {"p1": "O"/"N"/None, "p2": ..., ...}
+    personnel_id: Optional[int] = None
 
 
 class ConfigNuisibles(BaseModel):
@@ -72,15 +72,20 @@ async def lister_controles(
     """
     async with get_db() as db:
         rows = await db.execute_fetchall(
-            "SELECT semaine, resultats, visa, date_saisie "
-            "FROM nuisibles_controles "
-            "WHERE type_id = ? AND annee = ? ORDER BY semaine",
+            """
+            SELECT nc.semaine, nc.resultats,
+                   COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), nc.visa) AS visa,
+                   nc.personnel_id, nc.date_saisie
+            FROM nuisibles_controles nc
+            LEFT JOIN personnel p ON p.id = nc.personnel_id
+            WHERE nc.type_id = ? AND nc.annee = ? ORDER BY nc.semaine
+            """,
             (type_id, annee),
         )
 
     result = {}
     for row in rows:
-        semaine, resultats_json, visa, date_saisie = row
+        semaine, resultats_json, visa, personnel_id, date_saisie = row
         try:
             resultats = json.loads(resultats_json)
         except Exception:
@@ -88,6 +93,7 @@ async def lister_controles(
         result[str(semaine)] = {
             "resultats":    resultats,
             "visa":         visa,
+            "personnel_id": personnel_id,
             "date_saisie":  date_saisie,
         }
 
@@ -110,24 +116,34 @@ async def sauvegarder_controle(body: ControleNuisible):
     resultats_json = json.dumps(body.resultats)
 
     async with get_db() as db:
+        # Résout le prénom courant pour la colonne visa (compat historique)
+        visa = ""
+        if body.personnel_id is not None:
+            cur = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (body.personnel_id,))
+            prow = await cur.fetchone()
+            if not prow:
+                raise HTTPException(400, "Personnel introuvable")
+            visa = prow["prenom"]
+
         await db.execute(
             """
             INSERT INTO nuisibles_controles
-                (type_id, annee, semaine, resultats, visa, date_saisie)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (type_id, annee, semaine, resultats, visa, personnel_id, date_saisie)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(type_id, annee, semaine) DO UPDATE SET
-                resultats   = excluded.resultats,
-                visa        = excluded.visa,
-                date_saisie = excluded.date_saisie
+                resultats    = excluded.resultats,
+                visa         = excluded.visa,
+                personnel_id = excluded.personnel_id,
+                date_saisie  = excluded.date_saisie
             """,
             (body.type_id, body.annee, body.semaine,
-             resultats_json, body.visa, aujourd_hui),
+             resultats_json, visa, body.personnel_id, aujourd_hui),
         )
         await db.commit()
 
     logger.info(
         "Nuisibles — type=%d  sem=%d/%d  visa=%s",
-        body.type_id, body.semaine, body.annee, body.visa or "—",
+        body.type_id, body.semaine, body.annee, visa or "—",
     )
     return {
         "ok":       True,

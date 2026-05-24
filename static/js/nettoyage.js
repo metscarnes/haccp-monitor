@@ -53,8 +53,8 @@ async function chargerPersonnel() {
       .filter(p => p.actif !== false)
       .forEach(p => {
         const opt = document.createElement('option');
-        opt.value = p.prenom;
-        opt.textContent = p.prenom;
+        opt.value = p.id;
+        opt.textContent = [p.prenom, p.nom].filter(Boolean).join(' ');
         elSelect.appendChild(opt);
       });
   } catch {
@@ -265,13 +265,15 @@ function genererTableau() {
 
 // ── Validation (tout le jour d'un coup) ──────────────────────
 async function validerJournee() {
-  const operateur = elSelect.value;
+  const personnelId = elSelect.value;
 
-  if (!operateur) {
+  if (!personnelId) {
     toast('Sélectionnez votre nom avant de valider.', true);
     elSelect.focus();
     return;
   }
+
+  const operateurLabel = elSelect.options[elSelect.selectedIndex].textContent;
 
   const ok = confirm(
     'En validant, je confirme sur l\'honneur avoir effectué l\'intégralité des tâches ' +
@@ -279,7 +281,7 @@ async function validerJournee() {
   );
   if (!ok) return;
 
-  const initiale  = operateur.charAt(0).toUpperCase();
+  const initiale  = operateurLabel.charAt(0).toUpperCase();
   const today     = weekDates[todayIndex] || toLocalDate(new Date());
 
   // Collecter TOUS les IDs applicables — le backend gère les doublons (INSERT OR IGNORE)
@@ -313,7 +315,7 @@ async function validerJournee() {
     const res = await fetch('/api/nettoyage/validation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operateur, taches_ids: idsAValider, signature: 'OK', date: today }),
+      body: JSON.stringify({ personnel_id: parseInt(personnelId, 10), taches_ids: idsAValider, signature: 'OK', date: today }),
     });
 
     if (!res.ok) {
@@ -322,7 +324,7 @@ async function validerJournee() {
     }
 
     await res.json();
-    toast(`✅ ${idsAValider.length} tâche(s) du jour validées par ${operateur} !`);
+    toast(`✅ ${idsAValider.length} tâche(s) du jour validées par ${operateurLabel} !`);
 
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);

@@ -319,6 +319,7 @@ CREATE TABLE IF NOT EXISTS tache_validations (
     boutique_id         INTEGER NOT NULL,
     tache_type_id       INTEGER NOT NULL,
     operateur           TEXT    NOT NULL,
+    personnel_id        INTEGER,
     date_tache          DATE    NOT NULL,
     heure_validation    DATETIME DEFAULT CURRENT_TIMESTAMP,
     conforme            BOOLEAN,
@@ -326,7 +327,8 @@ CREATE TABLE IF NOT EXISTS tache_validations (
     commentaire         TEXT,
     donnees_specifiques TEXT,
     FOREIGN KEY (boutique_id)   REFERENCES boutiques(id),
-    FOREIGN KEY (tache_type_id) REFERENCES tache_types(id)
+    FOREIGN KEY (tache_type_id) REFERENCES tache_types(id),
+    FOREIGN KEY (personnel_id)  REFERENCES personnel(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_validations_boutique_date
@@ -436,9 +438,11 @@ CREATE TABLE IF NOT EXISTS etalonnages (
     conforme            INTEGER NOT NULL,
     action_corrective   TEXT    NOT NULL,
     operateur           TEXT    NOT NULL,
+    personnel_id        INTEGER,
     commentaire         TEXT,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (thermometre_ref_id) REFERENCES thermometres_ref(id)
+    FOREIGN KEY (thermometre_ref_id) REFERENCES thermometres_ref(id),
+    FOREIGN KEY (personnel_id)       REFERENCES personnel(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_etalonnages_date
@@ -564,14 +568,16 @@ CREATE TABLE IF NOT EXISTS taches_nettoyage (
 );
 
 CREATE TABLE IF NOT EXISTS registre_nettoyage (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id INTEGER NOT NULL DEFAULT 1,
-    tache_id    INTEGER NOT NULL,
-    operateur   TEXT    NOT NULL,
-    date_val    TEXT    NOT NULL,
-    signature   TEXT    NOT NULL DEFAULT 'OK',
-    FOREIGN KEY (boutique_id) REFERENCES boutiques(id),
-    FOREIGN KEY (tache_id)    REFERENCES taches_nettoyage(id)
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    tache_id     INTEGER NOT NULL,
+    operateur    TEXT    NOT NULL,
+    personnel_id INTEGER,
+    date_val     TEXT    NOT NULL,
+    signature    TEXT    NOT NULL DEFAULT 'OK',
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (tache_id)     REFERENCES taches_nettoyage(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_registre_nettoyage_date
@@ -582,16 +588,18 @@ CREATE INDEX IF NOT EXISTS idx_registre_nettoyage_date
 -- ===========================================================================
 
 CREATE TABLE IF NOT EXISTS nuisibles_controles (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id INTEGER NOT NULL DEFAULT 1,
-    type_id     INTEGER NOT NULL,    -- 1=rongeurs 2=ins.vol 3=ins.ramp 4=oiseaux
-    annee       INTEGER NOT NULL,
-    semaine     INTEGER NOT NULL,
-    resultats   TEXT    NOT NULL DEFAULT '{}',
-    visa        TEXT    NOT NULL DEFAULT '',
-    date_saisie TEXT    NOT NULL,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    type_id      INTEGER NOT NULL,    -- 1=rongeurs 2=ins.vol 3=ins.ramp 4=oiseaux
+    annee        INTEGER NOT NULL,
+    semaine      INTEGER NOT NULL,
+    resultats    TEXT    NOT NULL DEFAULT '{}',
+    visa         TEXT    NOT NULL DEFAULT '',
+    personnel_id INTEGER,
+    date_saisie  TEXT    NOT NULL,
     UNIQUE(type_id, annee, semaine),
-    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
 );
 
 -- Position des pièges sur le plan de la boutique (un point par piège & par type).
@@ -990,6 +998,11 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 UNIQUE(boutique_id, type_id, piege_num),
                 FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
             )""",
+            # v4.2 — Opérateur en FK personnel (au lieu de prénom TEXT) sur 4 modules
+            "ALTER TABLE registre_nettoyage ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
+            "ALTER TABLE etalonnages        ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
+            "ALTER TABLE tache_validations  ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
+            "ALTER TABLE nuisibles_controles ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
         ]
         for sql in migrations:
             try:
@@ -1023,6 +1036,54 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                     )
         except Exception as e:
             logger.warning("Migration v3.5 statut réception : %s", e)
+
+        # Migration v4.2 : backfill personnel_id depuis l'ancien prénom TEXT.
+        # Idempotent : ne remplit que les lignes où personnel_id est encore NULL.
+        # Le match se fait sur personnel.prenom (insensible à la casse / espaces).
+        try:
+            backfills = [
+                ("registre_nettoyage", "operateur", True),
+                ("etalonnages",        "operateur", False),  # pas de boutique_id
+                ("tache_validations",  "operateur", True),
+                ("nuisibles_controles", "visa",     True),
+            ]
+            for table, col_texte, a_boutique in backfills:
+                # Vérifier que la colonne personnel_id existe bien (ALTER a pu déjà passer)
+                cur_cols = await db.execute(f"PRAGMA table_info({table})")
+                cols_t = {row[1] for row in await cur_cols.fetchall()}
+                if "personnel_id" not in cols_t or col_texte not in cols_t:
+                    continue
+                if a_boutique:
+                    await db.execute(
+                        f"""
+                        UPDATE {table}
+                        SET personnel_id = (
+                            SELECT p.id FROM personnel p
+                            WHERE p.boutique_id = {table}.boutique_id
+                              AND LOWER(TRIM(p.prenom)) = LOWER(TRIM({table}.{col_texte}))
+                            LIMIT 1
+                        )
+                        WHERE personnel_id IS NULL
+                          AND {col_texte} IS NOT NULL AND TRIM({col_texte}) <> ''
+                        """
+                    )
+                else:
+                    await db.execute(
+                        f"""
+                        UPDATE {table}
+                        SET personnel_id = (
+                            SELECT p.id FROM personnel p
+                            WHERE LOWER(TRIM(p.prenom)) = LOWER(TRIM({table}.{col_texte}))
+                            LIMIT 1
+                        )
+                        WHERE personnel_id IS NULL
+                          AND {col_texte} IS NOT NULL AND TRIM({col_texte}) <> ''
+                        """
+                    )
+            await db.commit()
+            logger.info("Migration v4.2 : backfill personnel_id terminé")
+        except Exception as e:
+            logger.warning("Migration v4.2 backfill personnel_id : %s", e)
 
         # Migration v2.4 : rendre fournisseur_id nullable dans fiches_incident
         # (nécessaire quand le fournisseur est saisi manuellement sans ID BDD)
@@ -2679,18 +2740,15 @@ async def update_personnel(db: aiosqlite.Connection, personnel_id: int, data: di
     values = list(fields.values()) + [personnel_id]
     await db.execute(f"UPDATE personnel SET {set_clause} WHERE id = ?", values)
 
-    # Propager le changement de prénom dans les tables qui stockent l'opérateur en TEXT
+    # Propager le changement de prénom dans les tables qui stockent encore l'opérateur
+    # en TEXT brut (sans FK personnel_id). Les modules nettoyage/étalonnage/tâches/nuisibles
+    # lisent désormais le nom via la FK personnel_id, donc n'ont plus besoin de propagation.
     if ancien_prenom is not None:
-        for table in ("tache_validations", "etiquettes_generees", "non_conformites_fournisseur", "registre_nettoyage"):
+        for table in ("etiquettes_generees", "non_conformites_fournisseur"):
             await db.execute(
                 f"UPDATE {table} SET operateur = ? WHERE operateur = ? AND boutique_id = ?",
                 (nouveau_prenom, ancien_prenom, boutique_id),
             )
-        # etalonnages n'a pas de boutique_id — on met à jour tous les enregistrements correspondants
-        await db.execute(
-            "UPDATE etalonnages SET operateur = ? WHERE operateur = ?",
-            (nouveau_prenom, ancien_prenom),
-        )
 
     await db.commit()
     return True
@@ -2759,17 +2817,27 @@ async def create_validation(db: aiosqlite.Connection, data: dict) -> int:
     donnees = data.get("donnees_specifiques")
     if isinstance(donnees, dict):
         donnees = json.dumps(donnees, ensure_ascii=False)
+
+    # Résout le prénom courant pour la colonne operateur (compat historique)
+    personnel_id = data["personnel_id"]
+    cur_p = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (personnel_id,))
+    prow = await cur_p.fetchone()
+    if not prow:
+        raise ValueError("Personnel introuvable")
+    operateur = prow["prenom"]
+
     cursor = await db.execute(
         """
         INSERT INTO tache_validations
-            (boutique_id, tache_type_id, operateur, date_tache,
+            (boutique_id, tache_type_id, operateur, personnel_id, date_tache,
              conforme, photo_path, commentaire, donnees_specifiques)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["boutique_id"],
             data["tache_type_id"],
-            data["operateur"],
+            operateur,
+            personnel_id,
             data["date_tache"],
             data.get("conforme"),
             data.get("photo_path"),
@@ -2797,9 +2865,11 @@ async def get_validations(
         params.append(tache_type_id)
     cursor = await db.execute(
         f"""
-        SELECT v.*, t.code, t.libelle
+        SELECT v.*, t.code, t.libelle,
+               COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), v.operateur) AS operateur_nom
         FROM tache_validations v
         JOIN tache_types t ON t.id = v.tache_type_id
+        LEFT JOIN personnel p ON p.id = v.personnel_id
         WHERE v.boutique_id = ? AND v.date_tache >= ? AND v.date_tache <= ?
         {filtre_type}
         ORDER BY v.heure_validation DESC
@@ -2810,6 +2880,10 @@ async def get_validations(
     result = []
     for r in rows:
         d = dict(r)
+        # Affichage : nom courant (prénom + nom) via la FK, fallback ancien operateur TEXT
+        if d.get("operateur_nom"):
+            d["operateur"] = d["operateur_nom"]
+        d.pop("operateur_nom", None)
         if d.get("donnees_specifiques"):
             try:
                 d["donnees_specifiques"] = json.loads(d["donnees_specifiques"])

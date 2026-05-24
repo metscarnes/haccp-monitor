@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/nettoyage", tags=["nettoyage"])
 # ---------------------------------------------------------------------------
 
 class ValidationNettoyage(BaseModel):
-    operateur: str
+    personnel_id: int
     taches_ids: List[int]
     signature: str = "OK"
     date: Optional[str] = None   # si absent → date du jour
@@ -149,14 +149,19 @@ async def valider_nettoyage(body: ValidationNettoyage):
     Enregistre une session de validation dans registre_nettoyage.
     Un enregistrement par tâche cochée.
     """
-    if not body.operateur.strip():
-        raise HTTPException(400, "L'opérateur est obligatoire")
     if not body.taches_ids:
         raise HTTPException(400, "Aucune tâche sélectionnée")
 
     aujourd_hui = body.date or _date.today().isoformat()
 
     async with get_db() as db:
+        # Résout le prénom courant pour la colonne operateur (compat historique)
+        cur = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (body.personnel_id,))
+        prow = await cur.fetchone()
+        if not prow:
+            raise HTTPException(400, "Personnel introuvable")
+        operateur = prow["prenom"]
+
         nb = 0
         for tid in body.taches_ids:
             # Vérifie l'existence avant d'insérer — évite tout doublon sans index UNIQUE
@@ -166,20 +171,21 @@ async def valider_nettoyage(body: ValidationNettoyage):
             )
             if not deja:
                 await db.execute(
-                    "INSERT INTO registre_nettoyage (tache_id, operateur, date_val, signature) "
-                    "VALUES (?, ?, ?, ?)",
-                    (tid, body.operateur.strip(), aujourd_hui, body.signature),
+                    "INSERT INTO registre_nettoyage (tache_id, operateur, personnel_id, date_val, signature) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (tid, operateur, body.personnel_id, aujourd_hui, body.signature),
                 )
                 nb += 1
 
         await db.commit()
 
-    logger.info("Nettoyage validé par %s — %d tâche(s) — %s", body.operateur, nb, aujourd_hui)
+    logger.info("Nettoyage validé par %s — %d tâche(s) — %s", operateur, nb, aujourd_hui)
     return {
-        "ok":        True,
-        "operateur": body.operateur,
-        "date":      aujourd_hui,
-        "nb_taches": nb,
+        "ok":           True,
+        "operateur":    operateur,
+        "personnel_id": body.personnel_id,
+        "date":         aujourd_hui,
+        "nb_taches":    nb,
     }
 
 
@@ -218,7 +224,16 @@ async def statut_validation(date: Optional[str] = Query(default=None)):
 
     async with get_db() as db:
         rows = await db.execute_fetchall(
-            "SELECT DISTINCT tache_id, operateur FROM registre_nettoyage WHERE date_val = ?",
+            """
+            SELECT DISTINCT rn.tache_id,
+                   COALESCE(
+                     TRIM(p.prenom || ' ' || COALESCE(p.nom, '')),
+                     rn.operateur
+                   ) AS operateur_nom
+            FROM registre_nettoyage rn
+            LEFT JOIN personnel p ON p.id = rn.personnel_id
+            WHERE rn.date_val = ?
+            """,
             (target,),
         )
 
@@ -263,12 +278,16 @@ async def historique_nettoyage():
     """
     async with get_db() as db:
         rows = await db.execute_fetchall("""
-            SELECT date_val,
-                   GROUP_CONCAT(DISTINCT operateur) AS operateurs,
-                   COUNT(DISTINCT tache_id)          AS nb_taches
-            FROM registre_nettoyage
-            GROUP BY date_val
-            ORDER BY date_val DESC
+            SELECT rn.date_val,
+                   GROUP_CONCAT(DISTINCT COALESCE(
+                     TRIM(p.prenom || ' ' || COALESCE(p.nom, '')),
+                     rn.operateur
+                   )) AS operateurs,
+                   COUNT(DISTINCT rn.tache_id) AS nb_taches
+            FROM registre_nettoyage rn
+            LEFT JOIN personnel p ON p.id = rn.personnel_id
+            GROUP BY rn.date_val
+            ORDER BY rn.date_val DESC
         """)
 
     if not rows:
@@ -355,8 +374,11 @@ async def historique_semaine(
 
         placeholders = ",".join("?" * len(date_strs))
         val_rows = await db.execute_fetchall(
-            f"SELECT date_val, tache_id, operateur FROM registre_nettoyage "
-            f"WHERE date_val IN ({placeholders})",
+            f"""SELECT rn.date_val, rn.tache_id,
+                       COALESCE(p.prenom, rn.operateur) AS operateur
+                FROM registre_nettoyage rn
+                LEFT JOIN personnel p ON p.id = rn.personnel_id
+                WHERE rn.date_val IN ({placeholders})""",
             date_strs,
         )
 

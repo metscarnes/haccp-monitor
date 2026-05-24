@@ -236,8 +236,8 @@ function remplirVisaSelect(sel) {
   sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
   personnel.forEach(p => {
     const opt = document.createElement('option');
-    opt.value = p.prenom;
-    opt.textContent = p.prenom;
+    opt.value = p.id;
+    opt.textContent = [p.prenom, p.nom].filter(Boolean).join(' ');
     sel.appendChild(opt);
   });
 }
@@ -428,8 +428,8 @@ async function ouvrirModalRapide(semaine) {
   });
 
   // Visa : premier trouvé parmi les types existants, sinon mémorisé
-  const visaExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.visa).find(v => v);
-  elVisaRapide.value = visaExistant || localStorage.getItem('nu-last-visa') || '';
+  const pidExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.personnel_id).find(v => v);
+  elVisaRapide.value = (pidExistant ?? localStorage.getItem('nu-last-personnel-id')) || '';
 
   // Afficher la semaine dans le navigateur
   majSemaineNav();
@@ -510,7 +510,10 @@ function renderGridRapide(typeId, gridEl) {
 }
 
 async function sauvegarderTout() {
-  const visa = elVisaRapide.value;
+  const personnelId = elVisaRapide.value ? parseInt(elVisaRapide.value, 10) : null;
+  const visaLabel = elVisaRapide.value
+    ? elVisaRapide.options[elVisaRapide.selectedIndex].textContent
+    : '';
   elBtnRapideSave.disabled = true;
   elBtnRapideSave.textContent = '⏳ Envoi…';
 
@@ -536,7 +539,7 @@ async function sauvegarderTout() {
           annee,
           semaine:   rapideSemaine,
           resultats: rapideResultats[type.id],
-          visa,
+          personnel_id: personnelId,
         }),
       }).then(r => { if (!r.ok) throw new Error(`${type.nom}: HTTP ${r.status}`); })
     ));
@@ -546,14 +549,15 @@ async function sauvegarderTout() {
       if (type.id === currentTypeId && currentAnnee === new Date().getFullYear()) {
         donneesAnnee[String(rapideSemaine)] = {
           resultats:   { ...rapideResultats[type.id] },
-          visa,
+          visa:         visaLabel,
+          personnel_id: personnelId,
           date_saisie: new Date().toISOString().split('T')[0],
         };
         mettreAJourLigne(rapideSemaine);
       }
     });
 
-    if (visa) localStorage.setItem('nu-last-visa', visa);
+    if (personnelId) localStorage.setItem('nu-last-personnel-id', String(personnelId));
     fermerModalRapide();
     const nb = typesASauver.length;
     toast(`✅ Semaine ${rapideSemaine} — ${nb} espèce${nb > 1 ? 's' : ''} enregistrée${nb > 1 ? 's' : ''}`);
@@ -607,7 +611,7 @@ function ouvrirModal(semaine) {
 
   renderPiegeGrid();
 
-  elVisaSelect.value = data.visa || localStorage.getItem('nu-last-visa') || '';
+  elVisaSelect.value = (data.personnel_id ?? localStorage.getItem('nu-last-personnel-id')) || '';
 
   elBtnSave.disabled = false;
   elModal.hidden = false;
@@ -664,7 +668,10 @@ async function sauvegarder() {
   elBtnSave.disabled = true;
   elBtnSave.textContent = '⏳ Envoi…';
 
-  const visa = elVisaSelect.value;
+  const personnelId = elVisaSelect.value ? parseInt(elVisaSelect.value, 10) : null;
+  const visaLabel = elVisaSelect.value
+    ? elVisaSelect.options[elVisaSelect.selectedIndex].textContent
+    : '';
 
   try {
     const res = await fetch('/api/nuisibles/controles', {
@@ -675,7 +682,7 @@ async function sauvegarder() {
         annee:     currentAnnee,
         semaine:   editSemaine,
         resultats: editResultats,
-        visa,
+        personnel_id: personnelId,
       }),
     });
 
@@ -686,11 +693,12 @@ async function sauvegarder() {
 
     donneesAnnee[String(editSemaine)] = {
       resultats:   { ...editResultats },
-      visa,
+      visa:         visaLabel,
+      personnel_id: personnelId,
       date_saisie: new Date().toISOString().split('T')[0],
     };
 
-    if (visa) localStorage.setItem('nu-last-visa', visa);
+    if (personnelId) localStorage.setItem('nu-last-personnel-id', String(personnelId));
     mettreAJourLigne(editSemaine);
     fermerModal();
     toast(`✅ Semaine ${editSemaine} enregistrée`);

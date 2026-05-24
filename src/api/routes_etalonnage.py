@@ -39,7 +39,7 @@ class EtalonnageIn(BaseModel):
     thermometre_ref_id:  int
     temperature_mesuree: float
     action_corrective:   str   # 'conforme' | 'calibrage' | 'remplace'
-    operateur:           str
+    personnel_id:        int
     commentaire:         Optional[str] = None
 
     @field_validator("action_corrective")
@@ -48,13 +48,6 @@ class EtalonnageIn(BaseModel):
         if v not in {"conforme", "calibrage", "remplace"}:
             raise ValueError("action_corrective invalide")
         return v
-
-    @field_validator("operateur")
-    @classmethod
-    def non_vide(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("L'opérateur est obligatoire")
-        return v.strip()
 
 
 class ComparaisonItem(BaseModel):
@@ -99,12 +92,18 @@ async def creer_etalonnage(body: EtalonnageIn):
         if not row_t:
             raise HTTPException(404, "Thermomètre de référence non trouvé")
 
+        cur_p = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (body.personnel_id,))
+        prow = await cur_p.fetchone()
+        if not prow:
+            raise HTTPException(400, "Personnel introuvable")
+        operateur = prow["prenom"]
+
         cur = await db.execute(
             """
             INSERT INTO etalonnages
                 (date_etalonnage, thermometre_ref_id, temperature_mesuree,
-                 conforme, action_corrective, operateur, commentaire)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 conforme, action_corrective, operateur, personnel_id, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.date_etalonnage,
@@ -112,7 +111,8 @@ async def creer_etalonnage(body: EtalonnageIn):
                 body.temperature_mesuree,
                 conforme,
                 body.action_corrective,
-                body.operateur,
+                operateur,
+                body.personnel_id,
                 body.commentaire,
             ),
         )
@@ -122,9 +122,12 @@ async def creer_etalonnage(body: EtalonnageIn):
             """
             SELECT e.id, e.reference, e.date_etalonnage, e.thermometre_ref_id,
                    t.nom AS thermometre_nom, e.temperature_mesuree, e.conforme,
-                   e.action_corrective, e.operateur, e.commentaire, e.created_at
+                   e.action_corrective,
+                   COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), e.operateur) AS operateur,
+                   e.commentaire, e.created_at
             FROM etalonnages e
             JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+            LEFT JOIN personnel p ON p.id = e.personnel_id
             WHERE e.id = ?
             """,
             (row_id,),
@@ -133,7 +136,7 @@ async def creer_etalonnage(body: EtalonnageIn):
     logger.info(
         "Étalonnage EET01 — thermo=%s temp=%.1f conforme=%s par %s",
         row_t[0][1], body.temperature_mesuree,
-        "oui" if conforme else "non", body.operateur,
+        "oui" if conforme else "non", operateur,
     )
     return _row_to_dict(rows[0])
 
@@ -152,9 +155,12 @@ async def historique_etalonnages(limit: int = Query(50, ge=1, le=500)):
             """
             SELECT e.id, e.reference, e.date_etalonnage, e.thermometre_ref_id,
                    t.nom AS thermometre_nom, e.temperature_mesuree, e.conforme,
-                   e.action_corrective, e.operateur, e.commentaire, e.created_at
+                   e.action_corrective,
+                   COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), e.operateur) AS operateur,
+                   e.commentaire, e.created_at
             FROM etalonnages e
             JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+            LEFT JOIN personnel p ON p.id = e.personnel_id
             ORDER BY e.date_etalonnage DESC, e.created_at DESC
             LIMIT ?
             """,
@@ -202,9 +208,11 @@ async def statut_etalonnage():
     async with get_db() as db:
         rows = await db.execute_fetchall(
             """
-            SELECT e.date_etalonnage, t.nom, e.operateur
+            SELECT e.date_etalonnage, t.nom,
+                   COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), e.operateur) AS operateur
             FROM etalonnages e
             JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+            LEFT JOIN personnel p ON p.id = e.personnel_id
             ORDER BY e.date_etalonnage DESC
             LIMIT 1
             """
@@ -251,9 +259,12 @@ async def detail_etalonnage(etalonnage_id: int):
             """
             SELECT e.id, e.reference, e.date_etalonnage, e.thermometre_ref_id,
                    t.nom AS thermometre_nom, e.temperature_mesuree, e.conforme,
-                   e.action_corrective, e.operateur, e.commentaire, e.created_at
+                   e.action_corrective,
+                   COALESCE(TRIM(p.prenom || ' ' || COALESCE(p.nom, '')), e.operateur) AS operateur,
+                   e.commentaire, e.created_at
             FROM etalonnages e
             JOIN thermometres_ref t ON t.id = e.thermometre_ref_id
+            LEFT JOIN personnel p ON p.id = e.personnel_id
             WHERE e.id = ?
             """,
             (etalonnage_id,),

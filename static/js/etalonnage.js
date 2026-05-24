@@ -59,8 +59,8 @@ async function chargerPersonnel() {
     const data = await apiFetch('/api/admin/personnel');
     (data || []).forEach(p => {
       const opt = document.createElement('option');
-      opt.value = p.prenom;
-      opt.textContent = p.prenom;
+      opt.value = p.id;
+      opt.textContent = [p.prenom, p.nom].filter(Boolean).join(' ');
       elOperateur.appendChild(opt);
     });
   } catch { /* silencieux */ }
@@ -172,14 +172,14 @@ elForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   hideMsg();
 
-  const date      = elDate.value;
-  const operateur = elOperateur.value;
-  const thermoId  = elThermo.value;
-  const tempStr   = elTemp.value;
-  const actionEl  = elForm.querySelector('[name="action_corrective"]:checked');
+  const date        = elDate.value;
+  const personnelId = elOperateur.value;
+  const thermoId    = elThermo.value;
+  const tempStr     = elTemp.value;
+  const actionEl    = elForm.querySelector('[name="action_corrective"]:checked');
 
-  if (!date)     { showMsg('La date est obligatoire.',                        'erreur'); return; }
-  if (!operateur){ showMsg('Sélectionnez un opérateur.',                      'erreur'); return; }
+  if (!date)        { showMsg('La date est obligatoire.',                     'erreur'); return; }
+  if (!personnelId) { showMsg('Sélectionnez un opérateur.',                   'erreur'); return; }
   if (!thermoId) { showMsg('Sélectionnez un thermomètre de référence.',       'erreur'); return; }
   if (tempStr === '') { showMsg('La température est obligatoire.',             'erreur'); return; }
   if (!actionEl) { showMsg('Sélectionnez une action corrective.',             'erreur'); return; }
@@ -189,7 +189,7 @@ elForm.addEventListener('submit', async (e) => {
     thermometre_ref_id:  parseInt(thermoId),
     temperature_mesuree: parseFloat(tempStr),
     action_corrective:   actionEl.value,
-    operateur,
+    personnel_id:        parseInt(personnelId, 10),
     commentaire: document.getElementById('etal-commentaire').value.trim() || null,
   };
 

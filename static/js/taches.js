@@ -13,7 +13,8 @@ const REFRESH_MS = 60_000;
 const CODES_ACTIFS = new Set(['pieges_rongeurs', 'nettoyage_pieges_oiseaux']);
 
 // ── État ──────────────────────────────────────────────────────
-let operateur     = null;   // prénom sélectionné
+let operateurId    = null;  // id du personnel sélectionné
+let operateurLabel = null;  // libellé affiché (prénom + nom)
 let tacheCourante = null;   // tâche ouverte dans le modal
 let pieges        = [];     // liste des pièges oiseaux
 
@@ -82,22 +83,24 @@ function afficherPersonnel(personnes) {
     return;
   }
   personnes.forEach(p => {
+    const label = [p.prenom, p.nom].filter(Boolean).join(' ');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'operateur-btn';
-    btn.textContent = p.prenom;
-    btn.dataset.prenom = p.prenom;
-    btn.addEventListener('click', () => selectionnerOperateur(p.prenom));
+    btn.textContent = label;
+    btn.dataset.id = p.id;
+    btn.addEventListener('click', () => selectionnerOperateur(p.id, label));
     elOperateurBtns.appendChild(btn);
   });
 }
 
-function selectionnerOperateur(prenom) {
-  operateur = prenom;
+function selectionnerOperateur(id, label) {
+  operateurId = id;
+  operateurLabel = label;
   elOperateurBar.classList.remove('operateur-bar--vide');
   elOperateurBar.classList.add('operateur-bar--actif');
   document.querySelectorAll('.operateur-btn').forEach(b => {
-    b.classList.toggle('operateur-btn--actif', b.dataset.prenom === prenom);
+    b.classList.toggle('operateur-btn--actif', parseInt(b.dataset.id, 10) === id);
   });
 }
 
@@ -199,7 +202,7 @@ function escHtml(str) {
 
 // ── Modal ─────────────────────────────────────────────────────
 function ouvrirModal(tache) {
-  if (!operateur) {
+  if (!operateurId) {
     elOperateurBar.classList.add('operateur-bar--flash');
     setTimeout(() => elOperateurBar.classList.remove('operateur-bar--flash'), 800);
     return;
@@ -319,7 +322,7 @@ function collecterDonneesSpecifiques(code) {
 // ── Soumission validation ─────────────────────────────────────
 elModalForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (!tacheCourante || !operateur) return;
+  if (!tacheCourante || !operateurId) return;
 
   const conformeRadio = elModalForm.querySelector('[name="conforme"]:checked');
   if (!conformeRadio) {
@@ -333,7 +336,7 @@ elModalForm.addEventListener('submit', async (e) => {
 
   const payload = {
     tache_type_id:       tacheCourante.id,
-    operateur:           operateur,
+    personnel_id:        operateurId,
     date_tache:          today,
     conforme:            conformeRadio.value === 'oui',
     commentaire:         commentaire || null,

@@ -50,7 +50,7 @@ class TacheTypeUpdate(BaseModel):
 
 class ValidationCreate(BaseModel):
     tache_type_id: int
-    operateur: str
+    personnel_id: int
     date_tache: str                         # "YYYY-MM-DD"
     conforme: Optional[bool] = None
     photo_path: Optional[str] = None
