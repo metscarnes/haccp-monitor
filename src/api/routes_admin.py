@@ -461,83 +461,155 @@ async def purger_exports(avant_date: Optional[str] = None):
 # Stats espace disque
 # ---------------------------------------------------------------------------
 
-DATA_DIR = Path(__file__).parent.parent.parent / "data"
+ROOT_DIR  = Path(__file__).parent.parent.parent        # racine du projet
+DATA_DIR  = ROOT_DIR / "data"
+STATIC_DIR = ROOT_DIR / "static"
+
+# Catégories fixes avec leur chemin réel et un libellé lisible.
+# La clé est l'identifiant passé à /stats-disque/{id}.
+DISQUE_CATEGORIES: dict[str, dict] = {
+    "photos":   {"label": "📷 Photos (réceptions, tâches…)", "path": DATA_DIR / "photos"},
+    "exports":  {"label": "📊 Exports CSV (températures)",   "path": DATA_DIR / "exports"},
+    "rapports": {"label": "📄 Rapports générés",             "path": DATA_DIR / "rapports"},
+    "videos":   {"label": "🎬 Vidéos e-learning",            "path": STATIC_DIR / "docs" / "Vidéos"},
+    "pdfs":     {"label": "📚 PDFs e-learning",              "path": STATIC_DIR / "docs" / "Modules hygiene"},
+    "bdd":      {"label": "🗄️ Base de données",              "path": DATA_DIR},          # fichiers .db à la racine data/
+    "code":     {"label": "💻 Code application",             "path": ROOT_DIR / "src"},
+    "static":   {"label": "🌐 Interface web (HTML/CSS/JS)",  "path": STATIC_DIR},
+}
+
+
+def _taille_dossier(path: Path, extensions: tuple | None = None) -> tuple[float, int]:
+    """Retourne (taille_mo, nb_fichiers) pour un dossier, filtré par extensions si fourni."""
+    taille = 0
+    nb = 0
+    if not path.exists():
+        return 0.0, 0
+    try:
+        for f in path.rglob("*"):
+            if f.is_file():
+                if extensions and f.suffix.lower() not in extensions:
+                    continue
+                taille += f.stat().st_size
+                nb += 1
+    except Exception:  # noqa: BLE001
+        pass
+    return round(taille / (1024 * 1024), 2), nb
 
 
 @router.get("/stats-disque")
 async def stats_disque():
-    """Retourne les stats d'espace disque par dossier + infos disque total."""
-    stats = {}
+    """Retourne les stats d'espace disque par catégorie + infos partition."""
+    stats: dict[str, dict] = {}
 
-    if not DATA_DIR.exists():
-        return {
-            "dossiers": stats,
-            "total_data_mo": 0,
-            "disque_total_gb": 0,
-            "disque_libre_gb": 0,
-            "disque_utilise_pct": 0,
+    # BDD : uniquement les .db/.sqlite à la racine de data/
+    bdd_bytes, bdd_nb = 0, 0
+    if DATA_DIR.exists():
+        for f in DATA_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in (".db", ".sqlite", ".sqlite3"):
+                bdd_bytes += f.stat().st_size
+                bdd_nb += 1
+    stats["bdd"] = {
+        "label": DISQUE_CATEGORIES["bdd"]["label"],
+        "taille_mo": round(bdd_bytes / (1024 * 1024), 2),
+        "nb_fichiers": bdd_nb,
+    }
+
+    # Catégories avec dossier dédié
+    for cle, cfg in DISQUE_CATEGORIES.items():
+        if cle == "bdd":
+            continue
+        ext_filter = None
+        if cle == "videos":
+            ext_filter = (".mp4", ".webm", ".mov")
+        elif cle == "pdfs":
+            ext_filter = (".pdf",)
+        taille_mo, nb = _taille_dossier(cfg["path"], ext_filter)
+        stats[cle] = {
+            "label": cfg["label"],
+            "taille_mo": taille_mo,
+            "nb_fichiers": nb,
         }
 
-    # Stats par dossier
-    for subdir in DATA_DIR.iterdir():
-        if subdir.is_dir():
-            nom = subdir.name
-            taille_bytes = 0
-            nb_fichiers = 0
+    total_app_mo = sum(s["taille_mo"] for s in stats.values())
 
-            try:
-                for fichier in subdir.rglob("*"):
-                    if fichier.is_file():
-                        taille_bytes += fichier.stat().st_size
-                        nb_fichiers += 1
-            except Exception:  # noqa: BLE001
-                pass
-
-            stats[nom] = {
-                "taille_mo": round(taille_bytes / (1024 * 1024), 2),
-                "nb_fichiers": nb_fichiers,
-            }
-
-    total_data_mo = sum(s["taille_mo"] for s in stats.values())
-
-    # Espace disque du système (shutil.disk_usage = stdlib, pas de dépendance externe)
-    disque_total_gb = 0
-    disque_libre_gb = 0
-    disque_utilise_pct = 0
-
+    # Espace disque de la partition
+    disque_total_gb = disque_libre_gb = disque_utilise_pct = 0.0
+    disque_os_gb = 0.0
     try:
-        usage = shutil.disk_usage(str(DATA_DIR))
-        disque_total_gb = round(usage.total / (1024**3), 2)
-        disque_libre_gb = round(usage.free / (1024**3), 2)
+        usage = shutil.disk_usage(str(ROOT_DIR))
+        disque_total_gb  = round(usage.total / (1024**3), 2)
+        disque_libre_gb  = round(usage.free  / (1024**3), 2)
         disque_utilise_pct = round(usage.used / usage.total * 100, 1) if usage.total else 0
+        # OS = espace utilisé total - ce qu'on mesure dans l'appli
+        os_bytes = usage.used - int(total_app_mo * 1024 * 1024)
+        disque_os_gb = round(max(os_bytes, 0) / (1024**3), 2)
+        stats["os"] = {
+            "label": "⚙️ Système d'exploitation & autres",
+            "taille_mo": round(max(os_bytes, 0) / (1024 * 1024), 2),
+            "nb_fichiers": None,   # inconnu
+        }
     except Exception:  # noqa: BLE001
         if HAS_PSUTIL:
             try:
-                usage = psutil.disk_usage(str(DATA_DIR.parent.parent))
-                disque_total_gb = round(usage.total / (1024**3), 2)
-                disque_libre_gb = round(usage.free / (1024**3), 2)
+                usage = psutil.disk_usage(str(ROOT_DIR))
+                disque_total_gb    = round(usage.total / (1024**3), 2)
+                disque_libre_gb    = round(usage.free  / (1024**3), 2)
                 disque_utilise_pct = usage.percent
             except Exception:  # noqa: BLE001
                 pass
 
     return {
         "dossiers": stats,
-        "total_mo": round(total_data_mo, 2),
-        "total_data_mo": round(total_data_mo, 2),
+        "total_mo": round(total_app_mo, 2),
+        "total_data_mo": round(total_app_mo, 2),
         "disque_total_gb": disque_total_gb,
         "disque_libre_gb": disque_libre_gb,
         "disque_utilise_pct": disque_utilise_pct,
     }
 
 
+# Mapping id → chemin réel pour le détail
+_DETAIL_PATHS: dict[str, Path] = {
+    "photos":   DATA_DIR / "photos",
+    "exports":  DATA_DIR / "exports",
+    "rapports": DATA_DIR / "rapports",
+    "videos":   STATIC_DIR / "docs" / "Vidéos",
+    "pdfs":     STATIC_DIR / "docs" / "Modules hygiene",
+    "code":     ROOT_DIR / "src",
+    "static":   STATIC_DIR,
+}
+
+
 @router.get("/stats-disque/{dossier}")
 async def stats_disque_detail(dossier: str):
     """Retourne le détail des fichiers d'un dossier spécifique."""
     # Sécurité : évite les traversées de répertoire
-    if "/" in dossier or "\\" in dossier or dossier == "..":
+    if ".." in dossier or "/" in dossier or "\\" in dossier:
         raise HTTPException(400, "Dossier invalide")
 
-    subdir = DATA_DIR / dossier
+    # BDD : cas spécial (fichiers à la racine de data/)
+    if dossier == "bdd":
+        fichiers = []
+        if DATA_DIR.exists():
+            for f in DATA_DIR.iterdir():
+                if f.is_file() and f.suffix.lower() in (".db", ".sqlite", ".sqlite3"):
+                    sz = f.stat().st_size
+                    fichiers.append({
+                        "chemin": f.name,
+                        "taille_mo": round(sz / (1024 * 1024), 2),
+                        "taille_ko": round(sz / 1024, 1),
+                    })
+        fichiers.sort(key=lambda x: x["taille_mo"], reverse=True)
+        return {"dossier": dossier, "fichiers": fichiers, "total_mo": sum(f["taille_mo"] for f in fichiers), "nb_fichiers": len(fichiers)}
+
+    if dossier == "os":
+        raise HTTPException(400, "Détail non disponible pour le système d'exploitation")
+
+    subdir = _DETAIL_PATHS.get(dossier)
+    if subdir is None:
+        # Fallback : tenter dans data/ (ancienne logique)
+        subdir = DATA_DIR / dossier
     if not subdir.exists() or not subdir.is_dir():
         raise HTTPException(404, "Dossier non trouvé")
 

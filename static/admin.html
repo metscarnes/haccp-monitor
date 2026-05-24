@@ -1473,21 +1473,26 @@
         const dossiers = Object.entries(data.dossiers)
           .sort(([, a], [, b]) => b.taille_mo - a.taille_mo);
 
-        dossiers.forEach(([nom, stats]) => {
+        dossiers.forEach(([cle, stats]) => {
+          const hasDetail = cle !== 'os';
           const tr = document.createElement('tr');
           tr.style.borderBottom = '1px solid #e0d5c5';
-          tr.style.cursor = 'pointer';
           tr.style.transition = 'background-color .2s';
-          tr.addEventListener('mouseenter', () => { tr.style.background = '#f9f3eb'; });
-          tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+          if (hasDetail) {
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('mouseenter', () => { tr.style.background = '#f9f3eb'; });
+            tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+            tr.addEventListener('click', () => { ouvrirDetailFichiers(cle, stats.label || cle); });
+          }
+          const nbAffiche = stats.nb_fichiers === null ? '—' : stats.nb_fichiers;
+          const hint = hasDetail ? ' <span style="color:#aaa;font-size:.8rem">▶</span>' : '';
           tr.innerHTML = `
-            <td style="padding:.5rem">${escHtml(nom)}</td>
-            <td style="padding:.5rem; text-align:right">${stats.taille_mo}</td>
-            <td style="padding:.5rem; text-align:right">${stats.nb_fichiers}</td>
+            <td style="padding:.5rem">${escHtml(stats.label || cle)}${hint}</td>
+            <td style="padding:.5rem; text-align:right">${stats.taille_mo} Mo</td>
+            <td style="padding:.5rem; text-align:right">${nbAffiche}</td>
           `;
-          tr.addEventListener('click', () => { ouvrirDetailFichiers(nom); });
           tbody.appendChild(tr);
-          totalFichiers += stats.nb_fichiers;
+          if (stats.nb_fichiers !== null) totalFichiers += stats.nb_fichiers;
         });
 
         $('stats-disque-total').textContent = data.total_mo + ' Mo';
@@ -1502,7 +1507,7 @@
     });
 
     // Ouvrir le modal de détail des fichiers
-    const ouvrirDetailFichiers = async (dossier) => {
+    const ouvrirDetailFichiers = async (dossier, label) => {
       const modal = $('detail-fichiers-modal');
       const titre = $('detail-fichiers-titre');
       const loader = $('detail-fichiers-loader');
@@ -1510,7 +1515,7 @@
       const tbody = $('detail-fichiers-tbody');
 
       modal.style.display = 'block';
-      titre.textContent = `Détail : ${escHtml(dossier)}`;
+      titre.textContent = label || dossier;
       loader.style.display = 'block';
       table.style.display = 'none';
       tbody.innerHTML = '';
