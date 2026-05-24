@@ -393,6 +393,23 @@
           </button>
         </div>
         <div id="rapports-msg" class="admin-depan-msg" hidden></div>
+
+        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+
+        <!-- Photos orphelines -->
+        <p class="admin-info-text">
+          Vérifie et supprime les photos de test orphelines (fichiers sur disque non référencés en base).
+        </p>
+        <div style="margin-bottom:.75rem">
+          <button class="btn btn-secondaire" id="btn-verifier-photos" style="margin-right:.5rem">
+            🔍 Vérifier les photos orphelines
+          </button>
+          <button class="btn btn-danger" id="btn-supprimer-photos" hidden>
+            🗑️ Supprimer les photos orphelines
+          </button>
+        </div>
+        <div id="photos-status" class="admin-depan-msg admin-depan-msg--info" hidden></div>
+        <div id="photos-msg" class="admin-depan-msg" hidden></div>
       </div>
     </section>
 
@@ -1271,6 +1288,76 @@
           if (nbErrs) txt += ` — ${nbErrs} fichier(s) non trouvé(s) sur disque (entrées BDD supprimées quand même)`;
           setMsg(nbErrs ? 'info' : 'ok', txt);
         }
+      } catch (err) {
+        setMsg('erreur', `Erreur : ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ── Photos orphelines ──────────────────────────────────
+    let photosOrphelines = [];
+
+    $('btn-verifier-photos').addEventListener('click', async () => {
+      const status = $('photos-status');
+      const btn = $('btn-verifier-photos');
+      btn.disabled = true;
+      status.textContent = 'Vérification en cours…';
+      status.hidden = false;
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/photos-orphelines`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        photosOrphelines = data.orphelines;
+        if (data.total === 0) {
+          status.className = 'admin-depan-msg admin-depan-msg--ok';
+          status.textContent = '✓ Aucune photo orpheline détectée.';
+          $('btn-supprimer-photos').hidden = true;
+        } else {
+          const tailleTot = Math.round(photosOrphelines.reduce((a, p) => a + p.taille_ko, 0) / 1024 * 10) / 10;
+          status.className = 'admin-depan-msg admin-depan-msg--info';
+          status.innerHTML = `
+            ⚠️ ${data.total} photo(s) orpheline(s) trouvée(s) (${tailleTot} Mo).<br>
+            <small>${photosOrphelines.map(p => p.chemin).join(', ')}</small>
+          `;
+          $('btn-supprimer-photos').hidden = false;
+        }
+      } catch (err) {
+        status.className = 'admin-depan-msg admin-depan-msg--erreur';
+        status.textContent = `Erreur : ${err.message}`;
+        $('btn-supprimer-photos').hidden = true;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('btn-supprimer-photos').addEventListener('click', async () => {
+      const msg = $('photos-msg');
+      const btn = $('btn-supprimer-photos');
+      const setMsg = (cls, txt) => {
+        msg.hidden = false;
+        msg.className = `admin-depan-msg admin-depan-msg--${cls}`;
+        msg.textContent = txt;
+      };
+
+      if (!confirm(`Supprimer ${photosOrphelines.length} photo(s) orpheline(s) ?\n\nCette action est IRRÉVERSIBLE.`)) return;
+
+      btn.disabled = true;
+      setMsg('info', 'Suppression en cours…');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/photos-orphelines`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        const data = await res.json();
+        const nbErrs = (data.erreurs || []).length;
+        if (data.supprime === 0) {
+          setMsg('ok', '✓ Aucune photo à supprimer.');
+        } else {
+          let txt = `✓ ${data.supprime} photo(s) supprimée(s)`;
+          if (nbErrs) txt += ` — ${nbErrs} fichier(s) non supprimé(s) : ${data.erreurs.join(', ')}`;
+          setMsg(nbErrs ? 'info' : 'ok', txt);
+        }
+        $('btn-supprimer-photos').hidden = true;
+        $('btn-verifier-photos').click();
       } catch (err) {
         setMsg('erreur', `Erreur : ${err.message}`);
       } finally {

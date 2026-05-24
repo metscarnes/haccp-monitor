@@ -401,6 +401,107 @@ async def purger_rapports():
 
 
 # ---------------------------------------------------------------------------
+# Nettoyage photos orphelines
+# ---------------------------------------------------------------------------
+
+PHOTOS_DIR = Path(__file__).parent.parent.parent / "data" / "photos"
+
+
+@router.get("/photos-orphelines")
+async def lister_photos_orphelines():
+    """Liste les fichiers photos sur disque qui ne sont plus référencés en base."""
+    if not PHOTOS_DIR.exists():
+        return {"orphelines": [], "total": 0}
+
+    # Collecte tous les chemins photos en base
+    async with get_db() as db:
+        fichiers_en_base = set()
+        for col_table in [
+            ("receptions", "photo_bl_filename"),
+            ("receptions", "proprete_photo_filename"),
+            ("reception_bls_supplementaires", "photo_bl_filename"),
+            ("ouvertures", "photo_filename"),
+            ("fiches_incident", "signature_livreur_filename"),
+            ("tache_validations", "photo_path"),
+        ]:
+            table, col = col_table
+            try:
+                rows = await db.execute_fetchall(
+                    f"SELECT DISTINCT {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''",
+                )
+                for row in rows:
+                    if row[0]:
+                        fichiers_en_base.add(row[0])
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Parcoure le dossier et identifie les orphelines
+    orphelines = []
+    try:
+        for photo in PHOTOS_DIR.rglob("*"):
+            if photo.is_file():
+                nom_photo = str(photo.relative_to(PHOTOS_DIR))
+                # Normalise les chemins (forward slash)
+                nom_normalise = nom_photo.replace("\\", "/")
+                if nom_normalise not in fichiers_en_base:
+                    orphelines.append({
+                        "chemin": nom_normalise,
+                        "taille_ko": photo.stat().st_size / 1024,
+                    })
+    except Exception:  # noqa: BLE001
+        pass
+
+    return {"orphelines": sorted(orphelines, key=lambda x: x["chemin"]), "total": len(orphelines)}
+
+
+@router.delete("/photos-orphelines")
+async def supprimer_photos_orphelines():
+    """Supprime tous les fichiers photos orphelines du disque."""
+    supprime = 0
+    erreurs: list[str] = []
+
+    if not PHOTOS_DIR.exists():
+        return {"ok": True, "supprime": 0, "erreurs": []}
+
+    async with get_db() as db:
+        fichiers_en_base = set()
+        for col_table in [
+            ("receptions", "photo_bl_filename"),
+            ("receptions", "proprete_photo_filename"),
+            ("reception_bls_supplementaires", "photo_bl_filename"),
+            ("ouvertures", "photo_filename"),
+            ("fiches_incident", "signature_livreur_filename"),
+            ("tache_validations", "photo_path"),
+        ]:
+            table, col = col_table
+            try:
+                rows = await db.execute_fetchall(
+                    f"SELECT DISTINCT {col} FROM {table} WHERE {col} IS NOT NULL AND {col} != ''",
+                )
+                for row in rows:
+                    if row[0]:
+                        fichiers_en_base.add(row[0])
+            except Exception:  # noqa: BLE001
+                pass
+
+    # Supprime les orphelines
+    try:
+        for photo in PHOTOS_DIR.rglob("*"):
+            if photo.is_file():
+                nom_photo = str(photo.relative_to(PHOTOS_DIR)).replace("\\", "/")
+                if nom_photo not in fichiers_en_base:
+                    try:
+                        photo.unlink()
+                        supprime += 1
+                    except Exception as exc:  # noqa: BLE001
+                        erreurs.append(f"{nom_photo}: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        erreurs.append(str(exc))
+
+    return {"ok": True, "supprime": supprime, "erreurs": erreurs}
+
+
+# ---------------------------------------------------------------------------
 # Pièges
 # ---------------------------------------------------------------------------
 
