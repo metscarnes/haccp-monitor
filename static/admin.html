@@ -367,30 +367,6 @@
       </div>
     </section>
 
-    <!-- ── Dépannage ── -->
-    <section class="admin-section" id="section-depannage">
-      <div class="admin-section-header">
-        <h2 class="admin-section-titre">🔧 Dépannage</h2>
-      </div>
-      <div class="admin-section-body">
-        <div class="admin-depannage-grid">
-          <button class="btn btn-secondaire" id="btn-test-email">📧 Tester alerte email</button>
-          <button class="btn btn-secondaire" id="btn-test-print">🖨️ Tester imprimante</button>
-        </div>
-        <div id="depan-msg" class="admin-depan-msg" hidden></div>
-        <div class="admin-depannage-status">
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">Ping serveur</span>
-            <span class="admin-serveur-valeur" id="srv-ping">—</span>
-          </div>
-          <div class="admin-serveur-item">
-            <span class="admin-serveur-label">Version backend</span>
-            <span class="admin-serveur-valeur" id="srv-version">—</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- ── Zone de test ── -->
     <section class="admin-section" id="section-test">
       <div class="admin-section-header">
@@ -1068,47 +1044,6 @@
       $('srv-mqtt').textContent = connexionOk ? 'Connecté' : 'Déconnecté';
       $('srv-version').textContent = '—';
     }
-
-    // ── Dépannage ───────────────────────────────────────────
-    $('btn-test-email').addEventListener('click', async () => {
-      const msg = $('depan-msg');
-      msg.hidden = false;
-      msg.className = 'admin-depan-msg admin-depan-msg--info';
-      msg.textContent = 'Envoi test en cours…';
-      try {
-        const res = await authFetch(`${API_BASE}/api/alertes/test`, { method: 'POST' });
-        if (res.ok) {
-          msg.className = 'admin-depan-msg admin-depan-msg--ok';
-          msg.textContent = '✓ Email/SMS de test envoyé avec succès';
-        } else {
-          msg.className = 'admin-depan-msg admin-depan-msg--erreur';
-          msg.textContent = `Erreur serveur (HTTP ${res.status})`;
-        }
-      } catch (err) {
-        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
-        msg.textContent = `Erreur connexion : ${err.message}`;
-      }
-    });
-
-    $('btn-test-print').addEventListener('click', async () => {
-      const msg = $('depan-msg');
-      msg.hidden = false;
-      msg.className = 'admin-depan-msg admin-depan-msg--info';
-      msg.textContent = 'Test impression en cours…';
-      try {
-        const res = await authFetch(`${API_BASE}/api/impression/test`, { method: 'POST' });
-        if (res.ok) {
-          msg.className = 'admin-depan-msg admin-depan-msg--ok';
-          msg.textContent = '✓ Test d\'impression envoyé';
-        } else {
-          msg.className = 'admin-depan-msg admin-depan-msg--erreur';
-          msg.textContent = `Erreur serveur (HTTP ${res.status})`;
-        }
-      } catch (err) {
-        msg.className = 'admin-depan-msg admin-depan-msg--erreur';
-        msg.textContent = `Erreur connexion : ${err.message}`;
-      }
-    });
 
     // ── Helpers ─────────────────────────────────────────────
     function escHtml(str) {
