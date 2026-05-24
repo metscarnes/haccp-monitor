@@ -7,26 +7,71 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ── Auth admin ──────────────────────────────────────────
-function getAdminToken() {
-  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
-  if (Date.now() > exp) return null;
-  return localStorage.getItem('admin_token');
+// ── Modale mot de passe inline ──────────────────────────
+// Demande le mot de passe admin et renvoie un token JWT frais.
+// Le token n'est pas stocké : redemandé à chaque action sensible.
+let _pwdOverlay = null;
+
+function _construirePwdModale() {
+  if (_pwdOverlay) return _pwdOverlay;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:1.8rem 1.5rem;width:min(340px,90vw);box-shadow:0 6px 30px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:1.1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <div style="text-align:center;font-size:1.8rem;">🔐</div>
+      <div style="text-align:center;font-weight:700;color:#3D2008;font-size:1.05rem;">Mot de passe requis</div>
+      <div data-err style="display:none;background:#fde8e8;color:#b91c1c;border-radius:8px;padding:.55rem .8rem;font-size:.85rem;font-weight:600;text-align:center;">Mot de passe incorrect</div>
+      <input data-input type="password" placeholder="••••••••" autocomplete="current-password" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.7rem 1rem;font-size:1rem;color:#2c1a0e;outline:none;width:100%;box-sizing:border-box;">
+      <div style="display:flex;gap:.6rem;">
+        <button data-cancel type="button" style="flex:1;border:1.5px solid #d5c9b8;border-radius:8px;padding:.7rem;background:#fff;color:#555;font-size:.95rem;font-weight:600;cursor:pointer;">Annuler</button>
+        <button data-ok type="button" style="flex:1;border:none;border-radius:8px;padding:.7rem;background:#8b3a0f;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;">Valider</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  _pwdOverlay = overlay;
+  return overlay;
 }
 
-function requireAdminDlc() {
-  const token = getAdminToken();
-  if (!token) {
-    sessionStorage.setItem('auth_redirect', '/dlc.html');
-    window.location.href = '/login.html';
-    return null;
-  }
-  return token;
-}
+function demanderMotDePasse() {
+  const overlay = _construirePwdModale();
+  const input  = overlay.querySelector('[data-input]');
+  const errEl  = overlay.querySelector('[data-err]');
+  const okBtn  = overlay.querySelector('[data-ok]');
+  const cancel = overlay.querySelector('[data-cancel]');
+  input.value = '';
+  errEl.style.display = 'none';
+  overlay.style.display = 'flex';
+  setTimeout(() => input.focus(), 50);
 
-function authHeaders() {
-  const token = getAdminToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      overlay.style.display = 'none';
+      okBtn.onclick = cancel.onclick = input.onkeydown = overlay.onclick = null;
+    };
+    const fermer = (val) => { cleanup(); resolve(val); };
+    const valider = async () => {
+      const pwd = input.value;
+      if (!pwd) { input.focus(); return; }
+      okBtn.disabled = true; okBtn.textContent = '…'; errEl.style.display = 'none';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd }),
+        });
+        if (res.ok) { const d = await res.json(); fermer(d.token); }
+        else { errEl.style.display = 'block'; input.value = ''; input.focus(); }
+      } catch { errEl.textContent = 'Erreur réseau'; errEl.style.display = 'block'; }
+      finally { okBtn.disabled = false; okBtn.textContent = 'Valider'; }
+    };
+    okBtn.onclick = valider;
+    cancel.onclick = () => fermer(null);
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); valider(); }
+      if (e.key === 'Escape') { e.preventDefault(); fermer(null); }
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) fermer(null); };
+  });
 }
 
 // Mapping centralisé des sources DLC → emoji + libellé + classe CSS
@@ -703,7 +748,6 @@ document.querySelectorAll('#dlc-modal [data-close]').forEach(e => e.addEventList
 
 // ── Modal Modifier DLC ──────────────────────────────────
 function ouvrirModalModifier(cible) {
-  if (!requireAdminDlc()) return;
   state.modifierCible = cible;
   $('modifier-produit-nom').textContent  = cible.produit_nom;
   $('modifier-dlc-courante').textContent = `DLC actuelle : ${formatDateFr(cible.dlc)}`;
@@ -727,12 +771,14 @@ $('modifier-nouvelle-dlc').addEventListener('input', () => {
 
 $('modifier-valider').addEventListener('click', async () => {
   const btn = $('modifier-valider');
+  const token = await demanderMotDePasse();
+  if (!token) return;
   btn.disabled = true;
   btn.textContent = 'Enregistrement...';
   try {
     const res = await fetch('/api/dlc/modifier-dlc', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         source_type:  state.modifierCible.source_type,
         source_id:    state.modifierCible.source_id,
@@ -753,12 +799,13 @@ $('modifier-valider').addEventListener('click', async () => {
 
 // ── Supprimer (marquer annulé sans personnel) ───────────
 async function supprimerProduitDlc(cible) {
-  if (!requireAdminDlc()) return;
   if (!confirm(`Supprimer « ${cible.produit_nom} » du calendrier DLC ?\nCette action est réversible via le bouton Correction.`)) return;
+  const token = await demanderMotDePasse();
+  if (!token) return;
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         source_type:  cible.source_type,
         source_id:    cible.source_id,
@@ -867,7 +914,6 @@ function construireLigneOrigine(cible) {
 
 // ── Modal Devenir ───────────────────────────────────────
 function ouvrirModalDevenir(cible) {
-  if (!requireAdminDlc()) return;
   state.devenirCible  = cible;
   state.devenirStatut = null;
 
@@ -911,12 +957,14 @@ function rafraichirBoutonValider() {
 
 $('devenir-valider').addEventListener('click', async () => {
   const btn = $('devenir-valider');
+  const token = await demanderMotDePasse();
+  if (!token) return;
   btn.disabled = true;
   btn.textContent = 'Enregistrement...';
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         source_type:  state.devenirCible.source_type,
         source_id:    state.devenirCible.source_id,

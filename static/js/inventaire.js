@@ -6,26 +6,71 @@
 
 const $ = (id) => document.getElementById(id);
 
-// ── Auth admin ───────────────────────────────────────────────
-function getAdminToken() {
-  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
-  if (Date.now() > exp) return null;
-  return localStorage.getItem('admin_token');
+// ── Modale mot de passe inline ───────────────────────────────
+// Demande le mot de passe admin et renvoie un token JWT frais.
+// Le token n'est pas stocké : redemandé à chaque action sensible.
+let _pwdOverlay = null;
+
+function _construirePwdModale() {
+  if (_pwdOverlay) return _pwdOverlay;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:1.8rem 1.5rem;width:min(340px,90vw);box-shadow:0 6px 30px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:1.1rem;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+      <div style="text-align:center;font-size:1.8rem;">🔐</div>
+      <div style="text-align:center;font-weight:700;color:#3D2008;font-size:1.05rem;">Mot de passe requis</div>
+      <div data-err style="display:none;background:#fde8e8;color:#b91c1c;border-radius:8px;padding:.55rem .8rem;font-size:.85rem;font-weight:600;text-align:center;">Mot de passe incorrect</div>
+      <input data-input type="password" placeholder="••••••••" autocomplete="current-password" style="border:1.5px solid #d5c9b8;border-radius:8px;padding:.7rem 1rem;font-size:1rem;color:#2c1a0e;outline:none;width:100%;box-sizing:border-box;">
+      <div style="display:flex;gap:.6rem;">
+        <button data-cancel type="button" style="flex:1;border:1.5px solid #d5c9b8;border-radius:8px;padding:.7rem;background:#fff;color:#555;font-size:.95rem;font-weight:600;cursor:pointer;">Annuler</button>
+        <button data-ok type="button" style="flex:1;border:none;border-radius:8px;padding:.7rem;background:#8b3a0f;color:#fff;font-size:.95rem;font-weight:700;cursor:pointer;">Valider</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  _pwdOverlay = overlay;
+  return overlay;
 }
 
-function requireAdminInv() {
-  const token = getAdminToken();
-  if (!token) {
-    sessionStorage.setItem('auth_redirect', '/inventaire.html');
-    window.location.href = '/login.html';
-    return null;
-  }
-  return token;
-}
+function demanderMotDePasse() {
+  const overlay = _construirePwdModale();
+  const input  = overlay.querySelector('[data-input]');
+  const errEl  = overlay.querySelector('[data-err]');
+  const okBtn  = overlay.querySelector('[data-ok]');
+  const cancel = overlay.querySelector('[data-cancel]');
+  input.value = '';
+  errEl.style.display = 'none';
+  overlay.style.display = 'flex';
+  setTimeout(() => input.focus(), 50);
 
-function authHeadersInv() {
-  const token = getAdminToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      overlay.style.display = 'none';
+      okBtn.onclick = cancel.onclick = input.onkeydown = overlay.onclick = null;
+    };
+    const fermer = (val) => { cleanup(); resolve(val); };
+    const valider = async () => {
+      const pwd = input.value;
+      if (!pwd) { input.focus(); return; }
+      okBtn.disabled = true; okBtn.textContent = '…'; errEl.style.display = 'none';
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd }),
+        });
+        if (res.ok) { const d = await res.json(); fermer(d.token); }
+        else { errEl.style.display = 'block'; input.value = ''; input.focus(); }
+      } catch { errEl.textContent = 'Erreur réseau'; errEl.style.display = 'block'; }
+      finally { okBtn.disabled = false; okBtn.textContent = 'Valider'; }
+    };
+    okBtn.onclick = valider;
+    cancel.onclick = () => fermer(null);
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); valider(); }
+      if (e.key === 'Escape') { e.preventDefault(); fermer(null); }
+    };
+    overlay.onclick = (e) => { if (e.target === overlay) fermer(null); };
+  });
 }
 
 function escHtml(s) {
@@ -414,7 +459,6 @@ function mettreAJourActionBar() {
 // ══════════════════════════════════════════════════════════════
 
 function ouvrirBatchModal() {
-  if (!requireAdminInv()) return;
   const selItems = state.items.filter(it => gestionState.selection.has(clefItem(it)));
   if (selItems.length === 0) return;
 
@@ -515,6 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('inv-batch-valider').addEventListener('click', async () => {
     const btn = $('inv-batch-valider');
+    const token = await demanderMotDePasse();
+    if (!token) return;
     btn.disabled = true;
     btn.textContent = 'Traitement…';
 
@@ -527,7 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const res = await fetch('/api/dlc/devenir/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeadersInv() },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           items,
           statut: batchState.statut,
@@ -557,7 +603,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════
 
 function ouvrirEditModal(it) {
-  if (!requireAdminInv()) return;
   editState.cible = it;
 
   $('inv-edit-nom').textContent  = it.produit_nom;
@@ -701,12 +746,15 @@ document.addEventListener('DOMContentLoaded', () => {
       body.quantite = q;
     }
 
+    const token = await demanderMotDePasse();
+    if (!token) return;
+
     btn.disabled = true;
     btn.textContent = 'Enregistrement…';
     try {
       const res = await fetch(`/api/stock/${it.source_type}/${it.source_id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...authHeadersInv() },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
