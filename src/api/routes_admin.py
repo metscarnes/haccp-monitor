@@ -8,6 +8,7 @@ GET    /api/admin/pieges                → configuration des pièges
 POST   /api/admin/pieges                → ajouter un piège
 """
 
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -354,6 +355,49 @@ async def purger_historique_temperature(body: PurgeTempBody = PurgeTempBody()):
 
     total = sum(supprime.values())
     return {"ok": True, "total": total, "detail": supprime, "erreurs": erreurs}
+
+
+# ---------------------------------------------------------------------------
+# Purge rapports générés
+# ---------------------------------------------------------------------------
+
+RAPPORTS_DIR = Path(__file__).parent.parent.parent / "data" / "rapports"
+
+
+@router.delete("/rapports")
+async def purger_rapports():
+    """Supprime tous les rapports générés (entrées BDD + fichiers PDF sur disque)."""
+    supprime_db   = 0
+    supprime_disk = 0
+    erreurs: list[str] = []
+
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            "SELECT id, fichier_path FROM rapports WHERE boutique_id = ?", (BOUTIQUE_ID,)
+        )
+        for row in rows:
+            fichier = row[1]
+            if fichier:
+                p = Path(fichier)
+                try:
+                    if p.exists():
+                        p.unlink()
+                        supprime_disk += 1
+                except Exception as exc:  # noqa: BLE001
+                    erreurs.append(f"{p.name} : {exc}")
+
+        cur = await db.execute(
+            "DELETE FROM rapports WHERE boutique_id = ?", (BOUTIQUE_ID,)
+        )
+        supprime_db = cur.rowcount
+        await db.commit()
+
+    return {
+        "ok": True,
+        "supprime_db": supprime_db,
+        "supprime_disk": supprime_disk,
+        "erreurs": erreurs,
+    }
 
 
 # ---------------------------------------------------------------------------
