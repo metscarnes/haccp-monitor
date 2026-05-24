@@ -722,11 +722,6 @@ INSERT OR IGNORE INTO regles_dlc (boutique_id, categorie, dlc_jours, note) VALUE
 (1, 'charcuterie',      5, 'Charcuterie'),
 (1, 'traiteur',         3, 'Traiteur');
 
--- Personnel par défaut (boutique 1)
-INSERT OR IGNORE INTO personnel (boutique_id, prenom) VALUES
-(1, 'Éric'),
-(1, 'Ulysse');
-
 -- Types de tâches HACCP par défaut (boutique 1)
 -- Quotidien : géré par module Nettoyage (nettoyage.html, table dédiée)
 -- Hebdomadaire : géré par module Nuisibles (nuisibles.html)
@@ -776,7 +771,37 @@ async def init_db() -> None:
         db.row_factory = aiosqlite.Row
         await db.executescript(SCHEMA_SQL)
         await db.executescript(SEED_SQL)
-        await db.executescript(SEED_SQL_PHASE2)
+
+        # SEED_SQL_PHASE2 (pièges, types de tâches, règles/paramètres DLC) :
+        # données de configuration modifiables par l'admin. On ne les insère
+        # qu'UNE SEULE FOIS, à la création de la base, sinon un INSERT OR IGNORE
+        # à chaque démarrage ressusciterait les éléments supprimés via l'admin.
+        # Drapeau idempotent stocké dans `parametres`.
+        cur = await db.execute(
+            "SELECT 1 FROM parametres WHERE boutique_id = 1 AND cle = 'seed_phase2_done'"
+        )
+        seed_deja_fait = await cur.fetchone() is not None
+        if not seed_deja_fait:
+            # La base est-elle réellement neuve, ou déjà exploitée ?
+            # (bases d'avant ce drapeau : on ne doit PAS relancer le seed, sinon
+            #  on ressusciterait les pièges / tâches déjà supprimés par l'admin.)
+            cur = await db.execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM pieges) + "
+                "(SELECT COUNT(*) FROM tache_types) + "
+                "(SELECT COUNT(*) FROM personnel)"
+            )
+            base_deja_exploitee = (await cur.fetchone())[0] > 0
+            if not base_deja_exploitee:
+                await db.executescript(SEED_SQL_PHASE2)
+                logger.info("Seed initial Phase 2 inséré (première création de la base)")
+            else:
+                logger.info("Base existante : seed Phase 2 ignoré, drapeau posé")
+            await db.execute(
+                "INSERT OR IGNORE INTO parametres (boutique_id, cle, valeur) "
+                "VALUES (1, 'seed_phase2_done', '1')"
+            )
+            await db.commit()
         # Migration : ajout colonne nom dans personnel (nullable, rétrocompatible)
         cur = await db.execute("PRAGMA table_info(personnel)")
         cols_pers = {row[1] for row in await cur.fetchall()}
