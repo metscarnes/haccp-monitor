@@ -396,6 +396,40 @@
 
         <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
 
+        <!-- Espace disque -->
+        <p class="admin-info-text">
+          Détail de l'utilisation de l'espace disque par catégorie de données.
+        </p>
+        <div style="margin-bottom:1rem">
+          <button class="btn btn-secondaire" id="btn-stats-disque">
+            💾 Espace disque utilisé
+          </button>
+        </div>
+        <div id="stats-disque-container" style="display:none; margin-bottom:1.5rem">
+          <div id="stats-disque-loader" style="text-align:center; padding:1rem">
+            <div class="spinner" style="display:inline-block"></div> Calcul en cours…
+          </div>
+          <table id="stats-disque-table" style="display:none; width:100%; border-collapse:collapse; font-size:.9rem">
+            <thead>
+              <tr style="background:#f5ece0; border-bottom:2px solid #e0d5c5">
+                <th style="padding:.5rem; text-align:left; font-weight:600">Catégorie</th>
+                <th style="padding:.5rem; text-align:right; font-weight:600">Taille (Mo)</th>
+                <th style="padding:.5rem; text-align:right; font-weight:600">Fichiers</th>
+              </tr>
+            </thead>
+            <tbody id="stats-disque-tbody"></tbody>
+            <tfoot>
+              <tr style="border-top:2px solid #e0d5c5; font-weight:600; background:#fef8f0">
+                <td style="padding:.5rem">TOTAL</td>
+                <td style="padding:.5rem; text-align:right" id="stats-disque-total">—</td>
+                <td style="padding:.5rem; text-align:right" id="stats-disque-total-fichiers">—</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+
         <!-- Photos orphelines -->
         <p class="admin-info-text">
           Vérifie et supprime les photos de test orphelines (fichiers sur disque non référencés en base).
@@ -1292,6 +1326,52 @@
         setMsg('erreur', `Erreur : ${err.message}`);
       } finally {
         btn.disabled = false;
+      }
+    });
+
+    // ── Stats espace disque ────────────────────────────────
+    $('btn-stats-disque').addEventListener('click', async () => {
+      const container = $('stats-disque-container');
+      const loader = $('stats-disque-loader');
+      const table = $('stats-disque-table');
+      const tbody = $('stats-disque-tbody');
+
+      container.style.display = 'block';
+      loader.style.display = 'block';
+      table.style.display = 'none';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/stats-disque`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        tbody.innerHTML = '';
+        let totalFichiers = 0;
+
+        // Tri par taille décroissante
+        const dossiers = Object.entries(data.dossiers)
+          .sort(([, a], [, b]) => b.taille_mo - a.taille_mo);
+
+        dossiers.forEach(([nom, stats]) => {
+          const tr = document.createElement('tr');
+          tr.style.borderBottom = '1px solid #e0d5c5';
+          tr.innerHTML = `
+            <td style="padding:.5rem">${escHtml(nom)}</td>
+            <td style="padding:.5rem; text-align:right">${stats.taille_mo}</td>
+            <td style="padding:.5rem; text-align:right">${stats.nb_fichiers}</td>
+          `;
+          tbody.appendChild(tr);
+          totalFichiers += stats.nb_fichiers;
+        });
+
+        $('stats-disque-total').textContent = data.total_mo + ' Mo';
+        $('stats-disque-total-fichiers').textContent = totalFichiers;
+
+        loader.style.display = 'none';
+        table.style.display = 'table';
+      } catch (err) {
+        loader.style.display = 'none';
+        loader.innerHTML = `<div style="color:#c93030">Erreur : ${err.message}</div>`;
       }
     });
 

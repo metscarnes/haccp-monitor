@@ -401,6 +401,45 @@ async def purger_rapports():
 
 
 # ---------------------------------------------------------------------------
+# Stats espace disque
+# ---------------------------------------------------------------------------
+
+DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+
+@router.get("/stats-disque")
+async def stats_disque():
+    """Retourne les statistiques d'espace disque par dossier dans data/."""
+    stats = {}
+
+    if not DATA_DIR.exists():
+        return {"dossiers": stats, "total_mo": 0}
+
+    for subdir in DATA_DIR.iterdir():
+        if subdir.is_dir():
+            nom = subdir.name
+            taille_bytes = 0
+            nb_fichiers = 0
+
+            try:
+                for fichier in subdir.rglob("*"):
+                    if fichier.is_file():
+                        taille_bytes += fichier.stat().st_size
+                        nb_fichiers += 1
+            except Exception:  # noqa: BLE001
+                pass
+
+            stats[nom] = {
+                "taille_mo": round(taille_bytes / (1024 * 1024), 2),
+                "taille_ko": round(taille_bytes / 1024, 1),
+                "nb_fichiers": nb_fichiers,
+            }
+
+    total_mo = sum(s["taille_mo"] for s in stats.values())
+    return {"dossiers": stats, "total_mo": round(total_mo, 2)}
+
+
+# ---------------------------------------------------------------------------
 # Nettoyage photos orphelines
 # ---------------------------------------------------------------------------
 
