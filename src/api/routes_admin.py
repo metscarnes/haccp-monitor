@@ -118,42 +118,90 @@ async def purger_entrees_personnel(personnel_id: int):
             except Exception as exc:  # noqa: BLE001 — on continue la purge
                 erreurs[table] = str(exc)
 
-        # 1) Enfants des réceptions de l'utilisateur (évite les orphelins) ----
-        #    On récupère d'abord les réceptions concernées.
+        # Ordre de suppression respectant les FK : enfants d'abord.
+        # DAG (dépendances parmi les 16 tables) :
+        #   refroidissements → cuissons → reception_lignes → receptions
+        #   fabrication_lots → fabrications (et reception_lignes)
+        #   etalonnage_comparaisons → etalonnages
+        #   fiches_incident, non_conformites_fournisseur, ouvertures → receptions|reception_lignes
+
+        # 1) Refroidissements (enfant de cuissons) ───────────────────────────
+        await _del("refroidissements", "personnel_id", "personnel_id = ?", (personnel_id,))
+
+        # 2) Étalonnage comparaisons (enfant d'etalonnages) ──────────────────
+        etalon_ids: list = []
+        if "etalonnages" in existing_tables and "operateur" in await _cols("etalonnages"):
+            rows = await db.execute_fetchall(
+                "SELECT id FROM etalonnages WHERE operateur = ?", (prenom,)
+            )
+            etalon_ids = [r[0] for r in rows]
+        if etalon_ids:
+            placeholders = ",".join("?" * len(etalon_ids))
+            await _del("etalonnage_comparaisons", "etalonnage_id",
+                       f"etalonnage_id IN ({placeholders})", tuple(etalon_ids))
+
+        # 3) Fabrication lots (enfant de fabrications + reception_lignes) ─────
+        fabric_ids: list = []
+        if "fabrications" in existing_tables and "personnel_id" in await _cols("fabrications"):
+            rows = await db.execute_fetchall(
+                "SELECT id FROM fabrications WHERE personnel_id = ?", (personnel_id,)
+            )
+            fabric_ids = [r[0] for r in rows]
+        if fabric_ids:
+            placeholders = ",".join("?" * len(fabric_ids))
+            await _del("fabrication_lots", "fabrication_id",
+                       f"fabrication_id IN ({placeholders})", tuple(fabric_ids))
+
+        # 4) Cuissons (enfant de reception_lignes) ───────────────────────────
+        await _del("cuissons", "personnel_id", "personnel_id = ?", (personnel_id,))
+
+        # 5) Dépendants de receptions/reception_lignes (fiches_incident, NC, ouvertures) -
+        #    On les supprime directement par personnel_id, mais l'ordre est important.
         rec_ids: list = []
         if "receptions" in existing_tables and "personnel_id" in await _cols("receptions"):
-            rec_rows = await db.execute_fetchall(
+            rows = await db.execute_fetchall(
                 "SELECT id FROM receptions WHERE personnel_id = ?", (personnel_id,)
             )
-            rec_ids = [r[0] for r in rec_rows]
+            rec_ids = [r[0] for r in rows]
+
         if rec_ids:
             placeholders = ",".join("?" * len(rec_ids))
             await _del("fiches_incident", "reception_id",
                        f"reception_id IN ({placeholders})", tuple(rec_ids))
             await _del("non_conformites_fournisseur", "reception_id",
                        f"reception_id IN ({placeholders})", tuple(rec_ids))
+            await _del("ouvertures", "reception_ligne_id",
+                       f"reception_ligne_id IN (SELECT id FROM reception_lignes WHERE reception_id IN ({placeholders}))",
+                       tuple(rec_ids))
+
+        # 6) Reception lignes (enfant de receptions) ────────────────────────
+        if rec_ids:
+            placeholders = ",".join("?" * len(rec_ids))
             await _del("reception_lignes", "reception_id",
                        f"reception_id IN ({placeholders})", tuple(rec_ids))
 
-        # 2) Tables liées par clé étrangère personnel_id ----------------------
+        # 7) Réceptions (racine des FK, mais supprimées par personnel_id) ────
+        await _del("receptions", "personnel_id",
+                   "personnel_id = ?", (personnel_id,))
+
+        # 8) Tables sans dépendances inter-16 (FK personnel_id direct) ────────
         for table in (
-            "receptions", "ouvertures", "cuissons", "refroidissements",
             "fabrications", "dlc_devenir", "elearning_completions",
             "quiz_resultats", "quiz_progression",
         ):
             await _del(table, "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # 3) Fiches incident clôturées par l'utilisateur (FK cloturee_par) ----
+        # 9) Fiches incident clôturées par l'utilisateur (FK cloturee_par) ────
         await _del("fiches_incident", "cloturee_par", "cloturee_par = ?", (personnel_id,))
 
-        # 4) Tables liées par texte operateur = prénom ------------------------
+        # 9) Tables liées par texte operateur = prénom ─────────────────────────
         for table in (
             "etiquettes_generees", "tache_validations", "etalonnages",
             "registre_nettoyage", "non_conformites_fournisseur",
         ):
             await _del(table, "operateur", "operateur = ?", (prenom,))
 
-        # 5) Contrôles nuisibles visés par l'utilisateur (texte visa) ---------
+        # 10) Contrôles nuisibles visés par l'utilisateur (texte visa) ────────
         await _del("nuisibles_controles", "visa", "visa = ?", (prenom,))
 
         await db.commit()
