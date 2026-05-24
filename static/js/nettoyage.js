@@ -212,7 +212,7 @@ async function restaurerEtat() {
       }
     });
 
-    if (data.operateur) elSelect.value = data.operateur;
+    if (data.personnel_id) elSelect.value = data.personnel_id;
     mettreAJourBouton();
   } catch {
     // Silencieux — l'état par défaut (non validé) reste affiché
@@ -338,17 +338,18 @@ async function validerJournee() {
 
 // ── Cocher toute une colonne jour (sauf hebdo) ───────────────
 async function validerColonne(dayIndex) {
-  const operateur = elSelect.value;
-  if (!operateur) {
+  const personnelId = elSelect.value;
+  if (!personnelId) {
     toast('Sélectionnez votre nom avant de cocher.', true);
     elSelect.focus();
     return;
   }
 
+  const operateurLabel = elSelect.options[elSelect.selectedIndex].textContent;
   const date = weekDates[dayIndex] || '';
   if (!date) return;
 
-  const initiale  = operateur.charAt(0).toUpperCase();
+  const initiale  = operateurLabel.charAt(0).toUpperCase();
   const ids       = [];
   const nouvelles = [];
 
@@ -367,7 +368,7 @@ async function validerColonne(dayIndex) {
     const res = await fetch('/api/nettoyage/validation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ operateur, taches_ids: ids, date }),
+      body: JSON.stringify({ personnel_id: parseInt(personnelId, 10), taches_ids: ids, date }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     if (dayIndex === todayIndex) mettreAJourBouton();
@@ -399,18 +400,19 @@ async function toggleCell(cell) {
     }
   } else {
     // Cocher — opérateur requis
-    const operateur = elSelect.value;
-    if (!operateur) {
+    const personnelId = elSelect.value;
+    if (!personnelId) {
       toast('Sélectionnez votre nom avant de cocher.', true);
       elSelect.focus();
       return;
     }
-    const initiale = operateur.charAt(0).toUpperCase();
+    const operateurLabel = elSelect.options[elSelect.selectedIndex].textContent;
+    const initiale = operateurLabel.charAt(0).toUpperCase();
     try {
       const res = await fetch('/api/nettoyage/validation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ operateur, taches_ids: [id], date }),
+        body: JSON.stringify({ personnel_id: parseInt(personnelId, 10), taches_ids: [id], date }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${initiale}.</span>`;

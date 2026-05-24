@@ -229,7 +229,8 @@ async def statut_validation(date: Optional[str] = Query(default=None)):
                    COALESCE(
                      TRIM(p.prenom || ' ' || COALESCE(p.nom, '')),
                      rn.operateur
-                   ) AS operateur_nom
+                   ) AS operateur_nom,
+                   rn.personnel_id
             FROM registre_nettoyage rn
             LEFT JOIN personnel p ON p.id = rn.personnel_id
             WHERE rn.date_val = ?
@@ -238,20 +239,21 @@ async def statut_validation(date: Optional[str] = Query(default=None)):
         )
 
     if not rows:
-        return {"valide": False, "date": target, "operateur": None, "nb_taches": 0, "taches_ids": []}
+        return {"valide": False, "date": target, "operateur": None, "personnel_id": None, "nb_taches": 0, "taches_ids": []}
 
-    # Opérateur le plus fréquent
-    ops = Counter(r[1] for r in rows)
-    operateur_principal = ops.most_common(1)[0][0]
+    # Opérateur le plus fréquent (nom affiché + son id)
+    ops = Counter((r[1], r[2]) for r in rows)
+    operateur_principal, personnel_id_principal = ops.most_common(1)[0][0]
     # IDs uniques des tâches validées
     taches_ids = list({r[0] for r in rows})
 
     return {
-        "valide":    True,
-        "date":      target,
-        "operateur": operateur_principal,
-        "nb_taches": len(taches_ids),
-        "taches_ids": taches_ids,
+        "valide":       True,
+        "date":         target,
+        "operateur":    operateur_principal,
+        "personnel_id": personnel_id_principal,
+        "nb_taches":    len(taches_ids),
+        "taches_ids":   taches_ids,
     }
 
 
