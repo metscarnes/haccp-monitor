@@ -358,6 +358,27 @@
         </div>
 
         <div id="test-msg" class="admin-depan-msg" hidden></div>
+
+        <hr style="border:none; border-top:1px solid #e0d5c5; margin:1.5rem 0">
+
+        <!-- Purge historique température -->
+        <p class="admin-info-text">
+          Supprime les relevés de température (et alertes associées) enregistrés pendant
+          la phase de test, quand les sondes affichaient des valeurs anormales.
+        </p>
+        <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:.75rem; margin-bottom:.75rem">
+          <div class="admin-field" style="max-width:200px">
+            <label for="temp-avant-date">Supprimer avant le (facultatif)</label>
+            <input type="date" id="temp-avant-date">
+          </div>
+          <label style="display:flex; align-items:center; gap:.4rem; font-size:.9rem; padding-bottom:.1rem">
+            <input type="checkbox" id="temp-inclure-alertes" checked> Inclure les alertes
+          </label>
+          <button class="btn btn-danger" id="btn-purger-temp" style="white-space:nowrap">
+            🌡️ Supprimer l'historique de température
+          </button>
+        </div>
+        <div id="temp-msg" class="admin-depan-msg" hidden></div>
       </div>
     </section>
 
@@ -1158,6 +1179,54 @@
       } finally {
         btn.disabled = false;
         updatePurgeBtn();
+      }
+    });
+
+    // ── Purge historique température ─────────────────────────
+    $('btn-purger-temp').addEventListener('click', async () => {
+      const msg = $('temp-msg');
+      const btn = $('btn-purger-temp');
+      const setMsg = (cls, txt) => {
+        msg.hidden = false;
+        msg.className = `admin-depan-msg admin-depan-msg--${cls}`;
+        msg.textContent = txt;
+      };
+
+      const avantDate      = $('temp-avant-date').value || null;
+      const inclureAlertes = $('temp-inclure-alertes').checked;
+
+      const periode = avantDate
+        ? `avant le ${avantDate}`
+        : 'TOUT l\'historique';
+      const alertesTxt = inclureAlertes ? ' + alertes associées' : '';
+
+      if (!confirm(`Supprimer ${periode}${alertesTxt} ?\n\nCette action est IRRÉVERSIBLE.`)) return;
+
+      btn.disabled = true;
+      setMsg('info', 'Suppression en cours…');
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/historique-temperature`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avant_date: avantDate, inclure_alertes: inclureAlertes }),
+        });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        const data   = await res.json();
+        const errs   = data.erreurs || {};
+        const nbErrs = Object.keys(errs).length;
+        const detail = Object.entries(data.detail || {}).map(([t, n]) => `${t} : ${n}`).join(' · ');
+        if (nbErrs > 0) {
+          const errTxt = Object.entries(errs).map(([t, e]) => `${t} → ${e}`).join(' | ');
+          setMsg('erreur', `⚠️ ${data.total} enregistrement(s) supprimé(s)${detail ? ' (' + detail + ')' : ''}, erreur(s) : ${errTxt}`);
+        } else if (data.total === 0) {
+          setMsg('ok', '✓ Aucun relevé trouvé pour cette période.');
+        } else {
+          setMsg('ok', `✓ ${data.total} enregistrement(s) supprimé(s). ${detail}`);
+        }
+      } catch (err) {
+        setMsg('erreur', `Erreur : ${err.message}`);
+      } finally {
+        btn.disabled = false;
       }
     });
 

@@ -306,6 +306,57 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
 
 
 # ---------------------------------------------------------------------------
+# Purge historique température
+# ---------------------------------------------------------------------------
+
+class PurgeTempBody(BaseModel):
+    avant_date: Optional[str] = None   # "YYYY-MM-DD" — si None : tout supprimer
+    inclure_alertes: bool = True       # supprimer aussi les alertes associées
+
+
+@router.delete("/historique-temperature")
+async def purger_historique_temperature(body: PurgeTempBody = PurgeTempBody()):
+    """Supprime les relevés de température (et alertes associées).
+
+    Si `avant_date` est fourni, ne supprime que les relevés antérieurs à cette
+    date (horodatage < avant_date). Sinon, vide tout l'historique.
+    """
+    async with get_db() as db:
+        supprime: dict[str, int] = {}
+        erreurs: dict[str, str] = {}
+
+        existing_tables = {
+            r[0] for r in await db.execute_fetchall(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+
+        async def _del(table: str, where: str, params: tuple) -> None:
+            if table not in existing_tables:
+                return
+            try:
+                c = await db.execute(f"DELETE FROM {table} WHERE {where}", params)
+                if c.rowcount:
+                    supprime[table] = c.rowcount
+            except Exception as exc:  # noqa: BLE001
+                erreurs[table] = str(exc)
+
+        if body.avant_date:
+            await _del("releves", "horodatage < ?", (body.avant_date,))
+            if body.inclure_alertes:
+                await _del("alertes", "debut < ?", (body.avant_date,))
+        else:
+            await _del("releves", "1 = 1", ())
+            if body.inclure_alertes:
+                await _del("alertes", "1 = 1", ())
+
+        await db.commit()
+
+    total = sum(supprime.values())
+    return {"ok": True, "total": total, "detail": supprime, "erreurs": erreurs}
+
+
+# ---------------------------------------------------------------------------
 # Pièges
 # ---------------------------------------------------------------------------
 
