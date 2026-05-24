@@ -6,6 +6,28 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ── Auth admin ───────────────────────────────────────────────
+function getAdminToken() {
+  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
+  if (Date.now() > exp) return null;
+  return localStorage.getItem('admin_token');
+}
+
+function requireAdminInv() {
+  const token = getAdminToken();
+  if (!token) {
+    sessionStorage.setItem('auth_redirect', '/inventaire.html');
+    window.location.href = '/login.html';
+    return null;
+  }
+  return token;
+}
+
+function authHeadersInv() {
+  const token = getAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function escHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -392,6 +414,7 @@ function mettreAJourActionBar() {
 // ══════════════════════════════════════════════════════════════
 
 function ouvrirBatchModal() {
+  if (!requireAdminInv()) return;
   const selItems = state.items.filter(it => gestionState.selection.has(clefItem(it)));
   if (selItems.length === 0) return;
 
@@ -504,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const res = await fetch('/api/dlc/devenir/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeadersInv() },
         body: JSON.stringify({
           items,
           statut: batchState.statut,
@@ -534,6 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════
 
 function ouvrirEditModal(it) {
+  if (!requireAdminInv()) return;
   editState.cible = it;
 
   $('inv-edit-nom').textContent  = it.produit_nom;
@@ -682,7 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/stock/${it.source_type}/${it.source_id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeadersInv() },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

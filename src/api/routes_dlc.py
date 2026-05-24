@@ -10,8 +10,10 @@ PUT  /api/dlc/parametres                → modifier les seuils
 
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+
+from src.api.routes_auth import verify_token
 
 import re
 
@@ -98,7 +100,7 @@ async def calendrier(
 # ---------------------------------------------------------------------------
 
 @router.post("/devenir", status_code=201)
-async def enregistrer_devenir(body: DevenirCreate):
+async def enregistrer_devenir(body: DevenirCreate, _=Depends(verify_token)):
     if body.source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
     if body.statut not in STATUTS_DEVENIR:
@@ -117,7 +119,7 @@ async def enregistrer_devenir(body: DevenirCreate):
 
 
 @router.post("/devenir/batch", status_code=201)
-async def enregistrer_devenir_batch(body: DevenirBatchCreate):
+async def enregistrer_devenir_batch(body: DevenirBatchCreate, _=Depends(verify_token)):
     """Traite en masse plusieurs DLCs (typiquement les expirées non traitées).
 
     Applique le même statut / personnel / commentaire à chaque item.
@@ -146,7 +148,7 @@ async def enregistrer_devenir_batch(body: DevenirBatchCreate):
 
 
 @router.put("/modifier-dlc")
-async def modifier_dlc(body: ModifierDlcCreate):
+async def modifier_dlc(body: ModifierDlcCreate, _=Depends(verify_token)):
     """Corrige la date DLC d'un enregistrement source (réception, fabrication, cuisson, refroidissement)."""
     if body.source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
@@ -269,7 +271,7 @@ async def get_parametres():
 
 
 @router.put("/parametres")
-async def update_parametres(body: ParametresDlc):
+async def update_parametres(body: ParametresDlc, _=Depends(verify_token)):
     if not (body.rouge_jours <= body.orange_jours <= body.jaune_jours):
         raise HTTPException(
             400,

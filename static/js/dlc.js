@@ -7,6 +7,28 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ── Auth admin ──────────────────────────────────────────
+function getAdminToken() {
+  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
+  if (Date.now() > exp) return null;
+  return localStorage.getItem('admin_token');
+}
+
+function requireAdminDlc() {
+  const token = getAdminToken();
+  if (!token) {
+    sessionStorage.setItem('auth_redirect', '/dlc.html');
+    window.location.href = '/login.html';
+    return null;
+  }
+  return token;
+}
+
+function authHeaders() {
+  const token = getAdminToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 // Mapping centralisé des sources DLC → emoji + libellé + classe CSS
 const SRC_META = {
   reception_ligne:  { icon: '📦', label: 'Réception',       cls: 'reception'       },
@@ -681,6 +703,7 @@ document.querySelectorAll('#dlc-modal [data-close]').forEach(e => e.addEventList
 
 // ── Modal Modifier DLC ──────────────────────────────────
 function ouvrirModalModifier(cible) {
+  if (!requireAdminDlc()) return;
   state.modifierCible = cible;
   $('modifier-produit-nom').textContent  = cible.produit_nom;
   $('modifier-dlc-courante').textContent = `DLC actuelle : ${formatDateFr(cible.dlc)}`;
@@ -709,7 +732,7 @@ $('modifier-valider').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/dlc/modifier-dlc', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         source_type:  state.modifierCible.source_type,
         source_id:    state.modifierCible.source_id,
@@ -730,11 +753,12 @@ $('modifier-valider').addEventListener('click', async () => {
 
 // ── Supprimer (marquer annulé sans personnel) ───────────
 async function supprimerProduitDlc(cible) {
+  if (!requireAdminDlc()) return;
   if (!confirm(`Supprimer « ${cible.produit_nom} » du calendrier DLC ?\nCette action est réversible via le bouton Correction.`)) return;
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         source_type:  cible.source_type,
         source_id:    cible.source_id,
@@ -843,6 +867,7 @@ function construireLigneOrigine(cible) {
 
 // ── Modal Devenir ───────────────────────────────────────
 function ouvrirModalDevenir(cible) {
+  if (!requireAdminDlc()) return;
   state.devenirCible  = cible;
   state.devenirStatut = null;
 
@@ -891,7 +916,7 @@ $('devenir-valider').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         source_type:  state.devenirCible.source_type,
         source_id:    state.devenirCible.source_id,

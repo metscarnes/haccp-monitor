@@ -14,7 +14,17 @@ function escHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function getAdminToken() {
+  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
+  if (Date.now() > exp) return null;
+  return localStorage.getItem('admin_token');
+}
+
 async function apiFetch(url, options = {}) {
+  const token = getAdminToken();
+  if (token) {
+    options.headers = { ...(options.headers || {}), Authorization: `Bearer ${token}` };
+  }
   const res = await fetch(url, { cache: 'no-store', ...options });
   if (res.status === 204) return null;
   if (!res.ok) {

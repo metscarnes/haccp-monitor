@@ -20,9 +20,10 @@ Tri FIFO : DLC ascendante, puis date_origine ascendante.
 import re
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from src.api.routes_auth import verify_token
 from src.database import get_db, get_stock_unifie, update_stock_item
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
@@ -38,7 +39,7 @@ class StockModif(BaseModel):
 
 
 @router.patch("/{source_type}/{source_id}")
-async def modifier_stock_item(source_type: str, source_id: int, body: StockModif):
+async def modifier_stock_item(source_type: str, source_id: int, body: StockModif, _=Depends(verify_token)):
     """Modifie la DLC et/ou la quantité d'un article en stock. Le lot n'est jamais modifié."""
     if source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide : {source_type}")

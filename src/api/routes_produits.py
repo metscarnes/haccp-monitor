@@ -14,10 +14,11 @@ POST   /api/produits/import/xlsx            → import Excel (mode: replace | me
 import io
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.api.routes_auth import verify_token
 from src.database import (
     get_db,
     get_produits, get_produit, create_produit, update_produit,
@@ -247,7 +248,7 @@ async def obtenir_produit(produit_id: int):
 # ---------------------------------------------------------------------------
 
 @router.post("/produits", status_code=201)
-async def nouveau_produit(body: ProduitCreate):
+async def nouveau_produit(body: ProduitCreate, _=Depends(verify_token)):
     payload = {"boutique_id": BOUTIQUE_ID, **body.model_dump(exclude_none=True)}
     async with get_db() as db:
         # Vérifier unicité du code_unique si fourni
@@ -264,7 +265,7 @@ async def nouveau_produit(body: ProduitCreate):
 
 
 @router.put("/produits/{produit_id}")
-async def modifier_produit(produit_id: int, body: ProduitUpdate):
+async def modifier_produit(produit_id: int, body: ProduitUpdate, _=Depends(verify_token)):
     payload = body.model_dump(exclude_none=True)
     if not payload:
         raise HTTPException(400, "Aucun champ à modifier")
@@ -286,7 +287,7 @@ async def modifier_produit(produit_id: int, body: ProduitUpdate):
 
 
 @router.delete("/produits/{produit_id}", status_code=204)
-async def supprimer_produit(produit_id: int):
+async def supprimer_produit(produit_id: int, _=Depends(verify_token)):
     """Soft delete : passe actif=0. Le produit reste lié aux historiques."""
     async with get_db() as db:
         await update_produit(db, produit_id, {"actif": False})
@@ -397,6 +398,7 @@ async def telecharger_template():
 async def importer_xlsx(
     fichier: UploadFile = File(...),
     mode: str = Form("merge", description="merge = upsert par code_unique; replace = vide d'abord"),
+    _=Depends(verify_token),
 ):
     """Import Excel.
     - mode=merge (défaut) : upsert par code_unique (création si nouveau, MAJ sinon).

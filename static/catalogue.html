@@ -17,6 +17,15 @@
   <link rel="stylesheet" href="/static/css/pages/catalogue.css">
 </head>
 <body class="cat-body">
+<script>
+  (function(){
+    var exp = Number(localStorage.getItem('admin_token_expires')||0);
+    if(!localStorage.getItem('admin_token')||Date.now()>exp){
+      sessionStorage.setItem('auth_redirect','/catalogue.html');
+      window.location.replace('/login.html');
+    }
+  })();
+</script>
 
   <header class="cat-bar">
     <a href="/hub.html" class="cat-retour" aria-label="Retour accueil">← Accueil</a>

@@ -12,8 +12,10 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from src.api.routes_auth import verify_token
 
 try:
     import psutil
@@ -62,7 +64,7 @@ async def lister_personnel():
 
 
 @router.post("/personnel", status_code=201)
-async def ajouter_personnel(body: PersonnelCreate):
+async def ajouter_personnel(body: PersonnelCreate, _=Depends(verify_token)):
     async with get_db() as db:
         pid = await create_personnel(db, {"boutique_id": BOUTIQUE_ID, "prenom": body.prenom})
         cursor = await db.execute("SELECT * FROM personnel WHERE id = ?", (pid,))
@@ -71,7 +73,7 @@ async def ajouter_personnel(body: PersonnelCreate):
 
 
 @router.put("/personnel/{personnel_id}")
-async def modifier_personnel(personnel_id: int, body: PersonnelUpdate):
+async def modifier_personnel(personnel_id: int, body: PersonnelUpdate, _=Depends(verify_token)):
     async with get_db() as db:
         ok = await update_personnel(db, personnel_id, body.model_dump(exclude_none=True))
     if not ok:
@@ -119,7 +121,7 @@ class PurgeBody(BaseModel):
 
 
 @router.delete("/personnel/{personnel_id}/entrees")
-async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBody()):
+async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBody(), _=Depends(verify_token)):
     """Supprime les entrées d'un membre du personnel par sous-catégorie.
 
     `sous_categories` : liste de clés parmi SOUS_CATEGORIES.
@@ -323,7 +325,7 @@ class PurgeTempBody(BaseModel):
 
 
 @router.delete("/historique-temperature")
-async def purger_historique_temperature(body: PurgeTempBody = PurgeTempBody()):
+async def purger_historique_temperature(body: PurgeTempBody = PurgeTempBody(), _=Depends(verify_token)):
     """Supprime les relevés de température (et alertes associées).
 
     Si `avant_date` est fourni, ne supprime que les relevés antérieurs à cette
@@ -372,7 +374,7 @@ RAPPORTS_DIR = Path(__file__).parent.parent.parent / "data" / "rapports"
 
 
 @router.delete("/rapports")
-async def purger_rapports():
+async def purger_rapports(_=Depends(verify_token)):
     """Supprime tous les rapports générés (entrées BDD + fichiers PDF sur disque)."""
     supprime_db   = 0
     supprime_disk = 0
@@ -415,7 +417,7 @@ EXPORTS_DIR = Path(__file__).parent.parent.parent / "data" / "exports"
 
 
 @router.delete("/exports")
-async def purger_exports(avant_date: Optional[str] = None):
+async def purger_exports(avant_date: Optional[str] = None, _=Depends(verify_token)):
     """Supprime les fichiers CSV d'export température.
     avant_date (YYYY-MM-DD) : ne supprime que les fichiers antérieurs à cette date.
     Sans paramètre : supprime tout.
@@ -742,7 +744,7 @@ async def lister_photos_orphelines():
 
 
 @router.delete("/photos-orphelines")
-async def supprimer_photos_orphelines():
+async def supprimer_photos_orphelines(_=Depends(verify_token)):
     """Supprime tous les fichiers photos orphelines du disque."""
     supprime = 0
     erreurs: list[str] = []
@@ -799,7 +801,7 @@ async def lister_pieges():
 
 
 @router.post("/pieges", status_code=201)
-async def ajouter_piege(body: PiegeCreate):
+async def ajouter_piege(body: PiegeCreate, _=Depends(verify_token)):
     async with get_db() as db:
         pid = await create_piege(db, {"boutique_id": BOUTIQUE_ID, **body.model_dump()})
         cursor = await db.execute("SELECT * FROM pieges WHERE id = ?", (pid,))
@@ -835,7 +837,7 @@ async def lister_thermometres():
 
 
 @router.post("/thermometres", status_code=201)
-async def ajouter_thermometre(body: ThermometreCreate):
+async def ajouter_thermometre(body: ThermometreCreate, _=Depends(verify_token)):
     async with get_db() as db:
         cur = await db.execute(
             "INSERT INTO thermometres_ref (boutique_id, nom, numero_serie) VALUES (?, ?, ?)",
@@ -851,7 +853,7 @@ async def ajouter_thermometre(body: ThermometreCreate):
 
 
 @router.put("/thermometres/{thermo_id}")
-async def modifier_thermometre(thermo_id: int, body: ThermometreUpdate):
+async def modifier_thermometre(thermo_id: int, body: ThermometreUpdate, _=Depends(verify_token)):
     data = body.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(400, "Aucun champ à modifier")

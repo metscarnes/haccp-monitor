@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Connexion admin — HACCP Monitor</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5ece0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    .login-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(61,32,8,.15);
+      padding: 2.5rem 2rem;
+      width: min(360px, 92vw);
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .login-logo {
+      text-align: center;
+      font-size: 2.4rem;
+    }
+
+    .login-title {
+      text-align: center;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #3D2008;
+    }
+
+    .login-subtitle {
+      text-align: center;
+      font-size: .85rem;
+      color: #888;
+      margin-top: -.9rem;
+    }
+
+    .login-field {
+      display: flex;
+      flex-direction: column;
+      gap: .4rem;
+    }
+
+    .login-field label {
+      font-size: .82rem;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .login-field input {
+      border: 1.5px solid #d5c9b8;
+      border-radius: 8px;
+      padding: .7rem 1rem;
+      font-size: 1rem;
+      color: #2c1a0e;
+      outline: none;
+      transition: border-color .15s;
+    }
+
+    .login-field input:focus {
+      border-color: #8b3a0f;
+    }
+
+    .login-btn {
+      background: #8b3a0f;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: .85rem 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+    }
+
+    .login-btn:hover { background: #a04512; }
+    .login-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    .login-error {
+      background: #fde8e8;
+      color: #b91c1c;
+      border-radius: 8px;
+      padding: .65rem .9rem;
+      font-size: .88rem;
+      font-weight: 600;
+      text-align: center;
+      display: none;
+    }
+
+    .login-error.visible { display: block; }
+
+    .login-back {
+      text-align: center;
+      font-size: .83rem;
+    }
+
+    .login-back a {
+      color: #8b3a0f;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .login-back a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+  <div class="login-logo">🔐</div>
+  <div>
+    <div class="login-title">Accès administrateur</div>
+    <div class="login-subtitle">HACCP Monitor — Au Comptoir des Lilas</div>
+  </div>
+
+  <div class="login-error" id="login-error">Mot de passe incorrect</div>
+
+  <form id="login-form" autocomplete="off">
+    <div class="login-field" style="margin-bottom:1.2rem">
+      <label for="login-password">Mot de passe</label>
+      <input
+        type="password"
+        id="login-password"
+        placeholder="••••••••"
+        autocomplete="current-password"
+        required
+        autofocus
+      >
+    </div>
+    <button type="submit" class="login-btn" id="login-btn">Se connecter</button>
+  </form>
+
+  <div class="login-back"><a href="/hub.html">← Retour à l'accueil</a></div>
+</div>
+
+<script>
+  const REDIRECT_KEY = 'auth_redirect';
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('login-error');
+    const pwd = document.getElementById('login-password').value;
+
+    btn.disabled = true;
+    btn.textContent = 'Connexion…';
+    errEl.classList.remove('visible');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pwd }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const expiresAt = Date.now() + data.expires_in * 1000;
+        localStorage.setItem('admin_token', data.token);
+        localStorage.setItem('admin_token_expires', String(expiresAt));
+
+        const redirect = sessionStorage.getItem(REDIRECT_KEY) || '/admin.html';
+        sessionStorage.removeItem(REDIRECT_KEY);
+        window.location.href = redirect;
+      } else {
+        errEl.classList.add('visible');
+        btn.disabled = false;
+        btn.textContent = 'Se connecter';
+        document.getElementById('login-password').value = '';
+        document.getElementById('login-password').focus();
+      }
+    } catch {
+      errEl.textContent = 'Erreur réseau, réessaye.';
+      errEl.classList.add('visible');
+      btn.disabled = false;
+      btn.textContent = 'Se connecter';
+    }
+  });
+</script>
+</body>
+</html>
