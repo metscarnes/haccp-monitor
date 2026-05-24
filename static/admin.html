@@ -88,8 +88,8 @@
                 <input type="text" id="pers-prenom" name="prenom" placeholder="Prénom" required>
               </div>
               <div class="admin-field">
-                <label for="pers-nom">Nom de famille</label>
-                <input type="text" id="pers-nom" name="nom" placeholder="Nom de famille (optionnel)">
+                <label for="pers-nom">Nom de famille <span style="color:var(--color-danger)">*</span></label>
+                <input type="text" id="pers-nom" name="nom" placeholder="Nom de famille" required>
               </div>
               <button type="submit" class="btn btn-primaire">Ajouter</button>
             </div>
@@ -640,8 +640,8 @@
     $('personnel-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const prenom = $('pers-prenom').value.trim();
-      const nom    = $('pers-nom').value.trim() || null;
-      if (!prenom) return;
+      const nom    = $('pers-nom').value.trim();
+      if (!prenom || !nom) return;
       try {
         const res = await authFetch(`${API_BASE}/api/admin/personnel`, {
           method: 'POST',

@@ -40,7 +40,7 @@ BOUTIQUE_ID = 1
 
 class PersonnelCreate(BaseModel):
     prenom: str
-    nom: Optional[str] = None
+    nom: str
 
 
 class PersonnelUpdate(BaseModel):
