@@ -442,6 +442,10 @@
                 <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Disponible</div>
                 <div style="font-weight:600; font-size:1.1rem" id="stats-disque-dispo">—</div>
               </div>
+              <div>
+                <div style="color:#666; font-size:.85rem; margin-bottom:.25rem">Dernière sauvegarde</div>
+                <div style="font-weight:600; font-size:1.1rem" id="stats-disque-backup">—</div>
+              </div>
             </div>
           </div>
 
@@ -1466,6 +1470,9 @@
           summary.style.display = 'block';
         }
 
+        // Dernière sauvegarde (n'interrompt pas l'affichage des stats si erreur)
+        chargerDerniereSauvegarde();
+
         tbody.innerHTML = '';
         let totalFichiers = 0;
 
@@ -1553,6 +1560,52 @@
         $('detail-fichiers-modal').style.display = 'none';
       }
     });
+
+    // Charger la date de la dernière sauvegarde
+    const chargerDerniereSauvegarde = async () => {
+      const el = $('stats-disque-backup');
+      el.textContent = '…';
+      el.style.color = '';
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/derniere-sauvegarde`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (!data.existe) {
+          el.textContent = '⚠️ Jamais';
+          el.style.color = '#c93030';
+          el.title = data.message || '';
+          return;
+        }
+
+        const dt = new Date(data.iso);
+        const dateStr = dt.toLocaleString('fr-FR', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+        });
+
+        // Texte relatif (il y a X h / X j)
+        const h = data.heures_ecoulees;
+        let relatif;
+        if (h < 1)        relatif = "à l'instant";
+        else if (h < 24)  relatif = `il y a ${Math.round(h)} h`;
+        else              relatif = `il y a ${Math.round(h / 24)} j`;
+
+        if (data.obsolete) {
+          el.innerHTML = `⚠️ ${dateStr}<br><span style="font-size:.8rem;font-weight:400">${relatif}</span>`;
+          el.style.color = '#c93030';
+          el.title = 'Sauvegarde possiblement obsolète (> 30h)';
+        } else {
+          el.innerHTML = `✓ ${dateStr}<br><span style="font-size:.8rem;font-weight:400;color:#666">${relatif}</span>`;
+          el.style.color = '#2e7d32';
+          el.title = '';
+        }
+      } catch (err) {
+        el.textContent = '—';
+        el.style.color = '#999';
+        el.title = `Erreur : ${err.message}`;
+      }
+    };
 
     // ── Photos orphelines ──────────────────────────────────
     let photosOrphelines = [];

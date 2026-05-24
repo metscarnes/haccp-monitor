@@ -458,6 +458,55 @@ async def purger_exports(avant_date: Optional[str] = None):
 
 
 # ---------------------------------------------------------------------------
+# Dernière sauvegarde
+# ---------------------------------------------------------------------------
+
+_BACKUP_ROOT = Path(__file__).parent.parent.parent / "data"
+LAST_BACKUP_FILE = _BACKUP_ROOT / "last_backup.txt"
+
+
+@router.get("/derniere-sauvegarde")
+async def derniere_sauvegarde():
+    """Retourne la date de la dernière sauvegarde réussie.
+
+    Le script rclone (cron 2h du matin) écrit l'horodatage dans
+    data/last_backup.txt à chaque sauvegarde réussie.
+    """
+    from datetime import datetime, timezone
+
+    if not LAST_BACKUP_FILE.exists():
+        return {"existe": False, "iso": None, "message": "Aucune sauvegarde enregistrée"}
+
+    try:
+        contenu = LAST_BACKUP_FILE.read_text(encoding="utf-8").strip()
+        # Format attendu : ISO 8601 (ex. 2026-05-24T02:00:13+00:00)
+        try:
+            dt = datetime.fromisoformat(contenu)
+        except ValueError:
+            # Repli : on prend la date de modification du fichier
+            dt = datetime.fromtimestamp(LAST_BACKUP_FILE.stat().st_mtime, tz=timezone.utc)
+
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        maintenant = datetime.now(timezone.utc)
+        ecart = maintenant - dt
+        heures = ecart.total_seconds() / 3600
+
+        return {
+            "existe": True,
+            "iso": dt.isoformat(),
+            "timestamp": dt.timestamp(),
+            "heures_ecoulees": round(heures, 1),
+            # Une sauvegarde quotidienne devient "obsolète" au-delà de 30h
+            "obsolete": heures > 30,
+            "contenu_brut": contenu,
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"existe": False, "iso": None, "message": f"Erreur lecture : {exc}"}
+
+
+# ---------------------------------------------------------------------------
 # Stats espace disque
 # ---------------------------------------------------------------------------
 
