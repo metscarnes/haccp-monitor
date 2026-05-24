@@ -97,8 +97,10 @@ SOUS_CATEGORIES = {
     # DLC
     "dlc":                   "Devenirs DLC",
     # Formation
-    "form_elearning":        "E-learning (modules PDF/vidéo)",
-    "form_quiz":             "Quiz (résultats & progression)",
+    "form_elearning":          "E-learning (modules PDF/vidéo)",
+    "form_quiz_resultats":     "Quiz — résultats (score, date)",
+    "form_quiz_signatures":    "Quiz — signatures (attestations)",
+    "form_quiz_progression":   "Quiz — progression (réponses en cours)",
     # Ouvertures
     "ouvertures":            "Contrôles ouvertures produits",
 }
@@ -273,9 +275,27 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
         if "form_elearning" in cats:
             await _del("elearning_completions", "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # QUIZ ────────────────────────────────────────────────────────────────
-        if "form_quiz" in cats:
-            await _del("quiz_resultats",   "personnel_id", "personnel_id = ?", (personnel_id,))
+        # QUIZ résultats (suppression ligne entière — inclut score + date) ─────
+        if "form_quiz_resultats" in cats:
+            await _del("quiz_resultats", "personnel_id", "personnel_id = ?", (personnel_id,))
+
+        # QUIZ signatures seulement (UPDATE SET signature=NULL) ───────────────
+        elif "form_quiz_signatures" in cats:
+            if "quiz_resultats" in existing_tables \
+                    and "signature" in await _cols("quiz_resultats"):
+                try:
+                    c = await db.execute(
+                        "UPDATE quiz_resultats SET signature = NULL "
+                        "WHERE personnel_id = ? AND signature IS NOT NULL",
+                        (personnel_id,)
+                    )
+                    if c.rowcount:
+                        supprime["quiz_resultats(signatures)"] = c.rowcount
+                except Exception as exc:  # noqa: BLE001
+                    erreurs["quiz_resultats(signatures)"] = str(exc)
+
+        # QUIZ progression (réponses en cours) ────────────────────────────────
+        if "form_quiz_progression" in cats:
             await _del("quiz_progression", "personnel_id", "personnel_id = ?", (personnel_id,))
 
         await db.commit()
