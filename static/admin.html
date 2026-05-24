@@ -12,26 +12,49 @@
   <link rel="stylesheet" href="/static/css/style.css">
   <link rel="stylesheet" href="/static/css/pages/admin.css">
   <style>
-    .test-categories-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: .5rem .75rem;
+    /* ── Zone de test : groupes & sous-catégories ── */
+    .test-select-all-label { cursor:pointer; display:flex; align-items:center; gap:.4rem; }
+    .test-groups { display:flex; flex-direction:column; gap:.6rem; }
+
+    .test-group { border:1px solid #e0d5c5; border-radius:8px; overflow:hidden; }
+
+    .test-group-header {
+      display:flex; align-items:center; gap:.6rem;
+      padding:.55rem .75rem;
+      background:#f5ece0;
+      cursor:pointer;
+      user-select:none;
+      font-weight:600; font-size:.92rem;
     }
-    .test-cat-item {
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      padding: .45rem .6rem;
-      border: 1px solid #e0d5c5;
-      border-radius: 6px;
-      background: #fdf8f2;
-      cursor: pointer;
-      user-select: none;
-      font-size: .9rem;
+    .test-group-header:hover { background:#eddfc8; }
+    .test-group-header input[type=checkbox] { accent-color:#8b3a0f; cursor:pointer; flex-shrink:0; }
+    .test-group-toggle {
+      margin-left:auto; font-size:.8rem; color:#8b3a0f;
+      transition:transform .2s;
     }
-    .test-cat-item:hover { background: #f5ece0; }
-    .test-cat-item input[type=checkbox] { cursor: pointer; accent-color: #8b3a0f; }
-    .test-cat-item.disabled { opacity: .45; cursor: not-allowed; }
+    .test-group-toggle.open { transform:rotate(180deg); }
+
+    .test-group-body {
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap:.4rem;
+      padding:.6rem .75rem;
+      background:#fdf8f2;
+    }
+    .test-group-body.collapsed { display:none; }
+
+    .test-subcat-item {
+      display:flex; align-items:center; gap:.45rem;
+      padding:.35rem .5rem;
+      border:1px solid #ecdfc9;
+      border-radius:5px;
+      cursor:pointer;
+      user-select:none;
+      font-size:.88rem;
+      background:#fff;
+    }
+    .test-subcat-item:hover { background:#fef3e8; }
+    .test-subcat-item input[type=checkbox] { accent-color:#8b3a0f; cursor:pointer; }
   </style>
 </head>
 <body class="admin-body">
@@ -312,7 +335,7 @@
         </p>
 
         <!-- Sélection du personnel -->
-        <div class="admin-form-row" style="margin-bottom:1rem">
+        <div class="admin-form-row" style="margin-bottom:1.25rem">
           <div class="admin-field" style="max-width:280px">
             <label for="test-personnel-select">👤 Membre du personnel</label>
             <select id="test-personnel-select">
@@ -321,16 +344,15 @@
           </div>
         </div>
 
-        <!-- Cases à cocher par catégorie -->
+        <!-- Sélection des sous-catégories -->
         <div id="test-categories" style="display:none">
-          <div style="display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem">
-            <label style="font-weight:600; cursor:pointer">
-              <input type="checkbox" id="test-select-all" checked> Tout sélectionner
+          <div style="display:flex; align-items:center; gap:1rem; margin-bottom:.75rem; flex-wrap:wrap">
+            <label class="test-select-all-label">
+              <input type="checkbox" id="test-select-all"> <strong>Tout sélectionner / désélectionner</strong>
             </label>
           </div>
-          <div class="test-categories-grid" id="test-cats-grid"></div>
-
-          <div style="margin-top:1rem">
+          <div id="test-groups"></div>
+          <div style="margin-top:1.25rem">
             <button class="btn btn-danger" id="btn-purger-test" disabled>🗑️ Supprimer les entrées sélectionnées</button>
           </div>
         </div>
@@ -902,49 +924,158 @@
       }
     });
 
-    // ── Zone de test : purge sélective ──────────────────────
-    const CATEGORIES_PURGE = [
-      { id: 'receptions',  label: '📦 Réceptions',             desc: 'réceptions, lignes, BLs, fiches incident, non-conformités' },
-      { id: 'production',  label: '🍳 Production',             desc: 'cuissons, refroidissements, fabrications' },
-      { id: 'etiquettes',  label: '🏷️ Étiquettes',            desc: 'étiquettes générées' },
-      { id: 'taches',      label: '✅ Tâches & nettoyage',     desc: 'validations tâches, registre nettoyage' },
-      { id: 'etalonnage',  label: '🌡️ Étalonnage',            desc: 'étalonnages et comparaisons' },
-      { id: 'nuisibles',   label: '🐀 Nuisibles',              desc: 'contrôles nuisibles (visa)' },
-      { id: 'dlc',         label: '📅 DLC',                    desc: 'devenirs DLC enregistrés' },
-      { id: 'formation',   label: '🎓 Formation',              desc: 'e-learning, quiz résultats et progression' },
-      { id: 'ouvertures',  label: '🔓 Ouvertures',             desc: 'contrôles ouvertures produits' },
+    // ── Zone de test : purge sélective par sous-catégories ──
+    const GROUPES_PURGE = [
+      {
+        label: '📦 Réceptions', id: 'g_receptions',
+        subs: [
+          { id: 'rec_receptions',      label: 'Réceptions & lignes produits' },
+          { id: 'rec_bls',             label: 'BLs supplémentaires' },
+          { id: 'rec_fiches_incident', label: 'Fiches incident (PCR01)' },
+          { id: 'rec_non_conformites', label: 'Non-conformités fournisseur' },
+        ]
+      },
+      {
+        label: '🍳 Production', id: 'g_production',
+        subs: [
+          { id: 'prod_cuissons',         label: 'Cuissons' },
+          { id: 'prod_refroidissements', label: 'Refroidissements' },
+          { id: 'prod_fabrications',     label: 'Fabrications & lots' },
+        ]
+      },
+      {
+        label: '🏷️ Étiquettes', id: 'g_etiquettes',
+        subs: [
+          { id: 'etiquettes', label: 'Étiquettes générées' },
+        ]
+      },
+      {
+        label: '✅ Tâches & nettoyage', id: 'g_taches',
+        subs: [
+          { id: 'taches_haccp',    label: 'Validations tâches HACCP' },
+          { id: 'taches_nettoyage', label: 'Registre nettoyage' },
+        ]
+      },
+      {
+        label: '🌡️ Étalonnage', id: 'g_etalonnage',
+        subs: [
+          { id: 'etal_mesures',      label: 'Mesures (eau glacée)' },
+          { id: 'etal_comparaisons', label: 'Comparaisons enceintes' },
+        ]
+      },
+      {
+        label: '🐀 Nuisibles', id: 'g_nuisibles',
+        subs: [
+          { id: 'nuisibles', label: 'Contrôles nuisibles' },
+        ]
+      },
+      {
+        label: '📅 DLC', id: 'g_dlc',
+        subs: [
+          { id: 'dlc', label: 'Devenirs DLC' },
+        ]
+      },
+      {
+        label: '🎓 Formation', id: 'g_formation',
+        subs: [
+          { id: 'form_elearning', label: 'E-learning (PDF / vidéo)' },
+          { id: 'form_quiz',      label: 'Quiz (résultats & progression)' },
+        ]
+      },
+      {
+        label: '🔓 Ouvertures', id: 'g_ouvertures',
+        subs: [
+          { id: 'ouvertures', label: 'Contrôles ouvertures produits' },
+        ]
+      },
     ];
 
-    // Peupler la grille de catégories
-    function buildCategoriesGrid() {
-      const grid = $('test-cats-grid');
-      grid.innerHTML = '';
-      CATEGORIES_PURGE.forEach(cat => {
-        const label = document.createElement('label');
-        label.className = 'test-cat-item';
-        label.title = cat.desc;
-        label.innerHTML = `<input type="checkbox" class="test-cat-cb" value="${cat.id}" checked> ${cat.label}`;
-        grid.appendChild(label);
+    function buildGroupes() {
+      const container = $('test-groups');
+      container.innerHTML = '';
+      GROUPES_PURGE.forEach(grp => {
+        const div = document.createElement('div');
+        div.className = 'test-group';
+
+        // En-tête du groupe
+        const header = document.createElement('div');
+        header.className = 'test-group-header';
+        header.innerHTML = `
+          <input type="checkbox" class="test-grp-cb" data-grp="${grp.id}" checked>
+          <span>${grp.label}</span>
+          <span class="test-group-toggle open">▼</span>
+        `;
+        div.appendChild(header);
+
+        // Corps (sous-catégories)
+        const body = document.createElement('div');
+        body.className = 'test-group-body';
+        body.id = 'body-' + grp.id;
+        grp.subs.forEach(sub => {
+          const lbl = document.createElement('label');
+          lbl.className = 'test-subcat-item';
+          lbl.innerHTML = `<input type="checkbox" class="test-sub-cb" data-grp="${grp.id}" value="${sub.id}" checked> ${sub.label}`;
+          body.appendChild(lbl);
+        });
+        div.appendChild(body);
+
+        // Toggle dépliage
+        header.addEventListener('click', (e) => {
+          if (e.target.type === 'checkbox') return;
+          const isOpen = !body.classList.contains('collapsed');
+          body.classList.toggle('collapsed', isOpen);
+          header.querySelector('.test-group-toggle').classList.toggle('open', !isOpen);
+        });
+
+        // Clic sur la coche de groupe → coche/décoche toutes les sous-cats
+        header.querySelector('.test-grp-cb').addEventListener('change', function () {
+          body.querySelectorAll('.test-sub-cb').forEach(cb => { cb.checked = this.checked; });
+          syncGlobalSelectAll();
+          updatePurgeBtn();
+        });
+
+        container.appendChild(div);
       });
-      // Sync "tout sélectionner"
-      grid.querySelectorAll('.test-cat-cb').forEach(cb => {
-        cb.addEventListener('change', syncSelectAll);
+
+      // Délégation : changement d'une sous-cat → met à jour la coche du groupe + global
+      container.addEventListener('change', (e) => {
+        if (!e.target.classList.contains('test-sub-cb')) return;
+        const grpId = e.target.dataset.grp;
+        const grpCb = container.querySelector(`.test-grp-cb[data-grp="${grpId}"]`);
+        const subs  = Array.from(container.querySelectorAll(`.test-sub-cb[data-grp="${grpId}"]`));
+        const allOn = subs.every(cb => cb.checked);
+        const anyOn = subs.some(cb => cb.checked);
+        grpCb.checked = allOn;
+        grpCb.indeterminate = !allOn && anyOn;
+        syncGlobalSelectAll();
+        updatePurgeBtn();
       });
     }
 
-    function syncSelectAll() {
-      const cbs = Array.from(document.querySelectorAll('.test-cat-cb'));
-      $('test-select-all').checked = cbs.every(cb => cb.checked);
-      $('test-select-all').indeterminate = !cbs.every(cb => cb.checked) && cbs.some(cb => cb.checked);
-      $('btn-purger-test').disabled = !cbs.some(cb => cb.checked) || !$('test-personnel-select').value;
+    function syncGlobalSelectAll() {
+      const all = Array.from(document.querySelectorAll('.test-sub-cb'));
+      const allOn = all.every(cb => cb.checked);
+      const anyOn = all.some(cb => cb.checked);
+      const sa = $('test-select-all');
+      sa.checked = allOn;
+      sa.indeterminate = !allOn && anyOn;
     }
 
-    $('test-select-all') && $('test-select-all').addEventListener('change', function () {
-      document.querySelectorAll('.test-cat-cb').forEach(cb => { cb.checked = this.checked; });
-      $('btn-purger-test').disabled = !this.checked || !$('test-personnel-select').value;
+    function updatePurgeBtn() {
+      const hasPers = !!$('test-personnel-select').value;
+      const anySubOn = document.querySelectorAll('.test-sub-cb:checked').length > 0;
+      $('btn-purger-test').disabled = !(hasPers && anySubOn);
+    }
+
+    $('test-select-all').addEventListener('change', function () {
+      document.querySelectorAll('.test-grp-cb').forEach(cb => {
+        cb.checked = this.checked;
+        cb.indeterminate = false;
+      });
+      document.querySelectorAll('.test-sub-cb').forEach(cb => { cb.checked = this.checked; });
+      updatePurgeBtn();
     });
 
-    // Peupler le sélecteur de personnel
     async function loadTestPersonnel() {
       const sel = $('test-personnel-select');
       try {
@@ -959,7 +1090,6 @@
           if ((p.prenom || '').toLowerCase() === 'test') opt.selected = true;
           sel.appendChild(opt);
         });
-        // Afficher les catégories seulement si un personnel est sélectionné
         toggleCategoriesVisibility();
       } catch { /* silent */ }
     }
@@ -967,27 +1097,38 @@
     function toggleCategoriesVisibility() {
       const hasPers = !!$('test-personnel-select').value;
       $('test-categories').style.display = hasPers ? '' : 'none';
-      if (hasPers) syncSelectAll();
+      if (hasPers) updatePurgeBtn();
     }
 
     $('test-personnel-select').addEventListener('change', toggleCategoriesVisibility);
 
-    buildCategoriesGrid();
+    buildGroupes();
 
     $('btn-purger-test').addEventListener('click', async () => {
       const msg = $('test-msg');
       const btn = $('btn-purger-test');
-      const setMsg = (cls, txt) => { msg.hidden = false; msg.className = `admin-depan-msg admin-depan-msg--${cls}`; msg.textContent = txt; };
+      const setMsg = (cls, txt) => {
+        msg.hidden = false;
+        msg.className = `admin-depan-msg admin-depan-msg--${cls}`;
+        msg.textContent = txt;
+      };
 
-      const persId = $('test-personnel-select').value;
+      const persId  = $('test-personnel-select').value;
       const persNom = $('test-personnel-select').options[$('test-personnel-select').selectedIndex]?.text || '';
       if (!persId) { setMsg('erreur', 'Choisissez un membre du personnel.'); return; }
 
-      const cats = Array.from(document.querySelectorAll('.test-cat-cb:checked')).map(cb => cb.value);
-      if (cats.length === 0) { setMsg('erreur', 'Cochez au moins une catégorie.'); return; }
+      const subcats = Array.from(document.querySelectorAll('.test-sub-cb:checked')).map(cb => cb.value);
+      if (subcats.length === 0) { setMsg('erreur', 'Cochez au moins une sous-catégorie.'); return; }
 
-      const catLabels = cats.map(id => CATEGORIES_PURGE.find(c => c.id === id)?.label || id).join(', ');
-      if (!confirm(`Supprimer les entrées de « ${persNom} » pour :\n${catLabels}\n\nCette action est IRRÉVERSIBLE.`)) return;
+      // Résumé lisible pour la confirmation
+      const lignes = GROUPES_PURGE
+        .map(grp => {
+          const sel = grp.subs.filter(s => subcats.includes(s.id)).map(s => s.label);
+          return sel.length ? `${grp.label} : ${sel.join(', ')}` : null;
+        })
+        .filter(Boolean)
+        .join('\n');
+      if (!confirm(`Supprimer pour « ${persNom} » :\n\n${lignes}\n\nCette action est IRRÉVERSIBLE.`)) return;
 
       btn.disabled = true;
       setMsg('info', 'Suppression en cours…');
@@ -995,18 +1136,18 @@
         const res = await fetch(`${API_BASE}/api/admin/personnel/${persId}/entrees`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ categories: cats }),
+          body: JSON.stringify({ sous_categories: subcats }),
         });
         if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
-        const data = await res.json();
-        const erreurs = data.erreurs || {};
-        const nbErreurs = Object.keys(erreurs).length;
+        const data   = await res.json();
+        const errs   = data.erreurs || {};
+        const nbErrs = Object.keys(errs).length;
         const detail = Object.entries(data.detail || {}).map(([t, n]) => `${t} : ${n}`).join(' · ');
-        if (nbErreurs > 0) {
-          const errTxt = Object.entries(erreurs).map(([t, e]) => `${t} → ${e}`).join(' | ');
-          setMsg('erreur', `⚠️ ${data.total} entrée(s) supprimée(s)${detail ? ' (' + detail + ')' : ''}, mais ${nbErreurs} table(s) en erreur : ${errTxt}`);
+        if (nbErrs > 0) {
+          const errTxt = Object.entries(errs).map(([t, e]) => `${t} → ${e}`).join(' | ');
+          setMsg('erreur', `⚠️ ${data.total} entrée(s) supprimée(s)${detail ? ' (' + detail + ')' : ''}, ${nbErrs} erreur(s) : ${errTxt}`);
         } else if (data.total === 0) {
-          setMsg('ok', `✓ Aucune entrée à supprimer pour « ${persNom} » dans ces catégories.`);
+          setMsg('ok', `✓ Aucune entrée trouvée pour « ${persNom} » dans cette sélection.`);
         } else {
           setMsg('ok', `✓ ${data.total} entrée(s) supprimée(s) pour « ${persNom} ». ${detail}`);
         }
@@ -1014,7 +1155,7 @@
         setMsg('erreur', `Erreur : ${err.message}`);
       } finally {
         btn.disabled = false;
-        syncSelectAll();
+        updatePurgeBtn();
       }
     });
 

@@ -71,33 +71,52 @@ async def modifier_personnel(personnel_id: int, body: PersonnelUpdate):
     return {"ok": True}
 
 
-CATEGORIES_PURGE = {
-    "receptions":   "Réceptions (lignes, BLs, fiches incident, non-conformités)",
-    "production":   "Production (cuissons, refroidissements, fabrications)",
-    "etiquettes":   "Étiquettes générées",
-    "taches":       "Tâches & nettoyage",
-    "etalonnage":   "Étalonnage thermomètres",
-    "nuisibles":    "Contrôles nuisibles",
-    "dlc":          "DLC (devenirs)",
-    "formation":    "Formation (e-learning, quiz)",
-    "ouvertures":   "Contrôles ouvertures",
+# Sous-catégories disponibles pour la purge sélective.
+# Clé = identifiant envoyé par le frontend.
+# Les suppressions qui ont des dépendances FK sont gérées dans l'endpoint.
+SOUS_CATEGORIES = {
+    # Réceptions
+    "rec_receptions":        "Réceptions & lignes de produits",
+    "rec_bls":               "BLs supplémentaires",
+    "rec_fiches_incident":   "Fiches incident (PCR01)",
+    "rec_non_conformites":   "Non-conformités fournisseur",
+    # Production
+    "prod_cuissons":         "Cuissons",
+    "prod_refroidissements": "Refroidissements",
+    "prod_fabrications":     "Fabrications & lots",
+    # Étiquettes
+    "etiquettes":            "Étiquettes générées",
+    # Tâches
+    "taches_haccp":          "Validations tâches HACCP",
+    "taches_nettoyage":      "Registre nettoyage",
+    # Étalonnage
+    "etal_mesures":          "Étalonnages (mesures eau glacée)",
+    "etal_comparaisons":     "Comparaisons enceintes",
+    # Nuisibles
+    "nuisibles":             "Contrôles nuisibles",
+    # DLC
+    "dlc":                   "Devenirs DLC",
+    # Formation
+    "form_elearning":        "E-learning (modules PDF/vidéo)",
+    "form_quiz":             "Quiz (résultats & progression)",
+    # Ouvertures
+    "ouvertures":            "Contrôles ouvertures produits",
 }
 
 
 class PurgeBody(BaseModel):
-    categories: Optional[list] = None  # None = toutes
+    sous_categories: Optional[list] = None  # None = toutes
 
 
 @router.delete("/personnel/{personnel_id}/entrees")
 async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBody()):
-    """Supprime les entrées créées par un membre du personnel, par catégorie.
+    """Supprime les entrées d'un membre du personnel par sous-catégorie.
 
-    `categories` : liste parmi receptions, production, etiquettes, taches,
-    etalonnage, nuisibles, dlc, formation, ouvertures.
-    Si absent ou null → toutes les catégories.
+    `sous_categories` : liste de clés parmi SOUS_CATEGORIES.
+    Si absent ou null → tout supprimer.
     Le membre du personnel est conservé.
     """
-    cats = set(body.categories) if body.categories else set(CATEGORIES_PURGE)
+    cats = set(body.sous_categories) if body.sous_categories else set(SOUS_CATEGORIES)
 
     async with get_db() as db:
         cur = await db.execute("SELECT prenom FROM personnel WHERE id = ?", (personnel_id,))
@@ -131,28 +150,32 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
             except Exception as exc:  # noqa: BLE001
                 erreurs[table] = str(exc)
 
-        # ── Collecte des IDs parents (utilisés par plusieurs catégories) ─────
+        # ── Collecte des IDs parents nécessaires aux cascades FK ─────────────
+
+        # IDs réceptions de l'utilisateur (utiles à plusieurs sous-cats)
         rec_ids: list = []
-        if ("receptions" in cats or "production" in cats) \
-                and "receptions" in existing_tables \
+        need_rec_ids = cats & {"rec_receptions", "rec_bls", "rec_fiches_incident",
+                               "rec_non_conformites", "ouvertures",
+                               "prod_cuissons", "prod_refroidissements", "prod_fabrications"}
+        if need_rec_ids and "receptions" in existing_tables \
                 and "personnel_id" in await _cols("receptions"):
             rows = await db.execute_fetchall(
                 "SELECT id FROM receptions WHERE personnel_id = ?", (personnel_id,)
             )
             rec_ids = [r[0] for r in rows]
 
+        # IDs fabrications (pour supprimer les lots enfants)
         fabric_ids: list = []
-        if "production" in cats \
-                and "fabrications" in existing_tables \
+        if "prod_fabrications" in cats and "fabrications" in existing_tables \
                 and "personnel_id" in await _cols("fabrications"):
             rows = await db.execute_fetchall(
                 "SELECT id FROM fabrications WHERE personnel_id = ?", (personnel_id,)
             )
             fabric_ids = [r[0] for r in rows]
 
+        # IDs étalonnages (pour supprimer les comparaisons enfants)
         etalon_ids: list = []
-        if "etalonnage" in cats \
-                and "etalonnages" in existing_tables \
+        if cats & {"etal_mesures", "etal_comparaisons"} and "etalonnages" in existing_tables \
                 and "operateur" in await _cols("etalonnages"):
             rows = await db.execute_fetchall(
                 "SELECT id FROM etalonnages WHERE operateur = ?", (prenom,)
@@ -161,46 +184,66 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
 
         # ── Suppressions dans l'ordre FK (enfants avant parents) ─────────────
 
-        # PRODUCTION ─────────────────────────────────────────────────────────
-        if "production" in cats:
+        # REFROIDISSEMENTS (enfant de cuissons) ───────────────────────────────
+        if "prod_refroidissements" in cats:
             await _del("refroidissements", "personnel_id", "personnel_id = ?", (personnel_id,))
-            if fabric_ids:
-                ph = ",".join("?" * len(fabric_ids))
-                await _del("fabrication_lots", "fabrication_id",
-                           f"fabrication_id IN ({ph})", tuple(fabric_ids))
+
+        # COMPARAISONS ÉTALONNAGE (enfant d'étalonnages) ──────────────────────
+        if "etal_comparaisons" in cats and etalon_ids:
+            ph = ",".join("?" * len(etalon_ids))
+            await _del("etalonnage_comparaisons", "etalonnage_id",
+                       f"etalonnage_id IN ({ph})", tuple(etalon_ids))
+
+        # LOTS FABRICATION (enfant de fabrications) ───────────────────────────
+        if "prod_fabrications" in cats and fabric_ids:
+            ph = ",".join("?" * len(fabric_ids))
+            await _del("fabrication_lots", "fabrication_id",
+                       f"fabrication_id IN ({ph})", tuple(fabric_ids))
+
+        # CUISSONS (enfant de reception_lignes) ───────────────────────────────
+        if "prod_cuissons" in cats:
             await _del("cuissons", "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # RÉCEPTIONS ─────────────────────────────────────────────────────────
-        if "receptions" in cats and rec_ids:
+        # Dépendants de receptions / reception_lignes ─────────────────────────
+        if rec_ids:
             ph = ",".join("?" * len(rec_ids))
-            await _del("fiches_incident", "reception_id",
-                       f"reception_id IN ({ph})", tuple(rec_ids))
-            await _del("non_conformites_fournisseur", "reception_id",
-                       f"reception_id IN ({ph})", tuple(rec_ids))
-            await _del("reception_bls_supplementaires", "reception_id",
-                       f"reception_id IN ({ph})", tuple(rec_ids))
-            # Ouvertures liées à ces lignes de réception
-            await _del("ouvertures", "reception_ligne_id",
-                       f"reception_ligne_id IN (SELECT id FROM reception_lignes WHERE reception_id IN ({ph}))",
-                       tuple(rec_ids))
-            await _del("reception_lignes", "reception_id",
-                       f"reception_id IN ({ph})", tuple(rec_ids))
+            if "rec_fiches_incident" in cats:
+                await _del("fiches_incident", "reception_id",
+                           f"reception_id IN ({ph})", tuple(rec_ids))
+            if "rec_non_conformites" in cats:
+                await _del("non_conformites_fournisseur", "reception_id",
+                           f"reception_id IN ({ph})", tuple(rec_ids))
+            if "rec_bls" in cats:
+                await _del("reception_bls_supplementaires", "reception_id",
+                           f"reception_id IN ({ph})", tuple(rec_ids))
+            if "ouvertures" in cats:
+                # Ouvertures liées aux lignes de réception de cet utilisateur
+                await _del("ouvertures", "reception_ligne_id",
+                           f"reception_ligne_id IN "
+                           f"(SELECT id FROM reception_lignes WHERE reception_id IN ({ph}))",
+                           tuple(rec_ids))
+            if "rec_receptions" in cats:
+                await _del("reception_lignes", "reception_id",
+                           f"reception_id IN ({ph})", tuple(rec_ids))
 
-        if "receptions" in cats:
+        # RÉCEPTIONS (racine) ─────────────────────────────────────────────────
+        if "rec_receptions" in cats:
             await _del("receptions", "personnel_id", "personnel_id = ?", (personnel_id,))
+            # Fiches clôturées par l'utilisateur (FK cloturee_par)
             await _del("fiches_incident", "cloturee_par", "cloturee_par = ?", (personnel_id,))
 
-        # OUVERTURES (hors réceptions) ────────────────────────────────────────
+        # OUVERTURES directes (par personnel_id, pas liées à une réception) ───
         if "ouvertures" in cats:
             await _del("ouvertures", "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # FABRICATIONS (table principale, orpheline si pas dans production) ───
-        if "production" in cats:
+        # FABRICATIONS ────────────────────────────────────────────────────────
+        if "prod_fabrications" in cats:
             await _del("fabrications", "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # ÉTALONNAGE ──────────────────────────────────────────────────────────
-        if "etalonnage" in cats:
-            if etalon_ids:
+        # ÉTALONNAGES (mesures) ───────────────────────────────────────────────
+        if "etal_mesures" in cats:
+            if etalon_ids and "etal_comparaisons" not in cats:
+                # Comparaisons enfants à supprimer d'abord si pas déjà fait
                 ph = ",".join("?" * len(etalon_ids))
                 await _del("etalonnage_comparaisons", "etalonnage_id",
                            f"etalonnage_id IN ({ph})", tuple(etalon_ids))
@@ -210,9 +253,12 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
         if "etiquettes" in cats:
             await _del("etiquettes_generees", "operateur", "operateur = ?", (prenom,))
 
-        # TÂCHES & NETTOYAGE ──────────────────────────────────────────────────
-        if "taches" in cats:
+        # TÂCHES HACCP ────────────────────────────────────────────────────────
+        if "taches_haccp" in cats:
             await _del("tache_validations", "operateur", "operateur = ?", (prenom,))
+
+        # NETTOYAGE ───────────────────────────────────────────────────────────
+        if "taches_nettoyage" in cats:
             await _del("registre_nettoyage", "operateur", "operateur = ?", (prenom,))
 
         # NUISIBLES ───────────────────────────────────────────────────────────
@@ -223,10 +269,13 @@ async def purger_entrees_personnel(personnel_id: int, body: PurgeBody = PurgeBod
         if "dlc" in cats:
             await _del("dlc_devenir", "personnel_id", "personnel_id = ?", (personnel_id,))
 
-        # FORMATION ───────────────────────────────────────────────────────────
-        if "formation" in cats:
+        # E-LEARNING ──────────────────────────────────────────────────────────
+        if "form_elearning" in cats:
             await _del("elearning_completions", "personnel_id", "personnel_id = ?", (personnel_id,))
-            await _del("quiz_resultats", "personnel_id", "personnel_id = ?", (personnel_id,))
+
+        # QUIZ ────────────────────────────────────────────────────────────────
+        if "form_quiz" in cats:
+            await _del("quiz_resultats",   "personnel_id", "personnel_id = ?", (personnel_id,))
             await _del("quiz_progression", "personnel_id", "personnel_id = ?", (personnel_id,))
 
         await db.commit()
