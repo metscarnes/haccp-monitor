@@ -162,6 +162,23 @@
   padding: 1.5rem;
 }
 
+.admin-section-header--collapsible {
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.admin-section-header--collapsible:hover {
+  background: linear-gradient(135deg, #f7efe2 0%, #f1e5d2 100%);
+}
+
+.admin-section-chevron {
+  margin-left: auto;
+  font-size: .75rem;
+  color: var(--color-accent);
+  transition: transform .22s ease;
+  flex-shrink: 0;
+}
+
 /* ─────────────────────────────────────────────
    LOADER / ERREUR
 ───────────────────────────────────────────── */

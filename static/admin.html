@@ -254,11 +254,12 @@
 
     <!-- ── Zone de test ── -->
     <section class="admin-section" id="section-test">
-      <div class="admin-section-header">
+      <div class="admin-section-header admin-section-header--collapsible" id="section-test-header" role="button" tabindex="0" aria-expanded="false" aria-controls="section-test-body">
         <h2 class="admin-section-titre">🧪 Zone de test &amp; formation</h2>
         <span class="admin-badge admin-badge--warning">Purge sélective</span>
+        <span class="admin-section-chevron" aria-hidden="true">▼</span>
       </div>
-      <div class="admin-section-body">
+      <div class="admin-section-body" id="section-test-body" hidden>
         <p class="admin-info-text">
           Supprime les entrées d'un membre du personnel selon les catégories choisies.
           Le membre lui-même est conservé. Cette action est <strong>irréversible</strong>.
@@ -1480,6 +1481,20 @@
         btn.disabled = false;
       }
     });
+
+    // ── Section test : pliage/dépliage ───────────────────────
+    (function() {
+      const header = $('section-test-header');
+      const body   = $('section-test-body');
+      function toggle() {
+        const open = body.hidden;
+        body.hidden = !open;
+        header.setAttribute('aria-expanded', open ? 'true' : 'false');
+        header.querySelector('.admin-section-chevron').style.transform = open ? 'rotate(180deg)' : '';
+      }
+      header.addEventListener('click', toggle);
+      header.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    })();
 
     // ── Init ────────────────────────────────────────────────
     loadPersonnel();
