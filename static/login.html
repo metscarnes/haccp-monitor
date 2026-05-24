@@ -173,6 +173,7 @@
         const expiresAt = Date.now() + data.expires_in * 1000;
         localStorage.setItem('admin_token', data.token);
         localStorage.setItem('admin_token_expires', String(expiresAt));
+        localStorage.setItem('admin_last_activity', String(Date.now()));
 
         const redirect = sessionStorage.getItem(REDIRECT_KEY) || '/admin.html';
         sessionStorage.removeItem(REDIRECT_KEY);

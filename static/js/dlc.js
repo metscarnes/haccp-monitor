@@ -132,6 +132,8 @@ const state = {
   devenirCible: null,
   devenirStatut: null,
   modifierCible: null,
+  modifierToken: null,
+  devenirToken: null,
 };
 
 // ── Horloge ─────────────────────────────────────────────
@@ -747,7 +749,10 @@ function fermerModal() { $('dlc-modal').hidden = true; }
 document.querySelectorAll('#dlc-modal [data-close]').forEach(e => e.addEventListener('click', fermerModal));
 
 // ── Modal Modifier DLC ──────────────────────────────────
-function ouvrirModalModifier(cible) {
+async function ouvrirModalModifier(cible) {
+  const token = await demanderMotDePasse();
+  if (!token) return;
+  state.modifierToken = token;
   state.modifierCible = cible;
   $('modifier-produit-nom').textContent  = cible.produit_nom;
   $('modifier-dlc-courante').textContent = `DLC actuelle : ${formatDateFr(cible.dlc)}`;
@@ -759,6 +764,7 @@ function ouvrirModalModifier(cible) {
 function fermerModalModifier() {
   $('modifier-modal').hidden = true;
   state.modifierCible = null;
+  state.modifierToken = null;
 }
 
 document.querySelectorAll('#modifier-modal [data-close-modifier]').forEach(e =>
@@ -771,8 +777,8 @@ $('modifier-nouvelle-dlc').addEventListener('input', () => {
 
 $('modifier-valider').addEventListener('click', async () => {
   const btn = $('modifier-valider');
-  const token = await demanderMotDePasse();
-  if (!token) return;
+  const token = state.modifierToken;
+  if (!token) { alert('Session expirée, recommencez.'); fermerModalModifier(); return; }
   btn.disabled = true;
   btn.textContent = 'Enregistrement...';
   try {
@@ -913,7 +919,10 @@ function construireLigneOrigine(cible) {
 }
 
 // ── Modal Devenir ───────────────────────────────────────
-function ouvrirModalDevenir(cible) {
+async function ouvrirModalDevenir(cible) {
+  const token = await demanderMotDePasse();
+  if (!token) return;
+  state.devenirToken  = token;
   state.devenirCible  = cible;
   state.devenirStatut = null;
 
@@ -938,6 +947,7 @@ function fermerModalDevenir() {
   $('devenir-modal').hidden = true;
   state.devenirCible  = null;
   state.devenirStatut = null;
+  state.devenirToken  = null;
 }
 document.querySelectorAll('#devenir-modal [data-close-devenir]').forEach(e => e.addEventListener('click', fermerModalDevenir));
 
@@ -957,8 +967,8 @@ function rafraichirBoutonValider() {
 
 $('devenir-valider').addEventListener('click', async () => {
   const btn = $('devenir-valider');
-  const token = await demanderMotDePasse();
-  if (!token) return;
+  const token = state.devenirToken;
+  if (!token) { alert('Session expirée, recommencez.'); fermerModalDevenir(); return; }
   btn.disabled = true;
   btn.textContent = 'Enregistrement...';
   try {

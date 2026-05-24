@@ -19,11 +19,39 @@
 <body class="cat-body">
 <script>
   (function(){
-    var exp = Number(localStorage.getItem('admin_token_expires')||0);
-    if(!localStorage.getItem('admin_token')||Date.now()>exp){
-      sessionStorage.setItem('auth_redirect','/catalogue.html');
+    var PAGE = '/catalogue.html';
+    var INACTIVITE_MS = 5 * 60 * 1000;   // 5 min
+
+    function deconnecter(){
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_token_expires');
+      localStorage.removeItem('admin_last_activity');
+      sessionStorage.setItem('auth_redirect', PAGE);
       window.location.replace('/login.html');
     }
+
+    var exp      = Number(localStorage.getItem('admin_token_expires')||0);
+    var lastAct  = Number(localStorage.getItem('admin_last_activity')||0);
+    if(!localStorage.getItem('admin_token') || Date.now()>exp || (Date.now()-lastAct)>INACTIVITE_MS){
+      deconnecter();
+      return;
+    }
+
+    function touch(){ localStorage.setItem('admin_last_activity', String(Date.now())); }
+    ['click','keydown','mousemove','touchstart','scroll'].forEach(function(ev){
+      window.addEventListener(ev, touch, { passive:true });
+    });
+
+    setInterval(function(){
+      var la = Number(localStorage.getItem('admin_last_activity')||0);
+      if((Date.now()-la)>INACTIVITE_MS) deconnecter();
+    }, 30000);
+
+    window.addEventListener('pagehide', function(){
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_token_expires');
+      localStorage.removeItem('admin_last_activity');
+    });
   })();
 </script>
 

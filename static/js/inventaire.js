@@ -124,10 +124,12 @@ const gestionState = {
 
 const batchState = {
   statut: null,
+  token: null,
 };
 
 const editState = {
   cible: null, // { source_type, source_id, produit_nom, numero_lot, dlc, quantite, unite }
+  token: null,
 };
 
 function clefItem(it) { return `${it.source_type}:${it.source_id}`; }
@@ -458,10 +460,13 @@ function mettreAJourActionBar() {
 //   MODAL BATCH — Traitement en masse (même que DLC)
 // ══════════════════════════════════════════════════════════════
 
-function ouvrirBatchModal() {
+async function ouvrirBatchModal() {
   const selItems = state.items.filter(it => gestionState.selection.has(clefItem(it)));
   if (selItems.length === 0) return;
 
+  const token = await demanderMotDePasse();
+  if (!token) return;
+  batchState.token  = token;
   batchState.statut = null;
 
   // Résumé
@@ -520,6 +525,7 @@ function ouvrirBatchModal() {
 function fermerBatchModal() {
   $('inv-batch-modal').hidden = true;
   batchState.statut = null;
+  batchState.token = null;
 }
 
 function rafraichirBatchUi() {
@@ -559,8 +565,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $('inv-batch-valider').addEventListener('click', async () => {
     const btn = $('inv-batch-valider');
-    const token = await demanderMotDePasse();
-    if (!token) return;
+    const token = batchState.token;
+    if (!token) { alert('Session expirée, recommencez.'); fermerBatchModal(); return; }
     btn.disabled = true;
     btn.textContent = 'Traitement…';
 
@@ -602,7 +608,10 @@ document.addEventListener('DOMContentLoaded', () => {
 //   Le N° de lot est affiché mais NON modifiable
 // ══════════════════════════════════════════════════════════════
 
-function ouvrirEditModal(it) {
+async function ouvrirEditModal(it) {
+  const token = await demanderMotDePasse();
+  if (!token) return;
+  editState.token = token;
   editState.cible = it;
 
   $('inv-edit-nom').textContent  = it.produit_nom;
@@ -626,6 +635,7 @@ function ouvrirEditModal(it) {
 function fermerEditModal() {
   $('inv-edit-modal').hidden = true;
   editState.cible = null;
+  editState.token = null;
 }
 
 // ── Impression étiquette simple (nom / lot / DLC [+ fab]) ───
@@ -746,8 +756,8 @@ document.addEventListener('DOMContentLoaded', () => {
       body.quantite = q;
     }
 
-    const token = await demanderMotDePasse();
-    if (!token) return;
+    const token = editState.token;
+    if (!token) { alert('Session expirée, recommencez.'); fermerEditModal(); return; }
 
     btn.disabled = true;
     btn.textContent = 'Enregistrement…';
