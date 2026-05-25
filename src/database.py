@@ -706,12 +706,12 @@ SEED_SQL = """
 INSERT OR IGNORE INTO boutiques (id, nom, adresse, siret)
 VALUES (1, 'Au Comptoir des Lilas', '122 rue de Paris, Les Lilas, 93260', '');
 
-INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes, delai_perte_signal_minutes)
+INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes)
 VALUES
-(1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 30, 720),
-(2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 30, 720),
-(3, 1, 'vitrine',          'vitrine',        'vitrine',            0.0,  4.0, 90.0, 30, 720),
-(4, 1, 'laboratoire',      'laboratoire',    'laboratoire',       10.0, 15.0, 80.0, 30, 720);
+(1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 30),
+(2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 30),
+(3, 1, 'vitrine',          'vitrine',        'vitrine',            0.0,  4.0, 90.0, 30),
+(4, 1, 'laboratoire',      'laboratoire',    'laboratoire',       10.0, 15.0, 80.0, 30);
 """
 
 SEED_SQL_PHASE2 = """
