@@ -100,7 +100,7 @@ async def _auto_creer_enceinte_si_absente(db, friendly_name: str) -> Optional[di
         "seuil_temp_min":       seuil_min,
         "seuil_temp_max":       seuil_max,
         "seuil_hum_max":        90.0,
-        "delai_alerte_minutes": 5,
+        "delai_alerte_minutes": 720,
     })
     logger.info(
         "✅ Enceinte auto-créée : '%s'  type=%s  seuils=[%.0f ; %.0f]°C  (id=%d)",
