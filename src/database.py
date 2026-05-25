@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS enceintes (
     seuil_temp_min        REAL    DEFAULT 0.0,
     seuil_temp_max        REAL    DEFAULT 4.0,
     seuil_hum_max         REAL    DEFAULT 90.0,
-    delai_alerte_minutes  INTEGER DEFAULT 720,
+    delai_alerte_minutes  INTEGER DEFAULT 30,
     actif                 BOOLEAN DEFAULT 1,
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(boutique_id, nom),
@@ -1421,7 +1421,7 @@ async def create_enceinte(db: aiosqlite.Connection, data: dict) -> int:
             data.get("seuil_temp_min", 0.0),
             data.get("seuil_temp_max", 4.0),
             data.get("seuil_hum_max", 90.0),
-            data.get("delai_alerte_minutes", 720),
+            data.get("delai_alerte_minutes", 30),
         ),
     )
     await db.commit()

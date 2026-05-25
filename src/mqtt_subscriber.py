@@ -100,7 +100,7 @@ async def _auto_creer_enceinte_si_absente(db, friendly_name: str) -> Optional[di
         "seuil_temp_min":       seuil_min,
         "seuil_temp_max":       seuil_max,
         "seuil_hum_max":        90.0,
-        "delai_alerte_minutes": 720,
+        "delai_alerte_minutes": 30,
     })
     logger.info(
         "✅ Enceinte auto-créée : '%s'  type=%s  seuils=[%.0f ; %.0f]°C  (id=%d)",
@@ -253,7 +253,7 @@ async def _ouvrir_ou_escalader(db, enceinte_id, type_alerte, valeur, seuil,
                     enceinte["nom"], type_alerte, valeur, seuil)
         return
 
-    if existante["notifie"] or delai_minutes is None:
+    if existante["notifie"]:
         return
 
     try:
@@ -309,7 +309,7 @@ async def _watchdog_perte_signal() -> None:
                     if age_s > DELAI_PERTE_SIGNAL_S:
                         await _ouvrir_ou_escalader(db, eid, "perte_signal",
                             valeur=age_s / 60, seuil=DELAI_PERTE_SIGNAL_S / 60,
-                            delai_minutes=None, now=now, enceinte=enc)
+                            delai_minutes=720, now=now, enceinte=enc)
                     else:
                         await _fermer_si_ouverte(db, eid, "perte_signal", now)
 
