@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS enceintes (
     seuil_temp_min        REAL    DEFAULT 0.0,
     seuil_temp_max        REAL    DEFAULT 4.0,
     seuil_hum_max         REAL    DEFAULT 90.0,
-    delai_alerte_minutes  INTEGER DEFAULT 30,
+    delai_alerte_minutes         INTEGER DEFAULT 30,
+    delai_perte_signal_minutes   INTEGER DEFAULT 720,
     actif                 BOOLEAN DEFAULT 1,
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(boutique_id, nom),
@@ -705,12 +706,12 @@ SEED_SQL = """
 INSERT OR IGNORE INTO boutiques (id, nom, adresse, siret)
 VALUES (1, 'Au Comptoir des Lilas', '122 rue de Paris, Les Lilas, 93260', '');
 
-INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes)
+INSERT OR IGNORE INTO enceintes (id, boutique_id, nom, type, sonde_zigbee_id, seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes, delai_perte_signal_minutes)
 VALUES
-(1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 5),
-(2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 5),
-(3, 1, 'vitrine',          'vitrine',        'vitrine',            0.0,  4.0, 90.0, 5),
-(4, 1, 'laboratoire',      'laboratoire',    'laboratoire',       10.0, 15.0, 80.0, 5);
+(1, 1, 'Chambre froide 1', 'chambre_froide', 'chambre_froide_1',  0.0,  4.0, 90.0, 30, 720),
+(2, 1, 'Chambre froide 2', 'chambre_froide', 'chambre_froide_2',  0.0,  4.0, 90.0, 30, 720),
+(3, 1, 'vitrine',          'vitrine',        'vitrine',            0.0,  4.0, 90.0, 30, 720),
+(4, 1, 'laboratoire',      'laboratoire',    'laboratoire',       10.0, 15.0, 80.0, 30, 720);
 """
 
 SEED_SQL_PHASE2 = """
@@ -1023,6 +1024,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 UNIQUE(boutique_id, type_id, piege_num),
                 FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
             )""",
+            # v4.3 — Délai notification perte de signal indépendant du délai température
+            "ALTER TABLE enceintes ADD COLUMN delai_perte_signal_minutes INTEGER DEFAULT 720",
             # v4.2 — Opérateur en FK personnel (au lieu de prénom TEXT) sur 4 modules
             "ALTER TABLE registre_nettoyage ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
             "ALTER TABLE etalonnages        ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
@@ -1410,8 +1413,9 @@ async def create_enceinte(db: aiosqlite.Connection, data: dict) -> int:
         """
         INSERT INTO enceintes
             (boutique_id, nom, type, sonde_zigbee_id,
-             seuil_temp_min, seuil_temp_max, seuil_hum_max, delai_alerte_minutes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             seuil_temp_min, seuil_temp_max, seuil_hum_max,
+             delai_alerte_minutes, delai_perte_signal_minutes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             data["boutique_id"],
@@ -1422,6 +1426,7 @@ async def create_enceinte(db: aiosqlite.Connection, data: dict) -> int:
             data.get("seuil_temp_max", 4.0),
             data.get("seuil_hum_max", 90.0),
             data.get("delai_alerte_minutes", 30),
+            data.get("delai_perte_signal_minutes", 720),
         ),
     )
     await db.commit()
@@ -1437,7 +1442,7 @@ async def update_enceinte(
         if k in (
             "nom", "type", "sonde_zigbee_id",
             "seuil_temp_min", "seuil_temp_max", "seuil_hum_max",
-            "delai_alerte_minutes", "actif",
+            "delai_alerte_minutes", "delai_perte_signal_minutes", "actif",
         )
     }
     if not fields:

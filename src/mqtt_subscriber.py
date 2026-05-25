@@ -309,7 +309,8 @@ async def _watchdog_perte_signal() -> None:
                     if age_s > DELAI_PERTE_SIGNAL_S:
                         await _ouvrir_ou_escalader(db, eid, "perte_signal",
                             valeur=age_s / 60, seuil=DELAI_PERTE_SIGNAL_S / 60,
-                            delai_minutes=720, now=now, enceinte=enc)
+                            delai_minutes=enc.get("delai_perte_signal_minutes", 720),
+                            now=now, enceinte=enc)
                     else:
                         await _fermer_si_ouverte(db, eid, "perte_signal", now)
 

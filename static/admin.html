@@ -175,8 +175,12 @@
                 <input type="number" id="enc-hum-max" value="90" min="0" max="100">
               </div>
               <div class="admin-field">
-                <label for="enc-delai">Délai alerte (min)</label>
+                <label for="enc-delai">Délai alerte température (min)</label>
                 <input type="number" id="enc-delai" value="30" min="1">
+              </div>
+              <div class="admin-field">
+                <label for="enc-delai-signal">Délai alerte perte signal (min)</label>
+                <input type="number" id="enc-delai-signal" value="720" min="1">
               </div>
             </div>
             <div class="admin-form-row" style="margin-top:.75rem">
@@ -922,7 +926,8 @@
         const min   = e.seuil_temp_min ?? '—';
         const max   = e.seuil_temp_max ?? '—';
         const hum   = e.seuil_hum_max ?? '—';
-        const delai = e.delai_alerte_minutes ?? '—';
+        const delai       = e.delai_alerte_minutes ?? '—';
+        const delaiSignal = e.delai_perte_signal_minutes ?? '—';
         const zigbee = e.sonde_zigbee_id
           ? `📡 ${escHtml(e.sonde_zigbee_id)}`
           : '<em style="color:#bbb;font-style:normal">Aucune sonde</em>';
@@ -937,7 +942,7 @@
             </div>
           </div>
           <div class="admin-enceinte-seuils">
-            T° : ${min}°C → ${max}°C &nbsp;·&nbsp; Hum. max : ${hum}% &nbsp;·&nbsp; Délai : ${delai} min
+            T° : ${min}°C → ${max}°C &nbsp;·&nbsp; Hum. max : ${hum}% &nbsp;·&nbsp; Délai T° : ${delai} min &nbsp;·&nbsp; Délai signal : ${delaiSignal} min
           </div>
           <div class="admin-enceinte-meta">
             <span>${escHtml((e.type || 'sonde').replace(/_/g, ' '))}</span>
@@ -982,7 +987,8 @@
         $('enc-temp-min').value = enc.seuil_temp_min ?? 0;
         $('enc-temp-max').value = enc.seuil_temp_max ?? 4;
         $('enc-hum-max').value  = enc.seuil_hum_max ?? 90;
-        $('enc-delai').value    = enc.delai_alerte_minutes ?? 5;
+        $('enc-delai').value        = enc.delai_alerte_minutes ?? 30;
+        $('enc-delai-signal').value = enc.delai_perte_signal_minutes ?? 720;
 
         $('enceintes-form-titre').textContent = `Modifier l'enceinte`;
         $('enc-btn-sauver').textContent = 'Enregistrer les modifications';
@@ -999,7 +1005,8 @@
       $('enc-temp-min').value = 0;
       $('enc-temp-max').value = 4;
       $('enc-hum-max').value  = 90;
-      $('enc-delai').value    = 5;
+      $('enc-delai').value        = 30;
+      $('enc-delai-signal').value = 720;
       $('enceintes-form-titre').textContent = 'Ajouter une enceinte';
       $('enc-btn-sauver').textContent = "Ajouter l'enceinte";
       $('enc-btn-annuler').hidden = true;
@@ -1030,7 +1037,8 @@
         seuil_temp_min:       parseFloat($('enc-temp-min').value),
         seuil_temp_max:       parseFloat($('enc-temp-max').value),
         seuil_hum_max:        parseFloat($('enc-hum-max').value),
-        delai_alerte_minutes: parseInt($('enc-delai').value, 10),
+        delai_alerte_minutes:       parseInt($('enc-delai').value, 10),
+        delai_perte_signal_minutes: parseInt($('enc-delai-signal').value, 10),
       };
 
       try {
