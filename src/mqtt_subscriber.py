@@ -253,7 +253,7 @@ async def _ouvrir_ou_escalader(db, enceinte_id, type_alerte, valeur, seuil,
                     enceinte["nom"], type_alerte, valeur, seuil)
         return
 
-    if existante["notifie"]:
+    if existante["notifie"] or delai_minutes is None:
         return
 
     try:
@@ -309,7 +309,7 @@ async def _watchdog_perte_signal() -> None:
                     if age_s > DELAI_PERTE_SIGNAL_S:
                         await _ouvrir_ou_escalader(db, eid, "perte_signal",
                             valeur=age_s / 60, seuil=DELAI_PERTE_SIGNAL_S / 60,
-                            delai_minutes=30, now=now, enceinte=enc)
+                            delai_minutes=None, now=now, enceinte=enc)
                     else:
                         await _fermer_si_ouverte(db, eid, "perte_signal", now)
 
