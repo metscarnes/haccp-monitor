@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Procédures d'hygiène — Plan HACCP</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <header class="hub-header">
+    <a href="/pms-plan-haccp.html" class="hub-btn-admin" aria-label="Retour au Plan HACCP">← Plan HACCP</a>
+    <div class="hub-titre">PROCÉDURES HYGIÈNE</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(2, 1fr); grid-template-rows: 1fr;">
+
+    <!-- ── FICHE ROUGE — Procédures ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-fiche-rouge"
+       href="/pms-pdf-viewer.html?titre=FICHE+ROUGE+%E2%80%94+Proc%C3%A9dures&retour=%2Fpms-plan-haccp-procedures.html&dossier=Le+Plan+HACCP%2FProc%C3%A9dures+d%27hygi%C3%A8ne%2FFICHE+ROUGE(PROC%C3%89DURE)"
+       aria-label="Fiche Rouge — Procédures">
+      <div class="hub-tuile-icone" aria-hidden="true">📕</div>
+      <div class="hub-tuile-titre">FICHE ROUGE</div>
+      <div class="hub-tuile-statut">Procédures à appliquer</div>
+    </a>
+
+    <!-- ── FICHE VERTE — Affichages ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-fiche-verte"
+       href="/pms-pdf-viewer.html?titre=FICHE+VERTE+%E2%80%94+Affichages&retour=%2Fpms-plan-haccp-procedures.html&dossier=Le+Plan+HACCP%2FProc%C3%A9dures+d%27hygi%C3%A8ne%2FFICHE+VERTE(AFFICHAGE)"
+       aria-label="Fiche Verte — Affichages">
+      <div class="hub-tuile-icone" aria-hidden="true">📗</div>
+      <div class="hub-tuile-titre">FICHE VERTE</div>
+      <div class="hub-tuile-statut">Documents d'affichage</div>
+    </a>
+
+  </main>
+
+  <script>
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Actions correctives — Plan HACCP</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <header class="hub-header">
+    <a href="/pms-plan-haccp.html" class="hub-btn-admin" aria-label="Retour au Plan HACCP">← Plan HACCP</a>
+    <div class="hub-titre">ACTIONS CORRECTIVES</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr;">
+
+    <!-- ── PCR01 ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-pcr01"
+       href="/pms-pdf-viewer.html?titre=PCR01&retour=%2Fpms-plan-haccp-actions.html&dossier=Le+Plan+HACCP%2FActions+correctives%2FPCR01"
+       aria-label="PCR01">
+      <div class="hub-tuile-icone" aria-hidden="true">📑</div>
+      <div class="hub-tuile-titre">PCR01</div>
+      <div class="hub-tuile-statut">Réception · Process · Non-conformité</div>
+    </a>
+
+    <!-- ── TIAC ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-tiac"
+       href="/pms-pdf-viewer.html?titre=TIAC&retour=%2Fpms-plan-haccp-actions.html&dossier=Le+Plan+HACCP%2FActions+correctives%2FTIAC"
+       aria-label="TIAC — Toxi-infection alimentaire collective">
+      <div class="hub-tuile-icone" aria-hidden="true">🚨</div>
+      <div class="hub-tuile-titre">TIAC</div>
+      <div class="hub-tuile-statut">Procédure & déclaration</div>
+    </a>
+
+    <!-- ── Autres procédures ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-autres"
+       href="/pms-pdf-viewer.html?titre=Autres+proc%C3%A9dures&retour=%2Fpms-plan-haccp-actions.html&fichiers=Le+Plan+HACCP%2FActions+correctives%2FCUISSON.pdf%7CCuisson%3BLe+Plan+HACCP%2FActions+correctives%2FLUTTE+CONTRE+LES+NUISIBLES.pdf%7CLutte+nuisibles%3BLe+Plan+HACCP%2FActions+correctives%2FREFROIDISSEMENT.pdf%7CRefroidissement"
+       aria-label="Autres procédures">
+      <div class="hub-tuile-icone" aria-hidden="true">📋</div>
+      <div class="hub-tuile-titre">AUTRES</div>
+      <div class="hub-tuile-statut">Cuisson · Nuisibles · Refroidissement</div>
+    </a>
+
+  </main>
+
+  <script>
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

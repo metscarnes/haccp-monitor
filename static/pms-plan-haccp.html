@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Plan HACCP — Classeur PMS</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <header class="hub-header">
+    <a href="/classeur-pms.html" class="hub-btn-admin" aria-label="Retour au Classeur PMS">← PMS</a>
+    <div class="hub-titre">PLAN HACCP</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(2, 1fr); grid-template-rows: 1fr;">
+
+    <!-- ── Actions correctives ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-actions-correctives"
+       href="/pms-plan-haccp-actions.html"
+       aria-label="Actions correctives">
+      <div class="hub-tuile-icone" aria-hidden="true">⚠️</div>
+      <div class="hub-tuile-titre">ACTIONS CORRECTIVES</div>
+      <div class="hub-tuile-statut">PCR01 · TIAC · Procédures</div>
+    </a>
+
+    <!-- ── Procédures d'hygiène ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-procedures-hygiene"
+       href="/pms-plan-haccp-procedures.html"
+       aria-label="Procédures d'hygiène">
+      <div class="hub-tuile-icone" aria-hidden="true">📕</div>
+      <div class="hub-tuile-titre">PROCÉDURES D'HYGIÈNE</div>
+      <div class="hub-tuile-statut">Fiches rouges & vertes</div>
+    </a>
+
+  </main>
+
+  <script>
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

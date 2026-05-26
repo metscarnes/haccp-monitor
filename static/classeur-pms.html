@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Classeur PMS — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <!-- ========================================================
+       EN-TÊTE
+  ========================================================= -->
+  <header class="hub-header">
+    <a href="/taches-hub.html" class="hub-btn-admin" aria-label="Retour aux tâches">← Tâches</a>
+    <div class="hub-titre">CLASSEUR PMS</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- ========================================================
+       GRILLE — 3 grandes sections du classeur PMS
+  ========================================================= -->
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr;">
+
+    <!-- ── La Traçabilité et la gestion des non-conformités ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-tracabilite"
+       href="/pms-tracabilite.html"
+       aria-label="La Traçabilité et la gestion des non-conformités">
+      <div class="hub-tuile-icone" aria-hidden="true">📋</div>
+      <div class="hub-tuile-titre">TRAÇABILITÉ</div>
+      <div class="hub-tuile-statut">Gestion des non-conformités</div>
+    </a>
+
+    <!-- ── Le Plan HACCP ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-plan-haccp"
+       href="/pms-plan-haccp.html"
+       aria-label="Le Plan HACCP">
+      <div class="hub-tuile-icone" aria-hidden="true">🛡️</div>
+      <div class="hub-tuile-titre">PLAN HACCP</div>
+      <div class="hub-tuile-statut">Actions correctives & procédures</div>
+    </a>
+
+    <!-- ── Les Bonnes Pratiques d'Hygiène ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-bph"
+       href="/pms-bph.html"
+       aria-label="Les Bonnes Pratiques d'Hygiène">
+      <div class="hub-tuile-icone" aria-hidden="true">🧼</div>
+      <div class="hub-tuile-titre">BONNES PRATIQUES</div>
+      <div class="hub-tuile-statut">Hygiène & documentation</div>
+    </a>
+
+  </main>
+
+  <script>
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

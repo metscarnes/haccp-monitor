@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Traçabilité — Classeur PMS</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+</head>
+<body class="hub-body">
+
+  <header class="hub-header">
+    <a href="/classeur-pms.html" class="hub-btn-admin" aria-label="Retour au Classeur PMS">← PMS</a>
+    <div class="hub-titre">TRAÇABILITÉ</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr;">
+
+    <!-- ── Feuilles vierges traçabilité ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-feuilles-vierges"
+       href="/pms-pdf-viewer.html?titre=Feuilles+vierges+tra%C3%A7abilit%C3%A9&retour=%2Fpms-tracabilite.html&dossier=La+Tra%C3%A7abilit%C3%A9+et+la+gestion+des+non-conformit%C3%A9s%2FFeuilles+vierges+tra%C3%A7abilit%C3%A9"
+       aria-label="Feuilles vierges traçabilité">
+      <div class="hub-tuile-icone" aria-hidden="true">📄</div>
+      <div class="hub-tuile-titre">FEUILLES VIERGES</div>
+      <div class="hub-tuile-statut">Traçabilité</div>
+    </a>
+
+    <!-- ── Résultat laboratoire ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-labo"
+       href="/pms-pdf-viewer.html?titre=R%C3%A9sultat+laboratoire&retour=%2Fpms-tracabilite.html&dossier=La+Tra%C3%A7abilit%C3%A9+et+la+gestion+des+non-conformit%C3%A9s%2FR%C3%A9sultat+laboratoire"
+       aria-label="Résultat laboratoire">
+      <div class="hub-tuile-icone" aria-hidden="true">🔬</div>
+      <div class="hub-tuile-titre">RÉSULTAT LABO</div>
+      <div class="hub-tuile-statut">Analyses microbiologiques</div>
+    </a>
+
+    <!-- ── Étiquettes matières premières ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-etiquettes"
+       href="/pms-pdf-viewer.html?titre=%C3%89tiquettes+mati%C3%A8res+premi%C3%A8res&retour=%2Fpms-tracabilite.html&fichier=La+Tra%C3%A7abilit%C3%A9+et+la+gestion+des+non-conformit%C3%A9s%2F%C3%89tiquettes+mati%C3%A8res+premi%C3%A8res%2FAFFICHAGE+POINTS+DE+CONTR%C3%94LE+DECONDITIONNEMENT+DEBOITAGE+DECONTAMINATION.pdf"
+       aria-label="Étiquettes matières premières">
+      <div class="hub-tuile-icone" aria-hidden="true">🏷️</div>
+      <div class="hub-tuile-titre">ÉTIQUETTES MP</div>
+      <div class="hub-tuile-statut">Déconditionnement · Déboitage</div>
+    </a>
+
+  </main>
+
+  <script>
+    (function () {
+      const el = document.getElementById('hub-horloge');
+      if (!el) return;
+      function tick() {
+        el.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      }
+      tick();
+      setInterval(tick, 10000);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Classeur PMS — Document</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <style>
+    .pms-viewer-body {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+      background: var(--color-bg, #1a0f00);
+    }
+
+    /* ── Liste de choix (mode dossier) ── */
+    .pms-liste {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .pms-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 10px;
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .pms-item:hover, .pms-item:active {
+      background: rgba(255,255,255,0.12);
+    }
+
+    .pms-item-icone {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .pms-item-nom {
+      flex: 1;
+      line-height: 1.3;
+    }
+
+    /* ── Visionneuse PDF plein écran ── */
+    .pms-viewer-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .pms-iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #fff;
+    }
+
+    /* ── Message erreur ── */
+    .pms-erreur {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255,255,255,0.5);
+      gap: 12px;
+      font-size: 0.95rem;
+      text-align: center;
+      padding: 24px;
+    }
+
+    /* ── Barre basse (retour depuis PDF) ── */
+    .pms-footer {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      background: rgba(0,0,0,0.4);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .pms-btn-retour {
+      padding: 9px 18px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .pms-btn-retour:hover { background: rgba(255,255,255,0.14); }
+
+    .pms-doc-titre {
+      flex: 1;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.82rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body class="hub-body pms-viewer-body">
+
+  <!-- EN-TÊTE -->
+  <header class="hub-header">
+    <button id="btn-retour" class="hub-btn-admin" aria-label="Retour">← Retour</button>
+    <div class="hub-titre" id="page-titre">DOCUMENT</div>
+    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
+  </header>
+
+  <!-- CONTENU DYNAMIQUE (rempli par JS) -->
+  <div id="contenu" style="flex:1; display:flex; flex-direction:column; overflow:hidden;"></div>
+
+  <script>
+  (function () {
+    /* ── Horloge ── */
+    const horloge = document.getElementById('hub-horloge');
+    function tick() {
+      horloge.textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+    tick();
+    setInterval(tick, 10000);
+
+    /* ── Paramètres URL ── */
+    const params   = new URLSearchParams(location.search);
+    const titre    = params.get('titre') || 'Document';
+    const retour   = params.get('retour') || '/classeur-pms.html';
+    const dossier  = params.get('dossier'); // chemin relatif d'un dossier → liste les fichiers
+    const fichier  = params.get('fichier'); // chemin relatif d'un fichier unique → ouvre direct
+
+    document.getElementById('page-titre').textContent = titre.toUpperCase();
+    document.getElementById('btn-retour').addEventListener('click', () => { location.href = retour; });
+
+    const BASE = '/static/docs/Classeur PMS/';
+    const contenu = document.getElementById('contenu');
+
+    /* ── Mode fichier unique ── */
+    if (fichier) {
+      ouvrirPDF(decodeURIComponent(fichier), titre);
+      return;
+    }
+
+    /* ── Mode dossier : liste les fichiers via l'API ── */
+    if (dossier) {
+      const dossierDec = decodeURIComponent(dossier);
+      fetch('/api/pms/liste?dossier=' + encodeURIComponent(dossierDec))
+        .then(r => r.json())
+        .then(data => {
+          if (!data.fichiers || data.fichiers.length === 0) {
+            afficherErreur('Aucun document trouvé dans ce dossier.');
+            return;
+          }
+          if (data.fichiers.length === 1) {
+            ouvrirPDF(dossierDec + '/' + data.fichiers[0], data.fichiers[0].replace(/\.[^.]+$/, ''));
+            return;
+          }
+          afficherListe(dossierDec, data.fichiers);
+        })
+        .catch(() => afficherErreur('Impossible de charger la liste des documents.'));
+      return;
+    }
+
+    afficherErreur('Aucun document spécifié.');
+
+    /* ── Fonctions ── */
+    function afficherListe(dossierPath, fichiers) {
+      const liste = document.createElement('div');
+      liste.className = 'pms-liste';
+
+      fichiers.forEach(nom => {
+        const isPdf = nom.toLowerCase().endsWith('.pdf');
+        const isHtml = nom.toLowerCase().endsWith('.html');
+        const icone = isPdf ? '📄' : isHtml ? '🌐' : '📎';
+        const label = nom.replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+
+        const item = document.createElement('div');
+        item.className = 'pms-item';
+        item.innerHTML = `<span class="pms-item-icone" aria-hidden="true">${icone}</span>
+                          <span class="pms-item-nom">${label}</span>
+                          <span aria-hidden="true">›</span>`;
+        item.addEventListener('click', () => {
+          if (isHtml) {
+            location.href = BASE + dossierPath + '/' + nom;
+          } else {
+            ouvrirPDF(dossierPath + '/' + nom, label);
+          }
+        });
+        liste.appendChild(item);
+      });
+
+      contenu.appendChild(liste);
+    }
+
+    function ouvrirPDF(cheminRelatif, docTitre) {
+      contenu.innerHTML = '';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'pms-viewer-wrap';
+
+      const iframe = document.createElement('iframe');
+      iframe.className = 'pms-iframe';
+      iframe.title = docTitre;
+      iframe.src = BASE + cheminRelatif;
+
+      const footer = document.createElement('div');
+      footer.className = 'pms-footer';
+      footer.innerHTML = `<button class="pms-btn-retour" id="btn-footer-retour">← Liste</button>
+                          <span class="pms-doc-titre">${docTitre}</span>`;
+
+      wrap.appendChild(iframe);
+      contenu.appendChild(wrap);
+      contenu.appendChild(footer);
+
+      document.getElementById('btn-footer-retour').addEventListener('click', () => {
+        if (dossier) {
+          contenu.innerHTML = '';
+          const dossierDec = decodeURIComponent(dossier);
+          fetch('/api/pms/liste?dossier=' + encodeURIComponent(dossierDec))
+            .then(r => r.json())
+            .then(data => afficherListe(dossierDec, data.fichiers || []))
+            .catch(() => afficherErreur('Erreur rechargement.'));
+        } else {
+          location.href = retour;
+        }
+      });
+    }
+
+    function afficherErreur(msg) {
+      contenu.innerHTML = `<div class="pms-erreur"><span style="font-size:2rem">📂</span><p>${msg}</p></div>`;
+    }
+  })();
+  </script>
+</body>
+</html>

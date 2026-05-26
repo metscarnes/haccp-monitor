@@ -213,6 +213,30 @@ async def purger():
 
 if STATIC_DIR.exists():
 
+    PMS_DIR = STATIC_DIR / "docs" / "Classeur PMS"
+
+    @app.get("/api/pms/liste", include_in_schema=False)
+    async def pms_liste(dossier: str = ""):
+        """Liste les fichiers d'un sous-dossier du Classeur PMS."""
+        from fastapi.responses import JSONResponse
+        import urllib.parse
+
+        dossier_dec = urllib.parse.unquote(dossier)
+        cible = (PMS_DIR / dossier_dec).resolve()
+
+        # Sécurité : rester dans PMS_DIR
+        if not str(cible).startswith(str(PMS_DIR.resolve())):
+            return JSONResponse({"fichiers": []})
+
+        if not cible.is_dir():
+            return JSONResponse({"fichiers": []})
+
+        fichiers = sorted(
+            f.name for f in cible.iterdir()
+            if f.is_file() and not f.name.startswith(".")
+        )
+        return JSONResponse({"fichiers": fichiers})
+
     @app.get("/static/{file_path:path}.mp4", include_in_schema=False)
     async def servir_video(file_path: str, request: Request):
         """Sert les .mp4 avec Range requests pour permettre le seek."""
