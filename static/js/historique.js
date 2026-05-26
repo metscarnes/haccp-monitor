@@ -2866,18 +2866,42 @@ async function acEtalCharger() {
 async function acEtalLister() {
   await chargerListe('ac-etal',
     _acBuildUrl('etalonnages', 'etal'),
-    e => creerCarteSimple({
-      titre: e.thermometre_nom || `Thermomètre #${e.id}`,
-      sousTitre: e.action_corrective ? `Action corrective : ${e.action_corrective}` : null,
-      meta:  `${formatDateFR(e.date)} — ${e.operateur || '—'} — ${_acTempStr(e.temperature_mesuree)}`,
-      chips: e.commentaire ? [e.commentaire] : [],
-      badge: { text: '⚠ NC', variant: 'nc' },
-      variant: 'nc',
-    }),
+    e => {
+      const isP2 = e.type === 'phase2';
+      const titre = isP2
+        ? (e.enceinte_nom || `Sonde Zigbee #${e.id}`)
+        : (e.thermometre_nom || `Thermomètre #${e.id}`);
+      const chips = [];
+      if (isP2) {
+        chips.push('Ph.2 — Sonde Zigbee');
+        if (e.thermometre_nom)   chips.push(`Réf. : ${e.thermometre_nom}`);
+        if (e.temp_zigbee != null && e.temp_reference != null) {
+          chips.push(`Zigbee ${_acTempStr(e.temp_zigbee)} vs réf. ${_acTempStr(e.temp_reference)}`);
+        }
+        if (e.ecart != null) {
+          const signe = e.ecart >= 0 ? '+' : '';
+          chips.push(`Écart ${signe}${Number(e.ecart).toFixed(1)}°C`);
+        }
+      } else {
+        chips.push('Ph.1 — Thermomètre réf.');
+        if (e.commentaire) chips.push(e.commentaire);
+      }
+      const meta = isP2
+        ? `${formatDateFR(e.date)} — ${e.operateur || '—'}`
+        : `${formatDateFR(e.date)} — ${e.operateur || '—'} — ${_acTempStr(e.temperature_mesuree)}`;
+      return creerCarteSimple({
+        titre,
+        sousTitre: e.action_corrective ? `Action corrective : ${e.action_corrective}` : null,
+        meta,
+        chips,
+        badge: { text: '⚠ NC', variant: 'nc' },
+        variant: 'nc',
+      });
+    },
     {
       singulier: 'étalonnage',
       pluriel:   'étalonnages',
-      searchFields: ['thermometre_nom', 'operateur', 'action_corrective'],
+      searchFields: ['thermometre_nom', 'enceinte_nom', 'operateur', 'action_corrective'],
       triFields: { date: 'date' },
     }
   );

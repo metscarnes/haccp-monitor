@@ -79,26 +79,68 @@ async def lister_etalonnages_nc(
     limit:      int           = Query(50, ge=1, le=500),
     offset:     int           = Query(0,  ge=0),
 ):
-    """Étalonnages non conformes (conforme=0) avec action corrective."""
-    where, params = _date_clause("e.date_etalonnage", date_debut, date_fin)
-    extra = "e.conforme = 0 AND e.action_corrective IS NOT NULL AND e.action_corrective != ''"
-    where_sql = f"WHERE {extra}" + (f" AND {where}" if where else "")
-    sql = f"""
+    """
+    Étalonnages non conformes — agrège deux sources :
+      - Phase 1 : table etalonnages (conforme=0, écart > ±0,5 °C sur le thermomètre de référence)
+      - Phase 2 : table etalonnage_comparaisons (conforme=0, sonde Zigbee à recalibrer)
+    """
+    # ── Phase 1 : étalonnage du thermomètre de référence ──
+    where_p1, params_p1 = _date_clause("e.date_etalonnage", date_debut, date_fin)
+    extra_p1 = "e.conforme = 0"
+    where_sql_p1 = f"WHERE {extra_p1}" + (f" AND {where_p1}" if where_p1 else "")
+    sql_p1 = f"""
         SELECT
-            e.id,
+            'phase1'              AS type,
+            e.id                  AS id,
             e.date_etalonnage     AS date,
-            e.temperature_mesuree,
-            e.action_corrective,
-            e.operateur,
-            e.commentaire,
-            tr.nom AS thermometre_nom
+            e.temperature_mesuree AS temperature_mesuree,
+            e.action_corrective   AS action_corrective,
+            e.operateur           AS operateur,
+            e.commentaire         AS commentaire,
+            tr.nom                AS thermometre_nom,
+            NULL                  AS enceinte_nom,
+            NULL                  AS temp_zigbee,
+            NULL                  AS temp_reference,
+            NULL                  AS ecart
         FROM etalonnages e
         LEFT JOIN thermometres_ref tr ON tr.id = e.thermometre_ref_id
-        {where_sql}
-        ORDER BY e.date_etalonnage DESC, e.id DESC
+        {where_sql_p1}
+    """
+
+    # ── Phase 2 : comparaisons sondes Zigbee ──
+    where_p2, params_p2 = _date_clause("e.date_etalonnage", date_debut, date_fin)
+    extra_p2 = "c.conforme = 0"
+    where_sql_p2 = f"WHERE {extra_p2}" + (f" AND {where_p2}" if where_p2 else "")
+    sql_p2 = f"""
+        SELECT
+            'phase2'                                          AS type,
+            c.id                                              AS id,
+            e.date_etalonnage                                 AS date,
+            NULL                                              AS temperature_mesuree,
+            'Sonde Zigbee à recalibrer (responsable prévenu)' AS action_corrective,
+            e.operateur                                       AS operateur,
+            NULL                                              AS commentaire,
+            tr.nom                                            AS thermometre_nom,
+            c.enceinte_nom                                    AS enceinte_nom,
+            c.temp_zigbee                                     AS temp_zigbee,
+            c.temp_reference                                  AS temp_reference,
+            c.ecart                                           AS ecart
+        FROM etalonnage_comparaisons c
+        JOIN etalonnages e        ON e.id  = c.etalonnage_id
+        LEFT JOIN thermometres_ref tr ON tr.id = e.thermometre_ref_id
+        {where_sql_p2}
+    """
+
+    sql = f"""
+        SELECT * FROM (
+            {sql_p1}
+            UNION ALL
+            {sql_p2}
+        ) AS u
+        ORDER BY date DESC, id DESC
         LIMIT ? OFFSET ?
     """
-    params += [limit, offset]
+    params = params_p1 + params_p2 + [limit, offset]
     async with get_db() as db:
         cur = await db.execute(sql, params)
         rows = await cur.fetchall()
