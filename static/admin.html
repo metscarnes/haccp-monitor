@@ -1205,19 +1205,19 @@
         const header = document.createElement('div');
         header.className = 'test-group-header';
         header.innerHTML = `
-          <input type="checkbox" class="test-grp-cb" data-grp="${grp.id}" checked>
+          <input type="checkbox" class="test-grp-cb" data-grp="${grp.id}">
           <span>${grp.label}</span>
-          <span class="test-group-toggle open">▼</span>
+          <span class="test-group-toggle">▼</span>
         `;
         div.appendChild(header);
 
         const body = document.createElement('div');
-        body.className = 'test-group-body';
+        body.className = 'test-group-body collapsed';
         body.id = 'body-' + grp.id;
         grp.subs.forEach(sub => {
           const lbl = document.createElement('label');
           lbl.className = 'test-subcat-item';
-          lbl.innerHTML = `<input type="checkbox" class="test-sub-cb" data-grp="${grp.id}" value="${sub.id}" checked> ${sub.label}`;
+          lbl.innerHTML = `<input type="checkbox" class="test-sub-cb" data-grp="${grp.id}" value="${sub.id}"> ${sub.label}`;
           body.appendChild(lbl);
         });
         div.appendChild(body);
