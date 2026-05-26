@@ -326,7 +326,13 @@
             </label>
           </div>
           <div id="test-groups" class="test-groups"></div>
-          <div style="margin-top:1.25rem">
+
+          <!-- Récapitulatif sélection -->
+          <div id="test-recap" class="test-recap test-recap--vide">
+            <span id="test-recap-texte">Aucune catégorie sélectionnée</span>
+          </div>
+
+          <div style="margin-top:.75rem">
             <button class="btn btn-danger" id="btn-purger-test" disabled>🗑️ Supprimer les entrées sélectionnées</button>
           </div>
         </div>
@@ -1262,9 +1268,29 @@
     }
 
     function updatePurgeBtn() {
-      const hasPers  = !!$('test-personnel-select').value;
-      const anySubOn = document.querySelectorAll('.test-sub-cb:checked').length > 0;
+      const hasPers   = !!$('test-personnel-select').value;
+      const checkedCbs = Array.from(document.querySelectorAll('.test-sub-cb:checked'));
+      const anySubOn  = checkedCbs.length > 0;
       $('btn-purger-test').disabled = !(hasPers && anySubOn);
+
+      const recap     = $('test-recap');
+      const recapTxt  = $('test-recap-texte');
+
+      if (!anySubOn) {
+        recap.className = 'test-recap test-recap--vide';
+        recapTxt.textContent = 'Aucune catégorie sélectionnée';
+        return;
+      }
+
+      recap.className = 'test-recap test-recap--actif';
+      const lignes = GROUPES_PURGE
+        .map(grp => {
+          const sel = grp.subs.filter(s => checkedCbs.some(cb => cb.value === s.id));
+          return sel.length ? `<span class="recap-grp">${grp.label}</span> ${sel.map(s => `<span class="recap-tag">${s.label}</span>`).join('')}` : null;
+        })
+        .filter(Boolean)
+        .join('');
+      recapTxt.innerHTML = `<strong>Sera supprimé :</strong><br>${lignes}`;
     }
 
     $('test-select-all').addEventListener('change', function () {
