@@ -24,7 +24,7 @@
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
   </header>
 
-  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr;">
+  <main class="hub-grille" role="main" style="grid-template-columns: repeat(3, 1fr);">
 
     <!-- ── PCR01 ── -->
     <a class="hub-tuile hub-tuile--ok" id="tuile-pcr01"
@@ -44,13 +44,31 @@
       <div class="hub-tuile-statut">Procédure & déclaration</div>
     </a>
 
-    <!-- ── Autres procédures ── -->
-    <a class="hub-tuile hub-tuile--ok" id="tuile-autres"
-       href="/pms-pdf-viewer.html?titre=Autres+proc%C3%A9dures&retour=%2Fpms-plan-haccp-actions.html&fichiers=Le+Plan+HACCP%2FActions+correctives%2FCUISSON.pdf%7CCuisson%3BLe+Plan+HACCP%2FActions+correctives%2FLUTTE+CONTRE+LES+NUISIBLES.pdf%7CLutte+nuisibles%3BLe+Plan+HACCP%2FActions+correctives%2FREFROIDISSEMENT.pdf%7CRefroidissement"
-       aria-label="Autres procédures">
-      <div class="hub-tuile-icone" aria-hidden="true">📋</div>
-      <div class="hub-tuile-titre">AUTRES</div>
-      <div class="hub-tuile-statut">Cuisson · Nuisibles · Refroidissement</div>
+    <!-- ── Cuisson ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-cuisson"
+       href="/pms-pdf-viewer.html?titre=Cuisson&retour=%2Fpms-plan-haccp-actions.html&fichier=Le+Plan+HACCP%2FActions+correctives%2FCUISSON.pdf"
+       aria-label="Cuisson">
+      <div class="hub-tuile-icone" aria-hidden="true">🔥</div>
+      <div class="hub-tuile-titre">CUISSON</div>
+      <div class="hub-tuile-statut">Procédure de cuisson</div>
+    </a>
+
+    <!-- ── Lutte contre les nuisibles ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-nuisibles"
+       href="/pms-pdf-viewer.html?titre=Lutte+contre+les+nuisibles&retour=%2Fpms-plan-haccp-actions.html&fichier=Le+Plan+HACCP%2FActions+correctives%2FLUTTE+CONTRE+LES+NUISIBLES.pdf"
+       aria-label="Lutte contre les nuisibles">
+      <div class="hub-tuile-icone" aria-hidden="true">🐛</div>
+      <div class="hub-tuile-titre">NUISIBLES</div>
+      <div class="hub-tuile-statut">Lutte contre les nuisibles</div>
+    </a>
+
+    <!-- ── Refroidissement ── -->
+    <a class="hub-tuile hub-tuile--ok" id="tuile-refroidissement"
+       href="/pms-pdf-viewer.html?titre=Refroidissement&retour=%2Fpms-plan-haccp-actions.html&fichier=Le+Plan+HACCP%2FActions+correctives%2FREFROIDISSEMENT.pdf"
+       aria-label="Refroidissement">
+      <div class="hub-tuile-icone" aria-hidden="true">❄️</div>
+      <div class="hub-tuile-titre">REFROIDISSEMENT</div>
+      <div class="hub-tuile-statut">Procédure de refroidissement</div>
     </a>
 
   </main>
