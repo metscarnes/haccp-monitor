@@ -1079,6 +1079,7 @@
     <button class="he-cat-btn" id="he-cat-temp"  data-cat="temp"  role="tab">🌡️ Températures</button>
     <button class="he-cat-btn" id="he-cat-flux"  data-cat="flux"  role="tab">📦 Flux produits</button>
     <button class="he-cat-btn actif" id="he-cat-haccp" data-cat="haccp" role="tab">🧹 HACCP</button>
+    <button class="he-cat-btn" id="he-cat-ac"    data-cat="ac"    role="tab">⚠️ Actions correctives</button>
     <button class="he-cat-btn" id="he-cat-rap"   data-cat="rap"   role="tab">📄 Rapports</button>
   </nav>
 
@@ -1108,6 +1109,14 @@
       <button class="he-tab-btn"       id="he-tab-nett" data-target="he-content-nett" role="tab">🧹 Nettoyage</button>
       <button class="he-tab-btn"       id="he-tab-nuis" data-target="he-content-nuis" role="tab">🐀 Nuisibles</button>
       <button class="he-tab-btn"       id="he-tab-attest" data-target="he-content-attest" role="tab">🏆 Attestations réussite</button>
+    </div>
+
+    <!-- ⚠️ Actions correctives -->
+    <div class="he-subtabs" data-cat="ac" role="tablist" aria-label="Actions correctives">
+      <button class="he-tab-btn actif" id="he-tab-ac-inc"  data-target="he-content-ac-inc"  role="tab">📑 Fiches PCR01</button>
+      <button class="he-tab-btn"       id="he-tab-ac-etal" data-target="he-content-ac-etal" role="tab">📏 Étalonnages NC</button>
+      <button class="he-tab-btn"       id="he-tab-ac-cuis" data-target="he-content-ac-cuis" role="tab">🔥 Cuissons NC</button>
+      <button class="he-tab-btn"       id="he-tab-ac-refr" data-target="he-content-ac-refr" role="tab">❄️ Refroidissements NC</button>
     </div>
 
     <!-- 📄 Rapports -->
@@ -1515,6 +1524,102 @@
     <div class="he-compteur" id="he-attest-compteur"></div>
     <div class="he-liste"    id="he-attest-liste"></div>
     <div class="he-message"  id="he-attest-message" hidden><div class="he-message-icone" id="he-attest-icone">⏳</div><div id="he-attest-texte">Chargement…</div></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ACTIONS CORRECTIVES — Fiches PCR01
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-ac-inc" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ac-inc">
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-inc-debut">Du</label>
+        <input type="date" id="he-ac-inc-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-inc-fin">Au</label>
+        <input type="date" id="he-ac-inc-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+      <button class="he-btn-filtrer" id="he-ac-inc-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-ac-inc-reset">✕ Reset</button>
+    </div>
+    <div class="he-compteur" id="he-ac-inc-compteur" aria-live="polite"></div>
+    <div class="he-liste"    id="he-ac-inc-liste" role="list" aria-label="Fiches PCR01"></div>
+    <div class="he-message"  id="he-ac-inc-message" hidden>
+      <div class="he-message-icone" id="he-ac-inc-icone">⏳</div>
+      <div id="he-ac-inc-texte">Chargement…</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ACTIONS CORRECTIVES — Étalonnages NC
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-ac-etal" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ac-etal">
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-etal-debut">Du</label>
+        <input type="date" id="he-ac-etal-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-etal-fin">Au</label>
+        <input type="date" id="he-ac-etal-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+      <button class="he-btn-filtrer" id="he-ac-etal-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-ac-etal-reset">✕ Reset</button>
+    </div>
+    <div class="he-compteur" id="he-ac-etal-compteur" aria-live="polite"></div>
+    <div class="he-liste"    id="he-ac-etal-liste" role="list" aria-label="Étalonnages non conformes"></div>
+    <div class="he-message"  id="he-ac-etal-message" hidden>
+      <div class="he-message-icone" id="he-ac-etal-icone">⏳</div>
+      <div id="he-ac-etal-texte">Chargement…</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ACTIONS CORRECTIVES — Cuissons NC
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-ac-cuis" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ac-cuis">
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-cuis-debut">Du</label>
+        <input type="date" id="he-ac-cuis-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-cuis-fin">Au</label>
+        <input type="date" id="he-ac-cuis-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+      <button class="he-btn-filtrer" id="he-ac-cuis-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-ac-cuis-reset">✕ Reset</button>
+    </div>
+    <div class="he-compteur" id="he-ac-cuis-compteur" aria-live="polite"></div>
+    <div class="he-liste"    id="he-ac-cuis-liste" role="list" aria-label="Cuissons non conformes"></div>
+    <div class="he-message"  id="he-ac-cuis-message" hidden>
+      <div class="he-message-icone" id="he-ac-cuis-icone">⏳</div>
+      <div id="he-ac-cuis-texte">Chargement…</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════
+       ACTIONS CORRECTIVES — Refroidissements NC
+  ══════════════════════════════════════════════════════════ -->
+  <div id="he-content-ac-refr" class="he-tab-content" role="tabpanel" aria-labelledby="he-tab-ac-refr">
+    <div class="he-filtres">
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-refr-debut">Du</label>
+        <input type="date" id="he-ac-refr-debut" class="he-filtre-input" aria-label="Date de début">
+      </div>
+      <div class="he-filtre-groupe">
+        <label class="he-filtre-label" for="he-ac-refr-fin">Au</label>
+        <input type="date" id="he-ac-refr-fin" class="he-filtre-input" aria-label="Date de fin">
+      </div>
+      <button class="he-btn-filtrer" id="he-ac-refr-filtrer">🔍 Rechercher</button>
+      <button class="he-btn-reset"   id="he-ac-refr-reset">✕ Reset</button>
+    </div>
+    <div class="he-compteur" id="he-ac-refr-compteur" aria-live="polite"></div>
+    <div class="he-liste"    id="he-ac-refr-liste" role="list" aria-label="Refroidissements non conformes"></div>
+    <div class="he-message"  id="he-ac-refr-message" hidden>
+      <div class="he-message-icone" id="he-ac-refr-icone">⏳</div>
+      <div id="he-ac-refr-texte">Chargement…</div>
+    </div>
   </div>
 
   <!-- 📄 Rapports générés -->

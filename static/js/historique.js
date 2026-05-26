@@ -181,6 +181,10 @@ const TAB_HOOKS = {
   'he-content-nuis'  : () => nuisCharger(),
   'he-content-rapp'  : () => rappCharger(),
   'he-content-attest': () => attestCharger(),
+  'he-content-ac-inc'  : () => acIncCharger(),
+  'he-content-ac-etal' : () => acEtalCharger(),
+  'he-content-ac-cuis' : () => acCuisCharger(),
+  'he-content-ac-refr' : () => acRefrCharger(),
 };
 const _tabCharge = new Set();
 
@@ -2784,6 +2788,188 @@ async function attestLister() {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   ⚠️ ACTIONS CORRECTIVES — Agrégateur (PCR01 + NC modules)
+   ══════════════════════════════════════════════════════════════ */
+
+function _acBuildUrl(source, key) {
+  const debut = $(`he-ac-${key}-debut`)?.value;
+  const fin   = $(`he-ac-${key}-fin`)?.value;
+  const p = new URLSearchParams({ limit: '100' });
+  if (debut) p.set('date_debut', debut);
+  if (fin)   p.set('date_fin',   fin);
+  return `/api/actions-correctives/${source}?${p.toString()}`;
+}
+
+function _acTempStr(v) {
+  return (v === null || v === undefined) ? '—' : formatTemp(v);
+}
+
+/* ── Fiches PCR01 (réceptions NC) ─────────────────────────────── */
+async function acIncCharger() {
+  dateDefaut30j($('he-ac-inc-debut'), $('he-ac-inc-fin'));
+  acIncLister();
+}
+async function acIncLister() {
+  await chargerListe('ac-inc',
+    _acBuildUrl('incidents', 'inc'),
+    f => {
+      const chips = [];
+      if (f.fournisseur_nom) chips.push(f.fournisseur_nom);
+      if (f.numero_lot)      chips.push(`Lot ${f.numero_lot}`);
+      if (f.nature_probleme) chips.push(f.nature_probleme);
+      const statutLabel = (f.statut === 'cloturee' || f.statut === 'cloturée')
+        ? { text: '✓ Clôturée', variant: 'ok' }
+        : { text: '⏳ Ouverte', variant: 'warn' };
+      const sousTitre = f.action_corrective
+        ? `Action corrective : ${f.action_corrective}`
+        : (f.action_immediate ? `Action immédiate : ${f.action_immediate}` : null);
+      const carte = creerCarteSimple({
+        titre: f.produit_nom || `Fiche #${f.id}`,
+        sousTitre,
+        meta:  `${formatDateFR(f.date)} ${f.heure || ''}`.trim(),
+        chips,
+        badge: statutLabel,
+        variant: 'nc',
+      });
+      if (f.reception_id) {
+        const lien = document.createElement('a');
+        lien.href = `/incidents.html?reception_id=${f.reception_id}`;
+        lien.textContent = '📑 Ouvrir la fiche';
+        lien.style.cssText = 'color:var(--accent);font-weight:600;font-size:14px;margin-top:6px;text-decoration:none;display:inline-block;';
+        carte.appendChild(lien);
+      }
+      return carte;
+    },
+    {
+      singulier: 'fiche',
+      pluriel:   'fiches',
+      searchFields: ['produit_nom', 'numero_lot', 'fournisseur_nom', 'nature_probleme'],
+      triFields: { date: 'date' },
+    }
+  );
+}
+_onReady(() => {
+  $('he-ac-inc-filtrer')?.addEventListener('click', acIncLister);
+  $('he-ac-inc-reset')  ?.addEventListener('click', () => {
+    $('he-ac-inc-debut').value = ''; $('he-ac-inc-fin').value = '';
+    dateDefaut30j($('he-ac-inc-debut'), $('he-ac-inc-fin'));
+    acIncLister();
+  });
+});
+
+/* ── Étalonnages NC ───────────────────────────────────────────── */
+async function acEtalCharger() {
+  dateDefaut30j($('he-ac-etal-debut'), $('he-ac-etal-fin'));
+  acEtalLister();
+}
+async function acEtalLister() {
+  await chargerListe('ac-etal',
+    _acBuildUrl('etalonnages', 'etal'),
+    e => creerCarteSimple({
+      titre: e.thermometre_nom || `Thermomètre #${e.id}`,
+      sousTitre: e.action_corrective ? `Action corrective : ${e.action_corrective}` : null,
+      meta:  `${formatDateFR(e.date)} — ${e.operateur || '—'} — ${_acTempStr(e.temperature_mesuree)}`,
+      chips: e.commentaire ? [e.commentaire] : [],
+      badge: { text: '⚠ NC', variant: 'nc' },
+      variant: 'nc',
+    }),
+    {
+      singulier: 'étalonnage',
+      pluriel:   'étalonnages',
+      searchFields: ['thermometre_nom', 'operateur', 'action_corrective'],
+      triFields: { date: 'date' },
+    }
+  );
+}
+_onReady(() => {
+  $('he-ac-etal-filtrer')?.addEventListener('click', acEtalLister);
+  $('he-ac-etal-reset')  ?.addEventListener('click', () => {
+    $('he-ac-etal-debut').value = ''; $('he-ac-etal-fin').value = '';
+    dateDefaut30j($('he-ac-etal-debut'), $('he-ac-etal-fin'));
+    acEtalLister();
+  });
+});
+
+/* ── Cuissons NC ──────────────────────────────────────────────── */
+async function acCuisCharger() {
+  dateDefaut30j($('he-ac-cuis-debut'), $('he-ac-cuis-fin'));
+  acCuisLister();
+}
+async function acCuisLister() {
+  await chargerListe('ac-cuis',
+    _acBuildUrl('cuissons', 'cuis'),
+    c => {
+      const chips = [];
+      if (c.type_cuisson) chips.push(`Cuisson ${c.type_cuisson}`);
+      if (c.quantite)     chips.push(`${c.quantite} ${c.unite || 'kg'}`);
+      const cible = c.temperature_cible != null ? ` (cible ${_acTempStr(c.temperature_cible)})` : '';
+      return creerCarteSimple({
+        titre: c.produit_nom || `Cuisson #${c.id}`,
+        sousTitre: c.action_corrective ? `Action corrective : ${c.action_corrective}` : null,
+        meta:  `${formatDateFR(c.date)} — ${c.operateur || '—'} — T° ${_acTempStr(c.temperature_sortie)}${cible}`,
+        chips,
+        badge: { text: '⚠ NC', variant: 'nc' },
+        variant: 'nc',
+      });
+    },
+    {
+      singulier: 'cuisson',
+      pluriel:   'cuissons',
+      searchFields: ['produit_nom', 'operateur', 'action_corrective'],
+      triFields: { date: 'date' },
+    }
+  );
+}
+_onReady(() => {
+  $('he-ac-cuis-filtrer')?.addEventListener('click', acCuisLister);
+  $('he-ac-cuis-reset')  ?.addEventListener('click', () => {
+    $('he-ac-cuis-debut').value = ''; $('he-ac-cuis-fin').value = '';
+    dateDefaut30j($('he-ac-cuis-debut'), $('he-ac-cuis-fin'));
+    acCuisLister();
+  });
+});
+
+/* ── Refroidissements NC ──────────────────────────────────────── */
+async function acRefrCharger() {
+  dateDefaut30j($('he-ac-refr-debut'), $('he-ac-refr-fin'));
+  acRefrLister();
+}
+async function acRefrLister() {
+  await chargerListe('ac-refr',
+    _acBuildUrl('refroidissements', 'refr'),
+    r => {
+      const chips = [];
+      if (r.duree_minutes) chips.push(`${r.duree_minutes} min (max ${r.duree_max_minutes})`);
+      if (r.numero_lot)    chips.push(`Lot ${r.numero_lot}`);
+      if (r.jeter)         chips.push('🗑️ Produit jeté');
+      const cible = r.temperature_cible != null ? ` (cible ${_acTempStr(r.temperature_cible)})` : '';
+      return creerCarteSimple({
+        titre: r.produit_nom || `Refroidissement #${r.id}`,
+        sousTitre: r.action_corrective ? `Action corrective : ${r.action_corrective}` : null,
+        meta:  `${formatDateFR(r.date)} — ${r.operateur || '—'} — T° ${_acTempStr(r.temperature_initiale)} → ${_acTempStr(r.temperature_finale)}${cible}`,
+        chips,
+        badge: { text: '⚠ NC', variant: 'nc' },
+        variant: 'nc',
+      });
+    },
+    {
+      singulier: 'refroidissement',
+      pluriel:   'refroidissements',
+      searchFields: ['produit_nom', 'operateur', 'numero_lot', 'action_corrective'],
+      triFields: { date: 'date' },
+    }
+  );
+}
+_onReady(() => {
+  $('he-ac-refr-filtrer')?.addEventListener('click', acRefrLister);
+  $('he-ac-refr-reset')  ?.addEventListener('click', () => {
+    $('he-ac-refr-debut').value = ''; $('he-ac-refr-fin').value = '';
+    dateDefaut30j($('he-ac-refr-debut'), $('he-ac-refr-fin'));
+    acRefrLister();
+  });
+});
+
 // ── Init ─────────────────────────────────────────────────────
 initDates(ouvRefs);
 initDates(recRefs);
@@ -2810,6 +2996,10 @@ const TAB_MAP = {
   nuisibles    : { cat: 'haccp', btn: 'he-tab-nuis'  },
   attestations : { cat: 'haccp', btn: 'he-tab-attest'},
   rapports     : { cat: 'rap',   btn: 'he-tab-rapp'  },
+  'ac-incidents'        : { cat: 'ac', btn: 'he-tab-ac-inc'  },
+  'ac-etalonnages'      : { cat: 'ac', btn: 'he-tab-ac-etal' },
+  'ac-cuissons'         : { cat: 'ac', btn: 'he-tab-ac-cuis' },
+  'ac-refroidissements' : { cat: 'ac', btn: 'he-tab-ac-refr' },
 };
 
 let _initTab = null;

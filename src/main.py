@@ -39,6 +39,7 @@ from src.api.routes_etalonnage   import router as router_etalonnage
 from src.api.routes_dlc           import router as router_dlc
 from src.api.routes_cuisson       import router as router_cuisson
 from src.api.routes_refroidissement import router as router_refroidissement
+from src.api.routes_actions_correctives import router as router_actions_correctives
 from src.api.routes_stock           import router as router_stock
 from src.api.routes_hub             import router as router_hub
 from src.api.routes_elearning       import router as router_elearning
@@ -139,6 +140,9 @@ app.include_router(router_cuisson)
 
 # Routes API — Refroidissement rapide (≤ 10 °C en ≤ 2 h)
 app.include_router(router_refroidissement)
+
+# Routes API — Agrégateur Actions correctives (PCR01 + NC étalonnages/cuissons/refroidissements)
+app.include_router(router_actions_correctives)
 
 # Routes API — Stock unifié (FIFO toutes sources)
 app.include_router(router_stock)
