@@ -660,60 +660,28 @@
   align-items: center;
   gap: .45rem;
   padding: .4rem .55rem;
-  border: 1px solid #ecdfc9;
+  border: 1.5px solid #d8cdb8;
   border-radius: 6px;
   cursor: pointer;
   user-select: none;
   font-size: var(--text-xs);
-  background: #fff;
-  transition: background .12s, border-color .12s;
+  background: #f5f0e8;
+  color: #999;
+  transition: background .15s, border-color .15s, color .15s;
 }
-.test-subcat-item:hover { background: #fef3e8; border-color: var(--color-secondary); }
+.test-subcat-item:hover { background: #fef3e8; border-color: var(--color-secondary); color: var(--color-text); }
+.test-subcat-item:has(input:checked) {
+  background: #e6f4ea;
+  border-color: #5ca96e;
+  color: #1d5c2e;
+  font-weight: 600;
+}
+.test-subcat-item:has(input:checked):hover { background: #d4edda; }
 .test-subcat-item input[type=checkbox] {
-  accent-color: var(--color-accent);
+  accent-color: #2d8a4e;
   cursor: pointer;
   width: 14px;
   height: 14px;
-}
-
-/* ─────────────────────────────────────────────
-   ZONE DE TEST — récapitulatif sélection
-───────────────────────────────────────────── */
-.test-recap {
-  margin-top: 1rem;
-  padding: .7rem 1rem;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  line-height: 1.6;
-  border: 1.5px solid;
-  transition: background .2s, border-color .2s;
-}
-.test-recap--vide {
-  background: #f5f0e8;
-  border-color: #d8c9b2;
-  color: #999;
-  font-style: italic;
-}
-.test-recap--actif {
-  background: #fff8e8;
-  border-color: #f0a030;
-  color: var(--color-text);
-}
-.recap-grp {
-  display: inline-block;
-  font-weight: 700;
-  margin-right: .3rem;
-  margin-top: .35rem;
-}
-.recap-tag {
-  display: inline-block;
-  background: #fde8c0;
-  border: 1px solid #f0b860;
-  border-radius: 4px;
-  padding: .1rem .45rem;
-  font-size: var(--text-xs);
-  margin: .2rem .2rem 0 0;
-  color: #7a4800;
 }
 
 /* ─────────────────────────────────────────────
