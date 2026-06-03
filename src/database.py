@@ -1169,8 +1169,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE fournisseurs ADD COLUMN heure_limite_commande TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN heure_livraison TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN nom_commercial TEXT",
-            # v5.2 — Catalogue fournisseur : format prix
+            # v5.2 — Catalogue fournisseur : format prix + unité colis
             "ALTER TABLE catalogue_fournisseur ADD COLUMN format_prix TEXT DEFAULT 'kg'",
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN unite_colis TEXT",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",

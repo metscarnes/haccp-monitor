@@ -101,6 +101,7 @@ function afficherTable(liste) {
       <td class="ach-cell-nom">${escHtml(a.designation)}${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}</td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
       <td><span class="ach-badge ach-badge--${a.format_prix === 'piece' ? 'abattage' : 'dlc'}">${a.format_prix === 'piece' ? '€/pièce' : '€/kg'}</span></td>
+      <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${a.tva_percent ?? 5.5}%</td>
       <td>${escHtml(a.conditionnement || '—')}</td>
       <td>
@@ -138,6 +139,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-designation').value = a.designation;
   document.getElementById('a-prix').value = a.prix_achat_ht;
   document.getElementById('a-format-prix').value = a.format_prix || 'kg';
+  document.getElementById('a-unite-colis').value = a.unite_colis || '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
   document.getElementById('a-conditionnement').value = a.conditionnement || '';
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
@@ -154,6 +156,7 @@ function viderForm() {
     document.getElementById(id).value = '';
   });
   document.getElementById('a-format-prix').value = 'kg';
+  document.getElementById('a-unite-colis').value = '';
   document.getElementById('a-tva').value = '5.5';
   document.getElementById('a-dlc-type').value = 'dlc';
   document.getElementById('form-erreur').hidden = true;
@@ -170,6 +173,7 @@ async function sauver(e) {
     designation:     document.getElementById('a-designation').value.trim(),
     prix_achat_ht:   parseFloat(document.getElementById('a-prix').value),
     format_prix:     document.getElementById('a-format-prix').value,
+    unite_colis:     document.getElementById('a-unite-colis').value || null,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),
     conditionnement: document.getElementById('a-conditionnement').value.trim() || null,
     dlc_type:        document.getElementById('a-dlc-type').value,

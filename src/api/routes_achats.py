@@ -83,6 +83,7 @@ class CatalogueArticleCreate(BaseModel):
     designation: str
     prix_achat_ht: float
     format_prix: Optional[str] = "kg"   # 'kg' | 'piece'
+    unite_colis: Optional[str] = None   # ex: 'carton', 'carcasse', 'filet', 'plateau'
     tva_percent: Optional[float] = 5.5
     conditionnement: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
@@ -92,6 +93,7 @@ class CatalogueArticleUpdate(BaseModel):
     designation: Optional[str] = None
     prix_achat_ht: Optional[float] = None
     format_prix: Optional[str] = None
+    unite_colis: Optional[str] = None
     tva_percent: Optional[float] = None
     conditionnement: Optional[str] = None
     dlc_type: Optional[str] = None
@@ -244,7 +246,7 @@ async def download_template():
 
     headers = [
         "fournisseur_nom", "code_article", "designation",
-        "prix_achat_ht", "format_prix", "tva_percent", "conditionnement", "dlc_type"
+        "prix_achat_ht", "format_prix", "unite_colis", "tva_percent", "conditionnement", "dlc_type"
     ]
     notes = [
         "Nom exact du fournisseur (doit exister dans l'app)",
@@ -252,13 +254,14 @@ async def download_template():
         "Désignation complète du produit",
         "Prix d'achat HT en euros (ex: 12.50)",
         "kg ou piece",
+        "Ex: carton, carcasse, filet, plateau, barquette",
         "Taux TVA en % (5.5 ou 20)",
         "Ex: Carton 4kg / Carcasse / Barquette x20",
         "dlc | date_abattage | no_dlc",
     ]
     examples = [
         "Fournisseur A", "BF-250G", "Filet de boeuf",
-        "12.50", "kg", "5.5", "Carton 4kg", "dlc"
+        "12.50", "kg", "carton", "5.5", "Carton 4kg", "dlc"
     ]
 
     header_fill = PatternFill("solid", fgColor="2D7D46")
@@ -357,9 +360,10 @@ async def import_catalogue_upload(fichier: UploadFile = File(...)):
             except ValueError:
                 tva = 5.5
 
-            format_prix  = col(row_num, "format_prix")  if "format_prix"  in headers else "kg"
+            format_prix     = col(row_num, "format_prix")     if "format_prix"     in headers else "kg"
+            unite_colis     = col(row_num, "unite_colis")     if "unite_colis"     in headers else None
             conditionnement = col(row_num, "conditionnement") if "conditionnement" in headers else None
-            dlc_type = col(row_num, "dlc_type") if "dlc_type" in headers else "dlc"
+            dlc_type        = col(row_num, "dlc_type")        if "dlc_type"        in headers else "dlc"
             if format_prix not in ("kg", "piece"):
                 format_prix = "kg"
 
@@ -372,18 +376,20 @@ async def import_catalogue_upload(fichier: UploadFile = File(...)):
             if existing:
                 await db.execute(
                     """UPDATE catalogue_fournisseur
-                       SET designation=?, prix_achat_ht=?, format_prix=?, tva_percent=?,
-                           conditionnement=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
+                       SET designation=?, prix_achat_ht=?, format_prix=?, unite_colis=?,
+                           tva_percent=?, conditionnement=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
                        WHERE id=?""",
-                    (designation, prix, format_prix, tva, conditionnement or None, dlc_type or "dlc", existing["id"])
+                    (designation, prix, format_prix, unite_colis or None,
+                     tva, conditionnement or None, dlc_type or "dlc", existing["id"])
                 )
                 stats["mis_a_jour"] += 1
             else:
                 await db.execute(
                     """INSERT INTO catalogue_fournisseur
-                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, tva_percent, conditionnement, dlc_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (fourn["id"], code, designation, prix, format_prix, tva, conditionnement or None, dlc_type or "dlc")
+                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis, tva_percent, conditionnement, dlc_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (fourn["id"], code, designation, prix, format_prix, unite_colis or None,
+                     tva, conditionnement or None, dlc_type or "dlc")
                 )
                 stats["crees"] += 1
 
@@ -421,10 +427,10 @@ async def create_article(body: CatalogueArticleCreate):
 
         cur = await db.execute(
             """INSERT INTO catalogue_fournisseur
-               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, tva_percent, conditionnement, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis, tva_percent, conditionnement, dlc_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
-             body.format_prix or 'kg', body.tva_percent, body.conditionnement, body.dlc_type)
+             body.format_prix or 'kg', body.unite_colis, body.tva_percent, body.conditionnement, body.dlc_type)
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
