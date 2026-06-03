@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Catalogue Achats — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/achats.css">
+</head>
+<body class="ach-body">
+
+  <header class="ach-bar">
+    <a href="/achats.html" class="ach-retour">← Achats</a>
+    <div class="ach-bar-titre">📋 CATALOGUE ACHATS</div>
+    <div class="ach-bar-actions">
+      <button class="ach-btn" id="btn-import">⬆ Importer</button>
+      <button class="ach-btn ach-btn--primary" id="btn-nouveau">+ Ajouter</button>
+    </div>
+  </header>
+
+  <div class="ach-stats">
+    <div class="ach-stat ach-stat--ok">
+      <div class="ach-stat-num" id="stat-total">—</div>
+      <div class="ach-stat-lbl">Articles actifs</div>
+    </div>
+    <div class="ach-stat">
+      <div class="ach-stat-num" id="stat-fournisseurs">—</div>
+      <div class="ach-stat-lbl">Fournisseurs</div>
+    </div>
+    <div class="ach-stat ach-stat--warn">
+      <div class="ach-stat-num" id="stat-sans-prix">—</div>
+      <div class="ach-stat-lbl">Prix à 0€</div>
+    </div>
+  </div>
+
+  <div class="ach-filtres">
+    <div class="ach-filtre">
+      <label>Fournisseur</label>
+      <select id="filtre-fournisseur">
+        <option value="">Tous</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Type DLC</label>
+      <select id="filtre-dlc">
+        <option value="">Tous</option>
+        <option value="dlc">DLC</option>
+        <option value="date_abattage">Date abattage</option>
+        <option value="no_dlc">Sans DLC</option>
+      </select>
+    </div>
+    <div class="ach-filtre ach-filtre--search">
+      <label>Recherche</label>
+      <input type="search" id="filtre-search" placeholder="Code article ou désignation…">
+    </div>
+    <div class="ach-resultat" id="resultat-count"></div>
+  </div>
+
+  <div id="zone-erreur" class="ach-erreur" hidden></div>
+
+  <div class="ach-table-wrap">
+    <table class="ach-table" id="table-catalogue">
+      <thead>
+        <tr>
+          <th>Fournisseur</th>
+          <th>Code article</th>
+          <th>Désignation</th>
+          <th class="ach-col-num">Prix HT</th>
+          <th>TVA</th>
+          <th>Conditionnement</th>
+          <th>DLC type</th>
+          <th class="ach-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-catalogue">
+        <tr><td colspan="8" class="ach-vide">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal article ── -->
+  <div class="ach-modal" id="modal-article" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-titre">Nouvel article</h2>
+        <button class="ach-modal-fermer" id="modal-fermer">✕</button>
+      </header>
+      <form class="ach-form" id="form-article" autocomplete="off">
+        <input type="hidden" id="a-id">
+        <div class="ach-champ ach-champ--full">
+          <label>Fournisseur <span class="ach-req">*</span></label>
+          <select id="a-fournisseur" required></select>
+        </div>
+        <div class="ach-champ">
+          <label>Code article <span class="ach-req">*</span></label>
+          <input type="text" id="a-code" required placeholder="Ex: BF-250G">
+          <span class="ach-hint">Référence exacte du fournisseur</span>
+        </div>
+        <div class="ach-champ">
+          <label>Désignation <span class="ach-req">*</span></label>
+          <input type="text" id="a-designation" required placeholder="Ex: Filet de boeuf 250g">
+        </div>
+        <div class="ach-champ">
+          <label>Prix achat HT (€) <span class="ach-req">*</span></label>
+          <input type="number" id="a-prix" required min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="ach-champ">
+          <label>TVA (%)</label>
+          <select id="a-tva">
+            <option value="5.5">5.5% (alimentaire)</option>
+            <option value="10">10%</option>
+            <option value="20">20%</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Conditionnement</label>
+          <input type="text" id="a-conditionnement" placeholder="Ex: Carton 4kg, Carcasse…">
+        </div>
+        <div class="ach-champ">
+          <label>Type DLC</label>
+          <select id="a-dlc-type">
+            <option value="dlc">DLC (date limite)</option>
+            <option value="date_abattage">Date d'abattage (carcasses)</option>
+            <option value="no_dlc">Sans DLC</option>
+          </select>
+        </div>
+        <div class="ach-champ" id="champ-dlc-jours">
+          <label>DLC (jours)</label>
+          <input type="number" id="a-dlc-jours" min="1" placeholder="Ex: 3">
+          <span class="ach-hint">Nombre de jours à partir de la réception</span>
+        </div>
+        <div id="form-erreur" class="ach-form-erreur" hidden></div>
+        <div class="ach-modal-footer">
+          <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
+          <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Modal import ── -->
+  <div class="ach-modal" id="modal-import" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">⬆ Importer catalogue Excel</h2>
+        <button class="ach-modal-fermer" id="import-fermer">✕</button>
+      </header>
+      <div class="ach-import-corps">
+        <p class="ach-import-info">
+          Importez votre catalogue fournisseur depuis un fichier Excel.<br>
+          Téléchargez d'abord le template pour respecter le format attendu.
+        </p>
+        <a href="/api/achats/catalogue/template" class="ach-btn" download>
+          ⬇ Télécharger le template Excel
+        </a>
+        <div class="ach-champ">
+          <label>Fichier Excel (.xlsx)</label>
+          <input type="file" id="import-fichier" accept=".xlsx">
+        </div>
+        <div id="import-resultat" hidden></div>
+        <div class="ach-modal-footer" style="padding-top:0; border-top:none; margin-top:0;">
+          <button type="button" class="ach-btn" id="import-annuler">Annuler</button>
+          <button type="button" class="ach-btn ach-btn--primary" id="import-lancer">Importer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/achats/catalogue-achats.js"></script>
+</body>
+</html>

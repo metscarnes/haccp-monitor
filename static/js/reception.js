@@ -191,6 +191,103 @@ let ligneEnEdition     = null;    // {id, index} — null = mode ajout
 let fournisseurProduitSelected = null; // {id, nom} fournisseur sélectionné pour le produit courant
 let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé pour dialog
 
+// Lien commande
+let commandeId         = null;    // ID de la commande liée (nullable)
+let commandeLignes     = [];      // lignes de la commande pour pré-remplissage
+let commandeLigneIdx   = 0;       // index de la ligne en cours de réception
+
+
+// ── Références DOM — Commande ──────────────────────────────
+const elCmdNonBtn      = document.getElementById('rec-cmd-non-btn');
+const elCmdOuiBtn      = document.getElementById('rec-cmd-oui-btn');
+const elCmdSelZone     = document.getElementById('rec-commande-sel-zone');
+const elCmdSelect      = document.getElementById('rec-commande-select');
+const elCmdResume      = document.getElementById('rec-commande-resume');
+
+// ── Toggle "Lier à une commande" ───────────────────────────
+if (elCmdNonBtn && elCmdOuiBtn) {
+  elCmdNonBtn.addEventListener('click', () => {
+    elCmdNonBtn.classList.add('ok-sel');
+    elCmdOuiBtn.classList.remove('ok-sel');
+    elCmdNonBtn.setAttribute('aria-pressed', 'true');
+    elCmdOuiBtn.setAttribute('aria-pressed', 'false');
+    elCmdSelZone.hidden = true;
+    commandeId = null;
+    commandeLignes = [];
+  });
+
+  elCmdOuiBtn.addEventListener('click', async () => {
+    elCmdOuiBtn.classList.add('ok-sel');
+    elCmdNonBtn.classList.remove('ok-sel');
+    elCmdOuiBtn.setAttribute('aria-pressed', 'true');
+    elCmdNonBtn.setAttribute('aria-pressed', 'false');
+    elCmdSelZone.hidden = false;
+    await chargerCommandesDisponibles();
+  });
+}
+
+if (elCmdSelect) {
+  elCmdSelect.addEventListener('change', () => {
+    const id = parseInt(elCmdSelect.value);
+    if (!id) { commandeId = null; commandeLignes = []; elCmdResume.hidden = true; return; }
+    commandeId = id;
+    afficherResumeCommande(id);
+  });
+}
+
+async function chargerCommandesDisponibles() {
+  try {
+    // Commandes confirmées pas encore livrées
+    const cmds = await apiFetch('/api/achats/commandes?statut=confirmee&limit=50');
+    const brouillons = await apiFetch('/api/achats/commandes?statut=brouillon&limit=50');
+    const toutes = [...cmds, ...brouillons];
+    elCmdSelect.innerHTML = '<option value="">-- Sélectionnez une commande --</option>';
+    toutes.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.numero_commande} — ${c.fournisseur_nom} — ${fmtDate(c.date_commande)}`;
+      elCmdSelect.appendChild(opt);
+    });
+    if (!toutes.length) {
+      elCmdSelect.innerHTML = '<option value="">Aucune commande disponible</option>';
+    }
+  } catch (e) {
+    elCmdSelect.innerHTML = '<option value="">Erreur de chargement</option>';
+  }
+}
+
+async function afficherResumeCommande(id) {
+  try {
+    const cmd = await apiFetch(`/api/achats/commandes/${id}`);
+    commandeLignes = cmd.lignes || [];
+    elCmdResume.hidden = false;
+    elCmdResume.innerHTML = `
+      <div class="rec-commande-resume-titre">
+        📝 ${cmd.numero_commande} — ${cmd.fournisseur_nom}
+        <span class="rec-commande-prefill-badge">Auto-remplissage activé</span>
+      </div>
+      ${commandeLignes.map(l => `
+        <div class="rec-commande-resume-ligne">
+          <span><strong>${escHtml(l.code_article)}</strong> — ${escHtml(l.designation)}</span>
+          <span>${l.quantite_commandee} ${l.unite}</span>
+        </div>
+      `).join('')}
+    `;
+  } catch(e) {
+    elCmdResume.innerHTML = '<div style="color:#991b1b;">Erreur de chargement de la commande</div>';
+    elCmdResume.hidden = false;
+  }
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  return d.split('-').reverse().join('/');
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 // ── Horloge ────────────────────────────────────────────────
 function majHorloge() {
@@ -1216,13 +1313,36 @@ async function creerFiche() {
       }
     }
 
+    // Enregistrer le lien commande si sélectionné
+    if (commandeId) {
+      try {
+        await apiFetch('/api/achats/commande_receptions_mapping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commande_id: commandeId, reception_id: rec.id }),
+        });
+        // Marquer la commande comme livrée
+        await apiFetch(`/api/achats/commandes/${commandeId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ statut: 'livree' }),
+        });
+      } catch(e) {
+        console.warn('[haccp] Mapping commande échoué :', e);
+      }
+    }
+
     // Réinitialiser le formulaire produit et passer à l'étape 3
     reinitFormProduit();
     majListeLignes();
     majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
 
-    // Pré-remplir le fournisseur principal pour le premier produit
-    if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
+    // Pré-remplir depuis la commande si liée
+    commandeLigneIdx = 0;
+    if (commandeId && commandeLignes.length > 0) {
+      preRemplirDepuisCommande();
+    } else if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
+      // Comportement habituel : pré-remplir le fournisseur
       fournisseurProduitSelected = {
         id: fourn0.id || null,
         nom: (fourn0.nom || '').trim() || null,
@@ -1250,6 +1370,36 @@ async function chargerProduits() {
     tousProduits = await apiFetch('/api/produits?type=brut');
   } catch {
     tousProduits = [];
+  }
+}
+
+// Pré-remplir le formulaire produit depuis la ligne de commande courante
+function preRemplirDepuisCommande() {
+  if (!commandeLignes.length || commandeLigneIdx >= commandeLignes.length) return;
+
+  const ligne = commandeLignes[commandeLigneIdx];
+
+  // Pré-remplir la recherche produit avec la désignation de la commande
+  if (elProdSearch) {
+    elProdSearch.value = ligne.designation;
+    elProdSearch.dispatchEvent(new Event('input')); // déclenche l'autocomplete
+  }
+
+  // Pré-remplir le poids avec la quantité commandée
+  const elPoids = document.getElementById('rec-poids');
+  if (elPoids) elPoids.value = ligne.quantite_commandee;
+
+  // Badge visuel indiquant la pré-saisie
+  const badge = document.createElement('div');
+  badge.className = 'rec-commande-prefill-badge';
+  badge.style.cssText = 'display:block;background:#166534;color:#fff;padding:.3rem .75rem;border-radius:6px;font-size:.8rem;font-weight:700;margin-bottom:.5rem;';
+  badge.textContent = `📋 Commande : ${ligne.code_article} — ${ligne.designation} (${ligne.quantite_commandee} ${ligne.unite})`;
+
+  const formProduit = document.getElementById('rec-form-produit');
+  if (formProduit) {
+    const existant = formProduit.querySelector('.rec-commande-prefill-badge');
+    if (existant) existant.remove();
+    formProduit.insertBefore(badge, formProduit.firstChild);
   }
 }
 

@@ -1,0 +1,371 @@
+/* ===========================================================================
+   achats.css — Module Achats (fournisseurs, catalogue, commandes)
+   Réutilise les conventions de catalogue.css
+   =========================================================================== */
+
+.ach-body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font);
+  min-height: 100vh;
+}
+
+/* ── Barre supérieure ─────────────────────────────────────── */
+.ach-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.ach-bar-titre {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: .5px;
+  flex: 1;
+  text-align: center;
+  min-width: 160px;
+}
+.ach-bar-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.ach-retour {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border: none;
+  padding: .6rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  text-decoration: none;
+  min-height: var(--btn-min-sm);
+  display: inline-flex;
+  align-items: center;
+}
+.ach-retour:active { background: rgba(255,255,255,.3); }
+
+/* ── Boutons ──────────────────────────────────────────────── */
+.ach-btn {
+  background: #fff;
+  color: var(--color-text);
+  border: 1px solid #d4c5af;
+  padding: .55rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--btn-min-sm);
+}
+.ach-btn:hover { background: #faf6f0; }
+.ach-btn:active { transform: translateY(1px); }
+.ach-btn--primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.ach-btn--primary:hover { background: #5a3013; }
+.ach-btn--ok { background: var(--color-ok); color: #fff; border-color: var(--color-ok); }
+.ach-btn--ok:hover { background: #256638; }
+.ach-btn--danger { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.ach-btn--danger:hover { background: #fecaca; }
+.ach-btn--small { padding: .35rem .7rem; font-size: var(--text-sm); min-height: 0; }
+.ach-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Stats ────────────────────────────────────────────────── */
+.ach-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-card);
+  border-bottom: 1px solid #e8d9c4;
+}
+.ach-stat {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  border-left: 4px solid var(--color-accent);
+}
+.ach-stat--ok      { border-left-color: var(--color-ok); }
+.ach-stat--warn    { border-left-color: var(--color-warning); }
+.ach-stat--info    { border-left-color: #3b82f6; }
+.ach-stat-num { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.ach-stat-lbl { font-size: var(--text-xs); color: #6b7280; margin-top: 2px; }
+
+/* ── Filtres ──────────────────────────────────────────────── */
+.ach-filtres {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #faf6f0;
+  border-bottom: 1px solid #e8d9c4;
+  align-items: flex-end;
+}
+.ach-filtre {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: #4b5563;
+  font-weight: 600;
+}
+.ach-filtre--search { flex: 1; min-width: 200px; }
+.ach-filtre select,
+.ach-filtre input[type="search"],
+.ach-filtre input[type="text"] {
+  min-height: var(--btn-min-sm);
+  padding: .5rem .75rem;
+  border: 1px solid #d4c5af;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: #fff;
+  color: var(--color-text);
+}
+.ach-resultat { font-size: var(--text-sm); color: #6b7280; font-weight: 600; padding-bottom: 8px; }
+
+/* ── Tableau ──────────────────────────────────────────────── */
+.ach-table-wrap { padding: var(--space-3) var(--space-4); overflow-x: auto; }
+.ach-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.ach-table thead th {
+  background: #f3ebdf;
+  color: #3a2613;
+  text-align: left;
+  padding: .65rem .8rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border-bottom: 2px solid #d4c5af;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+}
+.ach-col-num     { text-align: right; }
+.ach-col-actions { text-align: right; width: 120px; }
+.ach-table tbody td {
+  padding: .55rem .8rem;
+  border-bottom: 1px solid #f1ead9;
+  font-size: var(--text-sm);
+  vertical-align: middle;
+}
+.ach-table tbody tr:hover { background: #fcfaf5; }
+.ach-cell-nom  { font-weight: 600; }
+.ach-table code {
+  background: #f3ebdf;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: .85em;
+  font-family: monospace;
+}
+
+/* ── Badges statut commande ───────────────────────────────── */
+.ach-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ach-badge--brouillon  { background: #f3f4f6; color: #374151; }
+.ach-badge--confirmee  { background: #dbeafe; color: #1e40af; }
+.ach-badge--livree     { background: #dcfce7; color: #166534; }
+.ach-badge--annulee    { background: #fee2e2; color: #991b1b; }
+.ach-badge--dlc        { background: #e0f2fe; color: #0369a1; }
+.ach-badge--abattage   { background: #fce7f3; color: #9d174d; }
+.ach-badge--no-dlc     { background: #f3f4f6; color: #6b7280; }
+
+/* ── Vide / erreur ────────────────────────────────────────── */
+.ach-vide  { text-align: center; padding: var(--space-4); color: #6b7280; font-style: italic; }
+.ach-erreur { text-align: center; padding: var(--space-3); color: #991b1b; background: #fee2e2; border-radius: var(--radius-sm); margin: var(--space-3) var(--space-4); }
+
+/* ── Modal ────────────────────────────────────────────────── */
+.ach-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+  padding: var(--space-3);
+  overflow-y: auto;
+}
+.ach-modal-card {
+  background: #fff;
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 680px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0,0,0,.3);
+}
+.ach-modal-card--lg { max-width: 860px; }
+.ach-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent);
+  color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.ach-modal-titre { font-size: var(--text-lg); font-weight: 700; margin: 0; }
+.ach-modal-fermer {
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  border: none;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.ach-modal-fermer:hover { background: rgba(255,255,255,.35); }
+
+/* ── Formulaire ───────────────────────────────────────────── */
+.ach-form {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.ach-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-sm);
+  color: #4b5563;
+  font-weight: 600;
+}
+.ach-champ--full { grid-column: 1 / -1; }
+.ach-champ input[type="text"],
+.ach-champ input[type="number"],
+.ach-champ input[type="email"],
+.ach-champ input[type="date"],
+.ach-champ input[type="file"],
+.ach-champ select,
+.ach-champ textarea {
+  min-height: var(--btn-min-sm);
+  padding: .55rem .75rem;
+  border: 1px solid #d4c5af;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  background: #fff;
+  color: var(--color-text);
+  font-family: var(--font);
+}
+.ach-champ textarea { min-height: 80px; resize: vertical; }
+.ach-champ input:focus,
+.ach-champ select:focus,
+.ach-champ textarea:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-color: var(--color-accent);
+}
+.ach-req { color: #dc2626; }
+.ach-hint { color: #888; font-size: 0.82em; font-weight: 400; }
+
+.ach-form-erreur {
+  grid-column: 1 / -1;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: .65rem .85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  border: 1px solid #fca5a5;
+}
+.ach-form-ok {
+  grid-column: 1 / -1;
+  background: #dcfce7;
+  color: #166534;
+  padding: .65rem .85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  border: 1px solid #86efac;
+}
+.ach-modal-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid #e8d9c4;
+  margin-top: var(--space-2);
+}
+
+/* ── Lignes commande ──────────────────────────────────────── */
+.ach-lignes { padding: 0 var(--space-4) var(--space-4); }
+.ach-lignes-titre {
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid #e8d9c4;
+}
+.ach-ligne-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 80px 80px 60px auto;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid #f1ead9;
+}
+.ach-ligne-row:last-child { border-bottom: none; }
+.ach-total-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #f3ebdf;
+  font-weight: 700;
+  font-size: var(--text-lg);
+  border-top: 2px solid #d4c5af;
+}
+
+/* ── Import Excel ─────────────────────────────────────────── */
+.ach-import-corps {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.ach-import-info { font-size: var(--text-sm); color: #4b5563; line-height: 1.6; }
+.ach-import-resultat {
+  background: #f3ebdf;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  border-left: 4px solid var(--color-accent);
+}
+.ach-import-resultat--ok  { background: #dcfce7; border-left-color: #16a34a; color: #14532d; }
+.ach-import-resultat--err { background: #fee2e2; border-left-color: #dc2626; color: #991b1b; }
+
+/* ── Mobile ───────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .ach-form { grid-template-columns: 1fr; }
+  .ach-bar { flex-direction: column; align-items: stretch; }
+  .ach-bar-titre { text-align: center; }
+  .ach-bar-actions { justify-content: center; }
+  .ach-ligne-row { grid-template-columns: 1fr 1fr; }
+}

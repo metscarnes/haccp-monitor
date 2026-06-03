@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Commandes — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/achats.css">
+</head>
+<body class="ach-body">
+
+  <header class="ach-bar">
+    <a href="/achats.html" class="ach-retour">← Achats</a>
+    <div class="ach-bar-titre">📝 COMMANDES</div>
+    <div class="ach-bar-actions">
+      <button class="ach-btn ach-btn--primary" id="btn-nouvelle">+ Nouvelle commande</button>
+    </div>
+  </header>
+
+  <div class="ach-stats">
+    <div class="ach-stat ach-stat--warn">
+      <div class="ach-stat-num" id="stat-brouillon">—</div>
+      <div class="ach-stat-lbl">Brouillons</div>
+    </div>
+    <div class="ach-stat ach-stat--info">
+      <div class="ach-stat-num" id="stat-confirmee">—</div>
+      <div class="ach-stat-lbl">Confirmées</div>
+    </div>
+    <div class="ach-stat ach-stat--ok">
+      <div class="ach-stat-num" id="stat-livree">—</div>
+      <div class="ach-stat-lbl">Livrées</div>
+    </div>
+  </div>
+
+  <div class="ach-filtres">
+    <div class="ach-filtre">
+      <label>Fournisseur</label>
+      <select id="filtre-fournisseur">
+        <option value="">Tous</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Statut</label>
+      <select id="filtre-statut">
+        <option value="">Tous</option>
+        <option value="brouillon">Brouillon</option>
+        <option value="confirmee">Confirmée</option>
+        <option value="livree">Livrée</option>
+        <option value="annulee">Annulée</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="zone-erreur" class="ach-erreur" hidden></div>
+
+  <div class="ach-table-wrap">
+    <table class="ach-table" id="table-commandes">
+      <thead>
+        <tr>
+          <th>N° commande</th>
+          <th>Date</th>
+          <th>Fournisseur</th>
+          <th>Livraison prévue</th>
+          <th class="ach-col-num">Articles</th>
+          <th class="ach-col-num">Total HT</th>
+          <th>Statut</th>
+          <th class="ach-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-commandes">
+        <tr><td colspan="8" class="ach-vide">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal détail / édition commande ── -->
+  <div class="ach-modal" id="modal-commande" hidden>
+    <div class="ach-modal-card ach-modal-card--lg">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-cmd-titre">Nouvelle commande</h2>
+        <button class="ach-modal-fermer" id="modal-cmd-fermer">✕</button>
+      </header>
+
+      <!-- En-tête commande -->
+      <form class="ach-form" id="form-commande-header" style="border-bottom:2px solid #e8d9c4;">
+        <input type="hidden" id="cmd-id">
+        <div class="ach-champ">
+          <label>Fournisseur <span class="ach-req">*</span></label>
+          <select id="cmd-fournisseur" required></select>
+        </div>
+        <div class="ach-champ">
+          <label>Date commande</label>
+          <input type="date" id="cmd-date">
+        </div>
+        <div class="ach-champ">
+          <label>Livraison souhaitée</label>
+          <input type="date" id="cmd-livraison">
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Commentaire</label>
+          <textarea id="cmd-commentaire" placeholder="Instructions particulières…"></textarea>
+        </div>
+        <div id="cmd-form-erreur" class="ach-form-erreur" hidden></div>
+      </form>
+
+      <!-- Lignes de commande -->
+      <div class="ach-lignes">
+        <div class="ach-lignes-titre">Articles commandés</div>
+        <div id="zone-lignes">
+          <p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>
+        </div>
+        <button type="button" class="ach-btn ach-btn--ok" id="btn-ajouter-ligne" style="margin-top:var(--space-3);" disabled>
+          + Ajouter un article
+        </button>
+      </div>
+
+      <!-- Total -->
+      <div class="ach-total-bar">
+        <span>Total HT :</span>
+        <span id="cmd-total">0,00 €</span>
+      </div>
+
+      <!-- Footer actions -->
+      <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-annuler-cmd" hidden>Annuler commande</button>
+          <button type="button" class="ach-btn" id="btn-dupliquer" hidden>📋 Dupliquer</button>
+        </div>
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn" id="btn-fermer-cmd">Fermer</button>
+          <button type="button" class="ach-btn ach-btn--primary" id="btn-sauver-cmd">Enregistrer</button>
+          <button type="button" class="ach-btn ach-btn--ok" id="btn-envoyer-cmd" hidden>📧 Envoyer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal ajout article ── -->
+  <div class="ach-modal" id="modal-ligne" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Ajouter un article</h2>
+        <button class="ach-modal-fermer" id="modal-ligne-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <div class="ach-champ" style="margin-bottom:var(--space-3);">
+          <label>Recherche dans le catalogue</label>
+          <input type="search" id="ligne-search" placeholder="Code ou désignation…">
+        </div>
+        <div id="ligne-resultats" style="max-height:300px; overflow-y:auto; border:1px solid #e8d9c4; border-radius:var(--radius-sm);"></div>
+      </div>
+      <form class="ach-form" id="form-ligne">
+        <input type="hidden" id="l-catalogue-id">
+        <div class="ach-champ">
+          <label>Code article <span class="ach-req">*</span></label>
+          <input type="text" id="l-code" required>
+        </div>
+        <div class="ach-champ">
+          <label>Désignation <span class="ach-req">*</span></label>
+          <input type="text" id="l-designation" required>
+        </div>
+        <div class="ach-champ">
+          <label>Quantité <span class="ach-req">*</span></label>
+          <input type="number" id="l-quantite" required min="0.001" step="0.001">
+        </div>
+        <div class="ach-champ">
+          <label>Unité</label>
+          <select id="l-unite">
+            <option value="kg">kg</option>
+            <option value="piece">pièce</option>
+            <option value="boite">boîte</option>
+            <option value="carcasse">carcasse</option>
+            <option value="barquette">barquette</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Prix unitaire HT (€)</label>
+          <input type="number" id="l-prix" min="0" step="0.01">
+        </div>
+        <div class="ach-champ">
+          <label>Commentaire</label>
+          <input type="text" id="l-commentaire" placeholder="Optionnel">
+        </div>
+        <div id="ligne-erreur" class="ach-form-erreur" hidden></div>
+        <div class="ach-modal-footer">
+          <button type="button" class="ach-btn" id="btn-ligne-annuler">Annuler</button>
+          <button type="submit" class="ach-btn ach-btn--primary">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/achats/commandes.js"></script>
+</body>
+</html>

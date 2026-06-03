@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Fournisseurs — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/achats.css">
+</head>
+<body class="ach-body">
+
+  <header class="ach-bar">
+    <a href="/achats.html" class="ach-retour">← Achats</a>
+    <div class="ach-bar-titre">🏢 FOURNISSEURS</div>
+    <div class="ach-bar-actions">
+      <button class="ach-btn ach-btn--primary" id="btn-nouveau">+ Nouveau</button>
+    </div>
+  </header>
+
+  <div class="ach-stats" id="stats-bar">
+    <div class="ach-stat ach-stat--ok">
+      <div class="ach-stat-num" id="stat-total">—</div>
+      <div class="ach-stat-lbl">Fournisseurs actifs</div>
+    </div>
+    <div class="ach-stat ach-stat--info">
+      <div class="ach-stat-num" id="stat-avec-email">—</div>
+      <div class="ach-stat-lbl">Avec email</div>
+    </div>
+    <div class="ach-stat ach-stat--warn">
+      <div class="ach-stat-num" id="stat-sans-email">—</div>
+      <div class="ach-stat-lbl">Sans email</div>
+    </div>
+  </div>
+
+  <div id="zone-erreur" class="ach-erreur" hidden></div>
+
+  <div class="ach-table-wrap">
+    <table class="ach-table" id="table-fournisseurs">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Email commercial</th>
+          <th>Téléphone</th>
+          <th>Conditions</th>
+          <th class="ach-col-num">Articles</th>
+          <th class="ach-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-fournisseurs">
+        <tr><td colspan="6" class="ach-vide">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal fournisseur ── -->
+  <div class="ach-modal" id="modal-fournisseur" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-titre">Nouveau fournisseur</h2>
+        <button class="ach-modal-fermer" id="modal-fermer">✕</button>
+      </header>
+      <form class="ach-form" id="form-fournisseur" autocomplete="off">
+        <input type="hidden" id="f-id">
+        <div class="ach-champ ach-champ--full">
+          <label>Nom <span class="ach-req">*</span></label>
+          <input type="text" id="f-nom" required placeholder="Ex : Socopa, Bigard…">
+        </div>
+        <div class="ach-champ">
+          <label>Email commercial</label>
+          <input type="email" id="f-email" placeholder="commercial@fournisseur.fr">
+        </div>
+        <div class="ach-champ">
+          <label>Téléphone</label>
+          <input type="text" id="f-telephone" placeholder="01 XX XX XX XX">
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Adresse</label>
+          <input type="text" id="f-adresse" placeholder="Rue, code postal, ville">
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Conditions de paiement</label>
+          <input type="text" id="f-conditions" placeholder="Ex : Net 30, comptant…">
+        </div>
+        <div id="form-erreur" class="ach-form-erreur" hidden></div>
+        <div class="ach-modal-footer">
+          <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
+          <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/achats/fournisseurs.js"></script>
+</body>
+</html>

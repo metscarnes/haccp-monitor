@@ -176,10 +176,14 @@ CREATE INDEX IF NOT EXISTS idx_etiquettes_dlc
 -- ===========================================================================
 
 CREATE TABLE IF NOT EXISTS fournisseurs (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id INTEGER NOT NULL,
-    nom         TEXT    NOT NULL,
-    actif       BOOLEAN DEFAULT 1,
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id          INTEGER NOT NULL,
+    nom                  TEXT    NOT NULL,
+    email_commercial     TEXT,
+    telephone            TEXT,
+    adresse              TEXT,
+    conditions_paiement  TEXT,
+    actif                BOOLEAN DEFAULT 1,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -211,15 +215,19 @@ CREATE INDEX IF NOT EXISTS idx_receptions_date
 CREATE TABLE IF NOT EXISTS reception_lignes (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_id              INTEGER NOT NULL,
-    produit_id                INTEGER NOT NULL,
+    produit_id                INTEGER,
+    catalogue_fournisseur_id  INTEGER,
     fournisseur_id            INTEGER,
+    fournisseur_nom           TEXT,
     numero_lot                TEXT,
     dlc                       DATE,
     dluo                      DATE,
+    date_abattage             DATE,
     origine                   TEXT    DEFAULT 'France',
     poids_kg                  REAL,
     temperature_reception     REAL,
     temperature_conforme      INTEGER,
+    temperature_coeur         REAL,
     couleur_conforme          INTEGER DEFAULT 1,
     couleur_observation       TEXT,
     consistance_conforme      INTEGER DEFAULT 1,
@@ -231,10 +239,12 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     ph_valeur                 REAL,
     ph_conforme               INTEGER,
     conforme                  INTEGER DEFAULT 1,
+    lot_interne               INTEGER DEFAULT 0,
     created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (reception_id)  REFERENCES receptions(id),
-    FOREIGN KEY (produit_id)    REFERENCES produits(id),
-    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id)
+    FOREIGN KEY (reception_id)             REFERENCES receptions(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id)
 );
 
 CREATE TABLE IF NOT EXISTS fiches_incident (
@@ -700,6 +710,114 @@ CREATE TABLE IF NOT EXISTS quiz_progression (
 
 CREATE INDEX IF NOT EXISTS idx_quiz_progression_personnel
     ON quiz_progression(personnel_id, quiz_id);
+
+-- ===========================================================================
+-- MODULE ACHATS — Fournisseurs, Catalogue, Commandes, Maturation carcasses
+-- ===========================================================================
+
+CREATE TABLE IF NOT EXISTS catalogue_fournisseur (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    fournisseur_id   INTEGER NOT NULL,
+    code_article     TEXT    NOT NULL,
+    designation      TEXT    NOT NULL,
+    prix_achat_ht    REAL    NOT NULL DEFAULT 0.0,
+    tva_percent      REAL    DEFAULT 5.5,
+    conditionnement  TEXT,
+    dlc_type         TEXT    DEFAULT 'dlc',   -- 'dlc' | 'date_abattage' | 'no_dlc'
+    dlc_jours        INTEGER,
+    actif            INTEGER DEFAULT 1,
+    date_maj         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+    UNIQUE(fournisseur_id, code_article)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalogue_fournisseur_fournisseur
+    ON catalogue_fournisseur(fournisseur_id);
+
+CREATE TABLE IF NOT EXISTS commandes (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id           INTEGER NOT NULL DEFAULT 1,
+    fournisseur_id        INTEGER NOT NULL,
+    numero_commande       TEXT    UNIQUE,
+    date_commande         DATE    NOT NULL DEFAULT CURRENT_DATE,
+    date_livraison_prevue DATE,
+    statut                TEXT    NOT NULL DEFAULT 'brouillon',  -- brouillon|confirmee|livree|annulee
+    montant_total_ht      REAL    DEFAULT 0.0,
+    commentaire           TEXT,
+    personnel_id          INTEGER,
+    date_envoi_mail       DATETIME,
+    created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)    REFERENCES boutiques(id),
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+    FOREIGN KEY (personnel_id)   REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_commandes_fournisseur
+    ON commandes(fournisseur_id, date_commande DESC);
+CREATE INDEX IF NOT EXISTS idx_commandes_statut
+    ON commandes(statut, date_commande DESC);
+
+CREATE TABLE IF NOT EXISTS commande_lignes (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    commande_id            INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,
+    code_article           TEXT    NOT NULL,
+    designation            TEXT    NOT NULL,
+    prix_unitaire_ht       REAL    NOT NULL DEFAULT 0.0,
+    quantite_commandee     REAL    NOT NULL,
+    unite                  TEXT    NOT NULL DEFAULT 'kg',
+    montant_ht             REAL    DEFAULT 0.0,
+    commentaire_ligne      TEXT,
+    created_at             DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (commande_id)              REFERENCES commandes(id) ON DELETE CASCADE,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_commande_lignes_commande
+    ON commande_lignes(commande_id);
+
+CREATE TABLE IF NOT EXISTS commande_receptions_mapping (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    commande_id  INTEGER NOT NULL,
+    reception_id INTEGER NOT NULL,
+    date_liaison DATETIME DEFAULT CURRENT_TIMESTAMP,
+    personnel_id INTEGER,
+    FOREIGN KEY (commande_id)  REFERENCES commandes(id),
+    FOREIGN KEY (reception_id) REFERENCES receptions(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id),
+    UNIQUE(commande_id, reception_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_mapping_commande
+    ON commande_receptions_mapping(commande_id);
+CREATE INDEX IF NOT EXISTS idx_mapping_reception
+    ON commande_receptions_mapping(reception_id);
+
+CREATE TABLE IF NOT EXISTS maturation_carcasses (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_ligne_id     INTEGER NOT NULL,
+    numero_lot             TEXT    NOT NULL,
+    date_abattage          DATE    NOT NULL,
+    date_dernier_controle  DATE,
+    etat_controle          TEXT,   -- 'OK' | 'A_SURVEILLER' | 'NON_CONFORME'
+    aspect                 TEXT,
+    odeur                  TEXT,
+    dessiccation           TEXT,
+    poissage               TEXT,
+    parage_effectue        INTEGER DEFAULT 0,
+    commentaire_controle   TEXT,
+    decision_humaine       TEXT,   -- 'Maturation' | 'Decoupe' | 'Declassement' | 'Destruction'
+    date_prochain_controle DATE,
+    personnel_id           INTEGER,
+    created_at             DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
+    FOREIGN KEY (personnel_id)       REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_maturation_reception_ligne
+    ON maturation_carcasses(reception_ligne_id);
+CREATE INDEX IF NOT EXISTS idx_maturation_etat
+    ON maturation_carcasses(etat_controle, date_prochain_controle);
 """
 
 SEED_SQL = """
@@ -1031,6 +1149,93 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE etalonnages        ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
             "ALTER TABLE tache_validations  ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
             "ALTER TABLE nuisibles_controles ADD COLUMN personnel_id INTEGER REFERENCES personnel(id)",
+            # v5.0 — Module Achats : enrichissement fournisseurs
+            "ALTER TABLE fournisseurs ADD COLUMN email_commercial TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN telephone TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN adresse TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN conditions_paiement TEXT",
+            # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
+            "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
+            "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",
+            # v5.0 — nouvelles tables module Achats (idempotent via SCHEMA_SQL)
+            """CREATE TABLE IF NOT EXISTS catalogue_fournisseur (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                fournisseur_id   INTEGER NOT NULL,
+                code_article     TEXT    NOT NULL,
+                designation      TEXT    NOT NULL,
+                prix_achat_ht    REAL    NOT NULL DEFAULT 0.0,
+                tva_percent      REAL    DEFAULT 5.5,
+                conditionnement  TEXT,
+                dlc_type         TEXT    DEFAULT 'dlc',
+                dlc_jours        INTEGER,
+                actif            INTEGER DEFAULT 1,
+                date_maj         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+                UNIQUE(fournisseur_id, code_article)
+            )""",
+            """CREATE TABLE IF NOT EXISTS commandes (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id           INTEGER NOT NULL DEFAULT 1,
+                fournisseur_id        INTEGER NOT NULL,
+                numero_commande       TEXT    UNIQUE,
+                date_commande         DATE    NOT NULL DEFAULT CURRENT_DATE,
+                date_livraison_prevue DATE,
+                statut                TEXT    NOT NULL DEFAULT 'brouillon',
+                montant_total_ht      REAL    DEFAULT 0.0,
+                commentaire           TEXT,
+                personnel_id          INTEGER,
+                date_envoi_mail       DATETIME,
+                created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (boutique_id)    REFERENCES boutiques(id),
+                FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+                FOREIGN KEY (personnel_id)   REFERENCES personnel(id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS commande_lignes (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                commande_id              INTEGER NOT NULL,
+                catalogue_fournisseur_id INTEGER,
+                code_article             TEXT    NOT NULL,
+                designation              TEXT    NOT NULL,
+                prix_unitaire_ht         REAL    NOT NULL DEFAULT 0.0,
+                quantite_commandee       REAL    NOT NULL,
+                unite                    TEXT    NOT NULL DEFAULT 'kg',
+                montant_ht               REAL    DEFAULT 0.0,
+                commentaire_ligne        TEXT,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (commande_id)              REFERENCES commandes(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS commande_receptions_mapping (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                commande_id  INTEGER NOT NULL,
+                reception_id INTEGER NOT NULL,
+                date_liaison DATETIME DEFAULT CURRENT_TIMESTAMP,
+                personnel_id INTEGER,
+                FOREIGN KEY (commande_id)  REFERENCES commandes(id),
+                FOREIGN KEY (reception_id) REFERENCES receptions(id),
+                FOREIGN KEY (personnel_id) REFERENCES personnel(id),
+                UNIQUE(commande_id, reception_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS maturation_carcasses (
+                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                reception_ligne_id     INTEGER NOT NULL,
+                numero_lot             TEXT    NOT NULL,
+                date_abattage          DATE    NOT NULL,
+                date_dernier_controle  DATE,
+                etat_controle          TEXT,
+                aspect                 TEXT,
+                odeur                  TEXT,
+                dessiccation           TEXT,
+                poissage               TEXT,
+                parage_effectue        INTEGER DEFAULT 0,
+                commentaire_controle   TEXT,
+                decision_humaine       TEXT,
+                date_prochain_controle DATE,
+                personnel_id           INTEGER,
+                created_at             DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
+                FOREIGN KEY (personnel_id)       REFERENCES personnel(id)
+            )""",
         ]
         for sql in migrations:
             try:
@@ -1252,6 +1457,84 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             logger.info("Tolérances temperature mises à jour")
         except Exception as e:
             logger.warning("Erreur lors de l'application des tolérances: %s", e)
+
+        # Migration v5.0 : rendre produit_id nullable dans reception_lignes
+        # Nécessaire pour que la réception puisse être liée au catalogue fournisseur
+        # sans produit interne obligatoire.
+        try:
+            cur_rl = await db.execute("PRAGMA table_info(reception_lignes)")
+            cols_rl = await cur_rl.fetchall()
+            produit_col = next((c for c in cols_rl if c[1] == 'produit_id'), None)
+            if produit_col and produit_col[3] == 1:  # notnull == 1 → on doit migrer
+                logger.info("Migration v5.0 : produit_id rendu nullable dans reception_lignes")
+                await db.execute("PRAGMA foreign_keys = OFF")
+                await db.execute("DROP TABLE IF EXISTS reception_lignes_new")
+                await db.execute("""
+                    CREATE TABLE reception_lignes_new (
+                        id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                        reception_id              INTEGER NOT NULL,
+                        produit_id                INTEGER,
+                        catalogue_fournisseur_id  INTEGER,
+                        fournisseur_id            INTEGER,
+                        fournisseur_nom           TEXT,
+                        numero_lot                TEXT,
+                        dlc                       DATE,
+                        dluo                      DATE,
+                        date_abattage             DATE,
+                        origine                   TEXT    DEFAULT 'France',
+                        poids_kg                  REAL,
+                        temperature_reception     REAL,
+                        temperature_conforme      INTEGER,
+                        temperature_coeur         REAL,
+                        couleur_conforme          INTEGER DEFAULT 1,
+                        couleur_observation       TEXT,
+                        consistance_conforme      INTEGER DEFAULT 1,
+                        consistance_observation   TEXT,
+                        exsudat_conforme          INTEGER DEFAULT 1,
+                        exsudat_observation       TEXT,
+                        odeur_conforme            INTEGER DEFAULT 1,
+                        odeur_observation         TEXT,
+                        ph_valeur                 REAL,
+                        ph_conforme               INTEGER,
+                        conforme                  INTEGER DEFAULT 1,
+                        lot_interne               INTEGER DEFAULT 0,
+                        created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (reception_id)             REFERENCES receptions(id),
+                        FOREIGN KEY (produit_id)               REFERENCES produits(id),
+                        FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+                        FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id)
+                    )
+                """)
+                # Déterminer les colonnes existantes pour le SELECT
+                existing_cols = {c[1] for c in cols_rl}
+                fournisseur_nom_sel  = "fournisseur_nom"  if "fournisseur_nom"  in existing_cols else "NULL"
+                temperature_coeur_sel = "temperature_coeur" if "temperature_coeur" in existing_cols else "NULL"
+                lot_interne_sel      = "lot_interne"      if "lot_interne"      in existing_cols else "0"
+                date_abattage_sel    = "date_abattage"    if "date_abattage"    in existing_cols else "NULL"
+                cat_fourn_sel        = "catalogue_fournisseur_id" if "catalogue_fournisseur_id" in existing_cols else "NULL"
+                await db.execute(f"""
+                    INSERT INTO reception_lignes_new
+                        SELECT id, reception_id, produit_id,
+                               {cat_fourn_sel},
+                               fournisseur_id, {fournisseur_nom_sel},
+                               numero_lot, dlc, dluo, {date_abattage_sel},
+                               origine, poids_kg,
+                               temperature_reception, temperature_conforme, {temperature_coeur_sel},
+                               couleur_conforme, couleur_observation,
+                               consistance_conforme, consistance_observation,
+                               exsudat_conforme, exsudat_observation,
+                               odeur_conforme, odeur_observation,
+                               ph_valeur, ph_conforme, conforme, {lot_interne_sel},
+                               created_at
+                        FROM reception_lignes
+                """)
+                await db.execute("DROP TABLE reception_lignes")
+                await db.execute("ALTER TABLE reception_lignes_new RENAME TO reception_lignes")
+                await db.execute("PRAGMA foreign_keys = ON")
+                logger.info("Migration v5.0 : reception_lignes migrée avec produit_id nullable")
+        except Exception as e:
+            logger.warning("Migration v5.0 reception_lignes : %s", e)
+            await db.execute("PRAGMA foreign_keys = ON")
 
         # Migration v3.0 : refonte table etalonnages
         # (thermometre_id TEXT → thermometre_ref_id INTEGER FK vers thermometres_ref)

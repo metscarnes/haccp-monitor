@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Achats — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <style>
+    .achats-header {
+      background: var(--color-accent);
+      color: #fff;
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      position: sticky;
+      top: 0;
+      z-index: var(--z-header);
+    }
+    .achats-header-titre {
+      flex: 1;
+      font-size: var(--text-xl);
+      font-weight: 700;
+      text-align: center;
+    }
+    .achats-retour {
+      background: rgba(255,255,255,.15);
+      color: #fff;
+      border: none;
+      padding: .6rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-base);
+      text-decoration: none;
+      min-height: var(--btn-min-sm);
+      display: inline-flex;
+      align-items: center;
+    }
+  </style>
+</head>
+<body class="hub-body">
+
+  <header class="achats-header">
+    <a href="/hub.html" class="achats-retour">← Hub</a>
+    <div class="achats-header-titre">🛒 MODULE ACHATS</div>
+    <div style="width:80px"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="padding: var(--space-4);">
+
+    <!-- Fournisseurs -->
+    <a class="hub-tuile" href="/fournisseurs.html" aria-label="Fournisseurs">
+      <div class="hub-tuile-icone" aria-hidden="true">🏢</div>
+      <div class="hub-tuile-titre">FOURNISSEURS</div>
+      <div class="hub-tuile-statut" id="stat-fournisseurs">Chargement…</div>
+    </a>
+
+    <!-- Catalogue fournisseur -->
+    <a class="hub-tuile" href="/catalogue-achats.html" aria-label="Catalogue fournisseur">
+      <div class="hub-tuile-icone" aria-hidden="true">📋</div>
+      <div class="hub-tuile-titre">CATALOGUE ACHATS</div>
+      <div class="hub-tuile-statut" id="stat-catalogue">Références & tarifs</div>
+    </a>
+
+    <!-- Commandes -->
+    <a class="hub-tuile" href="/commandes.html" aria-label="Commandes fournisseurs">
+      <div class="hub-tuile-icone" aria-hidden="true">📝</div>
+      <div class="hub-tuile-titre">COMMANDES</div>
+      <div class="hub-tuile-statut" id="stat-commandes">Chargement…</div>
+    </a>
+
+  </main>
+
+  <script>
+    async function chargerStats() {
+      try {
+        const [fournisseurs, commandes] = await Promise.all([
+          fetch('/api/achats/fournisseurs').then(r => r.json()),
+          fetch('/api/achats/commandes?limit=100').then(r => r.json()),
+        ]);
+        document.getElementById('stat-fournisseurs').textContent =
+          `${fournisseurs.length} fournisseur${fournisseurs.length > 1 ? 's' : ''} actif${fournisseurs.length > 1 ? 's' : ''}`;
+
+        const enCours = commandes.filter(c => c.statut === 'brouillon' || c.statut === 'confirmee');
+        document.getElementById('stat-commandes').textContent =
+          enCours.length > 0
+            ? `${enCours.length} commande${enCours.length > 1 ? 's' : ''} en cours`
+            : 'Aucune commande en cours';
+      } catch(e) {
+        console.error(e);
+      }
+    }
+    chargerStats();
+  </script>
+</body>
+</html>

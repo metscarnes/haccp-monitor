@@ -153,6 +153,28 @@
 
       <div class="rec-section-titre">Bon de livraison</div>
 
+      <!-- ── Lier à une commande existante ── -->
+      <div class="rec-form-group" id="rec-commande-groupe">
+        <div class="rec-champ-label">Lier à une commande ?</div>
+        <div class="rec-toggle-pair">
+          <button class="rec-toggle-btn ok-sel" id="rec-cmd-non-btn" aria-pressed="true">
+            Non — nouvelle réception
+          </button>
+          <button class="rec-toggle-btn" id="rec-cmd-oui-btn" aria-pressed="false">
+            Oui — lier une commande
+          </button>
+        </div>
+      </div>
+      <div id="rec-commande-sel-zone" hidden>
+        <div class="rec-form-group">
+          <label class="rec-champ-label" for="rec-commande-select">Commande</label>
+          <select id="rec-commande-select" class="rec-input">
+            <option value="">Chargement…</option>
+          </select>
+        </div>
+        <div id="rec-commande-resume" class="rec-commande-resume" hidden></div>
+      </div>
+
       <!-- Question plusieurs fournisseurs -->
       <div class="rec-form-group">
         <div class="rec-champ-label">Plusieurs fournisseurs ?</div>
