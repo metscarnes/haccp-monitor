@@ -4,16 +4,25 @@ const API = '/api/achats/fournisseurs';
 let fournisseurs = [];
 let modeEdition = false;
 
-const DELAI_LABELS = {
-  '0': 'Comptant',
-  '30': 'Net 30j',
-  '45': 'Net 45j',
-  '60': 'Net 60j',
-  '90': 'Net 90j',
+const RYTHME_LABELS = {
+  'A-B': 'A-B (J+1)',
+  'A-C': 'A-C (J+2)',
+  'A-D': 'A-D (J+3)',
 };
 
 const JOURS_ORDRE = ['lundi','mardi','mercredi','jeudi','vendredi','samedi'];
 const JOURS_ABREV = { lundi:'L', mardi:'Ma', mercredi:'Me', jeudi:'J', vendredi:'V', samedi:'S' };
+
+function fmtDelai(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = parseInt(v);
+  return n === 0 ? 'Comptant' : `Net ${n}j`;
+}
+
+function majSliderDelai(val) {
+  const n = parseInt(val);
+  document.getElementById('f-delai-paiement-val').textContent = n === 0 ? 'Comptant' : `${n} jours`;
+}
 
 // ── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -22,6 +31,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
   document.getElementById('form-fournisseur').addEventListener('submit', sauver);
+
+  // Slider délai paiement — mise à jour label en temps réel
+  const slider = document.getElementById('f-delai-paiement');
+  slider.addEventListener('input', () => majSliderDelai(slider.value));
+  majSliderDelai(slider.value);
 });
 
 // ── Chargement ───────────────────────────────────────────────
@@ -73,9 +87,14 @@ function afficherTable() {
         : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${escHtml(f.telephone || '—')}</td>
       <td>${f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
-        ? `<span class="ach-badge ach-badge--dlc">${DELAI_LABELS[String(f.delai_paiement_jours)] ?? f.delai_paiement_jours+'j'}</span>`
+        ? `<span class="ach-badge ach-badge--dlc">${fmtDelai(f.delai_paiement_jours)}</span>`
         : '<span style="color:#9ca3af">—</span>'}</td>
-      <td>${fmtJoursLivraison(f.jours_livraison)}</td>
+      <td>
+        ${f.rythme_livraison ? `<span class="ach-badge ach-badge--confirmee">${escHtml(f.rythme_livraison)}</span> ` : ''}
+        ${f.heure_limite_commande ? `<span style="font-size:var(--text-xs);color:#6b7280;">cmd avant ${escHtml(f.heure_limite_commande)}</span>` : ''}
+        ${f.heure_livraison ? `<span style="font-size:var(--text-xs);color:#6b7280;"> · liv. ${escHtml(f.heure_livraison)}</span>` : ''}
+        <div style="margin-top:2px;">${fmtJoursLivraison(f.jours_livraison)}</div>
+      </td>
       <td class="ach-col-num">${f.nb_articles ?? 0}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEditionModal(${f.id})">Modifier</button>
@@ -104,9 +123,13 @@ function ouvrirEditionModal(id) {
   document.getElementById('f-email').value = f.email_commercial || '';
   document.getElementById('f-telephone').value = f.telephone || '';
   document.getElementById('f-adresse').value = f.adresse || '';
-  document.getElementById('f-delai-paiement').value =
-    f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
-      ? String(f.delai_paiement_jours) : '';
+  const delai = f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
+    ? f.delai_paiement_jours : 0;
+  document.getElementById('f-delai-paiement').value = delai;
+  majSliderDelai(delai);
+  document.getElementById('f-rythme-livraison').value = f.rythme_livraison || '';
+  document.getElementById('f-heure-limite-commande').value = f.heure_limite_commande || '';
+  document.getElementById('f-heure-livraison').value = f.heure_livraison || '';
   document.getElementById('f-commentaire').value = f.commentaire || '';
 
   // Cocher les jours de livraison
@@ -124,10 +147,13 @@ function fermerModal() {
 }
 
 function viderForm() {
-  ['f-id','f-nom','f-email','f-telephone','f-adresse','f-commentaire'].forEach(id => {
+  ['f-id','f-nom','f-email','f-telephone','f-adresse',
+   'f-heure-limite-commande','f-heure-livraison','f-commentaire'].forEach(id => {
     document.getElementById(id).value = '';
   });
-  document.getElementById('f-delai-paiement').value = '';
+  document.getElementById('f-delai-paiement').value = 0;
+  majSliderDelai(0);
+  document.getElementById('f-rythme-livraison').value = '';
   document.querySelectorAll('#f-jours-livraison-wrap input[type="checkbox"]').forEach(cb => {
     cb.checked = false;
   });
@@ -152,17 +178,19 @@ async function sauver(e) {
   btn.disabled = true;
   btn.textContent = 'Enregistrement…';
 
-  const delaiRaw = document.getElementById('f-delai-paiement').value;
   const jours = lireJoursCochés();
 
   const body = {
-    nom:                  document.getElementById('f-nom').value.trim(),
-    email_commercial:     document.getElementById('f-email').value.trim() || null,
-    telephone:            document.getElementById('f-telephone').value.trim() || null,
-    adresse:              document.getElementById('f-adresse').value.trim() || null,
-    delai_paiement_jours: delaiRaw !== '' ? parseInt(delaiRaw) : null,
-    jours_livraison:      jours.length ? JSON.stringify(jours) : null,
-    commentaire:          document.getElementById('f-commentaire').value.trim() || null,
+    nom:                    document.getElementById('f-nom').value.trim(),
+    email_commercial:       document.getElementById('f-email').value.trim() || null,
+    telephone:              document.getElementById('f-telephone').value.trim() || null,
+    adresse:                document.getElementById('f-adresse').value.trim() || null,
+    delai_paiement_jours:   parseInt(document.getElementById('f-delai-paiement').value),
+    rythme_livraison:       document.getElementById('f-rythme-livraison').value || null,
+    heure_limite_commande:  document.getElementById('f-heure-limite-commande').value || null,
+    heure_livraison:        document.getElementById('f-heure-livraison').value || null,
+    jours_livraison:        jours.length ? JSON.stringify(jours) : null,
+    commentaire:            document.getElementById('f-commentaire').value.trim() || null,
   };
 
   try {

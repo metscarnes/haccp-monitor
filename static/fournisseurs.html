@@ -93,15 +93,32 @@
           Conditions commerciales
         </div>
         <div class="ach-champ">
-          <label>Délai de paiement</label>
-          <select id="f-delai-paiement">
+          <label>Délai de paiement (jours)</label>
+          <div style="display:flex;align-items:center;gap:var(--space-3);margin-top:4px;">
+            <input type="range" id="f-delai-paiement" min="0" max="90" step="1" value="0"
+                   style="flex:1;accent-color:var(--color-accent);">
+            <span id="f-delai-paiement-val" style="font-weight:700;font-size:var(--text-base);min-width:60px;text-align:right;">Comptant</span>
+          </div>
+          <span class="ach-hint">0 = comptant — faites glisser pour ajuster</span>
+        </div>
+        <div class="ach-champ">
+          <label>Rythme de livraison</label>
+          <select id="f-rythme-livraison">
             <option value="">— Non renseigné</option>
-            <option value="0">Comptant (0 jour)</option>
-            <option value="30">Net 30 jours</option>
-            <option value="45">Net 45 jours</option>
-            <option value="60">Net 60 jours</option>
-            <option value="90">Net 90 jours</option>
+            <option value="A-B">A-B — Commande J, livraison J+1</option>
+            <option value="A-C">A-C — Commande J, livraison J+2</option>
+            <option value="A-D">A-D — Commande J, livraison J+3</option>
           </select>
+        </div>
+        <div class="ach-champ">
+          <label>Heure limite de commande</label>
+          <input type="time" id="f-heure-limite-commande" placeholder="ex : 12:00">
+          <span class="ach-hint">Heure max pour passer commande</span>
+        </div>
+        <div class="ach-champ">
+          <label>Heure de livraison</label>
+          <input type="time" id="f-heure-livraison" placeholder="ex : 08:00">
+          <span class="ach-hint">Heure habituelle de passage</span>
         </div>
         <div class="ach-champ ach-champ--full">
           <label>Jours de livraison</label>

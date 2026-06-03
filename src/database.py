@@ -183,10 +183,13 @@ CREATE TABLE IF NOT EXISTS fournisseurs (
     telephone            TEXT,
     adresse              TEXT,
     conditions_paiement  TEXT,
-    delai_paiement_jours INTEGER,
-    jours_livraison      TEXT,    -- JSON array ["lundi","mercredi",...]
-    commentaire          TEXT,
-    actif                BOOLEAN DEFAULT 1,
+    delai_paiement_jours  INTEGER,
+    jours_livraison       TEXT,    -- JSON array ["lundi","mercredi",...]
+    rythme_livraison      TEXT,    -- 'A-B' | 'A-C' | 'A-D'
+    heure_limite_commande TEXT,    -- "12:00"
+    heure_livraison       TEXT,    -- "08:00"
+    commentaire           TEXT,
+    actif                 BOOLEAN DEFAULT 1,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
 );
 
@@ -1157,10 +1160,13 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE fournisseurs ADD COLUMN telephone TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN adresse TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN conditions_paiement TEXT",
-            # v5.1 — Fournisseurs : délai paiement structuré, jours livraison, commentaire
+            # v5.1 — Fournisseurs : délai paiement, jours livraison, commentaire, rythme, heures
             "ALTER TABLE fournisseurs ADD COLUMN delai_paiement_jours INTEGER",
             "ALTER TABLE fournisseurs ADD COLUMN jours_livraison TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN commentaire TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN rythme_livraison TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN heure_limite_commande TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN heure_livraison TEXT",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",
