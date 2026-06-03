@@ -40,7 +40,6 @@ function bindEvents() {
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
-  document.getElementById('a-dlc-type').addEventListener('change', toggleDlcJours);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -101,6 +100,7 @@ function afficherTable(liste) {
       <td><code>${escHtml(a.code_article)}</code></td>
       <td class="ach-cell-nom">${escHtml(a.designation)}${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}</td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
+      <td><span class="ach-badge ach-badge--${a.format_prix === 'piece' ? 'abattage' : 'dlc'}">${a.format_prix === 'piece' ? '€/pièce' : '€/kg'}</span></td>
       <td>${a.tva_percent ?? 5.5}%</td>
       <td>${escHtml(a.conditionnement || '—')}</td>
       <td>
@@ -137,11 +137,10 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-code').value = a.code_article;
   document.getElementById('a-designation').value = a.designation;
   document.getElementById('a-prix').value = a.prix_achat_ht;
+  document.getElementById('a-format-prix').value = a.format_prix || 'kg';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
   document.getElementById('a-conditionnement').value = a.conditionnement || '';
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
-  document.getElementById('a-dlc-jours').value = a.dlc_jours || '';
-  toggleDlcJours();
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
 }
@@ -154,15 +153,10 @@ function viderForm() {
   ['a-id','a-code','a-designation','a-prix','a-conditionnement','a-dlc-jours'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  document.getElementById('a-format-prix').value = 'kg';
   document.getElementById('a-tva').value = '5.5';
   document.getElementById('a-dlc-type').value = 'dlc';
   document.getElementById('form-erreur').hidden = true;
-  toggleDlcJours();
-}
-
-function toggleDlcJours() {
-  const type = document.getElementById('a-dlc-type').value;
-  document.getElementById('champ-dlc-jours').style.display = type === 'dlc' ? '' : 'none';
 }
 
 async function sauver(e) {
@@ -175,10 +169,10 @@ async function sauver(e) {
     code_article:    document.getElementById('a-code').value.trim(),
     designation:     document.getElementById('a-designation').value.trim(),
     prix_achat_ht:   parseFloat(document.getElementById('a-prix').value),
+    format_prix:     document.getElementById('a-format-prix').value,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),
     conditionnement: document.getElementById('a-conditionnement').value.trim() || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
-    dlc_jours:       document.getElementById('a-dlc-jours').value ? parseInt(document.getElementById('a-dlc-jours').value) : null,
   };
 
   try {
