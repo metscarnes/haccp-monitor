@@ -45,13 +45,14 @@
           <th>Nom</th>
           <th>Email commercial</th>
           <th>Téléphone</th>
-          <th>Conditions</th>
+          <th>Délai paiement</th>
+          <th>Livraisons</th>
           <th class="ach-col-num">Articles</th>
           <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="tbody-fournisseurs">
-        <tr><td colspan="6" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="7" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
@@ -65,6 +66,11 @@
       </header>
       <form class="ach-form" id="form-fournisseur" autocomplete="off">
         <input type="hidden" id="f-id">
+
+        <!-- ── Coordonnées ── -->
+        <div class="ach-champ ach-champ--full" style="grid-column:1/-1;font-size:var(--text-sm);font-weight:700;color:var(--color-accent);padding-bottom:2px;border-bottom:2px solid #e8d9c4;">
+          Coordonnées
+        </div>
         <div class="ach-champ ach-champ--full">
           <label>Nom <span class="ach-req">*</span></label>
           <input type="text" id="f-nom" required placeholder="Ex : Socopa, Bigard…">
@@ -81,10 +87,44 @@
           <label>Adresse</label>
           <input type="text" id="f-adresse" placeholder="Rue, code postal, ville">
         </div>
-        <div class="ach-champ ach-champ--full">
-          <label>Conditions de paiement</label>
-          <input type="text" id="f-conditions" placeholder="Ex : Net 30, comptant…">
+
+        <!-- ── Conditions commerciales ── -->
+        <div class="ach-champ ach-champ--full" style="font-size:var(--text-sm);font-weight:700;color:var(--color-accent);padding-bottom:2px;border-bottom:2px solid #e8d9c4;margin-top:var(--space-2);">
+          Conditions commerciales
         </div>
+        <div class="ach-champ">
+          <label>Délai de paiement</label>
+          <select id="f-delai-paiement">
+            <option value="">— Non renseigné</option>
+            <option value="0">Comptant (0 jour)</option>
+            <option value="30">Net 30 jours</option>
+            <option value="45">Net 45 jours</option>
+            <option value="60">Net 60 jours</option>
+            <option value="90">Net 90 jours</option>
+          </select>
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Jours de livraison</label>
+          <div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:4px;" id="f-jours-livraison-wrap">
+            <label class="f-jour-chk"><input type="checkbox" value="lundi">    Lundi</label>
+            <label class="f-jour-chk"><input type="checkbox" value="mardi">    Mardi</label>
+            <label class="f-jour-chk"><input type="checkbox" value="mercredi"> Mercredi</label>
+            <label class="f-jour-chk"><input type="checkbox" value="jeudi">    Jeudi</label>
+            <label class="f-jour-chk"><input type="checkbox" value="vendredi"> Vendredi</label>
+            <label class="f-jour-chk"><input type="checkbox" value="samedi">   Samedi</label>
+          </div>
+          <span class="ach-hint">Jours habituels de passage du livreur</span>
+        </div>
+
+        <!-- ── Commentaire ── -->
+        <div class="ach-champ ach-champ--full" style="font-size:var(--text-sm);font-weight:700;color:var(--color-accent);padding-bottom:2px;border-bottom:2px solid #e8d9c4;margin-top:var(--space-2);">
+          Commentaire
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Notes internes</label>
+          <textarea id="f-commentaire" placeholder="Informations utiles : interlocuteur, accès, particularités…"></textarea>
+        </div>
+
         <div id="form-erreur" class="ach-form-erreur" hidden></div>
         <div class="ach-modal-footer">
           <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
@@ -93,6 +133,29 @@
       </form>
     </div>
   </div>
+
+  <style>
+    .f-jour-chk {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f3ebdf;
+      border: 1px solid #d4c5af;
+      border-radius: var(--radius-sm);
+      padding: .4rem .8rem;
+      font-size: var(--text-sm);
+      font-weight: 600;
+      cursor: pointer;
+      min-height: var(--btn-min-sm);
+      user-select: none;
+    }
+    .f-jour-chk input { width: 16px; height: 16px; accent-color: var(--color-accent); }
+    .f-jour-chk:has(input:checked) {
+      background: var(--color-accent);
+      color: #fff;
+      border-color: var(--color-accent);
+    }
+  </style>
 
   <script src="/static/js/achats/fournisseurs.js"></script>
 </body>

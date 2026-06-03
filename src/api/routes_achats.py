@@ -51,6 +51,9 @@ class FournisseurCreate(BaseModel):
     telephone: Optional[str] = None
     adresse: Optional[str] = None
     conditions_paiement: Optional[str] = None
+    delai_paiement_jours: Optional[int] = None   # 0=comptant, 30, 45, 60, 90
+    jours_livraison: Optional[str] = None         # JSON array ex: ["lundi","mercredi"]
+    commentaire: Optional[str] = None
     actif: Optional[bool] = True
 
 
@@ -60,6 +63,9 @@ class FournisseurUpdate(BaseModel):
     telephone: Optional[str] = None
     adresse: Optional[str] = None
     conditions_paiement: Optional[str] = None
+    delai_paiement_jours: Optional[int] = None
+    jours_livraison: Optional[str] = None
+    commentaire: Optional[str] = None
     actif: Optional[bool] = None
 
 
@@ -146,9 +152,13 @@ async def get_fournisseurs_achats(actif_only: bool = Query(True)):
 async def create_fournisseur_achats(body: FournisseurCreate):
     async with get_db() as db:
         cur = await db.execute(
-            """INSERT INTO fournisseurs (boutique_id, nom, email_commercial, telephone, adresse, conditions_paiement, actif)
-               VALUES (1, ?, ?, ?, ?, ?, ?)""",
-            (body.nom, body.email_commercial, body.telephone, body.adresse, body.conditions_paiement, 1 if body.actif else 0)
+            """INSERT INTO fournisseurs
+               (boutique_id, nom, email_commercial, telephone, adresse,
+                conditions_paiement, delai_paiement_jours, jours_livraison, commentaire, actif)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.nom, body.email_commercial, body.telephone, body.adresse,
+             body.conditions_paiement, body.delai_paiement_jours, body.jours_livraison,
+             body.commentaire, 1 if body.actif else 0)
         )
         await db.commit()
         fid = cur.lastrowid

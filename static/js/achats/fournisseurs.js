@@ -4,6 +4,17 @@ const API = '/api/achats/fournisseurs';
 let fournisseurs = [];
 let modeEdition = false;
 
+const DELAI_LABELS = {
+  '0': 'Comptant',
+  '30': 'Net 30j',
+  '45': 'Net 45j',
+  '60': 'Net 60j',
+  '90': 'Net 90j',
+};
+
+const JOURS_ORDRE = ['lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+const JOURS_ABREV = { lundi:'L', mardi:'Ma', mercredi:'Me', jeudi:'J', vendredi:'V', samedi:'S' };
+
 // ── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   charger();
@@ -33,18 +44,38 @@ function afficherStats() {
   document.getElementById('stat-sans-email').textContent = actifs.length - avecEmail.length;
 }
 
+function fmtJoursLivraison(json) {
+  if (!json) return '<span style="color:#9ca3af">—</span>';
+  try {
+    const jours = typeof json === 'string' ? JSON.parse(json) : json;
+    if (!jours.length) return '<span style="color:#9ca3af">—</span>';
+    return jours
+      .sort((a,b) => JOURS_ORDRE.indexOf(a) - JOURS_ORDRE.indexOf(b))
+      .map(j => `<span class="ach-badge ach-badge--confirmee">${JOURS_ABREV[j] ?? j}</span>`)
+      .join(' ');
+  } catch { return escHtml(json); }
+}
+
 function afficherTable() {
   const tbody = document.getElementById('tbody-fournisseurs');
   if (!fournisseurs.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="ach-vide">Aucun fournisseur — cliquez sur "+ Nouveau"</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="ach-vide">Aucun fournisseur — cliquez sur "+ Nouveau"</td></tr>';
     return;
   }
   tbody.innerHTML = fournisseurs.map(f => `
     <tr>
-      <td class="ach-cell-nom">${escHtml(f.nom)}${!f.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}</td>
-      <td>${f.email_commercial ? `<a href="mailto:${escHtml(f.email_commercial)}">${escHtml(f.email_commercial)}</a>` : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-cell-nom">
+        ${escHtml(f.nom)}${!f.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
+        ${f.commentaire ? `<div style="font-size:var(--text-xs);color:#6b7280;font-weight:400;margin-top:2px;">${escHtml(f.commentaire.slice(0,60))}${f.commentaire.length>60?'…':''}</div>` : ''}
+      </td>
+      <td>${f.email_commercial
+        ? `<a href="mailto:${escHtml(f.email_commercial)}">${escHtml(f.email_commercial)}</a>`
+        : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${escHtml(f.telephone || '—')}</td>
-      <td>${escHtml(f.conditions_paiement || '—')}</td>
+      <td>${f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
+        ? `<span class="ach-badge ach-badge--dlc">${DELAI_LABELS[String(f.delai_paiement_jours)] ?? f.delai_paiement_jours+'j'}</span>`
+        : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>${fmtJoursLivraison(f.jours_livraison)}</td>
       <td class="ach-col-num">${f.nb_articles ?? 0}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEditionModal(${f.id})">Modifier</button>
@@ -73,7 +104,17 @@ function ouvrirEditionModal(id) {
   document.getElementById('f-email').value = f.email_commercial || '';
   document.getElementById('f-telephone').value = f.telephone || '';
   document.getElementById('f-adresse').value = f.adresse || '';
-  document.getElementById('f-conditions').value = f.conditions_paiement || '';
+  document.getElementById('f-delai-paiement').value =
+    f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
+      ? String(f.delai_paiement_jours) : '';
+  document.getElementById('f-commentaire').value = f.commentaire || '';
+
+  // Cocher les jours de livraison
+  const joursCoches = parseJours(f.jours_livraison);
+  document.querySelectorAll('#f-jours-livraison-wrap input[type="checkbox"]').forEach(cb => {
+    cb.checked = joursCoches.includes(cb.value);
+  });
+
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-fournisseur').hidden = false;
 }
@@ -83,10 +124,25 @@ function fermerModal() {
 }
 
 function viderForm() {
-  ['f-id','f-nom','f-email','f-telephone','f-adresse','f-conditions'].forEach(id => {
+  ['f-id','f-nom','f-email','f-telephone','f-adresse','f-commentaire'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  document.getElementById('f-delai-paiement').value = '';
+  document.querySelectorAll('#f-jours-livraison-wrap input[type="checkbox"]').forEach(cb => {
+    cb.checked = false;
+  });
   document.getElementById('form-erreur').hidden = true;
+}
+
+function parseJours(json) {
+  if (!json) return [];
+  try { return typeof json === 'string' ? JSON.parse(json) : json; }
+  catch { return []; }
+}
+
+function lireJoursCochés() {
+  return [...document.querySelectorAll('#f-jours-livraison-wrap input[type="checkbox"]:checked')]
+    .map(cb => cb.value);
 }
 
 // ── Sauvegarde ───────────────────────────────────────────────
@@ -96,12 +152,17 @@ async function sauver(e) {
   btn.disabled = true;
   btn.textContent = 'Enregistrement…';
 
+  const delaiRaw = document.getElementById('f-delai-paiement').value;
+  const jours = lireJoursCochés();
+
   const body = {
     nom:                  document.getElementById('f-nom').value.trim(),
     email_commercial:     document.getElementById('f-email').value.trim() || null,
     telephone:            document.getElementById('f-telephone').value.trim() || null,
     adresse:              document.getElementById('f-adresse').value.trim() || null,
-    conditions_paiement:  document.getElementById('f-conditions').value.trim() || null,
+    delai_paiement_jours: delaiRaw !== '' ? parseInt(delaiRaw) : null,
+    jours_livraison:      jours.length ? JSON.stringify(jours) : null,
+    commentaire:          document.getElementById('f-commentaire').value.trim() || null,
   };
 
   try {
