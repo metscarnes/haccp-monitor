@@ -47,21 +47,23 @@ router = APIRouter(prefix="/api/achats", tags=["achats"])
 
 class FournisseurCreate(BaseModel):
     nom: str
+    nom_commercial: Optional[str] = None
     email_commercial: Optional[str] = None
     telephone: Optional[str] = None
     adresse: Optional[str] = None
     conditions_paiement: Optional[str] = None
     delai_paiement_jours: Optional[int] = None
-    jours_livraison: Optional[str] = None          # JSON array ex: ["lundi","mercredi"]
-    rythme_livraison: Optional[str] = None         # 'A-B' | 'A-C' | 'A-D'
-    heure_limite_commande: Optional[str] = None    # "12:00"
-    heure_livraison: Optional[str] = None          # "08:00"
+    jours_livraison: Optional[str] = None
+    rythme_livraison: Optional[str] = None
+    heure_limite_commande: Optional[str] = None
+    heure_livraison: Optional[str] = None
     commentaire: Optional[str] = None
     actif: Optional[bool] = True
 
 
 class FournisseurUpdate(BaseModel):
     nom: Optional[str] = None
+    nom_commercial: Optional[str] = None
     email_commercial: Optional[str] = None
     telephone: Optional[str] = None
     adresse: Optional[str] = None
@@ -159,12 +161,12 @@ async def create_fournisseur_achats(body: FournisseurCreate):
     async with get_db() as db:
         cur = await db.execute(
             """INSERT INTO fournisseurs
-               (boutique_id, nom, email_commercial, telephone, adresse,
+               (boutique_id, nom, nom_commercial, email_commercial, telephone, adresse,
                 conditions_paiement, delai_paiement_jours, jours_livraison,
                 rythme_livraison, heure_limite_commande, heure_livraison,
                 commentaire, actif)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (body.nom, body.email_commercial, body.telephone, body.adresse,
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.nom, body.nom_commercial, body.email_commercial, body.telephone, body.adresse,
              body.conditions_paiement, body.delai_paiement_jours, body.jours_livraison,
              body.rythme_livraison, body.heure_limite_commande, body.heure_livraison,
              body.commentaire, 1 if body.actif else 0)

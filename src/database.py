@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS fournisseurs (
     telephone            TEXT,
     adresse              TEXT,
     conditions_paiement  TEXT,
+    nom_commercial        TEXT,
     delai_paiement_jours  INTEGER,
     jours_livraison       TEXT,    -- JSON array ["lundi","mercredi",...]
     rythme_livraison      TEXT,    -- 'A-B' | 'A-C' | 'A-D'
@@ -1167,6 +1168,7 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE fournisseurs ADD COLUMN rythme_livraison TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN heure_limite_commande TEXT",
             "ALTER TABLE fournisseurs ADD COLUMN heure_livraison TEXT",
+            "ALTER TABLE fournisseurs ADD COLUMN nom_commercial TEXT",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",

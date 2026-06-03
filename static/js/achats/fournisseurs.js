@@ -82,9 +82,12 @@ function afficherTable() {
         ${escHtml(f.nom)}${!f.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
         ${f.commentaire ? `<div style="font-size:var(--text-xs);color:#6b7280;font-weight:400;margin-top:2px;">${escHtml(f.commentaire.slice(0,60))}${f.commentaire.length>60?'…':''}</div>` : ''}
       </td>
-      <td>${f.email_commercial
-        ? `<a href="mailto:${escHtml(f.email_commercial)}">${escHtml(f.email_commercial)}</a>`
-        : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>
+        ${f.nom_commercial ? `<div style="font-weight:600;">${escHtml(f.nom_commercial)}</div>` : ''}
+        ${f.email_commercial
+          ? `<a href="mailto:${escHtml(f.email_commercial)}" style="font-size:var(--text-xs);">${escHtml(f.email_commercial)}</a>`
+          : '<span style="color:#9ca3af">—</span>'}
+      </td>
       <td>${escHtml(f.telephone || '—')}</td>
       <td>${f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
         ? `<span class="ach-badge ach-badge--dlc">${fmtDelai(f.delai_paiement_jours)}</span>`
@@ -120,6 +123,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('modal-titre').textContent = 'Modifier — ' + f.nom;
   document.getElementById('f-id').value = f.id;
   document.getElementById('f-nom').value = f.nom;
+  document.getElementById('f-nom-commercial').value = f.nom_commercial || '';
   document.getElementById('f-email').value = f.email_commercial || '';
   document.getElementById('f-telephone').value = f.telephone || '';
   document.getElementById('f-adresse').value = f.adresse || '';
@@ -147,7 +151,7 @@ function fermerModal() {
 }
 
 function viderForm() {
-  ['f-id','f-nom','f-email','f-telephone','f-adresse',
+  ['f-id','f-nom','f-nom-commercial','f-email','f-telephone','f-adresse',
    'f-heure-limite-commande','f-heure-livraison','f-commentaire'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -182,6 +186,7 @@ async function sauver(e) {
 
   const body = {
     nom:                    document.getElementById('f-nom').value.trim(),
+    nom_commercial:         document.getElementById('f-nom-commercial').value.trim() || null,
     email_commercial:       document.getElementById('f-email').value.trim() || null,
     telephone:              document.getElementById('f-telephone').value.trim() || null,
     adresse:                document.getElementById('f-adresse').value.trim() || null,
