@@ -66,6 +66,13 @@ function bindEvents() {
     majBarreMasse();
   });
 
+  // Délégation : un seul listener sur tbody pour toutes les checkboxes lignes
+  document.getElementById('tbody-catalogue').addEventListener('change', e => {
+    if (e.target.classList.contains('chk-article')) {
+      majBarreMasse();
+    }
+  });
+
   // Actions en masse
   document.getElementById('btn-masse-modifier').addEventListener('click', ouvrirModalMasse);
   document.getElementById('btn-masse-desactiver').addEventListener('click', () => actionMasse('desactiver'));
@@ -219,11 +226,8 @@ function afficherTable(liste) {
     </tr>
   `).join('');
 
-  // Reset checkbox "tout sélectionner" + rebind checkboxes lignes
+  // Reset checkbox "tout sélectionner"
   document.getElementById('chk-tout').checked = false;
-  document.querySelectorAll('.chk-article').forEach(c => {
-    c.addEventListener('change', majBarreMasse);
-  });
 }
 
 // ── Sélection & Actions en masse ─────────────────────────────
