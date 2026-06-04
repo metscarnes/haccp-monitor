@@ -30,10 +30,11 @@ import logging
 from datetime import date, datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from src.api.routes_auth import require_admin
 from src.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -159,7 +160,7 @@ async def get_fournisseurs_achats(actif_only: bool = Query(True)):
 
 
 @router.post("/fournisseurs", status_code=201)
-async def create_fournisseur_achats(body: FournisseurCreate):
+async def create_fournisseur_achats(body: FournisseurCreate, _=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute(
             """INSERT INTO fournisseurs
@@ -180,7 +181,7 @@ async def create_fournisseur_achats(body: FournisseurCreate):
 
 
 @router.put("/fournisseurs/{fid}")
-async def update_fournisseur_achats(fid: int, body: FournisseurUpdate):
+async def update_fournisseur_achats(fid: int, body: FournisseurUpdate, _=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute("SELECT * FROM fournisseurs WHERE id = ?", (fid,))
         existing = await cur.fetchone()
@@ -371,7 +372,7 @@ async def import_catalogue_xlsx(fichier: bytes):
 from fastapi import UploadFile, File
 
 @router.post("/catalogue/import/upload", status_code=200)
-async def import_catalogue_upload(fichier: UploadFile = File(...)):
+async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(require_admin)):
     """Import Excel catalogue fournisseur."""
     try:
         import openpyxl
@@ -477,7 +478,7 @@ async def get_article(article_id: int):
 
 
 @router.post("/catalogue", status_code=201)
-async def create_article(body: CatalogueArticleCreate):
+async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin)):
     async with get_db() as db:
         cur_f = await db.execute("SELECT id FROM fournisseurs WHERE id = ? AND boutique_id = 1", (body.fournisseur_id,))
         if not await cur_f.fetchone():
@@ -503,7 +504,7 @@ async def create_article(body: CatalogueArticleCreate):
 
 
 @router.put("/catalogue/{article_id}")
-async def update_article(article_id: int, body: CatalogueArticleUpdate):
+async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
         if not await cur.fetchone():
@@ -524,7 +525,7 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate):
 
 
 @router.delete("/catalogue/{article_id}", status_code=204)
-async def delete_article(article_id: int):
+async def delete_article(article_id: int, _=Depends(require_admin)):
     async with get_db() as db:
         await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (article_id,))
         await db.commit()

@@ -51,7 +51,9 @@ _TEAM_PASSWORD_HASH = hashlib.sha256(
 
 # Pages/chemins réservés au rôle admin (un token « equipe » y est refusé).
 ADMIN_ONLY_PAGES = {"/admin.html", "/static/admin.html",
-                    "/catalogue.html", "/static/catalogue.html"}
+                    "/catalogue.html", "/static/catalogue.html",
+                    "/fournisseurs.html", "/static/fournisseurs.html",
+                    "/catalogue-achats.html", "/static/catalogue-achats.html"}
 
 # A-5 — Secret JWT : interdit de garder le secret par défaut en production.
 # En local (dev) on tolère le défaut pour ne pas bloquer le développement.

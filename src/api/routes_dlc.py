@@ -14,7 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from src.api.routes_auth import verify_token, _bearer, _decode_token
+from src.api.routes_auth import (
+    verify_token,
+    require_admin,
+    _bearer,
+    _decode_token,
+)
 
 import re
 
@@ -110,7 +115,7 @@ async def enregistrer_devenir(
     if body.statut not in STATUTS_DEVENIR:
         raise HTTPException(400, f"statut invalide (attendu : {STATUTS_DEVENIR})")
 
-    # La suppression (annule) est libre ; les autres statuts exigent un token admin.
+    # La suppression (annule) est libre ; les autres statuts exigent le rôle admin.
     if body.statut != "annule":
         if credentials is None:
             raise HTTPException(
@@ -118,7 +123,12 @@ async def enregistrer_devenir(
                 detail="Token manquant",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        _decode_token(credentials.credentials)
+        payload = _decode_token(credentials.credentials)
+        if payload.get("role", "admin") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès réservé à l'administrateur",
+            )
 
     async with get_db() as db:
         await create_dlc_devenir(
@@ -133,7 +143,10 @@ async def enregistrer_devenir(
 
 
 @router.post("/devenir/batch", status_code=201)
-async def enregistrer_devenir_batch(body: DevenirBatchCreate):
+async def enregistrer_devenir_batch(
+    body: DevenirBatchCreate,
+    _=Depends(require_admin),
+):
     """Traite en masse plusieurs DLCs (typiquement les expirées non traitées).
 
     Applique le même statut / personnel / commentaire à chaque item.
@@ -162,7 +175,7 @@ async def enregistrer_devenir_batch(body: DevenirBatchCreate):
 
 
 @router.put("/modifier-dlc")
-async def modifier_dlc(body: ModifierDlcCreate, _=Depends(verify_token)):
+async def modifier_dlc(body: ModifierDlcCreate, _=Depends(require_admin)):
     """Corrige la date DLC d'un enregistrement source (réception, fabrication, cuisson, refroidissement)."""
     if body.source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
@@ -285,7 +298,7 @@ async def get_parametres():
 
 
 @router.put("/parametres")
-async def update_parametres(body: ParametresDlc, _=Depends(verify_token)):
+async def update_parametres(body: ParametresDlc, _=Depends(require_admin)):
     if not (body.rouge_jours <= body.orange_jours <= body.jaune_jours):
         raise HTTPException(
             400,

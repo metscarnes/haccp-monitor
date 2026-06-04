@@ -58,8 +58,18 @@ function demanderMotDePasse() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: pwd }),
         });
-        if (res.ok) { const d = await res.json(); fermer(d.token); }
-        else { errEl.style.display = 'block'; input.value = ''; input.focus(); }
+        if (res.ok) {
+          const d = await res.json();
+          // Action sensible : seul le mot de passe ADMIN est accepté
+          // (le mot de passe équipe est refusé ici).
+          if (d.role === 'admin') {
+            fermer(d.token);
+          } else {
+            errEl.textContent = 'Mot de passe administrateur requis';
+            errEl.style.display = 'block'; input.value = ''; input.focus();
+          }
+        }
+        else { errEl.textContent = 'Mot de passe incorrect'; errEl.style.display = 'block'; input.value = ''; input.focus(); }
       } catch { errEl.textContent = 'Erreur réseau'; errEl.style.display = 'block'; }
       finally { okBtn.disabled = false; okBtn.textContent = 'Valider'; }
     };
