@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveauModal);
+  document.getElementById('btn-export').addEventListener('click', exporterCatalogue);
   document.getElementById('btn-import').addEventListener('click', () => {
     document.getElementById('modal-import').hidden = false;
   });
@@ -201,6 +202,13 @@ async function desactiver(id) {
   await fetch(`${API_CAT}/${id}`, { method: 'DELETE' });
   await chargerCatalogue();
   filtrer();
+}
+
+// ── Export Excel ─────────────────────────────────────────────
+function exporterCatalogue() {
+  const fournisseurId = document.getElementById('filtre-fournisseur').value;
+  const url = '/api/achats/catalogue/export' + (fournisseurId ? `?fournisseur_id=${fournisseurId}` : '');
+  window.location.href = url;
 }
 
 // ── Import Excel ─────────────────────────────────────────────

@@ -231,6 +231,71 @@ async def get_catalogue(
         return [dict(r) for r in await cur.fetchall()]
 
 
+@router.get("/catalogue/export")
+async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
+    """Exporte le catalogue fournisseur en Excel (filtre optionnel par fournisseur)."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        raise HTTPException(500, "openpyxl requis")
+
+    async with get_db() as db:
+        sql = """
+            SELECT c.*, f.nom AS fournisseur_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+        """
+        params = []
+        if fournisseur_id:
+            sql += " AND c.fournisseur_id = ?"
+            params.append(fournisseur_id)
+        sql += " ORDER BY f.nom, c.designation"
+        cur = await db.execute(sql, params)
+        articles = [dict(r) for r in await cur.fetchall()]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Catalogue Fournisseur"
+
+    cols = [
+        ("fournisseur_nom", "Fournisseur"),
+        ("code_article",    "Code article"),
+        ("designation",     "Désignation"),
+        ("prix_achat_ht",   "Prix achat HT (€)"),
+        ("format_prix",     "Format prix"),
+        ("unite_colis",     "Unité colis"),
+        ("tva_percent",     "TVA (%)"),
+        ("conditionnement", "Conditionnement"),
+        ("dlc_type",        "Type DLC"),
+    ]
+
+    header_fill = PatternFill("solid", fgColor="2D7D46")
+    for col_idx, (_, label) in enumerate(cols, 1):
+        cell = ws.cell(row=1, column=col_idx, value=label)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+        ws.column_dimensions[cell.column_letter].width = 22
+
+    for row_idx, art in enumerate(articles, 2):
+        for col_idx, (key, _) in enumerate(cols, 1):
+            ws.cell(row=row_idx, column=col_idx, value=art.get(key) or "")
+
+    ws.auto_filter.ref = f"A1:{ws.cell(row=1, column=len(cols)).column_letter}1"
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = "catalogue_fournisseur.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={fname}"}
+    )
+
+
 @router.get("/catalogue/template")
 async def download_template():
     """Télécharger le template Excel d'import catalogue fournisseur."""
