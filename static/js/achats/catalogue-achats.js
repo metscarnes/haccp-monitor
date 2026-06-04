@@ -230,11 +230,17 @@ function idsSelectionnes() {
 }
 
 function majBarreMasse() {
-  const ids = idsSelectionnes();
+  const ids   = idsSelectionnes();
   const barre = document.getElementById('barre-masse');
   const nbEl  = document.getElementById('masse-nb');
-  barre.hidden = ids.length === 0;
+  if (ids.length > 0) {
+    barre.removeAttribute('hidden');
+  } else {
+    barre.setAttribute('hidden', '');
+  }
   if (nbEl) nbEl.textContent = ids.length;
+  const modalNb = document.getElementById('masse-modal-nb');
+  if (modalNb) modalNb.textContent = ids.length;
 }
 
 async function actionMasse(action) {

@@ -109,10 +109,7 @@
   <div id="zone-erreur" class="ach-erreur" hidden></div>
 
   <!-- ── Barre actions en masse ── -->
-  <div id="barre-masse" hidden style="
-    display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;
-    padding:var(--space-2) var(--space-4);
-    background:#fef3c7; border-bottom:2px solid #fbbf24;">
+  <div id="barre-masse" hidden>
     <span style="font-weight:700;font-size:var(--text-sm);">
       <span id="masse-nb">0</span> article(s) sélectionné(s)
     </span>
@@ -188,6 +185,16 @@
     .ach-row--inactif { opacity: .5; }
     .ach-row--inactif .ach-cell-nom { text-decoration: line-through; }
     #table-catalogue thead th:hover { background: #e8d9c4; }
+
+    #barre-masse:not([hidden]) {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      padding: var(--space-2) var(--space-4);
+      background: #fef3c7;
+      border-bottom: 2px solid #fbbf24;
+    }
   </style>
 
   <!-- ── Modal article ── -->
