@@ -60,6 +60,12 @@ function bindEvents() {
   document.getElementById('filtre-inactifs').addEventListener('change', filtrer);
   document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
 
+  // Checkbox "tout sélectionner" — bindé une seule fois ici
+  document.getElementById('chk-tout').addEventListener('change', e => {
+    document.querySelectorAll('.chk-article').forEach(c => c.checked = e.target.checked);
+    majBarreMasse();
+  });
+
   // Actions en masse
   document.getElementById('btn-masse-modifier').addEventListener('click', ouvrirModalMasse);
   document.getElementById('btn-masse-desactiver').addEventListener('click', () => actionMasse('desactiver'));
@@ -213,12 +219,8 @@ function afficherTable(liste) {
     </tr>
   `).join('');
 
-  // Checkbox "tout sélectionner"
+  // Reset checkbox "tout sélectionner" + rebind checkboxes lignes
   document.getElementById('chk-tout').checked = false;
-  document.getElementById('chk-tout').addEventListener('change', e => {
-    document.querySelectorAll('.chk-article').forEach(c => c.checked = e.target.checked);
-    majBarreMasse();
-  });
   document.querySelectorAll('.chk-article').forEach(c => {
     c.addEventListener('change', majBarreMasse);
   });
