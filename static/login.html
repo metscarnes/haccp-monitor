@@ -124,8 +124,12 @@
 <div class="login-card">
   <div class="login-logo">🔐</div>
   <div>
-    <div class="login-title">Accès administrateur</div>
+    <div class="login-title">Connexion</div>
     <div class="login-subtitle">HACCP Monitor — Au Comptoir des Lilas</div>
+  </div>
+
+  <div id="login-admin-notice" style="display:none;background:#fef3c7;color:#92400e;border-radius:8px;padding:.65rem .9rem;font-size:.85rem;font-weight:600;text-align:center;">
+    Cette page est réservée à l'administrateur. Connectez-vous avec le mot de passe admin.
   </div>
 
   <div class="login-error" id="login-error">Mot de passe incorrect</div>
@@ -154,6 +158,12 @@
 
 <script>
   const REDIRECT_KEY = 'auth_redirect';
+
+  // Si on a été renvoyé ici depuis une page réservée à l'admin (?admin=1),
+  // on affiche un message d'explication.
+  if (new URLSearchParams(window.location.search).has('admin')) {
+    document.getElementById('login-admin-notice').style.display = 'block';
+  }
 
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();

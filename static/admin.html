@@ -275,6 +275,10 @@
         <h2 class="admin-section-titre">🔐 Sécurité</h2>
       </div>
       <div class="admin-section-body">
+        <h3 style="margin:0 0 .8rem;font-size:1rem">🔑 Mot de passe administrateur</h3>
+        <p class="admin-info-text" style="margin:0 0 1rem">
+          Mot de passe personnel (secret). Donne accès à <strong>tout</strong>, y compris cette page admin et le catalogue.
+        </p>
         <form id="form-chg-pwd" autocomplete="off" class="security-form">
           <div class="security-field">
             <label for="chg-old">Ancien mot de passe</label>
@@ -291,8 +295,29 @@
           <div id="chg-msg" class="security-msg"></div>
           <button type="submit" class="btn btn-primaire" id="chg-btn" style="align-self:flex-start">Changer le mot de passe</button>
         </form>
+
+        <hr style="margin:2rem 0;border:none;border-top:1px solid #e5d9c8">
+
+        <h3 style="margin:0 0 .8rem;font-size:1rem">👥 Mot de passe équipe</h3>
+        <p class="admin-info-text" style="margin:0 0 1rem">
+          Mot de passe à communiquer aux employés pour qu'ils accèdent au site (DLC, tâches, réception…).
+          Il ne donne <strong>pas</strong> accès à cette page admin ni au catalogue.
+        </p>
+        <form id="form-chg-team-pwd" autocomplete="off" class="security-form">
+          <div class="security-field">
+            <label for="team-new">Nouveau mot de passe équipe</label>
+            <input type="password" id="team-new" placeholder="••••••••" required minlength="6">
+          </div>
+          <div class="security-field">
+            <label for="team-confirm">Confirmer le mot de passe équipe</label>
+            <input type="password" id="team-confirm" placeholder="••••••••" required minlength="6">
+          </div>
+          <div id="team-msg" class="security-msg"></div>
+          <button type="submit" class="btn btn-primaire" id="team-btn" style="align-self:flex-start">Définir le mot de passe équipe</button>
+        </form>
+
         <p class="admin-info-text" style="margin-top:1rem">
-          Le changement est actif immédiatement et sauvegardé dans le fichier <code>.env</code> du serveur.
+          Les changements sont actifs immédiatement et sauvegardés dans le fichier <code>.env</code> du serveur.
         </p>
       </div>
     </section>
@@ -1778,6 +1803,56 @@
       }
       msgEl.style.display = 'block';
       btn.disabled = false; btn.textContent = 'Changer le mot de passe';
+    });
+
+    // ── Mot de passe équipe (réservé admin) ──────────────────
+    document.getElementById('form-chg-team-pwd').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn     = document.getElementById('team-btn');
+      const msgEl   = document.getElementById('team-msg');
+      const newPwd  = document.getElementById('team-new').value;
+      const confPwd = document.getElementById('team-confirm').value;
+
+      msgEl.style.display = 'none';
+
+      if (newPwd !== confPwd) {
+        msgEl.textContent = 'Les mots de passe ne correspondent pas.';
+        msgEl.style.background = '#fde8e8';
+        msgEl.style.color = 'var(--color-alert)';
+        msgEl.style.borderColor = 'var(--color-alert)';
+        msgEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true; btn.textContent = 'Enregistrement…';
+      try {
+        const res = await fetch('/api/auth/change-team-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_password: newPwd }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          msgEl.textContent = '✅ Mot de passe équipe défini avec succès !';
+          msgEl.style.background = '#d1fae5';
+          msgEl.style.color = 'var(--color-ok)';
+          msgEl.style.borderColor = 'var(--color-ok)';
+          document.getElementById('team-new').value = '';
+          document.getElementById('team-confirm').value = '';
+        } else {
+          msgEl.textContent = data.detail || 'Erreur lors du changement.';
+          msgEl.style.background = '#fde8e8';
+          msgEl.style.color = 'var(--color-alert)';
+          msgEl.style.borderColor = 'var(--color-alert)';
+        }
+      } catch {
+        msgEl.textContent = 'Erreur réseau.';
+        msgEl.style.background = '#fde8e8';
+        msgEl.style.color = 'var(--color-alert)';
+        msgEl.style.borderColor = 'var(--color-alert)';
+      }
+      msgEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Définir le mot de passe équipe';
     });
   </script>
 </body>

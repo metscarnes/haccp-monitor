@@ -41,6 +41,18 @@ _ADMIN_PASSWORD_HASH = hashlib.sha256(
     os.getenv("ADMIN_PASSWORD", "campiglia").encode()
 ).hexdigest()
 
+# Mot de passe « équipe » : permet d'entrer sur le site (employés), mais PAS
+# d'accéder aux pages réservées à l'admin (admin.html, catalogue.html).
+# Par défaut on prend ADMIN_PASSWORD pour ne rien casser tant qu'aucun mot de
+# passe équipe n'a été défini (un seul mot de passe = comportement d'avant).
+_TEAM_PASSWORD_HASH = hashlib.sha256(
+    os.getenv("TEAM_PASSWORD", os.getenv("ADMIN_PASSWORD", "campiglia")).encode()
+).hexdigest()
+
+# Pages/chemins réservés au rôle admin (un token « equipe » y est refusé).
+ADMIN_ONLY_PAGES = {"/admin.html", "/static/admin.html",
+                    "/catalogue.html", "/static/catalogue.html"}
+
 # A-5 — Secret JWT : interdit de garder le secret par défaut en production.
 # En local (dev) on tolère le défaut pour ne pas bloquer le développement.
 _DEFAULT_JWT_SECRET = "haccp-monitor-secret-key-change-in-prod-2026"
@@ -100,9 +112,10 @@ def _verifier_rate_limit_login(ip: str):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_token() -> str:
+def _make_token(role: str = "admin") -> str:
     payload = {
-        "sub": "admin",
+        "sub": "admin",          # conservé pour compatibilité (sessions existantes)
+        "role": role,            # "admin" = accès total ; "equipe" = sauf pages admin
         "exp": int(time.time()) + _JWT_EXPIRE,
         "iat": int(time.time()),
     }
@@ -126,11 +139,8 @@ def _decode_token(token: str) -> dict:
 _ENV_PATH = os.path.join(os.path.dirname(__file__), "..", "..", ".env")
 
 
-def _set_password(new_password: str):
-    """Met à jour le hash en mémoire ET écrit le nouveau mot de passe en clair dans .env."""
-    global _ADMIN_PASSWORD_HASH
-    _ADMIN_PASSWORD_HASH = hashlib.sha256(new_password.encode()).hexdigest()
-
+def _ecrire_env(cle: str, valeur: str):
+    """Écrit/met à jour `CLE=valeur` dans le fichier .env (créé si absent)."""
     env_path = os.path.abspath(_ENV_PATH)
     try:
         if os.path.exists(env_path):
@@ -138,19 +148,33 @@ def _set_password(new_password: str):
                 lines = f.readlines()
             updated = False
             for i, line in enumerate(lines):
-                if line.startswith("ADMIN_PASSWORD="):
-                    lines[i] = f"ADMIN_PASSWORD={new_password}\n"
+                if line.startswith(f"{cle}="):
+                    lines[i] = f"{cle}={valeur}\n"
                     updated = True
                     break
             if not updated:
-                lines.append(f"ADMIN_PASSWORD={new_password}\n")
+                lines.append(f"{cle}={valeur}\n")
         else:
-            lines = [f"ADMIN_PASSWORD={new_password}\n"]
+            lines = [f"{cle}={valeur}\n"]
 
         with open(env_path, "w", encoding="utf-8") as f:
             f.writelines(lines)
     except Exception:
         pass  # Si écriture impossible, le changement reste actif en mémoire uniquement
+
+
+def _set_password(new_password: str):
+    """Met à jour le hash admin en mémoire ET dans .env."""
+    global _ADMIN_PASSWORD_HASH
+    _ADMIN_PASSWORD_HASH = hashlib.sha256(new_password.encode()).hexdigest()
+    _ecrire_env("ADMIN_PASSWORD", new_password)
+
+
+def _set_team_password(new_password: str):
+    """Met à jour le hash du mot de passe équipe en mémoire ET dans .env."""
+    global _TEAM_PASSWORD_HASH
+    _TEAM_PASSWORD_HASH = hashlib.sha256(new_password.encode()).hexdigest()
+    _ecrire_env("TEAM_PASSWORD", new_password)
 
 
 def _send_reset_email(reset_url: str):
@@ -192,16 +216,24 @@ def extraire_token(request: Request) -> Optional[str]:
     return None
 
 
-def token_valide(request: Request) -> bool:
-    """True si la requête porte un JWT valide (header ou cookie). Ne lève rien."""
+def role_du_token(request: Request) -> Optional[str]:
+    """Retourne le rôle ("admin"/"equipe") si le JWT est valide, sinon None.
+    Les anciens tokens sans champ "role" sont considérés "admin" (compat)."""
     token = extraire_token(request)
     if not token:
-        return False
+        return None
     try:
         payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGO])
-        return payload.get("sub") == "admin"
+        if payload.get("sub") != "admin":
+            return None
+        return payload.get("role", "admin")
     except JWTError:
-        return False
+        return None
+
+
+def token_valide(request: Request) -> bool:
+    """True si la requête porte un JWT valide (header ou cookie). Ne lève rien."""
+    return role_du_token(request) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +258,16 @@ def verify_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return _decode_token(token)
+
+
+def require_admin(payload: dict = Depends(verify_token)):
+    """Dépendance : exige un token de rôle "admin" (refuse "equipe")."""
+    if payload.get("role", "admin") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé à l'administrateur",
+        )
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -253,12 +295,19 @@ async def login(body: LoginBody, request: Request, response: Response):
     _verifier_rate_limit_login(ip)
 
     given_hash = hashlib.sha256(body.password.encode()).hexdigest()
-    if given_hash != _ADMIN_PASSWORD_HASH:
+    # Mot de passe admin → rôle "admin" (accès total).
+    # Mot de passe équipe → rôle "equipe" (site sauf pages admin).
+    # On teste l'admin en premier : s'il est identique à l'équipe, on reste admin.
+    if given_hash == _ADMIN_PASSWORD_HASH:
+        role = "admin"
+    elif given_hash == _TEAM_PASSWORD_HASH:
+        role = "equipe"
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Mot de passe incorrect",
         )
-    token = _make_token()
+    token = _make_token(role)
     # Cookie HttpOnly : envoyé automatiquement par le navigateur sur chaque
     # requête same-origin → toutes les pages existantes sont authentifiées
     # sans modifier leur code. HttpOnly = inaccessible au JavaScript (anti-XSS).
@@ -271,7 +320,7 @@ async def login(body: LoginBody, request: Request, response: Response):
         secure=IS_PROD,  # HTTPS uniquement en prod (mettre l'appli en HTTPS idéalement)
         path="/",
     )
-    return {"token": token, "expires_in": _JWT_EXPIRE}
+    return {"token": token, "expires_in": _JWT_EXPIRE, "role": role}
 
 
 @router.post("/logout")
@@ -300,6 +349,25 @@ async def change_password(body: ChangePasswordBody):
         )
     _set_password(body.new_password)
     return {"ok": True, "message": "Mot de passe modifié. Pensez à mettre à jour votre fichier .env sur le serveur."}
+
+
+class ChangeTeamPasswordBody(BaseModel):
+    new_password: str
+
+
+@router.post("/change-team-password")
+async def change_team_password(
+    body: ChangeTeamPasswordBody,
+    _admin: dict = Depends(require_admin),  # seul l'admin peut le changer
+):
+    """Définit/modifie le mot de passe « équipe » (réservé à l'admin)."""
+    if len(body.new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Le mot de passe équipe doit faire au moins 6 caractères",
+        )
+    _set_team_password(body.new_password)
+    return {"ok": True, "message": "Mot de passe équipe modifié."}
 
 
 @router.post("/forgot-password")

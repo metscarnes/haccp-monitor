@@ -143,7 +143,10 @@ if _cors_origins:
 # Les chemins ci-dessous restent PUBLICS (nécessaires avant la connexion).
 # ---------------------------------------------------------------------------
 
-from src.api.routes_auth import token_valide  # noqa: E402  (après création app)
+from src.api.routes_auth import (  # noqa: E402  (après création app)
+    ADMIN_ONLY_PAGES,
+    role_du_token,
+)
 
 # Routes API publiques (exactes) — accessibles sans authentification.
 _PUBLIC_API_PATHS = {
@@ -191,18 +194,25 @@ async def controle_acces(request: Request, call_next):
     if request.method == "OPTIONS" or _est_public(path):
         return await call_next(request)
 
-    if token_valide(request):
-        return await call_next(request)
+    role = role_du_token(request)  # "admin", "equipe" ou None
 
-    # Non authentifié : réponse adaptée au type de ressource.
-    if path.startswith("/api/"):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Authentification requise"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    # Page HTML (ou autre) → on renvoie vers la page de connexion.
-    return RedirectResponse(url="/login.html", status_code=302)
+    if role is None:
+        # Non authentifié : réponse adaptée au type de ressource.
+        if path.startswith("/api/"):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Authentification requise"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # Page HTML (ou autre) → on renvoie vers la page de connexion.
+        return RedirectResponse(url="/login.html", status_code=302)
+
+    # Authentifié mais rôle « equipe » : les pages réservées à l'admin
+    # (admin.html, catalogue.html) restent interdites — comme avant.
+    if role != "admin" and path in ADMIN_ONLY_PAGES:
+        return RedirectResponse(url="/login.html?admin=1", status_code=302)
+
+    return await call_next(request)
 
 # Routes API — Phase 1
 app.include_router(router_boutiques)
