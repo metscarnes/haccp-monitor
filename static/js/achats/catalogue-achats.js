@@ -41,6 +41,7 @@ function bindEvents() {
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
+  document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -60,7 +61,7 @@ async function chargerCatalogue() {
     const r = await fetch(`${API_CAT}?actif_only=false`);
     articles = await r.json();
     afficherStats();
-    afficherTable(articles);
+    filtrer();
   } catch(e) {
     afficherErreur('Impossible de charger le catalogue : ' + e.message);
   }
@@ -76,10 +77,12 @@ function afficherStats() {
 }
 
 function filtrer() {
-  const fourn  = document.getElementById('filtre-fournisseur').value;
-  const dlc    = document.getElementById('filtre-dlc').value;
-  const search = document.getElementById('filtre-search').value.toLowerCase();
+  const fourn        = document.getElementById('filtre-fournisseur').value;
+  const dlc          = document.getElementById('filtre-dlc').value;
+  const search       = document.getElementById('filtre-search').value.toLowerCase();
+  const afficherTest = document.getElementById('filtre-afficher-test').checked;
   const filtre = articles.filter(a => {
+    if (!afficherTest && (a.fournisseur_nom || '').toLowerCase().includes('test')) return false;
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
     if (dlc && a.dlc_type !== dlc) return false;
     if (search && !a.designation.toLowerCase().includes(search) && !a.code_article.toLowerCase().includes(search)) return false;
