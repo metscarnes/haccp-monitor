@@ -133,7 +133,7 @@ async def enregistrer_devenir(
 
 
 @router.post("/devenir/batch", status_code=201)
-async def enregistrer_devenir_batch(body: DevenirBatchCreate, _=Depends(verify_token)):
+async def enregistrer_devenir_batch(body: DevenirBatchCreate):
     """Traite en masse plusieurs DLCs (typiquement les expirées non traitées).
 
     Applique le même statut / personnel / commentaire à chaque item.
