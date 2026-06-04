@@ -9,6 +9,7 @@ POST /api/auth/reset-password   → applique le nouveau mot de passe via token m
 """
 
 import hashlib
+import logging
 import os
 import secrets
 import smtplib
@@ -16,10 +17,12 @@ import time
 from email.mime.text import MIMEText
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -27,16 +30,34 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Config
 # ---------------------------------------------------------------------------
 
+# True quand l'application tourne en production (sur le Raspberry).
+# Met ENV=production (ou APP_ENV=production) dans le .env du serveur.
+IS_PROD = os.getenv("ENV", os.getenv("APP_ENV", "")).lower() in (
+    "prod",
+    "production",
+)
+
 _ADMIN_PASSWORD_HASH = hashlib.sha256(
     os.getenv("ADMIN_PASSWORD", "campiglia").encode()
 ).hexdigest()
 
-_JWT_SECRET = os.getenv(
-    "JWT_SECRET",
-    "haccp-monitor-secret-key-change-in-prod-2026",
-)
+# A-5 — Secret JWT : interdit de garder le secret par défaut en production.
+# En local (dev) on tolère le défaut pour ne pas bloquer le développement.
+_DEFAULT_JWT_SECRET = "haccp-monitor-secret-key-change-in-prod-2026"
+_JWT_SECRET = os.getenv("JWT_SECRET", _DEFAULT_JWT_SECRET)
+
+if IS_PROD and _JWT_SECRET == _DEFAULT_JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET non configuré en production. "
+        "Génère un secret aléatoire (ex: `python -c \"import secrets; "
+        "print(secrets.token_urlsafe(48))\"`) et place-le dans le .env du serveur."
+    )
+
 _JWT_ALGO   = "HS256"
 _JWT_EXPIRE = 8 * 3600  # 8 heures
+
+# Nom du cookie de session (posé à la connexion, lu par le middleware).
+COOKIE_NAME = "admin_token"
 
 # SMTP
 _SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -50,6 +71,29 @@ _APP_URL = os.getenv("APP_URL", "http://ulyssetest.ddns.net")
 # Simple et suffisant pour un seul admin — réinitialisé au redémarrage du service.
 _reset_tokens: dict[str, float] = {}
 _RESET_EXPIRE = 15 * 60  # 15 minutes
+
+# A-2 — Limitation de débit du login (anti brute-force), en mémoire.
+# Par IP : on garde les horodatages des tentatives sur une fenêtre glissante.
+_LOGIN_MAX_TENTATIVES = 5            # tentatives autorisées…
+_LOGIN_FENETRE_S = 60               # …par fenêtre de 60 s
+_login_tentatives: dict[str, list[float]] = {}
+
+
+def _verifier_rate_limit_login(ip: str):
+    """Lève 429 si l'IP a dépassé le quota de tentatives sur la fenêtre."""
+    maintenant = time.time()
+    tentatives = [
+        t for t in _login_tentatives.get(ip, []) if maintenant - t < _LOGIN_FENETRE_S
+    ]
+    if len(tentatives) >= _LOGIN_MAX_TENTATIVES:
+        retry = int(_LOGIN_FENETRE_S - (maintenant - tentatives[0])) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Trop de tentatives. Réessayez dans un instant.",
+            headers={"Retry-After": str(max(1, retry))},
+        )
+    tentatives.append(maintenant)
+    _login_tentatives[ip] = tentatives
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +175,36 @@ def _send_reset_email(reset_url: str):
 
 
 # ---------------------------------------------------------------------------
+# Extraction du token : en-tête Authorization OU cookie de session
+# ---------------------------------------------------------------------------
+
+def extraire_token(request: Request) -> Optional[str]:
+    """Récupère le JWT brut depuis l'en-tête `Authorization: Bearer …`
+    ou, à défaut, depuis le cookie de session. Retourne None si absent."""
+    auth = request.headers.get("Authorization") or request.headers.get(
+        "authorization"
+    )
+    if auth and auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    cookie = request.cookies.get(COOKIE_NAME)
+    if cookie:
+        return cookie.strip()
+    return None
+
+
+def token_valide(request: Request) -> bool:
+    """True si la requête porte un JWT valide (header ou cookie). Ne lève rien."""
+    token = extraire_token(request)
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGO])
+        return payload.get("sub") == "admin"
+    except JWTError:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Dépendance réutilisable dans les autres routers
 # ---------------------------------------------------------------------------
 
@@ -138,15 +212,20 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def verify_token(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ):
-    if credentials is None:
+    """Dépendance FastAPI : accepte le token via header Bearer ou cookie."""
+    token = credentials.credentials if credentials else request.cookies.get(
+        COOKIE_NAME
+    )
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token manquant",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return _decode_token(credentials.credentials)
+    return _decode_token(token)
 
 
 # ---------------------------------------------------------------------------
@@ -168,14 +247,37 @@ class ResetPasswordBody(BaseModel):
 
 
 @router.post("/login")
-async def login(body: LoginBody):
+async def login(body: LoginBody, request: Request, response: Response):
+    # A-2 — anti brute-force : limite par IP appelante.
+    ip = request.client.host if request.client else "inconnue"
+    _verifier_rate_limit_login(ip)
+
     given_hash = hashlib.sha256(body.password.encode()).hexdigest()
     if given_hash != _ADMIN_PASSWORD_HASH:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Mot de passe incorrect",
         )
-    return {"token": _make_token(), "expires_in": _JWT_EXPIRE}
+    token = _make_token()
+    # Cookie HttpOnly : envoyé automatiquement par le navigateur sur chaque
+    # requête same-origin → toutes les pages existantes sont authentifiées
+    # sans modifier leur code. HttpOnly = inaccessible au JavaScript (anti-XSS).
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        max_age=_JWT_EXPIRE,
+        httponly=True,
+        samesite="lax",
+        secure=IS_PROD,  # HTTPS uniquement en prod (mettre l'appli en HTTPS idéalement)
+        path="/",
+    )
+    return {"token": token, "expires_in": _JWT_EXPIRE}
+
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(key=COOKIE_NAME, path="/")
+    return {"ok": True}
 
 
 @router.get("/verify")

@@ -36,13 +36,28 @@ def anyio_backend():
     return "asyncio"
 
 
+# Mot de passe admin connu pour les tests (l'app hashe cette valeur au démarrage).
+os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
+
+
 @pytest_asyncio.fixture(scope="session")
 async def app_client():
-    """Client httpx branché directement sur l'app ASGI — pas de réseau."""
+    """Client httpx branché directement sur l'app ASGI — pas de réseau.
+
+    Depuis le durcissement de sécurité (A-1), toutes les routes /api/* exigent
+    une authentification. On se connecte une fois ici : le cookie de session
+    posé par /api/auth/login est ensuite réémis automatiquement par le client
+    httpx sur chaque requête, donc tous les tests héritent d'une session valide.
+    """
     from httpx import AsyncClient, ASGITransport
     from src.main import app
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.post(
+            "/api/auth/login",
+            json={"password": os.environ["ADMIN_PASSWORD"]},
+        )
+        assert resp.status_code == 200, f"login test échoué: {resp.status_code} {resp.text}"
         yield client
 
 

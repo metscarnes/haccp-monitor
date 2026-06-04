@@ -16,7 +16,12 @@ from pathlib import Path
 from dotenv import load_dotenv  # pip install python-dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 from src.database import init_db, get_db, purger_anciens_releves
@@ -93,19 +98,111 @@ async def lifespan(app: FastAPI):
 # Application
 # ---------------------------------------------------------------------------
 
+# A-5 — Détection prod (mettre ENV=production dans le .env du serveur)
+IS_PROD = os.getenv("ENV", os.getenv("APP_ENV", "")).lower() in ("prod", "production")
+
+# A-4 — En production, on n'expose pas la documentation interactive de l'API
+# (/docs, /redoc, /openapi.json) pour ne pas offrir la cartographie complète.
+_docs_kwargs = (
+    {"docs_url": None, "redoc_url": None, "openapi_url": None} if IS_PROD else {}
+)
+
 app = FastAPI(
     title="HACCP Monitor — Au Comptoir des Lilas",
     version="2.0.0",
     description="Monitoring HACCP complet — Mets Carnés Holding (Phase 2 : DLC, Réception, Tâches)",
     lifespan=lifespan,
+    **_docs_kwargs,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],   # Restreindre en prod
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS : avec une authentification par cookie, `allow_origins=["*"]` est interdit
+# si on autorise les credentials. L'appli étant servie en same-origin (la SPA et
+# l'API sont sur le même hôte), on n'a pas besoin d'ouvrir le CORS à d'autres
+# origines. On restreint donc à l'origine de l'app (configurable via CORS_ORIGINS).
+_cors_origins = [
+    o.strip()
+    for o in os.getenv("CORS_ORIGINS", os.getenv("APP_URL", "")).split(",")
+    if o.strip()
+]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# A-1 — Contrôle d'accès global
+#
+# Sans token valide (en-tête Authorization OU cookie de session) :
+#   • toute requête /api/*  → 401 JSON
+#   • toute page .html      → redirection vers /login.html
+# Les chemins ci-dessous restent PUBLICS (nécessaires avant la connexion).
+# ---------------------------------------------------------------------------
+
+from src.api.routes_auth import token_valide  # noqa: E402  (après création app)
+
+# Routes API publiques (exactes) — accessibles sans authentification.
+_PUBLIC_API_PATHS = {
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/verify",
+    "/api/auth/forgot-password",
+    "/api/auth/reset-password",
+    "/api/system/status",   # healthcheck
+}
+
+# Pages servies sans connexion (login + réinitialisation de mot de passe).
+# On couvre les deux chemins possibles : racine (/login.html) et statique
+# (/static/reset.html, utilisé dans le lien de réinitialisation envoyé par mail).
+_PUBLIC_PAGES = {
+    "/login.html",
+    "/reset.html",
+    "/static/login.html",
+    "/static/reset.html",
+}
+
+# Préfixes de ressources statiques toujours servies (CSS/JS/images/manifest…)
+# pour que la page de login s'affiche correctement.
+_PUBLIC_PREFIXES = ("/static/",)
+
+
+def _est_public(path: str) -> bool:
+    if path in _PUBLIC_PAGES or path in _PUBLIC_API_PATHS:
+        return True
+    # Ressources statiques (CSS/JS/images/manifest…) MAIS pas les pages .html :
+    # ces dernières vivent aussi dans static/ et doivent rester protégées.
+    if path.startswith(_PUBLIC_PREFIXES) and not path.lower().endswith(".html"):
+        return True
+    # Fichiers techniques racine (favicon, manifest, service worker…)
+    if path in ("/favicon.ico", "/manifest.json", "/sw.js", "/robots.txt"):
+        return True
+    return False
+
+
+@app.middleware("http")
+async def controle_acces(request: Request, call_next):
+    path = request.url.path
+
+    # Laisser passer les pré-vols CORS et les chemins publics.
+    if request.method == "OPTIONS" or _est_public(path):
+        return await call_next(request)
+
+    if token_valide(request):
+        return await call_next(request)
+
+    # Non authentifié : réponse adaptée au type de ressource.
+    if path.startswith("/api/"):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Authentification requise"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    # Page HTML (ou autre) → on renvoie vers la page de connexion.
+    return RedirectResponse(url="/login.html", status_code=302)
 
 # Routes API — Phase 1
 app.include_router(router_boutiques)
