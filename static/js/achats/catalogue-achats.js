@@ -61,9 +61,14 @@ function bindEvents() {
   document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
 
   // Actions en masse
+  document.getElementById('btn-masse-modifier').addEventListener('click', ouvrirModalMasse);
   document.getElementById('btn-masse-desactiver').addEventListener('click', () => actionMasse('desactiver'));
   document.getElementById('btn-masse-reactiver').addEventListener('click', () => actionMasse('reactiver'));
   document.getElementById('btn-masse-supprimer').addEventListener('click', () => actionMasse('supprimer'));
+  document.getElementById('modal-masse-fermer').addEventListener('click', fermerModalMasse);
+  document.getElementById('masse-annuler').addEventListener('click', fermerModalMasse);
+  document.getElementById('masse-champ').addEventListener('change', majZoneValeurMasse);
+  document.getElementById('masse-appliquer').addEventListener('click', appliquerMasse);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -251,6 +256,131 @@ async function actionMasse(action) {
     await chargerCatalogue();
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── Modal modification en masse ──────────────────────────────
+function ouvrirModalMasse() {
+  const ids = idsSelectionnes();
+  if (!ids.length) return;
+  document.getElementById('masse-modal-nb').textContent = ids.length;
+  document.getElementById('masse-champ').value = '';
+  document.getElementById('masse-valeur-zone').hidden = true;
+  document.getElementById('masse-valeur-zone').innerHTML = '';
+  document.getElementById('masse-erreur').hidden = true;
+  document.getElementById('masse-appliquer').disabled = true;
+  document.getElementById('modal-masse').hidden = false;
+}
+
+function fermerModalMasse() {
+  document.getElementById('modal-masse').hidden = true;
+}
+
+function majZoneValeurMasse() {
+  const champ = document.getElementById('masse-champ').value;
+  const zone  = document.getElementById('masse-valeur-zone');
+  document.getElementById('masse-appliquer').disabled = !champ;
+  if (!champ) { zone.hidden = true; zone.innerHTML = ''; return; }
+
+  const CHAMPS = {
+    fournisseur_id: {
+      label: 'Nouveau fournisseur',
+      html: () => {
+        const opts = fournisseurs.map(f => `<option value="${f.id}">${escHtml(f.nom)}</option>`).join('');
+        return `<select id="masse-val" class="ach-champ" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
+          <option value="">— Sélectionnez —</option>${opts}</select>`;
+      },
+    },
+    prix_achat_ht: {
+      label: 'Nouveau prix HT (€)',
+      html: () => `<input type="number" id="masse-val" min="0" step="0.01" placeholder="0.00"
+        style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">`,
+    },
+    format_prix: {
+      label: 'Nouveau format prix',
+      html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
+        <option value="kg">€ / kg</option>
+        <option value="piece">€ / pièce</option></select>`,
+    },
+    unite_colis: {
+      label: 'Nouvelle unité colis',
+      html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
+        <option value="">— Vider —</option>
+        <option value="carton">Carton</option>
+        <option value="carcasse">Carcasse</option>
+        <option value="filet">Filet</option>
+        <option value="plateau">Plateau</option>
+        <option value="barquette">Barquette</option>
+        <option value="seau">Seau</option>
+        <option value="piece">Pièce</option>
+        <option value="sachet">Sachet</option></select>`,
+    },
+    tva_percent: {
+      label: 'Nouveau taux TVA (%)',
+      html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
+        <option value="5.5">5.5% (alimentaire)</option>
+        <option value="10">10%</option>
+        <option value="20">20%</option></select>`,
+    },
+    conditionnement: {
+      label: 'Nouveau conditionnement',
+      html: () => `<input type="text" id="masse-val" placeholder="Ex: Carton 4kg"
+        style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">`,
+    },
+    dlc_type: {
+      label: 'Nouveau type DLC',
+      html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
+        <option value="dlc">DLC (date limite)</option>
+        <option value="date_abattage">Date d'abattage</option>
+        <option value="no_dlc">Sans DLC</option></select>`,
+    },
+  };
+
+  const cfg = CHAMPS[champ];
+  if (!cfg) { zone.hidden = true; return; }
+
+  zone.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:var(--text-sm);font-weight:600;color:#4b5563;">${cfg.label}</label>
+      ${cfg.html()}
+    </div>`;
+  zone.hidden = false;
+}
+
+async function appliquerMasse() {
+  const ids   = idsSelectionnes();
+  const champ = document.getElementById('masse-champ').value;
+  const valEl = document.getElementById('masse-val');
+  if (!ids.length || !champ || !valEl) return;
+
+  let valeur = valEl.value;
+  if (champ === 'prix_achat_ht') valeur = parseFloat(valeur);
+  if (champ === 'tva_percent')   valeur = parseFloat(valeur);
+  if (champ === 'fournisseur_id') valeur = parseInt(valeur);
+  if (!valeur && valeur !== 0) {
+    const z = document.getElementById('masse-erreur');
+    z.textContent = 'Valeur obligatoire'; z.hidden = false;
+    return;
+  }
+
+  const btn = document.getElementById('masse-appliquer');
+  btn.disabled = true; btn.textContent = 'Application…';
+
+  try {
+    await Promise.all(ids.map(id =>
+      fetch(`${API_CAT}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [champ]: valeur }),
+      })
+    ));
+    fermerModalMasse();
+    await chargerCatalogue();
+  } catch(e) {
+    const z = document.getElementById('masse-erreur');
+    z.textContent = 'Erreur : ' + e.message; z.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Appliquer';
   }
 }
 
