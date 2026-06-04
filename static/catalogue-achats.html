@@ -108,27 +108,50 @@
 
   <div id="zone-erreur" class="ach-erreur" hidden></div>
 
+  <!-- ── Barre actions en masse ── -->
+  <div id="barre-masse" hidden style="
+    display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;
+    padding:var(--space-2) var(--space-4);
+    background:#fef3c7; border-bottom:2px solid #fbbf24;">
+    <span style="font-weight:700;font-size:var(--text-sm);">
+      <span id="masse-nb">0</span> article(s) sélectionné(s)
+    </span>
+    <button class="ach-btn ach-btn--small ach-btn--danger" id="btn-masse-desactiver">Désactiver</button>
+    <button class="ach-btn ach-btn--small ach-btn--ok"    id="btn-masse-reactiver">Réactiver</button>
+    <button class="ach-btn ach-btn--small" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;"
+            id="btn-masse-supprimer">Supprimer</button>
+  </div>
+
   <div class="ach-table-wrap">
     <table class="ach-table" id="table-catalogue">
       <thead>
         <tr>
-          <th>Fournisseur</th>
-          <th>Code article</th>
-          <th>Désignation</th>
-          <th class="ach-col-num">Prix HT</th>
-          <th>Format</th>
-          <th>Unité colis</th>
-          <th>TVA</th>
-          <th>Conditionnement</th>
-          <th>DLC type</th>
+          <th style="width:36px;text-align:center;">
+            <input type="checkbox" id="chk-tout" style="width:18px;height:18px;accent-color:var(--color-accent);" title="Tout sélectionner">
+          </th>
+          <th id="th-fournisseur_nom" onclick="changerTri('fournisseur_nom')" style="cursor:pointer;user-select:none;">Fournisseur ⇅</th>
+          <th id="th-code_article"    onclick="changerTri('code_article')"    style="cursor:pointer;user-select:none;">Code article ⇅</th>
+          <th id="th-designation"     onclick="changerTri('designation')"     style="cursor:pointer;user-select:none;">Désignation ⇅</th>
+          <th id="th-prix_achat_ht"   onclick="changerTri('prix_achat_ht')"   style="cursor:pointer;user-select:none;" class="ach-col-num">Prix HT ⇅</th>
+          <th id="th-format_prix"     onclick="changerTri('format_prix')"     style="cursor:pointer;user-select:none;">Format ⇅</th>
+          <th id="th-unite_colis"     onclick="changerTri('unite_colis')"     style="cursor:pointer;user-select:none;">Unité colis ⇅</th>
+          <th id="th-tva_percent"     onclick="changerTri('tva_percent')"     style="cursor:pointer;user-select:none;">TVA ⇅</th>
+          <th id="th-conditionnement" onclick="changerTri('conditionnement')" style="cursor:pointer;user-select:none;">Conditionnement ⇅</th>
+          <th id="th-dlc_type"        onclick="changerTri('dlc_type')"        style="cursor:pointer;user-select:none;">DLC type ⇅</th>
           <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="tbody-catalogue">
-        <tr><td colspan="10" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="11" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
+
+  <style>
+    .ach-row--inactif { opacity: .5; }
+    .ach-row--inactif .ach-cell-nom { text-decoration: line-through; }
+    #table-catalogue thead th:hover { background: #e8d9c4; }
+  </style>
 
   <!-- ── Modal article ── -->
   <div class="ach-modal" id="modal-article" hidden>
