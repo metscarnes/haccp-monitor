@@ -806,12 +806,10 @@ $('modifier-valider').addEventListener('click', async () => {
 // ── Supprimer (marquer annulé sans personnel) ───────────
 async function supprimerProduitDlc(cible) {
   if (!confirm(`Supprimer « ${cible.produit_nom} » du calendrier DLC ?\nCette action est réversible via le bouton Correction.`)) return;
-  const token = await demanderMotDePasse();
-  if (!token) return;
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source_type:  cible.source_type,
         source_id:    cible.source_id,

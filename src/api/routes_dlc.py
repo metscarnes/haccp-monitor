@@ -10,10 +10,11 @@ PUT  /api/dlc/parametres                → modifier les seuils
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from src.api.routes_auth import verify_token
+from src.api.routes_auth import verify_token, _bearer, _decode_token
 
 import re
 
@@ -100,11 +101,24 @@ async def calendrier(
 # ---------------------------------------------------------------------------
 
 @router.post("/devenir", status_code=201)
-async def enregistrer_devenir(body: DevenirCreate, _=Depends(verify_token)):
+async def enregistrer_devenir(
+    body: DevenirCreate,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+):
     if body.source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
     if body.statut not in STATUTS_DEVENIR:
         raise HTTPException(400, f"statut invalide (attendu : {STATUTS_DEVENIR})")
+
+    # La suppression (annule) est libre ; les autres statuts exigent un token admin.
+    if body.statut != "annule":
+        if credentials is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token manquant",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        _decode_token(credentials.credentials)
 
     async with get_db() as db:
         await create_dlc_devenir(
