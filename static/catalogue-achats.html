@@ -160,8 +160,9 @@
     <table class="ach-table" id="table-catalogue">
       <thead>
         <tr>
-          <th style="width:36px;text-align:center;">
-            <input type="checkbox" id="chk-tout" style="width:18px;height:18px;accent-color:var(--color-accent);" title="Tout sélectionner">
+          <th style="width:40px;text-align:center;padding:0 8px;">
+            <input type="checkbox" id="chk-tout" title="Tout sélectionner"
+                   style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
           </th>
           <th id="th-fournisseur_nom" onclick="changerTri('fournisseur_nom')" style="cursor:pointer;user-select:none;">Fournisseur ⇅</th>
           <th id="th-code_article"    onclick="changerTri('code_article')"    style="cursor:pointer;user-select:none;">Code article ⇅</th>
@@ -186,6 +187,16 @@
     .ach-row--inactif .ach-cell-nom { text-decoration: line-through; }
     #table-catalogue thead th:hover { background: #e8d9c4; }
 
+    #table-catalogue input[type="checkbox"] {
+      display: block !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      width: 20px !important;
+      height: 20px !important;
+      cursor: pointer;
+      appearance: checkbox;
+      -webkit-appearance: checkbox;
+    }
     #barre-masse:not([hidden]) {
       display: flex;
       align-items: center;

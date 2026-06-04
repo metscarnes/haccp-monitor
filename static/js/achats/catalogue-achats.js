@@ -196,9 +196,9 @@ function afficherTable(liste) {
   }
   tbody.innerHTML = liste.map(a => `
     <tr class="${!a.actif ? 'ach-row--inactif' : ''}">
-      <td style="width:36px;text-align:center;">
+      <td style="width:36px;text-align:center;padding:0 8px;">
         <input type="checkbox" class="chk-article" data-id="${a.id}"
-               style="width:18px;height:18px;accent-color:var(--color-accent);">
+               style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
       </td>
       <td>${escHtml(a.fournisseur_nom)}</td>
       <td><code>${escHtml(a.code_article)}</code></td>
