@@ -36,13 +36,41 @@
       <div class="ach-stat-num" id="stat-sans-prix">—</div>
       <div class="ach-stat-lbl">Prix à 0€</div>
     </div>
+    <div class="ach-stat ach-stat--info">
+      <div class="ach-stat-num" id="stat-affiches">—</div>
+      <div class="ach-stat-lbl">Affichés</div>
+    </div>
   </div>
 
   <div class="ach-filtres">
+
+    <!-- Ligne 1 : filtres sélecteurs -->
     <div class="ach-filtre">
       <label>Fournisseur</label>
       <select id="filtre-fournisseur">
         <option value="">Tous</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Format prix</label>
+      <select id="filtre-format-prix">
+        <option value="">Tous</option>
+        <option value="kg">€ / kg</option>
+        <option value="piece">€ / pièce</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Unité colis</label>
+      <select id="filtre-unite-colis">
+        <option value="">Toutes</option>
+        <option value="carton">Carton</option>
+        <option value="carcasse">Carcasse</option>
+        <option value="filet">Filet</option>
+        <option value="plateau">Plateau</option>
+        <option value="barquette">Barquette</option>
+        <option value="seau">Seau</option>
+        <option value="piece">Pièce</option>
+        <option value="sachet">Sachet</option>
       </select>
     </div>
     <div class="ach-filtre">
@@ -58,11 +86,24 @@
       <label>Recherche</label>
       <input type="search" id="filtre-search" placeholder="Code article ou désignation…">
     </div>
-    <label class="ach-filtre" style="flex-direction:row;align-items:center;gap:8px;padding-bottom:8px;">
-      <input type="checkbox" id="filtre-afficher-test" style="width:18px;height:18px;">
-      Afficher fournisseur test
-    </label>
-    <div class="ach-resultat" id="resultat-count"></div>
+
+    <!-- Ligne 2 : coches -->
+    <div style="width:100%;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding-top:var(--space-2);border-top:1px solid #e8d9c4;margin-top:var(--space-1);">
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
+        <input type="checkbox" id="filtre-afficher-test" style="width:18px;height:18px;accent-color:var(--color-accent);">
+        Afficher fournisseur test
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
+        <input type="checkbox" id="filtre-inactifs" style="width:18px;height:18px;accent-color:var(--color-accent);">
+        Afficher articles inactifs
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
+        <input type="checkbox" id="filtre-sans-prix" style="width:18px;height:18px;accent-color:var(--color-accent);">
+        Prix à 0€ uniquement
+      </label>
+      <div class="ach-resultat" id="resultat-count" style="margin-left:auto;"></div>
+    </div>
+
   </div>
 
   <div id="zone-erreur" class="ach-erreur" hidden></div>

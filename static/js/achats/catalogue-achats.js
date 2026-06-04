@@ -39,9 +39,13 @@ function bindEvents() {
   document.getElementById('import-lancer').addEventListener('click', lancerImport);
   document.getElementById('form-article').addEventListener('submit', sauver);
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
+  document.getElementById('filtre-format-prix').addEventListener('change', filtrer);
+  document.getElementById('filtre-unite-colis').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
+  document.getElementById('filtre-inactifs').addEventListener('change', filtrer);
+  document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -67,28 +71,44 @@ async function chargerCatalogue() {
   }
 }
 
+function estTest(a) {
+  return (a.fournisseur_nom || '').toLowerCase().includes('test');
+}
+
 function afficherStats() {
-  const actifs = articles.filter(a => a.actif);
-  const fourn  = new Set(actifs.map(a => a.fournisseur_id)).size;
-  const sansPrix = actifs.filter(a => !a.prix_achat_ht || a.prix_achat_ht === 0);
-  document.getElementById('stat-total').textContent = actifs.length;
+  // Stats hors fournisseur test
+  const actifs    = articles.filter(a => a.actif && !estTest(a));
+  const fourn     = new Set(actifs.map(a => a.fournisseur_id)).size;
+  const sansPrix  = actifs.filter(a => !a.prix_achat_ht || a.prix_achat_ht === 0);
+  document.getElementById('stat-total').textContent      = actifs.length;
   document.getElementById('stat-fournisseurs').textContent = fourn;
-  document.getElementById('stat-sans-prix').textContent = sansPrix.length;
+  document.getElementById('stat-sans-prix').textContent  = sansPrix.length;
 }
 
 function filtrer() {
   const fourn        = document.getElementById('filtre-fournisseur').value;
+  const formatPrix   = document.getElementById('filtre-format-prix').value;
+  const uniteColis   = document.getElementById('filtre-unite-colis').value;
   const dlc          = document.getElementById('filtre-dlc').value;
   const search       = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest = document.getElementById('filtre-afficher-test').checked;
+  const afficherInactifs = document.getElementById('filtre-inactifs').checked;
+  const sansPrixOnly = document.getElementById('filtre-sans-prix').checked;
+
   const filtre = articles.filter(a => {
-    if (!afficherTest && (a.fournisseur_nom || '').toLowerCase().includes('test')) return false;
+    if (!afficherTest && estTest(a)) return false;
+    if (!afficherInactifs && !a.actif) return false;
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
+    if (formatPrix && a.format_prix !== formatPrix) return false;
+    if (uniteColis && a.unite_colis !== uniteColis) return false;
     if (dlc && a.dlc_type !== dlc) return false;
+    if (sansPrixOnly && a.prix_achat_ht > 0) return false;
     if (search && !a.designation.toLowerCase().includes(search) && !a.code_article.toLowerCase().includes(search)) return false;
     return true;
   });
+
   afficherTable(filtre);
+  document.getElementById('stat-affiches').textContent = filtre.length;
   document.getElementById('resultat-count').textContent = `${filtre.length} article${filtre.length > 1 ? 's' : ''}`;
 }
 
