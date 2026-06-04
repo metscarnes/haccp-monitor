@@ -59,6 +59,7 @@ function bindEvents() {
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
   document.getElementById('filtre-inactifs').addEventListener('change', filtrer);
   document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
+  document.getElementById('filtre-incomplets').addEventListener('change', filtrer);
 
   // Checkbox "tout sélectionner" — bindé une seule fois ici
   document.getElementById('chk-tout').addEventListener('change', e => {
@@ -111,13 +112,36 @@ function estTest(a) {
   return (a.fournisseur_nom || '').toLowerCase().includes('test');
 }
 
+function estIncomplet(a) {
+  // Liste des champs attendus — au moins un vide = incomplet
+  return !a.prix_achat_ht
+      || !a.format_prix
+      || !a.unite_colis
+      || !a.conditionnement
+      || !a.dlc_type
+      || a.tva_percent === null || a.tva_percent === undefined;
+}
+
+function champsManquants(a) {
+  const m = [];
+  if (!a.prix_achat_ht)   m.push('Prix');
+  if (!a.format_prix)     m.push('Format');
+  if (!a.unite_colis)     m.push('Unité colis');
+  if (!a.conditionnement) m.push('Conditionnement');
+  if (!a.dlc_type)        m.push('DLC type');
+  if (a.tva_percent === null || a.tva_percent === undefined) m.push('TVA');
+  return m;
+}
+
 function afficherStats() {
-  const actifs   = articles.filter(a => a.actif && !estTest(a));
-  const fourn    = new Set(actifs.map(a => a.fournisseur_id)).size;
-  const sansPrix = actifs.filter(a => !a.prix_achat_ht || a.prix_achat_ht === 0);
-  document.getElementById('stat-total').textContent       = actifs.length;
+  const actifs      = articles.filter(a => a.actif && !estTest(a));
+  const fourn       = new Set(actifs.map(a => a.fournisseur_id)).size;
+  const sansPrix    = actifs.filter(a => !a.prix_achat_ht || a.prix_achat_ht === 0);
+  const incomplets  = actifs.filter(a => estIncomplet(a));
+  document.getElementById('stat-total').textContent        = actifs.length;
   document.getElementById('stat-fournisseurs').textContent = fourn;
-  document.getElementById('stat-sans-prix').textContent   = sansPrix.length;
+  document.getElementById('stat-sans-prix').textContent    = sansPrix.length;
+  document.getElementById('stat-incomplets').textContent   = incomplets.length;
 }
 
 // ── Filtrer + Trier ──────────────────────────────────────────
@@ -128,8 +152,9 @@ function filtrer() {
   const dlc              = document.getElementById('filtre-dlc').value;
   const search           = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest     = document.getElementById('filtre-afficher-test').checked;
-  const afficherInactifs = document.getElementById('filtre-inactifs').checked;
-  const sansPrixOnly     = document.getElementById('filtre-sans-prix').checked;
+  const afficherInactifs  = document.getElementById('filtre-inactifs').checked;
+  const sansPrixOnly      = document.getElementById('filtre-sans-prix').checked;
+  const incompletsOnly    = document.getElementById('filtre-incomplets').checked;
 
   listeFiltree = articles.filter(a => {
     if (!afficherTest     && estTest(a))                              return false;
@@ -138,7 +163,8 @@ function filtrer() {
     if (formatPrix && a.format_prix !== formatPrix)                  return false;
     if (uniteColis && a.unite_colis !== uniteColis)                  return false;
     if (dlc        && a.dlc_type !== dlc)                            return false;
-    if (sansPrixOnly && a.prix_achat_ht > 0)                        return false;
+    if (sansPrixOnly   && a.prix_achat_ht > 0)                      return false;
+    if (incompletsOnly && !estIncomplet(a))                         return false;
     if (search && !a.designation.toLowerCase().includes(search)
                && !a.code_article.toLowerCase().includes(search))   return false;
     return true;
@@ -205,6 +231,7 @@ function afficherTable(liste) {
       <td class="ach-cell-nom">
         ${escHtml(a.designation)}
         ${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
+        ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${champsManquants(a).join(', ')}</span>` : ''}
       </td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
       <td><span class="ach-badge ach-badge--${a.format_prix === 'piece' ? 'abattage' : 'dlc'}">${a.format_prix === 'piece' ? '€/pièce' : '€/kg'}</span></td>

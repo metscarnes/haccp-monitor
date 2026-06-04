@@ -40,6 +40,10 @@
       <div class="ach-stat-num" id="stat-affiches">—</div>
       <div class="ach-stat-lbl">Affichés</div>
     </div>
+    <div class="ach-stat" style="border-left-color:#e8913a;">
+      <div class="ach-stat-num" id="stat-incomplets" style="color:#e8913a;">—</div>
+      <div class="ach-stat-lbl">Incomplets</div>
+    </div>
   </div>
 
   <div class="ach-filtres">
@@ -100,6 +104,10 @@
       <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
         <input type="checkbox" id="filtre-sans-prix" style="width:18px;height:18px;accent-color:var(--color-accent);">
         Prix à 0€ uniquement
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#e8913a;cursor:pointer;">
+        <input type="checkbox" id="filtre-incomplets" style="width:18px;height:18px;accent-color:#e8913a;">
+        ⚠ Champs incomplets
       </label>
       <div class="ach-resultat" id="resultat-count" style="margin-left:auto;"></div>
     </div>
