@@ -12,6 +12,24 @@
   <link rel="stylesheet" href="/static/css/pages/achats.css">
 </head>
 <body class="ach-body">
+<script>
+  // ── Garde d'accès : page réservée à l'administrateur ──────────
+  (function(){
+    var PAGE = '/fournisseurs.html';
+    function versLogin(){
+      sessionStorage.setItem('auth_redirect', PAGE);
+      window.location.replace('/login.html?admin=1');
+    }
+    var token = localStorage.getItem('admin_token');
+    var exp   = Number(localStorage.getItem('admin_token_expires')||0);
+    if(!token || Date.now() > exp){ versLogin(); return; }
+    // Vérifie auprès du serveur que le token est bien de rôle ADMIN.
+    fetch('/api/auth/verify', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+      .then(function(d){ if(d.role !== 'admin'){ versLogin(); } })
+      .catch(function(){ versLogin(); });
+  })();
+</script>
 
   <header class="ach-bar">
     <a href="/achats.html" class="ach-retour">← Achats</a>

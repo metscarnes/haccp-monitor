@@ -333,7 +333,7 @@ async def logout(response: Response):
 
 @router.get("/verify")
 async def verify(payload: dict = Depends(verify_token)):
-    return {"ok": True}
+    return {"ok": True, "role": payload.get("role", "admin")}
 
 
 @router.post("/change-password")
