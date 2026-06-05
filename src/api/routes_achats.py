@@ -998,81 +998,45 @@ async def envoyer_commande(commande_id: int):
         )
         commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande.get('commentaire') else ""
 
-        corps_html = f"""<!DOCTYPE html>
-<html lang="fr">
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif;color:#2d1f0f;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:32px 16px;">
-    <tr><td align="center">
-      <table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.10);">
-
-        <!-- En-tête -->
-        <tr>
-          <td style="background:#6b2d0f;padding:28px 32px;text-align:center;">
-            <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:1px;">Au Comptoir des Lilas</p>
-            <p style="margin:6px 0 0;font-size:13px;color:#f9d5b0;letter-spacing:2px;text-transform:uppercase;">Boucherie • Charcuterie</p>
-          </td>
-        </tr>
-
-        <!-- Titre commande -->
-        <tr>
-          <td style="padding:24px 32px 8px;border-bottom:2px solid #e8d9c4;">
-            <p style="margin:0;font-size:18px;font-weight:700;color:#6b2d0f;">Bon de commande</p>
-            <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">
-              N° <strong style="color:#2d1f0f;">{commande['numero_commande']}</strong>
-              &nbsp;·&nbsp; Date : <strong style="color:#2d1f0f;">{commande['date_commande']}</strong>
-              &nbsp;·&nbsp; Livraison souhaitée : <strong style="color:#2d1f0f;">{commande['date_livraison_prevue'] or 'À définir'}</strong>
-            </p>
-          </td>
-        </tr>
-
-        <!-- Tableau produits -->
-        <tr>
-          <td style="padding:0 32px 0;">
-            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
-              <thead>
-                <tr style="background:#f3ebdf;">
-                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Code</th>
-                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Désignation</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Qté</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Prix HT</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Montant HT</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lignes_rows}
-                {commentaire_bloc}
-              </tbody>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Total -->
-        <tr>
-          <td style="padding:0 32px 24px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding:14px 12px;background:#f3ebdf;border-top:2px solid #d4c5af;text-align:right;">
-                  <span style="font-size:15px;color:#5a3e28;font-weight:700;">TOTAL HT : </span>
-                  <span style="font-size:20px;font-weight:800;color:#6b2d0f;">{commande['montant_total_ht']:.2f} €</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Pied -->
-        <tr>
-          <td style="background:#f9f4ed;padding:20px 32px;border-top:1px solid #e8d9c4;text-align:center;font-size:12px;color:#9a7c5a;">
-            Au Comptoir des Lilas &nbsp;·&nbsp; {from_addr}
-          </td>
-        </tr>
-
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>"""
+        corps_html = (
+            '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>'
+            '<body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif;color:#2d1f0f;">'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:32px 16px;">'
+            '<tr><td align="center">'
+            '<table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1);">'
+            '<tr><td style="background:#6b2d0f;padding:28px 32px;text-align:center;">'
+            '<p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:1px;">Au Comptoir des Lilas</p>'
+            '<p style="margin:6px 0 0;font-size:13px;color:#f9d5b0;letter-spacing:2px;text-transform:uppercase;">Boucherie &#8226; Charcuterie</p>'
+            '</td></tr>'
+            '<tr><td style="padding:24px 32px 8px;border-bottom:2px solid #e8d9c4;">'
+            '<p style="margin:0;font-size:18px;font-weight:700;color:#6b2d0f;">Bon de commande</p>'
+            '<p style="margin:4px 0 0;font-size:13px;color:#6b7280;">'
+            'N&#176; <strong style="color:#2d1f0f;">' + commande['numero_commande'] + '</strong>'
+            ' &nbsp;&#183;&nbsp; Date : <strong style="color:#2d1f0f;">' + commande['date_commande'] + '</strong>'
+            ' &nbsp;&#183;&nbsp; Livraison souhait&#233;e : <strong style="color:#2d1f0f;">' + (commande['date_livraison_prevue'] or '&#192; d&#233;finir') + '</strong>'
+            '</p></td></tr>'
+            '<tr><td style="padding:0 32px;">'
+            '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
+            '<thead><tr style="background:#f3ebdf;">'
+            '<th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Code</th>'
+            '<th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">D&#233;signation</th>'
+            '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Qt&#233;</th>'
+            '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Prix HT</th>'
+            '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Montant HT</th>'
+            '</tr></thead>'
+            '<tbody>' + lignes_rows + commentaire_bloc + '</tbody>'
+            '</table></td></tr>'
+            '<tr><td style="padding:0 32px 24px;">'
+            '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
+            '<td style="padding:14px 12px;background:#f3ebdf;border-top:2px solid #d4c5af;text-align:right;">'
+            '<span style="font-size:15px;color:#5a3e28;font-weight:700;">TOTAL HT : </span>'
+            f'<span style="font-size:20px;font-weight:800;color:#6b2d0f;">{commande["montant_total_ht"]:.2f} &#8364;</span>'
+            '</td></tr></table></td></tr>'
+            '<tr><td style="background:#f9f4ed;padding:20px 32px;border-top:1px solid #e8d9c4;text-align:center;font-size:12px;color:#9a7c5a;">'
+            'Au Comptoir des Lilas &nbsp;&#183;&nbsp; ' + from_addr +
+            '</td></tr>'
+            '</table></td></tr></table></body></html>'
+        )
 
         corps_txt = "\n".join(
             f"  • {l['code_article']} — {l['designation']} : {l['quantite_commandee']} {l['unite']} "
