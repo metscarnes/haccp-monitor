@@ -996,7 +996,7 @@ async def envoyer_commande(commande_id: int):
             </tr>"""
             for l in lignes
         )
-        commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande.get('commentaire') else ""
+        commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande['commentaire'] else ""
 
         corps_html = (
             '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>'
