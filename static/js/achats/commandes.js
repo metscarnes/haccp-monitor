@@ -50,6 +50,8 @@ function bindEvents() {
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-statut').addEventListener('change', filtrer);
   document.getElementById('ligne-search').addEventListener('input', rechercherCatalogueCmd);
+  document.getElementById('panier-livraison').addEventListener('change', verifierDelaisPanier);
+  document.getElementById('cmd-livraison').addEventListener('change', verifierDelaisCommande);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -314,6 +316,12 @@ async function panierGenerer() {
     alert('Le panier est vide.');
     return;
   }
+  const dateLivraison = document.getElementById('panier-livraison').value;
+  if (!dateLivraison) {
+    alert('Veuillez renseigner une date de livraison souhaitée.');
+    document.getElementById('panier-livraison').focus();
+    return;
+  }
 
   // Sauvegarde le panier en BDD juste avant génération (l'endpoint /generer lit la BDD)
   const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];
@@ -376,6 +384,7 @@ async function ouvrirCommande(id) {
     document.getElementById('cmd-date').value = cmdCourante.date_commande;
     document.getElementById('cmd-livraison').value = cmdCourante.date_livraison_prevue || '';
     document.getElementById('cmd-commentaire').value = cmdCourante.commentaire || '';
+    document.getElementById('cmd-alerte-livraison').hidden = true;
 
     const editable = cmdCourante.statut === 'brouillon';
     document.getElementById('btn-ajouter-ligne').disabled = !editable;
@@ -390,6 +399,8 @@ async function ouvrirCommande(id) {
 
     afficherLignes(cmdCourante.lignes);
     document.getElementById('modal-commande').hidden = false;
+    // Vérifier les délais si une date est déjà renseignée
+    if (cmdCourante.date_livraison_prevue) verifierDelaisCommande();
   } catch(e) {
     afficherErreur('Erreur chargement commande : ' + e.message);
   }
@@ -442,11 +453,18 @@ function calculerTotal(lignes) {
 }
 
 async function sauverCommande() {
+  const dateLivraison = document.getElementById('cmd-livraison').value;
+  if (!dateLivraison) {
+    const z = document.getElementById('cmd-form-erreur');
+    z.textContent = 'La date de livraison souhaitée est obligatoire.'; z.hidden = false;
+    document.getElementById('cmd-livraison').focus();
+    return;
+  }
   const btn = document.getElementById('btn-sauver-cmd');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
   const id = document.getElementById('cmd-id').value;
   const body = {
-    date_livraison_prevue: document.getElementById('cmd-livraison').value || null,
+    date_livraison_prevue: dateLivraison,
     commentaire:           document.getElementById('cmd-commentaire').value.trim() || null,
   };
   try {
@@ -592,6 +610,110 @@ async function supprimerLigne(ligneId) {
   cmdCourante = await rc.json();
   afficherLignes(cmdCourante.lignes);
   await chargerCommandes();
+}
+
+// ── Vérification contraintes livraison fournisseur ───────────
+const JOURS_NOMS = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+
+function verifierDelais(dateStr, fournisseurId, alerteEl) {
+  const alerte = document.getElementById(alerteEl);
+  if (!dateStr || !fournisseurId) { alerte.hidden = true; return; }
+
+  const f = fournisseurs.find(x => x.id === parseInt(fournisseurId));
+  if (!f) { alerte.hidden = true; return; }
+
+  const problemes = [];
+  const dateObj = new Date(dateStr + 'T00:00:00');
+  const jourNom = JOURS_NOMS[dateObj.getDay()];
+
+  // Vérifier si le jour est autorisé
+  if (f.jours_livraison) {
+    let jours = [];
+    try { jours = JSON.parse(f.jours_livraison); } catch { jours = []; }
+    if (jours.length && !jours.includes(jourNom)) {
+      const joursStr = jours.map(j => j.charAt(0).toUpperCase() + j.slice(1)).join(', ');
+      problemes.push(`⚠️ Le ${jourNom} n'est pas un jour de livraison — jours autorisés : ${joursStr}.`);
+    }
+  }
+
+  // Vérifier l'heure limite de commande (par rapport à maintenant)
+  if (f.heure_limite_commande) {
+    const maintenant = new Date();
+    const today = maintenant.toISOString().slice(0, 10);
+    // L'heure limite ne s'applique que si la livraison est demain ou plus tôt (commande urgente)
+    const diffJours = Math.round((dateObj - new Date(today + 'T00:00:00')) / 86400000);
+    if (diffJours <= 1) {
+      const [hLim, mLim] = f.heure_limite_commande.split(':').map(Number);
+      const limiteMs = hLim * 60 + mLim;
+      const maintMs = maintenant.getHours() * 60 + maintenant.getMinutes();
+      if (maintMs >= limiteMs) {
+        problemes.push(`⚠️ Heure limite de commande dépassée (${f.heure_limite_commande}) — livraison hors délai, appelez le commercial.`);
+      }
+    }
+  }
+
+  if (problemes.length) {
+    const tel = f.telephone ? ` 📞 ${f.telephone}` : '';
+    alerte.innerHTML = problemes.join('<br>') + (tel ? `<br><strong>Livraison hors délai — Appeler le commercial :${tel}</strong>` : '');
+    alerte.hidden = false;
+  } else {
+    alerte.hidden = true;
+  }
+}
+
+function verifierDelaisPanier() {
+  const date = document.getElementById('panier-livraison').value;
+  // Panier peut avoir plusieurs fournisseurs → vérifier chacun
+  const lignes = panierVersLignes();
+  const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];
+  const alerte = document.getElementById('panier-alerte-livraison');
+  if (!date || !fournIds.length) { alerte.hidden = true; return; }
+
+  const problemes = [];
+  const dateObj = new Date(date + 'T00:00:00');
+  const jourNom = JOURS_NOMS[dateObj.getDay()];
+  const today = new Date().toISOString().slice(0, 10);
+  const diffJours = Math.round((dateObj - new Date(today + 'T00:00:00')) / 86400000);
+  const maintenant = new Date();
+  const maintMs = maintenant.getHours() * 60 + maintenant.getMinutes();
+
+  fournIds.forEach(fid => {
+    const f = fournisseurs.find(x => x.id === fid);
+    if (!f) return;
+    const msgs = [];
+
+    if (f.jours_livraison) {
+      let jours = [];
+      try { jours = JSON.parse(f.jours_livraison); } catch { jours = []; }
+      if (jours.length && !jours.includes(jourNom)) {
+        const joursStr = jours.map(j => j.charAt(0).toUpperCase() + j.slice(1)).join(', ');
+        msgs.push(`Le ${jourNom} n'est pas livré (jours autorisés : ${joursStr})`);
+      }
+    }
+    if (f.heure_limite_commande && diffJours <= 1) {
+      const [hLim, mLim] = f.heure_limite_commande.split(':').map(Number);
+      if (maintMs >= hLim * 60 + mLim) {
+        msgs.push(`Heure limite ${f.heure_limite_commande} dépassée`);
+      }
+    }
+    if (msgs.length) {
+      const tel = f.telephone ? ` — 📞 ${f.telephone}` : '';
+      problemes.push(`<strong>${escHtml(f.nom)}</strong> : ${msgs.join(', ')}${tel}`);
+    }
+  });
+
+  if (problemes.length) {
+    alerte.innerHTML = '⚠️ Livraison hors délai pour certains fournisseurs — Appeler le commercial :<br>' + problemes.join('<br>');
+    alerte.hidden = false;
+  } else {
+    alerte.hidden = true;
+  }
+}
+
+function verifierDelaisCommande() {
+  const date = document.getElementById('cmd-livraison').value;
+  const fournId = document.getElementById('cmd-fournisseur').value;
+  verifierDelais(date, fournId, 'cmd-alerte-livraison');
 }
 
 // ── Utilitaires ──────────────────────────────────────────────

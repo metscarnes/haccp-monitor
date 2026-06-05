@@ -140,14 +140,15 @@
       <!-- Options génération -->
       <div style="padding:var(--space-3) var(--space-4); border-top:1px solid #e8d9c4; display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:flex-end;">
         <div class="ach-champ" style="flex:1; min-width:160px; margin:0;">
-          <label>Livraison souhaitée</label>
-          <input type="date" id="panier-livraison">
+          <label>Livraison souhaitée <span class="ach-req">*</span></label>
+          <input type="date" id="panier-livraison" required>
         </div>
         <div class="ach-champ" style="flex:2; min-width:200px; margin:0;">
           <label>Commentaire (toutes commandes)</label>
           <input type="text" id="panier-commentaire" placeholder="Optionnel…">
         </div>
       </div>
+      <div id="panier-alerte-livraison" hidden style="margin:0 var(--space-4) var(--space-3); padding:.75rem 1rem; background:#fee2e2; color:#991b1b; border-radius:var(--radius-sm); border-left:4px solid #dc2626; font-size:var(--text-sm);"></div>
 
       <!-- Footer -->
       <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap; border-top:1px solid #e8d9c4;">
@@ -183,13 +184,14 @@
           <input type="date" id="cmd-date">
         </div>
         <div class="ach-champ">
-          <label>Livraison souhaitée</label>
-          <input type="date" id="cmd-livraison">
+          <label>Livraison souhaitée <span class="ach-req">*</span></label>
+          <input type="date" id="cmd-livraison" required>
         </div>
         <div class="ach-champ ach-champ--full">
           <label>Commentaire</label>
           <textarea id="cmd-commentaire" placeholder="Instructions particulières…"></textarea>
         </div>
+        <div id="cmd-alerte-livraison" hidden style="grid-column:1/-1; padding:.75rem 1rem; background:#fee2e2; color:#991b1b; border-radius:var(--radius-sm); border-left:4px solid #dc2626; font-size:var(--text-sm);"></div>
         <div id="cmd-form-erreur" class="ach-form-erreur" hidden></div>
       </form>
 
