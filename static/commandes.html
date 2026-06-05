@@ -80,31 +80,60 @@
     </table>
   </div>
 
-  <!-- ── Modal panier multi-fournisseurs ── -->
+  <!-- ── Modal panier multi-fournisseurs (présentation catalogue) ── -->
   <div class="ach-modal" id="modal-panier" hidden>
-    <div class="ach-modal-card ach-modal-card--lg">
+    <div class="ach-modal-card ach-modal-card--xl">
       <header class="ach-modal-header">
-        <h2 class="ach-modal-titre">🛒 Panier de commande</h2>
+        <h2 class="ach-modal-titre">🛒 Nouvelle commande — sélection des articles</h2>
         <button class="ach-modal-fermer" id="modal-panier-fermer">✕</button>
       </header>
 
-      <!-- Recherche catalogue tous fournisseurs -->
-      <div style="padding:var(--space-3) var(--space-4); border-bottom:2px solid #e8d9c4;">
-        <div class="ach-champ" style="margin-bottom:var(--space-2);">
-          <label>Rechercher un article (tous fournisseurs)</label>
-          <input type="search" id="panier-search" placeholder="Désignation ou code article…" autocomplete="off">
+      <!-- Filtres -->
+      <div class="ach-filtres" style="margin:0; border-radius:0; border-left:none; border-right:none;">
+        <div class="ach-filtre">
+          <label>Fournisseur</label>
+          <select id="panier-filtre-fournisseur">
+            <option value="">Tous</option>
+          </select>
         </div>
-        <div id="panier-resultats" style="max-height:240px; overflow-y:auto; border:1px solid #e8d9c4; border-radius:var(--radius-sm); display:none;"></div>
+        <div class="ach-filtre ach-filtre--search">
+          <label>Recherche</label>
+          <input type="search" id="panier-search" placeholder="Code article ou désignation…" autocomplete="off">
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
+            <input type="checkbox" id="panier-filtre-selection" style="width:18px; height:18px; accent-color:var(--color-accent);">
+            Articles du panier seulement
+          </label>
+        </div>
       </div>
 
-      <!-- Liste du panier groupée par fournisseur -->
-      <div id="panier-lignes-zone" style="padding:var(--space-3) var(--space-4); max-height:360px; overflow-y:auto;">
-        <p class="ach-vide" id="panier-vide">Votre panier est vide — recherchez des articles ci-dessus</p>
+      <!-- Tableau catalogue -->
+      <div class="ach-table-wrap" style="max-height:48vh; overflow-y:auto;">
+        <table class="ach-table" id="table-panier-catalogue">
+          <thead>
+            <tr>
+              <th>Fournisseur</th>
+              <th>Code article</th>
+              <th>Désignation</th>
+              <th class="ach-col-num">Prix HT</th>
+              <th>Format</th>
+              <th>Unité colis</th>
+              <th class="ach-col-num">TVA</th>
+              <th>Conditionnement</th>
+              <th class="ach-col-num">Stock</th>
+              <th style="text-align:center; min-width:140px;">Quantité</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-panier-catalogue">
+            <tr><td colspan="10" class="ach-vide">Chargement…</td></tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- Total panier -->
       <div class="ach-total-bar">
-        <span>Total panier HT :</span>
+        <span><span id="panier-nb-articles">0</span> article(s) — Total HT :</span>
         <span id="panier-total">0,00 €</span>
       </div>
 
@@ -131,42 +160,6 @@
           <button type="button" class="ach-btn ach-btn--ok" id="btn-panier-generer">✅ Générer les commandes</button>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- ── Modal quantité (ajout article au panier) ── -->
-  <div class="ach-modal" id="modal-qte" hidden>
-    <div class="ach-modal-card" style="max-width:420px;">
-      <header class="ach-modal-header">
-        <h2 class="ach-modal-titre" id="modal-qte-titre">Ajouter au panier</h2>
-        <button class="ach-modal-fermer" id="modal-qte-fermer">✕</button>
-      </header>
-      <form class="ach-form" id="form-qte" style="padding:var(--space-3) var(--space-4);">
-        <input type="hidden" id="qte-catalogue-id">
-        <input type="hidden" id="qte-fournisseur-id">
-        <input type="hidden" id="qte-fournisseur-nom">
-        <input type="hidden" id="qte-code">
-        <input type="hidden" id="qte-designation">
-        <input type="hidden" id="qte-prix">
-        <div class="ach-champ">
-          <label>Quantité <span class="ach-req">*</span></label>
-          <input type="number" id="qte-valeur" required min="0.001" step="0.001" autofocus>
-        </div>
-        <div class="ach-champ">
-          <label>Unité</label>
-          <select id="qte-unite">
-            <option value="kg">kg</option>
-            <option value="piece">pièce</option>
-            <option value="boite">boîte</option>
-            <option value="carcasse">carcasse</option>
-            <option value="barquette">barquette</option>
-          </select>
-        </div>
-        <div class="ach-modal-footer">
-          <button type="button" class="ach-btn" id="btn-qte-annuler">Annuler</button>
-          <button type="submit" class="ach-btn ach-btn--primary">Ajouter</button>
-        </div>
-      </form>
     </div>
   </div>
 

@@ -2542,7 +2542,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     cursor = await db.execute(
         """
         INSERT INTO reception_lignes
-            (reception_id, produit_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
+            (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
              origine, poids_kg, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
@@ -2550,11 +2550,12 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
             data["produit_id"],
+            data.get("catalogue_fournisseur_id"),
             data.get("fournisseur_id"),
             data.get("fournisseur_nom"),
             data.get("numero_lot"),

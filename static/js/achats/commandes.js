@@ -8,10 +8,12 @@ const LS_KEY    = 'haccp_panier';
 
 let commandes    = [];
 let fournisseurs = [];
-let catalogueTous = [];   // tout le catalogue, tous fournisseurs
+let catalogueTous = [];   // tout le catalogue, tous fournisseurs (avec stock)
 let catalogueCourant = []; // catalogue du fournisseur de la commande en édition
 let cmdCourante  = null;
-let panier       = [];    // [{ catalogueId, fournisseurId, fournisseurNom, code, designation, quantite, unite, prix }]
+// Panier : map { catalogueId → { quantite } }. Les autres infos (prix, designation…)
+// sont relues dans catalogueTous au moment de l'affichage / génération.
+let panier       = {};
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
@@ -30,10 +32,9 @@ function bindEvents() {
   document.getElementById('btn-panier-sauver').addEventListener('click', panierSauverBDD);
   document.getElementById('btn-panier-vider').addEventListener('click', panierVider);
   document.getElementById('btn-panier-generer').addEventListener('click', panierGenerer);
-  document.getElementById('panier-search').addEventListener('input', rechercherCataloguePanier);
-  document.getElementById('form-qte').addEventListener('submit', panierAjouterArticle);
-  document.getElementById('modal-qte-fermer').addEventListener('click', fermerModalQte);
-  document.getElementById('btn-qte-annuler').addEventListener('click', fermerModalQte);
+  document.getElementById('panier-search').addEventListener('input', afficherCataloguePanier);
+  document.getElementById('panier-filtre-fournisseur').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
 
   // Commande existante
   document.getElementById('modal-cmd-fermer').addEventListener('click', fermerModalCmd);
@@ -55,9 +56,12 @@ function bindEvents() {
 async function chargerFournisseurs() {
   const r = await fetch(API_FOURN);
   fournisseurs = await r.json();
-  const selFiltre = document.getElementById('filtre-fournisseur');
+  const selFiltre  = document.getElementById('filtre-fournisseur');
+  const selPanier  = document.getElementById('panier-filtre-fournisseur');
   fournisseurs.forEach(f => {
-    selFiltre.insertAdjacentHTML('beforeend', `<option value="${f.id}">${escHtml(f.nom)}</option>`);
+    const opt = `<option value="${f.id}">${escHtml(f.nom)}</option>`;
+    selFiltre.insertAdjacentHTML('beforeend', opt);
+    selPanier.insertAdjacentHTML('beforeend', opt);
   });
 }
 
@@ -74,7 +78,7 @@ async function chargerCommandes() {
 
 async function chargerCatalogueTous() {
   try {
-    const r = await fetch(API_CAT);
+    const r = await fetch(`${API_CAT}?avec_stock=true`);
     catalogueTous = await r.json();
   } catch(e) {
     catalogueTous = [];
@@ -119,11 +123,15 @@ function afficherTable(liste) {
   `).join('');
 }
 
-// ── Panier localStorage ──────────────────────────────────────
+// ── Panier (localStorage) ────────────────────────────────────
+// Modèle : panier = { [catalogueId]: quantite }. Le détail article (prix,
+// fournisseur, unité…) est relu dans catalogueTous au moment voulu.
+
 function panierCharger() {
   try {
-    panier = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-  } catch { panier = []; }
+    panier = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    if (Array.isArray(panier)) panier = {};   // compat ancien format
+  } catch { panier = {}; }
   majBadgePanier();
 }
 
@@ -132,14 +140,20 @@ function panierSauver() {
   majBadgePanier();
 }
 
+function panierNbArticles() {
+  return Object.keys(panier).length;
+}
+
 function majBadgePanier() {
   const badge = document.getElementById('badge-panier');
-  if (panier.length > 0) {
-    badge.textContent = panier.length;
-    badge.hidden = false;
-  } else {
-    badge.hidden = true;
-  }
+  const n = panierNbArticles();
+  if (n > 0) { badge.textContent = n; badge.hidden = false; }
+  else { badge.hidden = true; }
+}
+
+// Unité de commande selon le format de prix de l'article
+function uniteArticle(a) {
+  return (a.format_prix === 'piece') ? 'pièce' : 'kg';
 }
 
 async function panierSauverBDD() {
@@ -149,18 +163,7 @@ async function panierSauverBDD() {
     const r = await fetch(API_PANIER, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lignes: panier.map(l => ({
-          catalogue_fournisseur_id: l.catalogueId || null,
-          fournisseur_id: l.fournisseurId,
-          fournisseur_nom: l.fournisseurNom,
-          code_article: l.code,
-          designation: l.designation,
-          quantite: l.quantite,
-          unite: l.unite,
-          prix_ht: l.prix,
-        }))
-      })
+      body: JSON.stringify({ lignes: panierVersLignes() })
     });
     if (!r.ok) throw new Error('Erreur serveur');
     btn.textContent = '✅ Sauvegardé';
@@ -171,240 +174,153 @@ async function panierSauverBDD() {
   }
 }
 
+// Construit la liste détaillée du panier à partir de catalogueTous
+function panierVersLignes() {
+  const lignes = [];
+  for (const [catId, qte] of Object.entries(panier)) {
+    const a = catalogueTous.find(x => x.id === parseInt(catId));
+    if (!a || !qte) continue;
+    lignes.push({
+      catalogue_fournisseur_id: a.id,
+      fournisseur_id:  a.fournisseur_id,
+      fournisseur_nom: a.fournisseur_nom,
+      code_article:    a.code_article,
+      designation:     a.designation,
+      quantite:        qte,
+      unite:           uniteArticle(a),
+      prix_ht:         a.prix_achat_ht,
+    });
+  }
+  return lignes;
+}
+
 async function panierRestaurerBDD() {
   try {
     const r = await fetch(API_PANIER);
     const lignes = await r.json();
     if (!lignes.length) return;
     if (!confirm(`Un panier sauvegardé contient ${lignes.length} article(s). Le restaurer ?`)) return;
-    panier = lignes.map(l => ({
-      catalogueId:   l.catalogue_fournisseur_id,
-      fournisseurId: l.fournisseur_id,
-      fournisseurNom: l.fournisseur_nom,
-      code:          l.code_article,
-      designation:   l.designation,
-      quantite:      l.quantite,
-      unite:         l.unite,
-      prix:          l.prix_ht,
-    }));
+    panier = {};
+    lignes.forEach(l => {
+      if (l.catalogue_fournisseur_id) panier[l.catalogue_fournisseur_id] = l.quantite;
+    });
     panierSauver();
-    afficherPanier();
   } catch(e) { /* silencieux */ }
 }
 
 function panierVider() {
-  if (!panier.length || !confirm('Vider le panier ?')) return;
-  panier = [];
+  if (!panierNbArticles() || !confirm('Vider le panier ?')) return;
+  panier = {};
   panierSauver();
-  afficherPanier();
-  // Vider aussi la BDD
+  afficherCataloguePanier();
   fetch(API_PANIER, { method: 'DELETE' }).catch(() => {});
 }
 
 // ── Modal panier ─────────────────────────────────────────────
 async function ouvrirPanier() {
-  // Proposer restauration BDD si panier local vide
-  if (!panier.length) {
+  if (!panierNbArticles()) {
     await panierRestaurerBDD();
   }
-  afficherPanier();
+  document.getElementById('panier-search').value = '';
+  document.getElementById('panier-filtre-fournisseur').value = '';
+  document.getElementById('panier-filtre-selection').checked = false;
+  afficherCataloguePanier();
   document.getElementById('modal-panier').hidden = false;
-  document.getElementById('panier-search').focus();
 }
 
 function fermerPanier() {
   document.getElementById('modal-panier').hidden = true;
-  document.getElementById('panier-search').value = '';
-  document.getElementById('panier-resultats').style.display = 'none';
-  document.getElementById('panier-resultats').innerHTML = '';
 }
 
-function afficherPanier() {
-  const zone = document.getElementById('panier-lignes-zone');
+// Affiche le catalogue filtré, avec stepper de quantité par ligne
+function afficherCataloguePanier() {
+  const q      = document.getElementById('panier-search').value.toLowerCase().trim();
+  const fourn  = document.getElementById('panier-filtre-fournisseur').value;
+  const selOnly = document.getElementById('panier-filtre-selection').checked;
+  const tbody  = document.getElementById('tbody-panier-catalogue');
 
-  if (!panier.length) {
-    zone.innerHTML = '<p class="ach-vide" id="panier-vide">Votre panier est vide — recherchez des articles ci-dessus</p>';
-    document.getElementById('panier-total').textContent = '0,00 €';
-    majBadgePanier();
+  let liste = catalogueTous.filter(a => {
+    if (fourn && String(a.fournisseur_id) !== fourn) return false;
+    if (selOnly && !panier[a.id]) return false;
+    if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  if (!liste.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="ach-vide">Aucun article</td></tr>';
+    majTotalPanier();
     return;
   }
 
-  // Grouper par fournisseur
-  const groupes = {};
-  panier.forEach((l, idx) => {
-    if (!groupes[l.fournisseurNom]) groupes[l.fournisseurNom] = [];
-    groupes[l.fournisseurNom].push({ ...l, idx });
-  });
+  tbody.innerHTML = liste.map(a => {
+    const qte = panier[a.id] || 0;
+    const unite = uniteArticle(a);
+    const formatLbl = a.format_prix === 'piece' ? '€/pièce' : '€/kg';
+    const stock = a.stock ?? 0;
+    return `
+      <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}">
+        <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
+        <td><code>${escHtml(a.code_article)}</code></td>
+        <td class="ach-cell-nom">${escHtml(a.designation)}</td>
+        <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
+        <td>${a.format_prix === 'piece' ? 'pièce' : 'kg'}</td>
+        <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
+        <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
+        <td>${a.conditionnement ? escHtml(a.conditionnement) : '<span style="color:#9ca3af">—</span>'}</td>
+        <td class="ach-col-num">${stock > 0
+            ? `<strong>${stock}</strong>`
+            : '<span style="color:#9ca3af">0</span>'}</td>
+        <td>
+          <div class="ach-stepper">
+            <input type="number" min="0" step="any" value="${qte || ''}" placeholder="0"
+                   onchange="panierSetQte(${a.id}, this.value)">
+            <span class="ach-stepper-unite">${unite}</span>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
 
-  let html = '';
-  Object.entries(groupes).forEach(([nomFourn, lignes]) => {
-    const totalFourn = lignes.reduce((s, l) => s + l.quantite * l.prix, 0);
-    html += `
-      <div style="margin-bottom:var(--space-3);">
-        <div style="font-weight:700; font-size:var(--text-sm); color:#5a3e28; padding:.4rem 0; border-bottom:2px solid #e8d9c4; display:flex; justify-content:space-between;">
-          <span>🏪 ${escHtml(nomFourn)}</span>
-          <span>${fmtPrix(totalFourn)} €</span>
-        </div>
-        <table class="ach-table" style="margin-top:var(--space-1);">
-          <thead><tr>
-            <th>Désignation</th>
-            <th class="ach-col-num">Qté</th>
-            <th>Unité</th>
-            <th class="ach-col-num">Prix HT</th>
-            <th class="ach-col-num">Montant</th>
-            <th class="ach-col-actions"></th>
-          </tr></thead>
-          <tbody>
-            ${lignes.map(l => `
-              <tr>
-                <td>
-                  <div style="font-weight:600; font-size:var(--text-sm);">${escHtml(l.designation)}</div>
-                  <div style="font-size:var(--text-xs); color:#6b7280;"><code>${escHtml(l.code)}</code></div>
-                </td>
-                <td class="ach-col-num">
-                  <input type="number" value="${l.quantite}" min="0.001" step="0.001"
-                    style="width:70px; text-align:right; border:1px solid #e8d9c4; border-radius:4px; padding:2px 4px;"
-                    onchange="panierMajQuantite(${l.idx}, this.value)">
-                </td>
-                <td>${escHtml(l.unite)}</td>
-                <td class="ach-col-num">${fmtPrix(l.prix)} €</td>
-                <td class="ach-col-num"><strong>${fmtPrix(l.quantite * l.prix)} €</strong></td>
-                <td class="ach-col-actions">
-                  <button class="ach-btn ach-btn--small ach-btn--danger" onclick="panierSupprimerLigne(${l.idx})">✕</button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>`;
-  });
-
-  zone.innerHTML = html;
-
-  const total = panier.reduce((s, l) => s + l.quantite * l.prix, 0);
-  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
-  majBadgePanier();
+  majTotalPanier();
 }
 
-function panierMajQuantite(idx, valeur) {
-  const qte = parseFloat(valeur);
-  if (isNaN(qte) || qte <= 0) return;
-  panier[idx].quantite = qte;
-  panierSauver();
-  // Recalculer seulement le montant de la ligne sans re-rendre tout
-  const total = panier.reduce((s, l) => s + l.quantite * l.prix, 0);
-  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
-  majBadgePanier();
-}
-
-function panierSupprimerLigne(idx) {
-  panier.splice(idx, 1);
-  panierSauver();
-  afficherPanier();
-}
-
-// ── Recherche catalogue dans le panier ───────────────────────
-function rechercherCataloguePanier() {
-  const q = document.getElementById('panier-search').value.toLowerCase().trim();
-  const zone = document.getElementById('panier-resultats');
-  if (!q) { zone.style.display = 'none'; zone.innerHTML = ''; return; }
-
-  const resultats = catalogueTous.filter(a =>
-    a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q)
-  ).slice(0, 30);
-
-  zone.style.display = 'block';
-  if (!resultats.length) {
-    zone.innerHTML = '<p class="ach-vide" style="padding:var(--space-2);">Aucun article trouvé</p>';
-    return;
+function majTotalPanier() {
+  let total = 0;
+  for (const [catId, qte] of Object.entries(panier)) {
+    const a = catalogueTous.find(x => x.id === parseInt(catId));
+    if (a && qte) total += qte * a.prix_achat_ht;
   }
-
-  zone.innerHTML = resultats.map(a => `
-    <div onclick="ouvrirModalQte(${a.id})"
-      style="padding:.6rem 1rem; cursor:pointer; border-bottom:1px solid #f1ead9; display:flex; justify-content:space-between; align-items:center;">
-      <div>
-        <strong style="font-size:var(--text-sm);">${escHtml(a.designation)}</strong>
-        <span style="font-size:var(--text-xs); color:#6b7280; margin-left:.5rem;"><code>${escHtml(a.code_article)}</code></span>
-        <span style="font-size:var(--text-xs); color:#9ca3af; margin-left:.5rem;">— ${escHtml(a.fournisseur_nom)}</span>
-      </div>
-      <span style="font-weight:700; font-size:var(--text-sm); white-space:nowrap; margin-left:.5rem;">${fmtPrix(a.prix_achat_ht)} €</span>
-    </div>
-  `).join('');
+  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
+  document.getElementById('panier-nb-articles').textContent = panierNbArticles();
 }
 
-// ── Modal quantité ────────────────────────────────────────────
-function ouvrirModalQte(catalogueId) {
-  const a = catalogueTous.find(x => x.id === catalogueId);
-  if (!a) return;
-  const fourn = fournisseurs.find(f => f.id === a.fournisseur_id);
-
-  document.getElementById('qte-catalogue-id').value  = a.id;
-  document.getElementById('qte-fournisseur-id').value = a.fournisseur_id;
-  document.getElementById('qte-fournisseur-nom').value = fourn ? fourn.nom : (a.fournisseur_nom || '');
-  document.getElementById('qte-code').value        = a.code_article;
-  document.getElementById('qte-designation').value = a.designation;
-  document.getElementById('qte-prix').value        = a.prix_achat_ht;
-  document.getElementById('modal-qte-titre').textContent = a.designation;
-  document.getElementById('qte-valeur').value = '';
-
-  // Pré-sélectionner l'unité selon format_prix
-  const sel = document.getElementById('qte-unite');
-  sel.value = (a.format_prix === 'piece') ? 'piece' : 'kg';
-
-  document.getElementById('modal-qte').hidden = false;
-  document.getElementById('qte-valeur').focus();
+// Saisie directe dans le champ (saisie libre)
+function panierSetQte(catId, valeur) {
+  let qte = parseFloat(valeur);
+  if (isNaN(qte) || qte < 0) qte = 0;
+  appliquerQte(catId, qte);
 }
 
-function fermerModalQte() {
-  document.getElementById('modal-qte').hidden = true;
-}
-
-function panierAjouterArticle(e) {
-  e.preventDefault();
-  const item = {
-    catalogueId:   parseInt(document.getElementById('qte-catalogue-id').value) || null,
-    fournisseurId: parseInt(document.getElementById('qte-fournisseur-id').value),
-    fournisseurNom: document.getElementById('qte-fournisseur-nom').value,
-    code:          document.getElementById('qte-code').value,
-    designation:   document.getElementById('qte-designation').value,
-    quantite:      parseFloat(document.getElementById('qte-valeur').value),
-    unite:         document.getElementById('qte-unite').value,
-    prix:          parseFloat(document.getElementById('qte-prix').value),
-  };
-
-  // Si l'article existe déjà dans le panier (même catalogueId), additionner les quantités
-  const existant = panier.findIndex(l => l.catalogueId && l.catalogueId === item.catalogueId);
-  if (existant >= 0) {
-    panier[existant].quantite += item.quantite;
-  } else {
-    panier.push(item);
-  }
-
+function appliquerQte(catId, qte) {
+  if (qte > 0) panier[catId] = qte;
+  else delete panier[catId];
   panierSauver();
-  fermerModalQte();
-
-  // Vider la recherche et re-focus
-  document.getElementById('panier-search').value = '';
-  document.getElementById('panier-resultats').style.display = 'none';
-  document.getElementById('panier-resultats').innerHTML = '';
-  document.getElementById('panier-search').focus();
-
-  afficherPanier();
+  afficherCataloguePanier();
 }
 
 // ── Génération des commandes ──────────────────────────────────
 async function panierGenerer() {
-  if (!panier.length) {
+  const lignes = panierVersLignes();
+  if (!lignes.length) {
     alert('Le panier est vide.');
     return;
   }
 
-  // Compter les fournisseurs distincts
-  const fournIds = [...new Set(panier.map(l => l.fournisseurId))];
+  // Sauvegarde le panier en BDD juste avant génération (l'endpoint /generer lit la BDD)
+  const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];
   const msg = `Générer ${fournIds.length} commande(s) brouillon pour :\n` +
     fournIds.map(id => {
       const f = fournisseurs.find(x => x.id === id);
-      const nb = panier.filter(l => l.fournisseurId === id).length;
+      const nb = lignes.filter(l => l.fournisseur_id === id).length;
       return `  • ${f ? f.nom : id} (${nb} article(s))`;
     }).join('\n');
 
@@ -414,6 +330,15 @@ async function panierGenerer() {
   btn.disabled = true; btn.textContent = 'Génération…';
 
   try {
+    // 1) Pousser le panier courant en BDD
+    const rs = await fetch(API_PANIER, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lignes })
+    });
+    if (!rs.ok) throw new Error('Erreur sauvegarde panier');
+
+    // 2) Générer les commandes
     const r = await fetch(`${API_PANIER}/generer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -425,11 +350,10 @@ async function panierGenerer() {
     if (!r.ok) throw new Error((await r.json()).detail || 'Erreur serveur');
     const result = await r.json();
 
-    // Vider le panier local
-    panier = [];
+    panier = {};
     panierSauver();
     fermerPanier();
-    await chargerCommandes();
+    await Promise.all([chargerCommandes(), chargerCatalogueTous()]);
 
     alert(`✅ ${result.nb_commandes} commande(s) créée(s) en brouillon.`);
   } catch(e) {

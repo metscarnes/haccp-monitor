@@ -210,6 +210,7 @@ async def get_catalogue(
     fournisseur_id: Optional[int] = Query(None),
     q: Optional[str] = Query(None),
     actif_only: bool = Query(True),
+    avec_stock: bool = Query(False),
 ):
     async with get_db() as db:
         sql = """
@@ -229,7 +230,44 @@ async def get_catalogue(
             params += [f"%{q}%", f"%{q}%"]
         sql += " ORDER BY f.nom, c.designation"
         cur = await db.execute(sql, params)
-        return [dict(r) for r in await cur.fetchall()]
+        articles = [dict(r) for r in await cur.fetchall()]
+
+        if avec_stock and articles:
+            stocks = await _compter_stock_par_article(db)
+            for a in articles:
+                a["stock"] = stocks.get(a["id"], 0)
+
+        return articles
+
+
+async def _compter_stock_par_article(db) -> dict:
+    """Compte le nombre de lignes de réception encore en stock, groupées par
+    catalogue_fournisseur_id. « En stock » = réception clôturée + conforme +
+    non refusée + DLC non dépassée + pas encore sortie (dlc_devenir).
+
+    Une ligne de réception = une unité reçue (carcasse, colis, pièce…) toujours
+    présente. Retourne { catalogue_fournisseur_id: nombre }.
+    """
+    today = date.today().isoformat()
+    cur = await db.execute(
+        """
+        SELECT rl.catalogue_fournisseur_id AS cat_id, COUNT(*) AS nb
+        FROM reception_lignes rl
+        JOIN receptions r ON r.id = rl.reception_id
+        WHERE rl.catalogue_fournisseur_id IS NOT NULL
+          AND r.statut = 'cloturee'
+          AND rl.conforme = 1
+          AND r.livraison_refusee = 0
+          AND (COALESCE(rl.dlc, rl.dluo) IS NULL OR COALESCE(rl.dlc, rl.dluo) >= ?)
+          AND NOT EXISTS (
+              SELECT 1 FROM dlc_devenir dd
+              WHERE dd.source_type = 'reception_ligne' AND dd.source_id = rl.id
+          )
+        GROUP BY rl.catalogue_fournisseur_id
+        """,
+        (today,),
+    )
+    return {row["cat_id"]: row["nb"] for row in await cur.fetchall()}
 
 
 @router.get("/catalogue/export")

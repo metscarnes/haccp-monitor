@@ -195,6 +195,8 @@ let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé 
 let commandeId         = null;    // ID de la commande liée (nullable)
 let commandeLignes     = [];      // lignes de la commande pour pré-remplissage
 let commandeLigneIdx   = 0;       // index de la ligne en cours de réception
+let catalogueIdPrefill = null;    // catalogue_fournisseur_id de la ligne de commande pré-remplie
+                                  // (propagé vers reception_lignes pour le suivi de stock par référence)
 
 
 // ── Références DOM — Commande ──────────────────────────────
@@ -1379,6 +1381,10 @@ function preRemplirDepuisCommande() {
 
   const ligne = commandeLignes[commandeLigneIdx];
 
+  // Mémoriser la référence catalogue pour la propager vers la ligne de réception
+  // (permet de compter le stock par référence catalogue dans le module commandes).
+  catalogueIdPrefill = ligne.catalogue_fournisseur_id || null;
+
   // Pré-remplir la recherche produit avec la désignation de la commande
   if (elProdSearch) {
     elProdSearch.value = ligne.designation;
@@ -1733,6 +1739,7 @@ function reinitFormProduit() {
   lotInterneGenere   = false;
   dlcMode            = 'dlc';
   fournisseurProduitSelected = null;
+  catalogueIdPrefill = null;   // réf catalogue valable seulement pour la ligne pré-remplie
 
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
@@ -1947,6 +1954,8 @@ function _buildPayload() {
   }
   const ph = parseFloat(elPh.value);
   if (!isNaN(ph)) payload.ph_valeur = ph;
+  // Référence catalogue issue de la commande (suivi du stock par référence)
+  if (catalogueIdPrefill) payload.catalogue_fournisseur_id = catalogueIdPrefill;
   return payload;
 }
 

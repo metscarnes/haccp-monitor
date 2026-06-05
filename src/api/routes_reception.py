@@ -143,6 +143,7 @@ class FournisseurUpdate(BaseModel):
 
 class LigneCreate(BaseModel):
     produit_id: int
+    catalogue_fournisseur_id: Optional[int] = None
     fournisseur_id: Optional[int] = None
     fournisseur_nom: Optional[str] = None
     numero_lot: Optional[str] = None
@@ -166,6 +167,7 @@ class LigneCreate(BaseModel):
 
 class LigneUpdate(BaseModel):
     produit_id: Optional[int] = None
+    catalogue_fournisseur_id: Optional[int] = None
     fournisseur_id: Optional[int] = None
     fournisseur_nom: Optional[str] = None
     numero_lot: Optional[str] = None
