@@ -84,7 +84,6 @@ class CatalogueArticleCreate(BaseModel):
     designation: str
     prix_achat_ht: float
     format_prix: Optional[str] = "kg"        # 'kg' (prix au kilo) | 'colis' (prix au colis/pièce)
-    unite_colis: Optional[str] = None        # ex: 'carton', 'carcasse', 'filet', 'plateau'
     qte_par_colis: Optional[float] = None     # nb de pièces par colis (brut, si format 'colis')
     poids_unitaire_kg: Optional[float] = None # poids d'une pièce en kg (brut, si format 'colis')
     tva_percent: Optional[float] = 5.5
@@ -96,7 +95,6 @@ class CatalogueArticleUpdate(BaseModel):
     designation: Optional[str] = None
     prix_achat_ht: Optional[float] = None
     format_prix: Optional[str] = None
-    unite_colis: Optional[str] = None
     qte_par_colis: Optional[float] = None
     poids_unitaire_kg: Optional[float] = None
     tva_percent: Optional[float] = None
@@ -340,7 +338,6 @@ async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
         ("designation",       "Désignation"),
         ("prix_achat_ht",     "Prix achat HT (€)"),
         ("format_prix",       "Prix au (kg / colis)"),
-        ("unite_colis",       "Unité colis"),
         ("qte_par_colis",     "Qté par colis"),
         ("poids_unitaire_kg", "Poids unitaire (kg)"),
         ("poids_colis_kg",    "Poids total colis (kg)"),
@@ -407,9 +404,6 @@ async def download_template():
         ("format_prix",       "Prix au (kg / colis)",
          "Écrire 'kg' si le prix ci-contre est au kilo, ou 'colis' s'il est pour un colis/une pièce entière. Obligatoire.",
          "kg", "colis"),
-        ("unite_colis",       "Unité colis",
-         "Type de conditionnement : carton, carcasse, filet, plateau, barquette...",
-         "carcasse", "carton"),
         ("qte_par_colis",     "Qté par colis",
          "Nombre de pièces dans un colis. LAISSER VIDE si le prix est au kg.",
          "", "10"),
@@ -554,7 +548,6 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
         "désignation": "designation", "designation": "designation",
         "prix achat ht (€)": "prix_achat_ht", "prix achat ht": "prix_achat_ht",
         "prix au (kg / colis)": "format_prix", "prix au": "format_prix",
-        "unité colis": "unite_colis", "unite colis": "unite_colis",
         "qté par colis": "qte_par_colis", "qte par colis": "qte_par_colis",
         "poids unitaire (kg)": "poids_unitaire_kg", "poids unitaire": "poids_unitaire_kg",
         "poids total colis (kg)": "poids_colis_kg",
@@ -618,7 +611,6 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                 tva = 5.5
 
             format_prix     = _normaliser_format_prix(col(row_num, "format_prix")) if "format_prix" in headers else "kg"
-            unite_colis     = col(row_num, "unite_colis")     if "unite_colis"     in headers else None
             conditionnement = col(row_num, "conditionnement") if "conditionnement" in headers else None
             dlc_type        = col(row_num, "dlc_type")        if "dlc_type"        in headers else "dlc"
 
@@ -647,11 +639,11 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
             if existing:
                 await db.execute(
                     """UPDATE catalogue_fournisseur
-                       SET designation=?, prix_achat_ht=?, format_prix=?, unite_colis=?,
+                       SET designation=?, prix_achat_ht=?, format_prix=?,
                            qte_par_colis=?, poids_unitaire_kg=?, poids_colis_kg=?,
                            tva_percent=?, conditionnement=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
                        WHERE id=?""",
-                    (designation, prix, format_prix, unite_colis or None,
+                    (designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
                      tva, conditionnement or None, dlc_type or "dlc", existing["id"])
                 )
@@ -659,10 +651,10 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
             else:
                 await db.execute(
                     """INSERT INTO catalogue_fournisseur
-                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis,
+                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                         qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (fourn["id"], code, designation, prix, format_prix, unite_colis or None,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (fourn["id"], code, designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
                      tva, conditionnement or None, dlc_type or "dlc")
                 )
@@ -704,11 +696,11 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
         poids_colis = _calc_poids_colis_kg(body.qte_par_colis, body.poids_unitaire_kg)
         cur = await db.execute(
             """INSERT INTO catalogue_fournisseur
-               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis,
+               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                 qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
-             format_prix, body.unite_colis, body.qte_par_colis, body.poids_unitaire_kg,
+             format_prix, body.qte_par_colis, body.poids_unitaire_kg,
              poids_colis, body.tva_percent, body.conditionnement, body.dlc_type)
         )
         await db.commit()

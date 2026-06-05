@@ -20,7 +20,6 @@ const COLONNES = [
   { key: 'designation',     label: 'Désignation' },
   { key: 'prix_achat_ht',   label: 'Prix HT' },
   { key: 'format_prix',     label: 'Format' },
-  { key: 'unite_colis',     label: 'Unité colis' },
   { key: 'tva_percent',     label: 'TVA' },
   { key: 'conditionnement', label: 'Conditionnement' },
   { key: 'dlc_type',        label: 'DLC type' },
@@ -55,7 +54,6 @@ function bindEvents() {
   // Filtres
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-format-prix').addEventListener('change', filtrer);
-  document.getElementById('filtre-unite-colis').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
@@ -118,7 +116,6 @@ function estIncomplet(a) {
   // Liste des champs attendus — au moins un vide = incomplet
   return !a.prix_achat_ht
       || !a.format_prix
-      || !a.unite_colis
       || !a.conditionnement
       || !a.dlc_type
       || a.tva_percent === null || a.tva_percent === undefined;
@@ -128,7 +125,6 @@ function champsManquants(a) {
   const m = [];
   if (!a.prix_achat_ht)   m.push('Prix');
   if (!a.format_prix)     m.push('Format');
-  if (!a.unite_colis)     m.push('Unité colis');
   if (!a.conditionnement) m.push('Conditionnement');
   if (!a.dlc_type)        m.push('DLC type');
   if (a.tva_percent === null || a.tva_percent === undefined) m.push('TVA');
@@ -150,7 +146,6 @@ function afficherStats() {
 function filtrer() {
   const fourn            = document.getElementById('filtre-fournisseur').value;
   const formatPrix       = document.getElementById('filtre-format-prix').value;
-  const uniteColis       = document.getElementById('filtre-unite-colis').value;
   const dlc              = document.getElementById('filtre-dlc').value;
   const search           = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest     = document.getElementById('filtre-afficher-test').checked;
@@ -163,7 +158,6 @@ function filtrer() {
     if (!afficherInactifs && !a.actif)                               return false;
     if (fourn      && String(a.fournisseur_id) !== fourn)            return false;
     if (formatPrix && a.format_prix !== formatPrix)                  return false;
-    if (uniteColis && a.unite_colis !== uniteColis)                  return false;
     if (dlc        && a.dlc_type !== dlc)                            return false;
     if (sansPrixOnly   && a.prix_achat_ht > 0)                      return false;
     if (incompletsOnly && !estIncomplet(a))                         return false;
@@ -237,7 +231,6 @@ function afficherTable(liste) {
       </td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
       <td><span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span></td>
-      <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${a.tva_percent ?? 5.5}%</td>
       <td>${escHtml(a.conditionnement || '—')}</td>
       <td>
@@ -343,19 +336,6 @@ function majZoneValeurMasse() {
         <option value="kg">€ / kg (au kilo)</option>
         <option value="colis">€ / colis (à la pièce)</option></select>`,
     },
-    unite_colis: {
-      label: 'Nouvelle unité colis',
-      html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
-        <option value="">— Vider —</option>
-        <option value="carton">Carton</option>
-        <option value="carcasse">Carcasse</option>
-        <option value="filet">Filet</option>
-        <option value="plateau">Plateau</option>
-        <option value="barquette">Barquette</option>
-        <option value="seau">Seau</option>
-        <option value="piece">Pièce</option>
-        <option value="sachet">Sachet</option></select>`,
-    },
     tva_percent: {
       label: 'Nouveau taux TVA (%)',
       html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
@@ -456,7 +436,6 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-prix').value = a.prix_achat_ht;
   // Rétrocompat : ancienne valeur 'piece' → 'colis'
   document.getElementById('a-format-prix').value = (a.format_prix === 'piece' ? 'colis' : (a.format_prix || 'kg'));
-  document.getElementById('a-unite-colis').value = a.unite_colis || '';
   document.getElementById('a-qte-colis').value = a.qte_par_colis ?? '';
   document.getElementById('a-poids-unitaire').value = a.poids_unitaire_kg ?? '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
@@ -489,7 +468,6 @@ function viderForm() {
     document.getElementById(id).value = '';
   });
   document.getElementById('a-format-prix').value = 'kg';
-  document.getElementById('a-unite-colis').value = '';
   document.getElementById('a-tva').value = '5.5';
   document.getElementById('a-dlc-type').value = 'dlc';
   document.getElementById('form-erreur').hidden = true;
@@ -506,7 +484,6 @@ async function sauver(e) {
     designation:     document.getElementById('a-designation').value.trim(),
     prix_achat_ht:   parseFloat(document.getElementById('a-prix').value),
     format_prix:     document.getElementById('a-format-prix').value,
-    unite_colis:     document.getElementById('a-unite-colis').value || null,
     qte_par_colis:     parseFloat(document.getElementById('a-qte-colis').value) || null,
     poids_unitaire_kg: parseFloat(document.getElementById('a-poids-unitaire').value) || null,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),

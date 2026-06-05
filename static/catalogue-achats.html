@@ -82,20 +82,6 @@
       </select>
     </div>
     <div class="ach-filtre">
-      <label>Unité colis</label>
-      <select id="filtre-unite-colis">
-        <option value="">Toutes</option>
-        <option value="carton">Carton</option>
-        <option value="carcasse">Carcasse</option>
-        <option value="filet">Filet</option>
-        <option value="plateau">Plateau</option>
-        <option value="barquette">Barquette</option>
-        <option value="seau">Seau</option>
-        <option value="piece">Pièce</option>
-        <option value="sachet">Sachet</option>
-      </select>
-    </div>
-    <div class="ach-filtre">
       <label>Type DLC</label>
       <select id="filtre-dlc">
         <option value="">Tous</option>
@@ -162,7 +148,6 @@
             <option value="fournisseur_id">Fournisseur</option>
             <option value="prix_achat_ht">Prix achat HT (€)</option>
             <option value="format_prix">Format prix</option>
-            <option value="unite_colis">Unité colis</option>
             <option value="tva_percent">TVA (%)</option>
             <option value="conditionnement">Conditionnement</option>
             <option value="dlc_type">Type DLC</option>
@@ -195,7 +180,6 @@
           <th id="th-designation"     onclick="changerTri('designation')"     style="cursor:pointer;user-select:none;">Désignation ⇅</th>
           <th id="th-prix_achat_ht"   onclick="changerTri('prix_achat_ht')"   style="cursor:pointer;user-select:none;" class="ach-col-num">Prix HT ⇅</th>
           <th id="th-format_prix"     onclick="changerTri('format_prix')"     style="cursor:pointer;user-select:none;">Format ⇅</th>
-          <th id="th-unite_colis"     onclick="changerTri('unite_colis')"     style="cursor:pointer;user-select:none;">Unité colis ⇅</th>
           <th id="th-tva_percent"     onclick="changerTri('tva_percent')"     style="cursor:pointer;user-select:none;">TVA ⇅</th>
           <th id="th-conditionnement" onclick="changerTri('conditionnement')" style="cursor:pointer;user-select:none;">Conditionnement ⇅</th>
           <th id="th-dlc_type"        onclick="changerTri('dlc_type')"        style="cursor:pointer;user-select:none;">DLC type ⇅</th>
@@ -203,7 +187,7 @@
         </tr>
       </thead>
       <tbody id="tbody-catalogue">
-        <tr><td colspan="11" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="10" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
@@ -265,20 +249,6 @@
           <select id="a-format-prix">
             <option value="kg">€ / kg (au kilo)</option>
             <option value="colis">€ / colis (à la pièce)</option>
-          </select>
-        </div>
-        <div class="ach-champ">
-          <label>Unité colis</label>
-          <select id="a-unite-colis">
-            <option value="">— Non renseigné</option>
-            <option value="carton">Carton</option>
-            <option value="carcasse">Carcasse</option>
-            <option value="filet">Filet</option>
-            <option value="plateau">Plateau</option>
-            <option value="barquette">Barquette</option>
-            <option value="seau">Seau</option>
-            <option value="piece">Pièce</option>
-            <option value="sachet">Sachet</option>
           </select>
         </div>
         <!-- Conditionnement chiffré : à remplir si le prix est au colis -->

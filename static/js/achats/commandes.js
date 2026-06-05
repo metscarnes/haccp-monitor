@@ -268,7 +268,6 @@ function afficherCataloguePanier() {
         <td class="ach-cell-nom">${escHtml(a.designation)}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
         <td>${a.format_prix === 'kg' ? 'kg' : 'colis'}</td>
-        <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
         <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
         <td>${a.conditionnement ? escHtml(a.conditionnement) : '<span style="color:#9ca3af">—</span>'}</td>
         <td class="ach-col-num">${stock > 0
