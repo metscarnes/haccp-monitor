@@ -188,9 +188,22 @@
         localStorage.setItem('admin_token', data.token);
         localStorage.setItem('admin_token_expires', String(expiresAt));
         localStorage.setItem('admin_last_activity', String(Date.now()));
+        localStorage.setItem('admin_role', data.role || 'admin');
 
-        const redirect = sessionStorage.getItem(REDIRECT_KEY) || '/admin.html';
+        // Pages réservées à l'admin : un compte « équipe » n'a pas le droit d'y aller.
+        const PAGES_ADMIN = [
+          '/admin.html', '/catalogue.html',
+          '/fournisseurs.html', '/catalogue-achats.html',
+        ];
+        let redirect = sessionStorage.getItem(REDIRECT_KEY) || '/hub.html';
         sessionStorage.removeItem(REDIRECT_KEY);
+
+        // Si on n'est pas admin et que la cible est une page admin → on évite
+        // la boucle en renvoyant vers l'accueil au lieu d'une page interdite.
+        const cible = redirect.split('?')[0];
+        if (data.role !== 'admin' && PAGES_ADMIN.includes(cible)) {
+          redirect = '/hub.html';
+        }
         window.location.href = redirect;
       } else {
         errEl.classList.add('visible');
