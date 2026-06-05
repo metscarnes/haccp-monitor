@@ -49,6 +49,8 @@ function bindEvents() {
   document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-lancer').addEventListener('click', lancerImport);
   document.getElementById('form-article').addEventListener('submit', sauver);
+  document.getElementById('a-qte-colis').addEventListener('input', recalcPoidsColis);
+  document.getElementById('a-poids-unitaire').addEventListener('input', recalcPoidsColis);
 
   // Filtres
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
@@ -234,7 +236,7 @@ function afficherTable(liste) {
         ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${champsManquants(a).join(', ')}</span>` : ''}
       </td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
-      <td><span class="ach-badge ach-badge--${a.format_prix === 'piece' ? 'abattage' : 'dlc'}">${a.format_prix === 'piece' ? '€/pièce' : '€/kg'}</span></td>
+      <td><span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span></td>
       <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${a.tva_percent ?? 5.5}%</td>
       <td>${escHtml(a.conditionnement || '—')}</td>
@@ -338,8 +340,8 @@ function majZoneValeurMasse() {
     format_prix: {
       label: 'Nouveau format prix',
       html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
-        <option value="kg">€ / kg</option>
-        <option value="piece">€ / pièce</option></select>`,
+        <option value="kg">€ / kg (au kilo)</option>
+        <option value="colis">€ / colis (à la pièce)</option></select>`,
     },
     unite_colis: {
       label: 'Nouvelle unité colis',
@@ -452,13 +454,29 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-code').value = a.code_article;
   document.getElementById('a-designation').value = a.designation;
   document.getElementById('a-prix').value = a.prix_achat_ht;
-  document.getElementById('a-format-prix').value = a.format_prix || 'kg';
+  // Rétrocompat : ancienne valeur 'piece' → 'colis'
+  document.getElementById('a-format-prix').value = (a.format_prix === 'piece' ? 'colis' : (a.format_prix || 'kg'));
   document.getElementById('a-unite-colis').value = a.unite_colis || '';
+  document.getElementById('a-qte-colis').value = a.qte_par_colis ?? '';
+  document.getElementById('a-poids-unitaire').value = a.poids_unitaire_kg ?? '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
   document.getElementById('a-conditionnement').value = a.conditionnement || '';
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
+  recalcPoidsColis();
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
+}
+
+// Champ généré : poids total colis = qté par colis × poids unitaire
+function recalcPoidsColis() {
+  const qte   = parseFloat(document.getElementById('a-qte-colis').value);
+  const poids = parseFloat(document.getElementById('a-poids-unitaire').value);
+  const out   = document.getElementById('a-poids-colis');
+  if (qte > 0 && poids > 0) {
+    out.value = (Math.round(qte * poids * 1000) / 1000) + ' kg';
+  } else {
+    out.value = '';
+  }
 }
 
 function fermerModal() {
@@ -466,7 +484,8 @@ function fermerModal() {
 }
 
 function viderForm() {
-  ['a-id','a-code','a-designation','a-prix','a-conditionnement'].forEach(id => {
+  ['a-id','a-code','a-designation','a-prix','a-conditionnement',
+   'a-qte-colis','a-poids-unitaire','a-poids-colis'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('a-format-prix').value = 'kg';
@@ -488,6 +507,8 @@ async function sauver(e) {
     prix_achat_ht:   parseFloat(document.getElementById('a-prix').value),
     format_prix:     document.getElementById('a-format-prix').value,
     unite_colis:     document.getElementById('a-unite-colis').value || null,
+    qte_par_colis:     parseFloat(document.getElementById('a-qte-colis').value) || null,
+    poids_unitaire_kg: parseFloat(document.getElementById('a-poids-unitaire').value) || null,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),
     conditionnement: document.getElementById('a-conditionnement').value.trim() || null,
     dlc_type:        document.getElementById('a-dlc-type').value,

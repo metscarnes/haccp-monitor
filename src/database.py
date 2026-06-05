@@ -1188,6 +1188,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v5.2 — Catalogue fournisseur : format prix + unité colis
             "ALTER TABLE catalogue_fournisseur ADD COLUMN format_prix TEXT DEFAULT 'kg'",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN unite_colis TEXT",
+            # v5.3 — Catalogue fournisseur : conditionnement chiffré pour calcul du coût
+            # qte_par_colis et poids_unitaire_kg = données brutes saisies.
+            # poids_colis_kg = calculé (qte_par_colis × poids_unitaire_kg) côté code.
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN qte_par_colis REAL",
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN poids_unitaire_kg REAL",
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN poids_colis_kg REAL",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",

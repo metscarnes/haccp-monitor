@@ -78,7 +78,7 @@
       <select id="filtre-format-prix">
         <option value="">Tous</option>
         <option value="kg">€ / kg</option>
-        <option value="piece">€ / pièce</option>
+        <option value="colis">€ / colis</option>
       </select>
     </div>
     <div class="ach-filtre">
@@ -261,10 +261,10 @@
           <input type="number" id="a-prix" required min="0" step="0.01" placeholder="0.00">
         </div>
         <div class="ach-champ">
-          <label>Format prix <span class="ach-req">*</span></label>
+          <label>Prix au <span class="ach-req">*</span></label>
           <select id="a-format-prix">
-            <option value="kg">€ / kg</option>
-            <option value="piece">€ / pièce</option>
+            <option value="kg">€ / kg (au kilo)</option>
+            <option value="colis">€ / colis (à la pièce)</option>
           </select>
         </div>
         <div class="ach-champ">
@@ -280,6 +280,20 @@
             <option value="piece">Pièce</option>
             <option value="sachet">Sachet</option>
           </select>
+        </div>
+        <!-- Conditionnement chiffré : à remplir si le prix est au colis -->
+        <div class="ach-champ" id="a-zone-colis">
+          <label>Qté par colis <span style="font-weight:400;color:#9ca3af;">(si prix au colis)</span></label>
+          <input type="number" id="a-qte-colis" min="0" step="1" placeholder="Ex : 10">
+        </div>
+        <div class="ach-champ">
+          <label>Poids unitaire (kg) <span style="font-weight:400;color:#9ca3af;">(1 pièce, ex : 0.185)</span></label>
+          <input type="number" id="a-poids-unitaire" min="0" step="0.001" placeholder="Ex : 0.185">
+        </div>
+        <div class="ach-champ">
+          <label>Poids total colis (kg)</label>
+          <input type="text" id="a-poids-colis" readonly placeholder="Calculé automatiquement"
+                 style="background:#f3ebdf;color:#5a3e28;font-weight:600;cursor:not-allowed;">
         </div>
         <div class="ach-champ">
           <label>TVA (%)</label>

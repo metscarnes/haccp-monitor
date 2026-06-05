@@ -154,9 +154,10 @@ function majBadgePanier() {
   else { badge.hidden = true; }
 }
 
-// Unité de commande selon le format de prix de l'article
+// Unité de commande selon le format de prix de l'article.
+// 'kg' → on commande des kilos ; sinon ('colis', ancien 'piece') → des colis.
 function uniteArticle(a) {
-  return (a.format_prix === 'piece') ? 'pièce' : 'kg';
+  return (a.format_prix === 'kg') ? 'kg' : 'colis';
 }
 
 async function panierSauverBDD() {
@@ -258,7 +259,7 @@ function afficherCataloguePanier() {
   tbody.innerHTML = liste.map(a => {
     const qte = panier[a.id] || 0;
     const unite = uniteArticle(a);
-    const formatLbl = a.format_prix === 'piece' ? '€/pièce' : '€/kg';
+    const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
     return `
       <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}">
@@ -266,7 +267,7 @@ function afficherCataloguePanier() {
         <td><code>${escHtml(a.code_article)}</code></td>
         <td class="ach-cell-nom">${escHtml(a.designation)}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
-        <td>${a.format_prix === 'piece' ? 'pièce' : 'kg'}</td>
+        <td>${a.format_prix === 'kg' ? 'kg' : 'colis'}</td>
         <td>${a.unite_colis ? escHtml(a.unite_colis) : '<span style="color:#9ca3af">—</span>'}</td>
         <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
         <td>${a.conditionnement ? escHtml(a.conditionnement) : '<span style="color:#9ca3af">—</span>'}</td>

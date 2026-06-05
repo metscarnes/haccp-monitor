@@ -83,8 +83,10 @@ class CatalogueArticleCreate(BaseModel):
     code_article: str
     designation: str
     prix_achat_ht: float
-    format_prix: Optional[str] = "kg"   # 'kg' | 'piece'
-    unite_colis: Optional[str] = None   # ex: 'carton', 'carcasse', 'filet', 'plateau'
+    format_prix: Optional[str] = "kg"        # 'kg' (prix au kilo) | 'colis' (prix au colis/pièce)
+    unite_colis: Optional[str] = None        # ex: 'carton', 'carcasse', 'filet', 'plateau'
+    qte_par_colis: Optional[float] = None     # nb de pièces par colis (brut, si format 'colis')
+    poids_unitaire_kg: Optional[float] = None # poids d'une pièce en kg (brut, si format 'colis')
     tva_percent: Optional[float] = 5.5
     conditionnement: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
@@ -95,6 +97,8 @@ class CatalogueArticleUpdate(BaseModel):
     prix_achat_ht: Optional[float] = None
     format_prix: Optional[str] = None
     unite_colis: Optional[str] = None
+    qte_par_colis: Optional[float] = None
+    poids_unitaire_kg: Optional[float] = None
     tva_percent: Optional[float] = None
     conditionnement: Optional[str] = None
     dlc_type: Optional[str] = None
@@ -131,6 +135,38 @@ class CommandeUpdate(BaseModel):
     date_livraison_prevue: Optional[str] = None
     statut: Optional[str] = None
     commentaire: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Helpers catalogue
+# ---------------------------------------------------------------------------
+
+def _normaliser_format_prix(valeur) -> str:
+    """Ramène le format de prix à 'kg' ou 'colis'.
+
+    Tolère les anciennes valeurs ('piece' → 'colis') et les libellés saisis
+    par un fournisseur dans le template ('au kilo', 'au colis', 'pièce'...).
+    """
+    v = (str(valeur) if valeur is not None else "").strip().lower()
+    if v in ("kg", "kilo", "au kilo", "kilogramme", "/kg"):
+        return "kg"
+    if v in ("colis", "piece", "pièce", "au colis", "carton", "unite", "unité"):
+        return "colis"
+    return "kg"  # défaut prudent : au kilo
+
+
+def _calc_poids_colis_kg(qte_par_colis, poids_unitaire_kg):
+    """Champ généré : poids total d'un colis = qte_par_colis × poids_unitaire_kg.
+
+    Retourne None si une des deux données brutes manque (cas prix au kg, où le
+    poids du colis n'est pas fixe).
+    """
+    try:
+        if qte_par_colis in (None, "") or poids_unitaire_kg in (None, ""):
+            return None
+        return round(float(qte_par_colis) * float(poids_unitaire_kg), 3)
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -299,15 +335,18 @@ async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
     ws.title = "Catalogue Fournisseur"
 
     cols = [
-        ("fournisseur_nom", "Fournisseur"),
-        ("code_article",    "Code article"),
-        ("designation",     "Désignation"),
-        ("prix_achat_ht",   "Prix achat HT (€)"),
-        ("format_prix",     "Format prix"),
-        ("unite_colis",     "Unité colis"),
-        ("tva_percent",     "TVA (%)"),
-        ("conditionnement", "Conditionnement"),
-        ("dlc_type",        "Type DLC"),
+        ("fournisseur_nom",   "Fournisseur"),
+        ("code_article",      "Code article"),
+        ("designation",       "Désignation"),
+        ("prix_achat_ht",     "Prix achat HT (€)"),
+        ("format_prix",       "Prix au (kg / colis)"),
+        ("unite_colis",       "Unité colis"),
+        ("qte_par_colis",     "Qté par colis"),
+        ("poids_unitaire_kg", "Poids unitaire (kg)"),
+        ("poids_colis_kg",    "Poids total colis (kg)"),
+        ("tva_percent",       "TVA (%)"),
+        ("conditionnement",   "Conditionnement"),
+        ("dlc_type",          "Type DLC"),
     ]
 
     header_fill = PatternFill("solid", fgColor="2D7D46")
@@ -344,46 +383,131 @@ async def download_template():
     except ImportError:
         raise HTTPException(500, "openpyxl requis pour générer le template")
 
+    from openpyxl.comments import Comment
+    from openpyxl.worksheet.datavalidation import DataValidation
+
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Catalogue Fournisseur"
+    ws.title = "Catalogue"
 
-    headers = [
-        "fournisseur_nom", "code_article", "designation",
-        "prix_achat_ht", "format_prix", "unite_colis", "tva_percent", "conditionnement", "dlc_type"
-    ]
-    notes = [
-        "Nom exact du fournisseur (doit exister dans l'app)",
-        "Référence article fournisseur (ex: BF-250G)",
-        "Désignation complète du produit",
-        "Prix d'achat HT en euros (ex: 12.50)",
-        "kg ou piece",
-        "Ex: carton, carcasse, filet, plateau, barquette",
-        "Taux TVA en % (5.5 ou 20)",
-        "Ex: Carton 4kg / Carcasse / Barquette x20",
-        "dlc | date_abattage | no_dlc",
-    ]
-    examples = [
-        "Fournisseur A", "BF-250G", "Filet de boeuf",
-        "12.50", "kg", "carton", "5.5", "Carton 4kg", "dlc"
+    # Chaque colonne : (clé, en-tête lisible, note d'aide, ex. au kg, ex. au colis)
+    colonnes = [
+        ("fournisseur_nom",   "Fournisseur",
+         "Nom exact de votre société (tel qu'enregistré chez le client).",
+         "Boucherie Martin", "Boucherie Martin"),
+        ("code_article",      "Code article",
+         "Votre référence produit. Obligatoire.",
+         "CARC-BF", "STK-185"),
+        ("designation",       "Désignation",
+         "Libellé complet du produit. Obligatoire.",
+         "Carcasse boeuf", "Steak haché 185g"),
+        ("prix_achat_ht",     "Prix achat HT (€)",
+         "Prix HT. ATTENTION : prix AU KILO ou prix AU COLIS selon la colonne suivante. Obligatoire.",
+         "9.70", "18.00"),
+        ("format_prix",       "Prix au (kg / colis)",
+         "Écrire 'kg' si le prix ci-contre est au kilo, ou 'colis' s'il est pour un colis/une pièce entière. Obligatoire.",
+         "kg", "colis"),
+        ("unite_colis",       "Unité colis",
+         "Type de conditionnement : carton, carcasse, filet, plateau, barquette...",
+         "carcasse", "carton"),
+        ("qte_par_colis",     "Qté par colis",
+         "Nombre de pièces dans un colis. LAISSER VIDE si le prix est au kg.",
+         "", "10"),
+        ("poids_unitaire_kg", "Poids unitaire (kg)",
+         "Poids d'UNE pièce en kg (ex: 0.185 pour 185 g). LAISSER VIDE si le prix est au kg.",
+         "", "0.185"),
+        ("tva_percent",       "TVA (%)",
+         "Taux de TVA : 5.5 pour la viande, 20 sinon.",
+         "5.5", "5.5"),
+        ("conditionnement",   "Conditionnement (texte libre)",
+         "Précision libre : 'Carcasse ~150kg', 'Carton de 10', 'Sous-vide'... Facultatif.",
+         "Carcasse ~150kg", "Carton de 10"),
+        ("dlc_type",          "Type de DLC",
+         "dlc = date limite classique | date_abattage = produit carcasse daté à l'abattage | no_dlc = sans DLC.",
+         "date_abattage", "dlc"),
     ]
 
     header_fill = PatternFill("solid", fgColor="2D7D46")
     note_fill   = PatternFill("solid", fgColor="E8F5E9")
+    ex_fill     = PatternFill("solid", fgColor="FFF8E1")
+    wrap_top    = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
-    for col, (h, n, e) in enumerate(zip(headers, notes, examples), 1):
-        # Ligne 1 : en-têtes
-        cell = ws.cell(row=1, column=col, value=h)
-        cell.font = Font(bold=True, color="FFFFFF")
+    for col, (key, header, note, ex_kg, ex_colis) in enumerate(colonnes, 1):
+        letter = ws.cell(row=1, column=col).column_letter
+
+        # Ligne 1 : en-tête lisible
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True, color="FFFFFF", size=11)
         cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-        # Ligne 2 : notes
-        note_cell = ws.cell(row=2, column=col, value=n)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        # Le nom technique reste en commentaire (pour l'import, insensible à l'ordre)
+        cell.comment = Comment(f"Colonne technique : {key}", "HACCP")
+
+        # Ligne 2 : note d'aide
+        note_cell = ws.cell(row=2, column=col, value=note)
         note_cell.fill = note_fill
-        note_cell.font = Font(italic=True, size=9)
-        # Ligne 3 : exemple
-        ws.cell(row=3, column=col, value=e)
-        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = 20
+        note_cell.font = Font(italic=True, size=9, color="2D5A3A")
+        note_cell.alignment = wrap_top
+
+        # Lignes 3 et 4 : deux exemples concrets (au kg / au colis)
+        c3 = ws.cell(row=3, column=col, value=ex_kg)
+        c4 = ws.cell(row=4, column=col, value=ex_colis)
+        for c in (c3, c4):
+            c.fill = ex_fill
+            c.font = Font(size=10, color="8A6D3B")
+            c.alignment = wrap_top
+
+        ws.column_dimensions[letter].width = 20
+
+    # Étiquettes des lignes d'exemple, dans une colonne hors tableau (à droite)
+    note_col = len(colonnes) + 2
+    ws.cell(row=3, column=note_col, value="◀ Exemple : produit vendu AU KILO (carcasse)").font = Font(italic=True, size=9, color="8A6D3B")
+    ws.cell(row=4, column=note_col, value="◀ Exemple : produit vendu AU COLIS (10 steaks de 185g)").font = Font(italic=True, size=9, color="8A6D3B")
+
+    ws.row_dimensions[2].height = 58
+    ws.freeze_panes = "A5"  # données à saisir à partir de la ligne 5
+
+    # Liste déroulante kg/colis sur la colonne format_prix (anti-erreur)
+    fmt_letter = ws.cell(row=1, column=5).column_letter
+    dv = DataValidation(type="list", formula1='"kg,colis"', allow_blank=False)
+    dv.prompt = "Choisir : kg (prix au kilo) ou colis (prix au colis/pièce)"
+    dv.promptTitle = "Le prix est au..."
+    ws.add_data_validation(dv)
+    dv.add(f"{fmt_letter}5:{fmt_letter}500")
+
+    # --- Onglet « Mode d'emploi » -------------------------------------------
+    guide = wb.create_sheet("Mode d'emploi")
+    guide.column_dimensions["A"].width = 95
+    lignes_guide = [
+        ("COMMENT REMPLIR CE CATALOGUE", True),
+        ("", False),
+        ("1. Une ligne = un produit. Commencez à saisir à partir de la ligne 5 de l'onglet « Catalogue ».", False),
+        ("   (les lignes 3 et 4 sont des exemples, vous pouvez les écraser ou les supprimer).", False),
+        ("", False),
+        ("2. La colonne la plus importante est « Prix au (kg / colis) » :", True),
+        ("     • Écrivez « kg »    si le prix indiqué est le prix d'UN KILO.", False),
+        ("     • Écrivez « colis » si le prix indiqué est le prix d'UN COLIS entier (ou d'une pièce).", False),
+        ("", False),
+        ("3. Si le prix est AU KILO (kg) :", True),
+        ("     → laissez VIDES les colonnes « Qté par colis » et « Poids unitaire ».", False),
+        ("     → le coût d'une commande sera : poids commandé × prix au kilo.", False),
+        ("", False),
+        ("4. Si le prix est AU COLIS :", True),
+        ("     → remplissez « Qté par colis » (nb de pièces) et « Poids unitaire (kg) ».", False),
+        ("     → exemple : 10 steaks de 185 g  →  Qté par colis = 10, Poids unitaire = 0.185.", False),
+        ("     → le poids total du colis (10 × 0,185 = 1,85 kg) est calculé automatiquement, ne le saisissez pas.", False),
+        ("", False),
+        ("5. Les poids sont en KILOS avec un point décimal (0.185 et non 185 g).", False),
+        ("   Le point ou la virgule sont acceptés.", False),
+        ("", False),
+        ("Merci ! En cas de doute sur une ligne, laissez un commentaire ou contactez-nous.", True),
+    ]
+    for i, (txt, bold) in enumerate(lignes_guide, 1):
+        c = guide.cell(row=i, column=1, value=txt)
+        c.font = Font(bold=bold, size=12 if (bold and i == 1) else 11,
+                      color="2D7D46" if bold else "333333")
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+    wb.active = wb.sheetnames.index("Catalogue")
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -419,9 +543,31 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
 
     content = await fichier.read()
     wb = openpyxl.load_workbook(io.BytesIO(content))
-    ws = wb.active
+    # L'onglet de données s'appelle "Catalogue" dans le template ; sinon onglet actif.
+    ws = wb["Catalogue"] if "Catalogue" in wb.sheetnames else wb.active
 
-    headers = [str(ws.cell(row=1, column=c).value or "").strip().lower() for c in range(1, ws.max_column + 1)]
+    # Correspondance libellé lisible (template fournisseur) → clé technique.
+    # On accepte aussi directement les clés techniques (anciens exports).
+    LIBELLE_VERS_CLE = {
+        "fournisseur": "fournisseur_nom",
+        "code article": "code_article",
+        "désignation": "designation", "designation": "designation",
+        "prix achat ht (€)": "prix_achat_ht", "prix achat ht": "prix_achat_ht",
+        "prix au (kg / colis)": "format_prix", "prix au": "format_prix",
+        "unité colis": "unite_colis", "unite colis": "unite_colis",
+        "qté par colis": "qte_par_colis", "qte par colis": "qte_par_colis",
+        "poids unitaire (kg)": "poids_unitaire_kg", "poids unitaire": "poids_unitaire_kg",
+        "poids total colis (kg)": "poids_colis_kg",
+        "tva (%)": "tva_percent", "tva": "tva_percent",
+        "conditionnement (texte libre)": "conditionnement", "conditionnement": "conditionnement",
+        "type de dlc": "dlc_type", "type dlc": "dlc_type",
+    }
+
+    def _cle(libelle):
+        l = libelle.strip().lower()
+        return LIBELLE_VERS_CLE.get(l, l)  # libellé connu → clé, sinon tel quel
+
+    headers = [_cle(str(ws.cell(row=1, column=c).value or "")) for c in range(1, ws.max_column + 1)]
     required = {"fournisseur_nom", "code_article", "designation", "prix_achat_ht"}
     missing = required - set(headers)
     if missing:
@@ -434,11 +580,18 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
 
     stats = {"crees": 0, "mis_a_jour": 0, "erreurs": []}
 
+    # Lignes 1=en-têtes, 2=notes, 3-4=exemples → vraies données à partir de la ligne 5.
+    # On saute aussi toute ligne d'exemple résiduelle laissée par le fournisseur.
+    EXEMPLES_CODES = {"carc-bf", "stk-185"}
+
     async with get_db() as db:
-        for row_num in range(3, ws.max_row + 1):  # ligne 2 = notes, données dès ligne 3
+        for row_num in range(5, ws.max_row + 1):
             nom_fourn = col(row_num, "fournisseur_nom")
             code = col(row_num, "code_article")
             if not nom_fourn or not code:
+                continue
+            # Ignorer une ligne d'exemple que le fournisseur aurait laissée en place
+            if code.strip().lower() in EXEMPLES_CODES and nom_fourn.strip().lower() == "boucherie martin":
                 continue
 
             # Trouver le fournisseur
@@ -464,12 +617,26 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
             except ValueError:
                 tva = 5.5
 
-            format_prix     = col(row_num, "format_prix")     if "format_prix"     in headers else "kg"
+            format_prix     = _normaliser_format_prix(col(row_num, "format_prix")) if "format_prix" in headers else "kg"
             unite_colis     = col(row_num, "unite_colis")     if "unite_colis"     in headers else None
             conditionnement = col(row_num, "conditionnement") if "conditionnement" in headers else None
             dlc_type        = col(row_num, "dlc_type")        if "dlc_type"        in headers else "dlc"
-            if format_prix not in ("kg", "piece"):
-                format_prix = "kg"
+
+            def _num(name):
+                """Lit une cellule numérique optionnelle (qte/poids), '' → None."""
+                if name not in headers:
+                    return None
+                raw = col(row_num, name).replace(",", ".")  # tolère la virgule décimale
+                if not raw:
+                    return None
+                try:
+                    return float(raw)
+                except ValueError:
+                    return None
+
+            qte_par_colis     = _num("qte_par_colis")
+            poids_unitaire_kg = _num("poids_unitaire_kg")
+            poids_colis_kg    = _calc_poids_colis_kg(qte_par_colis, poids_unitaire_kg)
 
             # UPSERT
             cur2 = await db.execute(
@@ -481,18 +648,22 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                 await db.execute(
                     """UPDATE catalogue_fournisseur
                        SET designation=?, prix_achat_ht=?, format_prix=?, unite_colis=?,
+                           qte_par_colis=?, poids_unitaire_kg=?, poids_colis_kg=?,
                            tva_percent=?, conditionnement=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
                        WHERE id=?""",
                     (designation, prix, format_prix, unite_colis or None,
+                     qte_par_colis, poids_unitaire_kg, poids_colis_kg,
                      tva, conditionnement or None, dlc_type or "dlc", existing["id"])
                 )
                 stats["mis_a_jour"] += 1
             else:
                 await db.execute(
                     """INSERT INTO catalogue_fournisseur
-                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis, tva_percent, conditionnement, dlc_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis,
+                        qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (fourn["id"], code, designation, prix, format_prix, unite_colis or None,
+                     qte_par_colis, poids_unitaire_kg, poids_colis_kg,
                      tva, conditionnement or None, dlc_type or "dlc")
                 )
                 stats["crees"] += 1
@@ -529,12 +700,16 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
         if await cur_dup.fetchone():
             raise HTTPException(409, f"Code article '{body.code_article}' déjà existant pour ce fournisseur")
 
+        format_prix = _normaliser_format_prix(body.format_prix)
+        poids_colis = _calc_poids_colis_kg(body.qte_par_colis, body.poids_unitaire_kg)
         cur = await db.execute(
             """INSERT INTO catalogue_fournisseur
-               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis, tva_percent, conditionnement, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (fournisseur_id, code_article, designation, prix_achat_ht, format_prix, unite_colis,
+                qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
-             body.format_prix or 'kg', body.unite_colis, body.tva_percent, body.conditionnement, body.dlc_type)
+             format_prix, body.unite_colis, body.qte_par_colis, body.poids_unitaire_kg,
+             poids_colis, body.tva_percent, body.conditionnement, body.dlc_type)
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
@@ -545,12 +720,23 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
 async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
-        if not await cur.fetchone():
+        existing = await cur.fetchone()
+        if not existing:
             raise HTTPException(404, "Article introuvable")
 
         fields = {k: v for k, v in body.model_dump().items() if v is not None}
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
+
+        if "format_prix" in fields:
+            fields["format_prix"] = _normaliser_format_prix(fields["format_prix"])
+
+        # Recalcule le poids du colis si une des deux données brutes est modifiée,
+        # en repartant des valeurs existantes pour celle qui ne change pas.
+        if "qte_par_colis" in fields or "poids_unitaire_kg" in fields:
+            qte = fields.get("qte_par_colis", existing["qte_par_colis"])
+            pu = fields.get("poids_unitaire_kg", existing["poids_unitaire_kg"])
+            fields["poids_colis_kg"] = _calc_poids_colis_kg(qte, pu)
 
         fields["date_maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         set_clause = ", ".join(f"{k} = ?" for k in fields)
