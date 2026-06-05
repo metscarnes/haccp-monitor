@@ -1,24 +1,41 @@
-/* commandes.js — Module Commandes */
+/* commandes.js — Module Commandes v2 (panier multi-fournisseurs) */
 
 const API_CMD   = '/api/achats/commandes';
 const API_FOURN = '/api/achats/fournisseurs';
 const API_CAT   = '/api/achats/catalogue';
+const API_PANIER = '/api/achats/panier';
+const LS_KEY    = 'haccp_panier';
 
 let commandes    = [];
 let fournisseurs = [];
-let catalogue    = [];
-let cmdCourante  = null; // commande en cours d'édition
+let catalogueTous = [];   // tout le catalogue, tous fournisseurs
+let catalogueCourant = []; // catalogue du fournisseur de la commande en édition
+let cmdCourante  = null;
+let panier       = [];    // [{ catalogueId, fournisseurId, fournisseurNom, code, designation, quantite, unite, prix }]
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([chargerFournisseurs(), chargerCommandes()]);
+  await Promise.all([chargerFournisseurs(), chargerCommandes(), chargerCatalogueTous()]);
+  panierCharger();
   bindEvents();
 });
 
 function bindEvents() {
-  document.getElementById('btn-nouvelle').addEventListener('click', ouvrirNouvelleCommande);
+  // Panier
+  document.getElementById('btn-panier').addEventListener('click', ouvrirPanier);
+  document.getElementById('modal-panier-fermer').addEventListener('click', fermerPanier);
+  document.getElementById('btn-panier-fermer').addEventListener('click', fermerPanier);
+  document.getElementById('btn-panier-sauver').addEventListener('click', panierSauverBDD);
+  document.getElementById('btn-panier-vider').addEventListener('click', panierVider);
+  document.getElementById('btn-panier-generer').addEventListener('click', panierGenerer);
+  document.getElementById('panier-search').addEventListener('input', rechercherCataloguePanier);
+  document.getElementById('form-qte').addEventListener('submit', panierAjouterArticle);
+  document.getElementById('modal-qte-fermer').addEventListener('click', fermerModalQte);
+  document.getElementById('btn-qte-annuler').addEventListener('click', fermerModalQte);
+
+  // Commande existante
   document.getElementById('modal-cmd-fermer').addEventListener('click', fermerModalCmd);
   document.getElementById('btn-fermer-cmd').addEventListener('click', fermerModalCmd);
   document.getElementById('btn-sauver-cmd').addEventListener('click', sauverCommande);
@@ -31,8 +48,7 @@ function bindEvents() {
   document.getElementById('form-ligne').addEventListener('submit', ajouterLigne);
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-statut').addEventListener('change', filtrer);
-  document.getElementById('ligne-search').addEventListener('input', rechercherCatalogue);
-  document.getElementById('cmd-fournisseur').addEventListener('change', onFournisseurChange);
+  document.getElementById('ligne-search').addEventListener('input', rechercherCatalogueCmd);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -40,10 +56,8 @@ async function chargerFournisseurs() {
   const r = await fetch(API_FOURN);
   fournisseurs = await r.json();
   const selFiltre = document.getElementById('filtre-fournisseur');
-  const selForm   = document.getElementById('cmd-fournisseur');
   fournisseurs.forEach(f => {
     selFiltre.insertAdjacentHTML('beforeend', `<option value="${f.id}">${escHtml(f.nom)}</option>`);
-    selForm.insertAdjacentHTML('beforeend', `<option value="${f.id}">${escHtml(f.nom)}</option>`);
   });
 }
 
@@ -58,6 +72,15 @@ async function chargerCommandes() {
   }
 }
 
+async function chargerCatalogueTous() {
+  try {
+    const r = await fetch(API_CAT);
+    catalogueTous = await r.json();
+  } catch(e) {
+    catalogueTous = [];
+  }
+}
+
 function afficherStats() {
   document.getElementById('stat-brouillon').textContent = commandes.filter(c => c.statut === 'brouillon').length;
   document.getElementById('stat-confirmee').textContent = commandes.filter(c => c.statut === 'confirmee').length;
@@ -67,12 +90,11 @@ function afficherStats() {
 function filtrer() {
   const fourn  = document.getElementById('filtre-fournisseur').value;
   const statut = document.getElementById('filtre-statut').value;
-  const filtre = commandes.filter(c => {
-    if (fourn  && String(c.fournisseur_id) !== fourn)  return false;
+  afficherTable(commandes.filter(c => {
+    if (fourn  && String(c.fournisseur_id) !== fourn) return false;
     if (statut && c.statut !== statut) return false;
     return true;
-  });
-  afficherTable(filtre);
+  }));
 }
 
 function afficherTable(liste) {
@@ -97,25 +119,327 @@ function afficherTable(liste) {
   `).join('');
 }
 
-// ── Modal commande ───────────────────────────────────────────
-function ouvrirNouvelleCommande() {
-  cmdCourante = null;
-  document.getElementById('modal-cmd-titre').textContent = 'Nouvelle commande';
-  document.getElementById('cmd-id').value = '';
-  document.getElementById('cmd-fournisseur').value = '';
-  document.getElementById('cmd-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('cmd-livraison').value = '';
-  document.getElementById('cmd-commentaire').value = '';
-  document.getElementById('zone-lignes').innerHTML = '<p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>';
-  document.getElementById('cmd-total').textContent = '0,00 €';
-  document.getElementById('btn-envoyer-cmd').hidden = true;
-  document.getElementById('btn-dupliquer').hidden = true;
-  document.getElementById('btn-annuler-cmd').hidden = true;
-  document.getElementById('btn-ajouter-ligne').disabled = true;
-  document.getElementById('cmd-form-erreur').hidden = true;
-  document.getElementById('modal-commande').hidden = false;
+// ── Panier localStorage ──────────────────────────────────────
+function panierCharger() {
+  try {
+    panier = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  } catch { panier = []; }
+  majBadgePanier();
 }
 
+function panierSauver() {
+  localStorage.setItem(LS_KEY, JSON.stringify(panier));
+  majBadgePanier();
+}
+
+function majBadgePanier() {
+  const badge = document.getElementById('badge-panier');
+  if (panier.length > 0) {
+    badge.textContent = panier.length;
+    badge.hidden = false;
+  } else {
+    badge.hidden = true;
+  }
+}
+
+async function panierSauverBDD() {
+  const btn = document.getElementById('btn-panier-sauver');
+  btn.disabled = true; btn.textContent = 'Sauvegarde…';
+  try {
+    const r = await fetch(API_PANIER, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lignes: panier.map(l => ({
+          catalogue_fournisseur_id: l.catalogueId || null,
+          fournisseur_id: l.fournisseurId,
+          fournisseur_nom: l.fournisseurNom,
+          code_article: l.code,
+          designation: l.designation,
+          quantite: l.quantite,
+          unite: l.unite,
+          prix_ht: l.prix,
+        }))
+      })
+    });
+    if (!r.ok) throw new Error('Erreur serveur');
+    btn.textContent = '✅ Sauvegardé';
+    setTimeout(() => { btn.textContent = '💾 Sauvegarder'; btn.disabled = false; }, 1500);
+  } catch(e) {
+    alert('Erreur sauvegarde : ' + e.message);
+    btn.disabled = false; btn.textContent = '💾 Sauvegarder';
+  }
+}
+
+async function panierRestaurerBDD() {
+  try {
+    const r = await fetch(API_PANIER);
+    const lignes = await r.json();
+    if (!lignes.length) return;
+    if (!confirm(`Un panier sauvegardé contient ${lignes.length} article(s). Le restaurer ?`)) return;
+    panier = lignes.map(l => ({
+      catalogueId:   l.catalogue_fournisseur_id,
+      fournisseurId: l.fournisseur_id,
+      fournisseurNom: l.fournisseur_nom,
+      code:          l.code_article,
+      designation:   l.designation,
+      quantite:      l.quantite,
+      unite:         l.unite,
+      prix:          l.prix_ht,
+    }));
+    panierSauver();
+    afficherPanier();
+  } catch(e) { /* silencieux */ }
+}
+
+function panierVider() {
+  if (!panier.length || !confirm('Vider le panier ?')) return;
+  panier = [];
+  panierSauver();
+  afficherPanier();
+  // Vider aussi la BDD
+  fetch(API_PANIER, { method: 'DELETE' }).catch(() => {});
+}
+
+// ── Modal panier ─────────────────────────────────────────────
+async function ouvrirPanier() {
+  // Proposer restauration BDD si panier local vide
+  if (!panier.length) {
+    await panierRestaurerBDD();
+  }
+  afficherPanier();
+  document.getElementById('modal-panier').hidden = false;
+  document.getElementById('panier-search').focus();
+}
+
+function fermerPanier() {
+  document.getElementById('modal-panier').hidden = true;
+  document.getElementById('panier-search').value = '';
+  document.getElementById('panier-resultats').style.display = 'none';
+  document.getElementById('panier-resultats').innerHTML = '';
+}
+
+function afficherPanier() {
+  const zone = document.getElementById('panier-lignes-zone');
+
+  if (!panier.length) {
+    zone.innerHTML = '<p class="ach-vide" id="panier-vide">Votre panier est vide — recherchez des articles ci-dessus</p>';
+    document.getElementById('panier-total').textContent = '0,00 €';
+    majBadgePanier();
+    return;
+  }
+
+  // Grouper par fournisseur
+  const groupes = {};
+  panier.forEach((l, idx) => {
+    if (!groupes[l.fournisseurNom]) groupes[l.fournisseurNom] = [];
+    groupes[l.fournisseurNom].push({ ...l, idx });
+  });
+
+  let html = '';
+  Object.entries(groupes).forEach(([nomFourn, lignes]) => {
+    const totalFourn = lignes.reduce((s, l) => s + l.quantite * l.prix, 0);
+    html += `
+      <div style="margin-bottom:var(--space-3);">
+        <div style="font-weight:700; font-size:var(--text-sm); color:#5a3e28; padding:.4rem 0; border-bottom:2px solid #e8d9c4; display:flex; justify-content:space-between;">
+          <span>🏪 ${escHtml(nomFourn)}</span>
+          <span>${fmtPrix(totalFourn)} €</span>
+        </div>
+        <table class="ach-table" style="margin-top:var(--space-1);">
+          <thead><tr>
+            <th>Désignation</th>
+            <th class="ach-col-num">Qté</th>
+            <th>Unité</th>
+            <th class="ach-col-num">Prix HT</th>
+            <th class="ach-col-num">Montant</th>
+            <th class="ach-col-actions"></th>
+          </tr></thead>
+          <tbody>
+            ${lignes.map(l => `
+              <tr>
+                <td>
+                  <div style="font-weight:600; font-size:var(--text-sm);">${escHtml(l.designation)}</div>
+                  <div style="font-size:var(--text-xs); color:#6b7280;"><code>${escHtml(l.code)}</code></div>
+                </td>
+                <td class="ach-col-num">
+                  <input type="number" value="${l.quantite}" min="0.001" step="0.001"
+                    style="width:70px; text-align:right; border:1px solid #e8d9c4; border-radius:4px; padding:2px 4px;"
+                    onchange="panierMajQuantite(${l.idx}, this.value)">
+                </td>
+                <td>${escHtml(l.unite)}</td>
+                <td class="ach-col-num">${fmtPrix(l.prix)} €</td>
+                <td class="ach-col-num"><strong>${fmtPrix(l.quantite * l.prix)} €</strong></td>
+                <td class="ach-col-actions">
+                  <button class="ach-btn ach-btn--small ach-btn--danger" onclick="panierSupprimerLigne(${l.idx})">✕</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  });
+
+  zone.innerHTML = html;
+
+  const total = panier.reduce((s, l) => s + l.quantite * l.prix, 0);
+  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
+  majBadgePanier();
+}
+
+function panierMajQuantite(idx, valeur) {
+  const qte = parseFloat(valeur);
+  if (isNaN(qte) || qte <= 0) return;
+  panier[idx].quantite = qte;
+  panierSauver();
+  // Recalculer seulement le montant de la ligne sans re-rendre tout
+  const total = panier.reduce((s, l) => s + l.quantite * l.prix, 0);
+  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
+  majBadgePanier();
+}
+
+function panierSupprimerLigne(idx) {
+  panier.splice(idx, 1);
+  panierSauver();
+  afficherPanier();
+}
+
+// ── Recherche catalogue dans le panier ───────────────────────
+function rechercherCataloguePanier() {
+  const q = document.getElementById('panier-search').value.toLowerCase().trim();
+  const zone = document.getElementById('panier-resultats');
+  if (!q) { zone.style.display = 'none'; zone.innerHTML = ''; return; }
+
+  const resultats = catalogueTous.filter(a =>
+    a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q)
+  ).slice(0, 30);
+
+  zone.style.display = 'block';
+  if (!resultats.length) {
+    zone.innerHTML = '<p class="ach-vide" style="padding:var(--space-2);">Aucun article trouvé</p>';
+    return;
+  }
+
+  zone.innerHTML = resultats.map(a => `
+    <div onclick="ouvrirModalQte(${a.id})"
+      style="padding:.6rem 1rem; cursor:pointer; border-bottom:1px solid #f1ead9; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <strong style="font-size:var(--text-sm);">${escHtml(a.designation)}</strong>
+        <span style="font-size:var(--text-xs); color:#6b7280; margin-left:.5rem;"><code>${escHtml(a.code_article)}</code></span>
+        <span style="font-size:var(--text-xs); color:#9ca3af; margin-left:.5rem;">— ${escHtml(a.fournisseur_nom)}</span>
+      </div>
+      <span style="font-weight:700; font-size:var(--text-sm); white-space:nowrap; margin-left:.5rem;">${fmtPrix(a.prix_achat_ht)} €</span>
+    </div>
+  `).join('');
+}
+
+// ── Modal quantité ────────────────────────────────────────────
+function ouvrirModalQte(catalogueId) {
+  const a = catalogueTous.find(x => x.id === catalogueId);
+  if (!a) return;
+  const fourn = fournisseurs.find(f => f.id === a.fournisseur_id);
+
+  document.getElementById('qte-catalogue-id').value  = a.id;
+  document.getElementById('qte-fournisseur-id').value = a.fournisseur_id;
+  document.getElementById('qte-fournisseur-nom').value = fourn ? fourn.nom : (a.fournisseur_nom || '');
+  document.getElementById('qte-code').value        = a.code_article;
+  document.getElementById('qte-designation').value = a.designation;
+  document.getElementById('qte-prix').value        = a.prix_achat_ht;
+  document.getElementById('modal-qte-titre').textContent = a.designation;
+  document.getElementById('qte-valeur').value = '';
+
+  // Pré-sélectionner l'unité selon format_prix
+  const sel = document.getElementById('qte-unite');
+  sel.value = (a.format_prix === 'piece') ? 'piece' : 'kg';
+
+  document.getElementById('modal-qte').hidden = false;
+  document.getElementById('qte-valeur').focus();
+}
+
+function fermerModalQte() {
+  document.getElementById('modal-qte').hidden = true;
+}
+
+function panierAjouterArticle(e) {
+  e.preventDefault();
+  const item = {
+    catalogueId:   parseInt(document.getElementById('qte-catalogue-id').value) || null,
+    fournisseurId: parseInt(document.getElementById('qte-fournisseur-id').value),
+    fournisseurNom: document.getElementById('qte-fournisseur-nom').value,
+    code:          document.getElementById('qte-code').value,
+    designation:   document.getElementById('qte-designation').value,
+    quantite:      parseFloat(document.getElementById('qte-valeur').value),
+    unite:         document.getElementById('qte-unite').value,
+    prix:          parseFloat(document.getElementById('qte-prix').value),
+  };
+
+  // Si l'article existe déjà dans le panier (même catalogueId), additionner les quantités
+  const existant = panier.findIndex(l => l.catalogueId && l.catalogueId === item.catalogueId);
+  if (existant >= 0) {
+    panier[existant].quantite += item.quantite;
+  } else {
+    panier.push(item);
+  }
+
+  panierSauver();
+  fermerModalQte();
+
+  // Vider la recherche et re-focus
+  document.getElementById('panier-search').value = '';
+  document.getElementById('panier-resultats').style.display = 'none';
+  document.getElementById('panier-resultats').innerHTML = '';
+  document.getElementById('panier-search').focus();
+
+  afficherPanier();
+}
+
+// ── Génération des commandes ──────────────────────────────────
+async function panierGenerer() {
+  if (!panier.length) {
+    alert('Le panier est vide.');
+    return;
+  }
+
+  // Compter les fournisseurs distincts
+  const fournIds = [...new Set(panier.map(l => l.fournisseurId))];
+  const msg = `Générer ${fournIds.length} commande(s) brouillon pour :\n` +
+    fournIds.map(id => {
+      const f = fournisseurs.find(x => x.id === id);
+      const nb = panier.filter(l => l.fournisseurId === id).length;
+      return `  • ${f ? f.nom : id} (${nb} article(s))`;
+    }).join('\n');
+
+  if (!confirm(msg + '\n\nContinuer ?')) return;
+
+  const btn = document.getElementById('btn-panier-generer');
+  btn.disabled = true; btn.textContent = 'Génération…';
+
+  try {
+    const r = await fetch(`${API_PANIER}/generer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date_livraison_prevue: document.getElementById('panier-livraison').value || null,
+        commentaire: document.getElementById('panier-commentaire').value.trim() || null,
+      })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur serveur');
+    const result = await r.json();
+
+    // Vider le panier local
+    panier = [];
+    panierSauver();
+    fermerPanier();
+    await chargerCommandes();
+
+    alert(`✅ ${result.nb_commandes} commande(s) créée(s) en brouillon.`);
+  } catch(e) {
+    alert('Erreur : ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✅ Générer les commandes';
+  }
+}
+
+// ── Modal commande existante ──────────────────────────────────
 async function ouvrirCommande(id) {
   try {
     const r = await fetch(`${API_CMD}/${id}`);
@@ -124,6 +448,7 @@ async function ouvrirCommande(id) {
     document.getElementById('modal-cmd-titre').textContent = cmdCourante.numero_commande;
     document.getElementById('cmd-id').value = cmdCourante.id;
     document.getElementById('cmd-fournisseur').value = cmdCourante.fournisseur_id;
+    document.getElementById('cmd-fournisseur-nom').value = cmdCourante.fournisseur_nom;
     document.getElementById('cmd-date').value = cmdCourante.date_commande;
     document.getElementById('cmd-livraison').value = cmdCourante.date_livraison_prevue || '';
     document.getElementById('cmd-commentaire').value = cmdCourante.commentaire || '';
@@ -133,11 +458,11 @@ async function ouvrirCommande(id) {
     document.getElementById('btn-envoyer-cmd').hidden = !editable;
     document.getElementById('btn-dupliquer').hidden = false;
     document.getElementById('btn-annuler-cmd').hidden = cmdCourante.statut === 'annulee' || cmdCourante.statut === 'livree';
+    document.getElementById('btn-sauver-cmd').hidden = !editable;
     document.getElementById('cmd-form-erreur').hidden = true;
 
-    // Charger catalogue fournisseur
     const rc = await fetch(`${API_CAT}?fournisseur_id=${cmdCourante.fournisseur_id}`);
-    catalogue = await rc.json();
+    catalogueCourant = await rc.json();
 
     afficherLignes(cmdCourante.lignes);
     document.getElementById('modal-commande').hidden = false;
@@ -154,11 +479,10 @@ function fermerModalCmd() {
 function afficherLignes(lignes) {
   const zone = document.getElementById('zone-lignes');
   if (!lignes.length) {
-    zone.innerHTML = '<p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>';
+    zone.innerHTML = '<p class="ach-vide">Aucun article</p>';
     calculerTotal([]);
     return;
   }
-
   zone.innerHTML = `
     <table class="ach-table" style="margin-top:var(--space-2);">
       <thead><tr>
@@ -193,37 +517,16 @@ function calculerTotal(lignes) {
   document.getElementById('cmd-total').textContent = fmtPrix(total) + ' €';
 }
 
-// ── Sauvegarder commande ─────────────────────────────────────
 async function sauverCommande() {
   const btn = document.getElementById('btn-sauver-cmd');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
-
+  const id = document.getElementById('cmd-id').value;
   const body = {
-    fournisseur_id:       parseInt(document.getElementById('cmd-fournisseur').value),
-    date_commande:        document.getElementById('cmd-date').value,
     date_livraison_prevue: document.getElementById('cmd-livraison').value || null,
-    commentaire:          document.getElementById('cmd-commentaire').value.trim() || null,
+    commentaire:           document.getElementById('cmd-commentaire').value.trim() || null,
   };
-
   try {
-    const id = document.getElementById('cmd-id').value;
-    if (id) {
-      // Mise à jour
-      await fetch(`${API_CMD}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    } else {
-      // Création
-      const r = await fetch(API_CMD, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
-      cmdCourante = await r.json();
-      document.getElementById('cmd-id').value = cmdCourante.id;
-      document.getElementById('modal-cmd-titre').textContent = cmdCourante.numero_commande;
-      document.getElementById('btn-envoyer-cmd').hidden = false;
-      document.getElementById('btn-dupliquer').hidden = false;
-      document.getElementById('btn-ajouter-ligne').disabled = false;
-      // Charger catalogue du fournisseur
-      const rc = await fetch(`${API_CAT}?fournisseur_id=${cmdCourante.fournisseur_id}`);
-      catalogue = await rc.json();
-    }
+    await fetch(`${API_CMD}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     await chargerCommandes();
   } catch(err) {
     const z = document.getElementById('cmd-form-erreur');
@@ -244,7 +547,6 @@ async function envoyerCommande() {
     if (result.envoye) {
       alert(`✅ Commande envoyée à ${result.destinataire}`);
     } else {
-      // Pas de config SMTP → afficher le contenu du mail
       alert(`⚠️ SMTP non configuré.\n\nDestinataire : ${result.destinataire}\n\n${result.corps}`);
     }
     await chargerCommandes();
@@ -274,7 +576,7 @@ async function annulerCommande() {
   fermerModalCmd();
 }
 
-// ── Modal ligne ───────────────────────────────────────────────
+// ── Modal ajout ligne (commande existante) ────────────────────
 function ouvrirModalLigne() {
   document.getElementById('l-catalogue-id').value = '';
   document.getElementById('l-code').value = '';
@@ -293,11 +595,11 @@ function fermerModalLigne() {
   document.getElementById('modal-ligne').hidden = true;
 }
 
-function rechercherCatalogue() {
+function rechercherCatalogueCmd() {
   const q = document.getElementById('ligne-search').value.toLowerCase();
   const zone = document.getElementById('ligne-resultats');
   if (!q) { zone.innerHTML = ''; return; }
-  const resultats = catalogue.filter(a =>
+  const resultats = catalogueCourant.filter(a =>
     a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q)
   ).slice(0, 20);
   if (!resultats.length) {
@@ -305,7 +607,7 @@ function rechercherCatalogue() {
     return;
   }
   zone.innerHTML = resultats.map(a => `
-    <div onclick="selectionnerArticle(${a.id})" style="padding:.65rem 1rem; cursor:pointer; border-bottom:1px solid #f1ead9; display:flex; justify-content:space-between; align-items:center;">
+    <div onclick="selectionnerArticleCmd(${a.id})" style="padding:.65rem 1rem; cursor:pointer; border-bottom:1px solid #f1ead9; display:flex; justify-content:space-between; align-items:center;">
       <div>
         <strong style="font-size:var(--text-sm);">${escHtml(a.designation)}</strong>
         <span style="font-size:var(--text-xs); color:#6b7280; margin-left:.5rem;"><code>${escHtml(a.code_article)}</code></span>
@@ -315,8 +617,8 @@ function rechercherCatalogue() {
   `).join('');
 }
 
-function selectionnerArticle(id) {
-  const a = catalogue.find(x => x.id === id);
+function selectionnerArticleCmd(id) {
+  const a = catalogueCourant.find(x => x.id === id);
   if (!a) return;
   document.getElementById('l-catalogue-id').value = a.id;
   document.getElementById('l-code').value = a.code_article;
@@ -330,8 +632,6 @@ function selectionnerArticle(id) {
 async function ajouterLigne(e) {
   e.preventDefault();
   const id = document.getElementById('cmd-id').value;
-  if (!id) { alert('Sauvegardez la commande d\'abord'); return; }
-
   const body = {
     catalogue_fournisseur_id: document.getElementById('l-catalogue-id').value ? parseInt(document.getElementById('l-catalogue-id').value) : null,
     code_article:   document.getElementById('l-code').value.trim(),
@@ -341,12 +641,10 @@ async function ajouterLigne(e) {
     prix_unitaire_ht: parseFloat(document.getElementById('l-prix').value || 0),
     commentaire_ligne: document.getElementById('l-commentaire').value.trim() || null,
   };
-
   try {
     const r = await fetch(`${API_CMD}/${id}/lignes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
     fermerModalLigne();
-    // Recharger la commande
     const rc = await fetch(`${API_CMD}/${id}`);
     cmdCourante = await rc.json();
     afficherLignes(cmdCourante.lignes);
@@ -365,14 +663,6 @@ async function supprimerLigne(ligneId) {
   cmdCourante = await rc.json();
   afficherLignes(cmdCourante.lignes);
   await chargerCommandes();
-}
-
-async function onFournisseurChange() {
-  const fid = document.getElementById('cmd-fournisseur').value;
-  if (!fid) { catalogue = []; return; }
-  const r = await fetch(`${API_CAT}?fournisseur_id=${fid}`);
-  catalogue = await r.json();
-  document.getElementById('btn-ajouter-ligne').disabled = false;
 }
 
 // ── Utilitaires ──────────────────────────────────────────────

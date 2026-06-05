@@ -797,6 +797,22 @@ CREATE TABLE IF NOT EXISTS commande_receptions_mapping (
 
 CREATE INDEX IF NOT EXISTS idx_mapping_commande
     ON commande_receptions_mapping(commande_id);
+
+CREATE TABLE IF NOT EXISTS panier_lignes (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
+    catalogue_fournisseur_id INTEGER,
+    fournisseur_id           INTEGER NOT NULL,
+    fournisseur_nom          TEXT    NOT NULL,
+    code_article             TEXT    NOT NULL,
+    designation              TEXT    NOT NULL,
+    quantite                 REAL    NOT NULL DEFAULT 1.0,
+    unite                    TEXT    NOT NULL DEFAULT 'kg',
+    prix_ht                  REAL    NOT NULL DEFAULT 0.0,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+);
 CREATE INDEX IF NOT EXISTS idx_mapping_reception
     ON commande_receptions_mapping(reception_id);
 
@@ -1233,6 +1249,21 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (reception_id) REFERENCES receptions(id),
                 FOREIGN KEY (personnel_id) REFERENCES personnel(id),
                 UNIQUE(commande_id, reception_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS panier_lignes (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id              INTEGER NOT NULL DEFAULT 1,
+                catalogue_fournisseur_id INTEGER,
+                fournisseur_id           INTEGER NOT NULL,
+                fournisseur_nom          TEXT    NOT NULL,
+                code_article             TEXT    NOT NULL,
+                designation              TEXT    NOT NULL,
+                quantite                 REAL    NOT NULL DEFAULT 1.0,
+                unite                    TEXT    NOT NULL DEFAULT 'kg',
+                prix_ht                  REAL    NOT NULL DEFAULT 0.0,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id),
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
             )""",
             """CREATE TABLE IF NOT EXISTS maturation_carcasses (
                 id                     INTEGER PRIMARY KEY AUTOINCREMENT,

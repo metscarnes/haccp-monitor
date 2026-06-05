@@ -18,7 +18,9 @@
     <a href="/achats.html" class="ach-retour">← Achats</a>
     <div class="ach-bar-titre">📝 COMMANDES</div>
     <div class="ach-bar-actions">
-      <button class="ach-btn ach-btn--primary" id="btn-nouvelle">+ Nouvelle commande</button>
+      <button class="ach-btn ach-btn--primary" id="btn-panier">
+        🛒 Panier <span id="badge-panier" class="ach-badge-count" hidden>0</span>
+      </button>
     </div>
   </header>
 
@@ -78,20 +80,110 @@
     </table>
   </div>
 
+  <!-- ── Modal panier multi-fournisseurs ── -->
+  <div class="ach-modal" id="modal-panier" hidden>
+    <div class="ach-modal-card ach-modal-card--lg">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">🛒 Panier de commande</h2>
+        <button class="ach-modal-fermer" id="modal-panier-fermer">✕</button>
+      </header>
+
+      <!-- Recherche catalogue tous fournisseurs -->
+      <div style="padding:var(--space-3) var(--space-4); border-bottom:2px solid #e8d9c4;">
+        <div class="ach-champ" style="margin-bottom:var(--space-2);">
+          <label>Rechercher un article (tous fournisseurs)</label>
+          <input type="search" id="panier-search" placeholder="Désignation ou code article…" autocomplete="off">
+        </div>
+        <div id="panier-resultats" style="max-height:240px; overflow-y:auto; border:1px solid #e8d9c4; border-radius:var(--radius-sm); display:none;"></div>
+      </div>
+
+      <!-- Liste du panier groupée par fournisseur -->
+      <div id="panier-lignes-zone" style="padding:var(--space-3) var(--space-4); max-height:360px; overflow-y:auto;">
+        <p class="ach-vide" id="panier-vide">Votre panier est vide — recherchez des articles ci-dessus</p>
+      </div>
+
+      <!-- Total panier -->
+      <div class="ach-total-bar">
+        <span>Total panier HT :</span>
+        <span id="panier-total">0,00 €</span>
+      </div>
+
+      <!-- Options génération -->
+      <div style="padding:var(--space-3) var(--space-4); border-top:1px solid #e8d9c4; display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:flex-end;">
+        <div class="ach-champ" style="flex:1; min-width:160px; margin:0;">
+          <label>Livraison souhaitée</label>
+          <input type="date" id="panier-livraison">
+        </div>
+        <div class="ach-champ" style="flex:2; min-width:200px; margin:0;">
+          <label>Commentaire (toutes commandes)</label>
+          <input type="text" id="panier-commentaire" placeholder="Optionnel…">
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap; border-top:1px solid #e8d9c4;">
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn" id="btn-panier-sauver">💾 Sauvegarder</button>
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-panier-vider">🗑 Vider</button>
+        </div>
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn" id="btn-panier-fermer">Fermer</button>
+          <button type="button" class="ach-btn ach-btn--ok" id="btn-panier-generer">✅ Générer les commandes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal quantité (ajout article au panier) ── -->
+  <div class="ach-modal" id="modal-qte" hidden>
+    <div class="ach-modal-card" style="max-width:420px;">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-qte-titre">Ajouter au panier</h2>
+        <button class="ach-modal-fermer" id="modal-qte-fermer">✕</button>
+      </header>
+      <form class="ach-form" id="form-qte" style="padding:var(--space-3) var(--space-4);">
+        <input type="hidden" id="qte-catalogue-id">
+        <input type="hidden" id="qte-fournisseur-id">
+        <input type="hidden" id="qte-fournisseur-nom">
+        <input type="hidden" id="qte-code">
+        <input type="hidden" id="qte-designation">
+        <input type="hidden" id="qte-prix">
+        <div class="ach-champ">
+          <label>Quantité <span class="ach-req">*</span></label>
+          <input type="number" id="qte-valeur" required min="0.001" step="0.001" autofocus>
+        </div>
+        <div class="ach-champ">
+          <label>Unité</label>
+          <select id="qte-unite">
+            <option value="kg">kg</option>
+            <option value="piece">pièce</option>
+            <option value="boite">boîte</option>
+            <option value="carcasse">carcasse</option>
+            <option value="barquette">barquette</option>
+          </select>
+        </div>
+        <div class="ach-modal-footer">
+          <button type="button" class="ach-btn" id="btn-qte-annuler">Annuler</button>
+          <button type="submit" class="ach-btn ach-btn--primary">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ── Modal détail / édition commande ── -->
   <div class="ach-modal" id="modal-commande" hidden>
     <div class="ach-modal-card ach-modal-card--lg">
       <header class="ach-modal-header">
-        <h2 class="ach-modal-titre" id="modal-cmd-titre">Nouvelle commande</h2>
+        <h2 class="ach-modal-titre" id="modal-cmd-titre">Commande</h2>
         <button class="ach-modal-fermer" id="modal-cmd-fermer">✕</button>
       </header>
 
-      <!-- En-tête commande -->
       <form class="ach-form" id="form-commande-header" style="border-bottom:2px solid #e8d9c4;">
         <input type="hidden" id="cmd-id">
         <div class="ach-champ">
-          <label>Fournisseur <span class="ach-req">*</span></label>
-          <select id="cmd-fournisseur" required></select>
+          <label>Fournisseur</label>
+          <input type="text" id="cmd-fournisseur-nom" disabled style="background:#f9f5ef;">
+          <input type="hidden" id="cmd-fournisseur">
         </div>
         <div class="ach-champ">
           <label>Date commande</label>
@@ -108,24 +200,19 @@
         <div id="cmd-form-erreur" class="ach-form-erreur" hidden></div>
       </form>
 
-      <!-- Lignes de commande -->
       <div class="ach-lignes">
         <div class="ach-lignes-titre">Articles commandés</div>
-        <div id="zone-lignes">
-          <p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>
-        </div>
+        <div id="zone-lignes"></div>
         <button type="button" class="ach-btn ach-btn--ok" id="btn-ajouter-ligne" style="margin-top:var(--space-3);" disabled>
           + Ajouter un article
         </button>
       </div>
 
-      <!-- Total -->
       <div class="ach-total-bar">
         <span>Total HT :</span>
         <span id="cmd-total">0,00 €</span>
       </div>
 
-      <!-- Footer actions -->
       <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">
         <div style="display:flex; gap:var(--space-2);">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-annuler-cmd" hidden>Annuler commande</button>
@@ -140,7 +227,7 @@
     </div>
   </div>
 
-  <!-- ── Modal ajout article ── -->
+  <!-- ── Modal ajout article (dans commande existante) ── -->
   <div class="ach-modal" id="modal-ligne" hidden>
     <div class="ach-modal-card">
       <header class="ach-modal-header">

@@ -786,6 +786,110 @@ async def dupliquer_commande(commande_id: int, personnel_id: Optional[int] = Non
         return await get_commande(new_id)
 
 
+# ---------------------------------------------------------------------------
+# Panier multi-fournisseurs
+# ---------------------------------------------------------------------------
+
+class PanierLigneCreate(BaseModel):
+    catalogue_fournisseur_id: Optional[int] = None
+    fournisseur_id: int
+    fournisseur_nom: str
+    code_article: str
+    designation: str
+    quantite: float
+    unite: Optional[str] = "kg"
+    prix_ht: float
+
+
+class PanierSave(BaseModel):
+    lignes: List[PanierLigneCreate]
+
+
+class PanierGenerer(BaseModel):
+    date_livraison_prevue: Optional[str] = None
+    commentaire: Optional[str] = None
+
+
+@router.get("/panier")
+async def get_panier():
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM panier_lignes WHERE boutique_id = 1 ORDER BY fournisseur_nom, designation"
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+@router.put("/panier", status_code=200)
+async def save_panier(body: PanierSave):
+    async with get_db() as db:
+        await db.execute("DELETE FROM panier_lignes WHERE boutique_id = 1")
+        for l in body.lignes:
+            await db.execute(
+                """INSERT INTO panier_lignes
+                   (boutique_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom,
+                    code_article, designation, quantite, unite, prix_ht)
+                   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (l.catalogue_fournisseur_id, l.fournisseur_id, l.fournisseur_nom,
+                 l.code_article, l.designation, l.quantite, l.unite, l.prix_ht)
+            )
+        await db.commit()
+    return {"ok": True, "nb_lignes": len(body.lignes)}
+
+
+@router.delete("/panier", status_code=204)
+async def delete_panier():
+    async with get_db() as db:
+        await db.execute("DELETE FROM panier_lignes WHERE boutique_id = 1")
+        await db.commit()
+
+
+@router.post("/panier/generer", status_code=201)
+async def generer_commandes_depuis_panier(body: PanierGenerer):
+    """Regroupe le panier par fournisseur et crée une commande brouillon par fournisseur."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM panier_lignes WHERE boutique_id = 1 ORDER BY fournisseur_id"
+        )
+        lignes = [dict(r) for r in await cur.fetchall()]
+
+    if not lignes:
+        raise HTTPException(400, "Le panier est vide")
+
+    # Regrouper par fournisseur
+    from collections import defaultdict
+    par_fournisseur = defaultdict(list)
+    for l in lignes:
+        par_fournisseur[l["fournisseur_id"]].append(l)
+
+    commandes_creees = []
+    for fournisseur_id, items in par_fournisseur.items():
+        cmd_body = CommandeCreate(
+            fournisseur_id=fournisseur_id,
+            date_livraison_prevue=body.date_livraison_prevue,
+            commentaire=body.commentaire,
+            lignes=[
+                CommandeLigneCreate(
+                    catalogue_fournisseur_id=i["catalogue_fournisseur_id"],
+                    code_article=i["code_article"],
+                    designation=i["designation"],
+                    quantite_commandee=i["quantite"],
+                    unite=i["unite"],
+                    prix_unitaire_ht=i["prix_ht"],
+                )
+                for i in items
+            ]
+        )
+        cmd = await create_commande(cmd_body)
+        commandes_creees.append(cmd)
+
+    # Vider le panier
+    async with get_db() as db:
+        await db.execute("DELETE FROM panier_lignes WHERE boutique_id = 1")
+        await db.commit()
+
+    return {"nb_commandes": len(commandes_creees), "commandes": commandes_creees}
+
+
 class MappingCreate(BaseModel):
     commande_id: int
     reception_id: int
