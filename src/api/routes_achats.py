@@ -974,28 +974,7 @@ async def envoyer_commande(commande_id: int):
         )
         lignes = [dict(r) for r in await cur2.fetchall()]
 
-        # Construire le corps du mail
-        lignes_txt = "\n".join(
-            f"  • {l['code_article']} — {l['designation']} : {l['quantite_commandee']} {l['unite']} "
-            f"× {l['prix_unitaire_ht']:.2f}€ HT = {l['montant_ht']:.2f}€ HT"
-            for l in lignes
-        )
-        corps = f"""Bonjour,
-
-Veuillez trouver ci-dessous notre commande {commande['numero_commande']} du {commande['date_commande']} :
-
-{lignes_txt}
-
-TOTAL HT : {commande['montant_total_ht']:.2f}€
-
-Date de livraison souhaitée : {commande['date_livraison_prevue'] or 'À définir'}
-
-{commande['commentaire'] or ''}
-
-Cordialement,
-Au Comptoir des Lilas"""
-
-        # Envoi mail via smtplib (config dans variables d'env)
+        # Lire config SMTP avant de construire le HTML (from_addr utilisé dans le pied)
         import os, smtplib
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
@@ -1006,8 +985,104 @@ Au Comptoir des Lilas"""
         smtp_pass = os.getenv("SMTP_PASSWORD", "")
         from_addr = os.getenv("SMTP_FROM", smtp_user)
 
+        # Construire le corps du mail (HTML + fallback texte)
+        lignes_rows = "".join(
+            f"""<tr>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;font-family:monospace;font-size:13px;color:#5a3e28;">{l['code_article'] or '—'}</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;font-size:14px;">{l['designation']}</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;white-space:nowrap;">{l['quantite_commandee']} {l['unite']}</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;white-space:nowrap;">{l['prix_unitaire_ht']:.2f} €</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;font-weight:700;white-space:nowrap;">{l['montant_ht']:.2f} €</td>
+            </tr>"""
+            for l in lignes
+        )
+        commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande.get('commentaire') else ""
+
+        corps_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif;color:#2d1f0f;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.10);">
+
+        <!-- En-tête -->
+        <tr>
+          <td style="background:#6b2d0f;padding:28px 32px;text-align:center;">
+            <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:1px;">Au Comptoir des Lilas</p>
+            <p style="margin:6px 0 0;font-size:13px;color:#f9d5b0;letter-spacing:2px;text-transform:uppercase;">Boucherie • Charcuterie</p>
+          </td>
+        </tr>
+
+        <!-- Titre commande -->
+        <tr>
+          <td style="padding:24px 32px 8px;border-bottom:2px solid #e8d9c4;">
+            <p style="margin:0;font-size:18px;font-weight:700;color:#6b2d0f;">Bon de commande</p>
+            <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">
+              N° <strong style="color:#2d1f0f;">{commande['numero_commande']}</strong>
+              &nbsp;·&nbsp; Date : <strong style="color:#2d1f0f;">{commande['date_commande']}</strong>
+              &nbsp;·&nbsp; Livraison souhaitée : <strong style="color:#2d1f0f;">{commande['date_livraison_prevue'] or 'À définir'}</strong>
+            </p>
+          </td>
+        </tr>
+
+        <!-- Tableau produits -->
+        <tr>
+          <td style="padding:0 32px 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+              <thead>
+                <tr style="background:#f3ebdf;">
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Code</th>
+                  <th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Désignation</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Qté</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Prix HT</th>
+                  <th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d4c5af;">Montant HT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes_rows}
+                {commentaire_bloc}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Total -->
+        <tr>
+          <td style="padding:0 32px 24px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:14px 12px;background:#f3ebdf;border-top:2px solid #d4c5af;text-align:right;">
+                  <span style="font-size:15px;color:#5a3e28;font-weight:700;">TOTAL HT : </span>
+                  <span style="font-size:20px;font-weight:800;color:#6b2d0f;">{commande['montant_total_ht']:.2f} €</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Pied -->
+        <tr>
+          <td style="background:#f9f4ed;padding:20px 32px;border-top:1px solid #e8d9c4;text-align:center;font-size:12px;color:#9a7c5a;">
+            Au Comptoir des Lilas &nbsp;·&nbsp; {from_addr}
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+        corps_txt = "\n".join(
+            f"  • {l['code_article']} — {l['designation']} : {l['quantite_commandee']} {l['unite']} "
+            f"× {l['prix_unitaire_ht']:.2f}€ HT = {l['montant_ht']:.2f}€ HT"
+            for l in lignes
+        )
+        corps = f"Commande {commande['numero_commande']} du {commande['date_commande']}\n\n{corps_txt}\n\nTOTAL HT : {commande['montant_total_ht']:.2f}€"
+
+        # Envoi mail via smtplib (config dans variables d'env)
         if not smtp_host or not smtp_user:
-            # Pas de config SMTP → retourner le contenu du mail sans l'envoyer
             return {
                 "envoye": False,
                 "message": "Configuration SMTP manquante (SMTP_HOST, SMTP_USER, SMTP_PASSWORD non définis)",
@@ -1016,11 +1091,12 @@ Au Comptoir des Lilas"""
                 "corps": corps,
             }
 
-        msg = MIMEMultipart()
+        msg = MIMEMultipart("alternative")
         msg["From"]    = from_addr
         msg["To"]      = commande["email_commercial"]
         msg["Subject"] = f"Commande {commande['numero_commande']} — Au Comptoir des Lilas"
         msg.attach(MIMEText(corps, "plain", "utf-8"))
+        msg.attach(MIMEText(corps_html, "html", "utf-8"))
 
         try:
             with smtplib.SMTP(smtp_host, smtp_port) as server:
