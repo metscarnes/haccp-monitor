@@ -106,8 +106,7 @@ function ouvrirNouvelleCommande() {
   document.getElementById('cmd-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('cmd-livraison').value = '';
   document.getElementById('cmd-commentaire').value = '';
-  document.getElementById('zone-lignes').innerHTML = '';
-  document.getElementById('lignes-vide').hidden = false;
+  document.getElementById('zone-lignes').innerHTML = '<p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>';
   document.getElementById('cmd-total').textContent = '0,00 €';
   document.getElementById('btn-envoyer-cmd').hidden = true;
   document.getElementById('btn-dupliquer').hidden = true;
@@ -154,8 +153,11 @@ function fermerModalCmd() {
 
 function afficherLignes(lignes) {
   const zone = document.getElementById('zone-lignes');
-  document.getElementById('lignes-vide').hidden = lignes.length > 0;
-  if (!lignes.length) { zone.innerHTML = ''; calculerTotal([]); return; }
+  if (!lignes.length) {
+    zone.innerHTML = '<p class="ach-vide" id="lignes-vide">Aucun article — sélectionnez un fournisseur puis ajoutez des articles</p>';
+    calculerTotal([]);
+    return;
+  }
 
   zone.innerHTML = `
     <table class="ach-table" style="margin-top:var(--space-2);">
