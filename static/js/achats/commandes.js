@@ -11,6 +11,7 @@ let fournisseurs = [];
 let catalogueTous = [];   // tout le catalogue, tous fournisseurs (avec stock)
 let catalogueCourant = []; // catalogue du fournisseur de la commande en édition
 let cmdCourante  = null;
+let forcerEnvoiFlag = false; // Flag pour forcer l'envoi malgré les délais
 // Panier : map { catalogueId → { quantite } }. Les autres infos (prix, designation…)
 // sont relues dans catalogueTous au moment de l'affichage / génération.
 let panier       = {};
@@ -478,9 +479,28 @@ async function sauverCommande() {
   }
 }
 
+function forcerEnvoi() {
+  const f = fournisseurs.find(x => x.id === parseInt(document.getElementById('cmd-fournisseur').value));
+  const tel = f?.telephone ? formaterTel(f.telephone) : '(numéro non renseigné)';
+  if (confirm(`⚠️ Vous forcez l'envoi de la commande hors délai.\n\nN'oubliez pas d'appeler le commercial :\n📞 ${tel}\n\nContinuer ?`)) {
+    forcerEnvoiFlag = true;
+    envoyerCommande();
+  }
+}
+
 async function envoyerCommande() {
   const id = document.getElementById('cmd-id').value;
   if (!id) return;
+
+  // Vérifier si les délais sont respectés (sauf si flag forcerEnvoiFlag)
+  if (!forcerEnvoiFlag && !document.getElementById('cmd-alerte-livraison').hidden) {
+    const f = fournisseurs.find(x => x.id === parseInt(document.getElementById('cmd-fournisseur').value));
+    const tel = f?.telephone ? formaterTel(f.telephone) : '(numéro non renseigné)';
+    alert(`⚠️ Livraison hors délai pour ce fournisseur.\n\nAppellez le commercial : 📞 ${tel}\n\nVoulez-vous forcer l'envoi malgré tout ?`);
+    forcerEnvoiFlag = false;
+    return;
+  }
+
   const btn = document.getElementById('btn-envoyer-cmd');
   btn.disabled = true; btn.textContent = 'Envoi…';
   try {
@@ -501,6 +521,7 @@ async function envoyerCommande() {
   } catch(e) {
     alert('Erreur : ' + e.message);
   } finally {
+    forcerEnvoiFlag = false;
     btn.disabled = false; btn.textContent = '📧 Envoyer';
   }
 }
@@ -595,6 +616,7 @@ async function ajouterLigne(e) {
     const rc = await fetch(`${API_CMD}/${id}`);
     cmdCourante = await rc.json();
     afficherLignes(cmdCourante.lignes);
+    document.getElementById('cmd-form-erreur').hidden = true; // Masquer les erreurs
     await chargerCommandes();
   } catch(err) {
     const z = document.getElementById('ligne-erreur');
@@ -609,11 +631,18 @@ async function supprimerLigne(ligneId) {
   const rc = await fetch(`${API_CMD}/${id}`);
   cmdCourante = await rc.json();
   afficherLignes(cmdCourante.lignes);
+  document.getElementById('cmd-form-erreur').hidden = true; // Masquer les erreurs potentielles
   await chargerCommandes();
 }
 
 // ── Vérification contraintes livraison fournisseur ───────────
 const JOURS_NOMS = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+
+function formaterTel(tel) {
+  if (!tel) return '';
+  const digits = tel.replace(/\D/g, '');
+  return digits.replace(/(\d{2})(?=\d)/g, '$1 ');
+}
 
 function verifierDelais(dateStr, fournisseurId, alerteEl) {
   const alerte = document.getElementById(alerteEl);
@@ -640,7 +669,6 @@ function verifierDelais(dateStr, fournisseurId, alerteEl) {
   if (f.heure_limite_commande) {
     const maintenant = new Date();
     const today = maintenant.toISOString().slice(0, 10);
-    // L'heure limite ne s'applique que si la livraison est demain ou plus tôt (commande urgente)
     const diffJours = Math.round((dateObj - new Date(today + 'T00:00:00')) / 86400000);
     if (diffJours <= 1) {
       const [hLim, mLim] = f.heure_limite_commande.split(':').map(Number);
@@ -653,8 +681,9 @@ function verifierDelais(dateStr, fournisseurId, alerteEl) {
   }
 
   if (problemes.length) {
-    const tel = f.telephone ? ` 📞 ${f.telephone}` : '';
-    alerte.innerHTML = problemes.join('<br>') + (tel ? `<br><strong>Livraison hors délai — Appeler le commercial :${tel}</strong>` : '');
+    const telFormate = f.telephone ? formaterTel(f.telephone) : '';
+    const btnForcer = alerteEl === 'cmd-alerte-livraison' ? ' <button type="button" class="ach-btn ach-btn--small" style="margin-left:8px;" onclick="forcerEnvoi()">Forcer l\'envoi</button>' : '';
+    alerte.innerHTML = problemes.join('<br>') + (telFormate ? `<br><strong>Livraison hors délai — Appeler le commercial : 📞 ${telFormate}${btnForcer}</strong>` : '');
     alerte.hidden = false;
   } else {
     alerte.hidden = true;
@@ -663,7 +692,6 @@ function verifierDelais(dateStr, fournisseurId, alerteEl) {
 
 function verifierDelaisPanier() {
   const date = document.getElementById('panier-livraison').value;
-  // Panier peut avoir plusieurs fournisseurs → vérifier chacun
   const lignes = panierVersLignes();
   const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];
   const alerte = document.getElementById('panier-alerte-livraison');
@@ -697,8 +725,8 @@ function verifierDelaisPanier() {
       }
     }
     if (msgs.length) {
-      const tel = f.telephone ? ` — 📞 ${f.telephone}` : '';
-      problemes.push(`<strong>${escHtml(f.nom)}</strong> : ${msgs.join(', ')}${tel}`);
+      const telFormate = f.telephone ? formaterTel(f.telephone) : '';
+      problemes.push(`<strong>${escHtml(f.nom)}</strong> : ${msgs.join(', ')}${telFormate ? ` — 📞 ${telFormate}` : ''}`);
     }
   });
 
