@@ -468,10 +468,15 @@ async function envoyerCommande() {
   try {
     const r = await fetch(`${API_CMD}/${id}/envoyer`, { method: 'POST' });
     const result = await r.json();
+    if (!r.ok) {
+      alert(`❌ Erreur : ${result.detail || 'Erreur serveur'}`);
+      return;
+    }
     if (result.envoye) {
       alert(`✅ Commande envoyée à ${result.destinataire}`);
     } else {
-      alert(`⚠️ SMTP non configuré.\n\nDestinataire : ${result.destinataire}\n\n${result.corps}`);
+      const dest = result.destinataire || '(email non renseigné)';
+      alert(`⚠️ SMTP non configuré.\n\nDestinataire : ${dest}\n\n${result.corps || ''}`);
     }
     await chargerCommandes();
     fermerModalCmd();
