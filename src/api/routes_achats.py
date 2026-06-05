@@ -1003,14 +1003,14 @@ Au Comptoir des Lilas"""
         smtp_host = os.getenv("SMTP_HOST", "")
         smtp_port = int(os.getenv("SMTP_PORT", "587"))
         smtp_user = os.getenv("SMTP_USER", "")
-        smtp_pass = os.getenv("SMTP_PASS", "")
+        smtp_pass = os.getenv("SMTP_PASSWORD", "")
         from_addr = os.getenv("SMTP_FROM", smtp_user)
 
         if not smtp_host or not smtp_user:
             # Pas de config SMTP → retourner le contenu du mail sans l'envoyer
             return {
                 "envoye": False,
-                "message": "Configuration SMTP manquante (SMTP_HOST, SMTP_USER, SMTP_PASS non définis)",
+                "message": "Configuration SMTP manquante (SMTP_HOST, SMTP_USER, SMTP_PASSWORD non définis)",
                 "destinataire": commande["email_commercial"],
                 "sujet": f"Commande {commande['numero_commande']} — Au Comptoir des Lilas",
                 "corps": corps,
