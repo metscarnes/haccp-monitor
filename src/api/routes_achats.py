@@ -998,15 +998,19 @@ async def envoyer_commande(commande_id: int):
         )
         commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande['commentaire'] else ""
 
+        app_url = os.getenv("APP_URL", "http://localhost:8000").rstrip("/")
+        logo_url = f"{app_url}/static/assets/logo.png"
+
         corps_html = (
             '<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>'
             '<body style="margin:0;padding:0;background:#f5f0e8;font-family:Georgia,serif;color:#2d1f0f;">'
             '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0e8;padding:32px 16px;">'
             '<tr><td align="center">'
             '<table width="620" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.1);">'
-            '<tr><td style="background:#6b2d0f;padding:28px 32px;text-align:center;">'
-            '<p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:1px;">Au Comptoir des Lilas</p>'
-            '<p style="margin:6px 0 0;font-size:13px;color:#f9d5b0;letter-spacing:2px;text-transform:uppercase;">Boucherie &#8226; Charcuterie</p>'
+            '<tr><td style="background:#6b2d0f;padding:24px 32px;text-align:center;">'
+            f'<img src="{logo_url}" alt="Au Comptoir des Lilas" style="max-width:140px;height:auto;margin-bottom:12px;display:block;margin-left:auto;margin-right:auto;">'
+            '<p style="margin:0;font-size:20px;font-weight:700;color:#fff;letter-spacing:1px;">Au Comptoir des Lilas</p>'
+            '<p style="margin:4px 0 0;font-size:12px;color:#f9d5b0;letter-spacing:2px;text-transform:uppercase;">Boucherie &#8226; Charcuterie</p>'
             '</td></tr>'
             '<tr><td style="padding:24px 32px 8px;border-bottom:2px solid #e8d9c4;">'
             '<p style="margin:0;font-size:18px;font-weight:700;color:#6b2d0f;">Bon de commande</p>'
@@ -1032,8 +1036,14 @@ async def envoyer_commande(commande_id: int):
             '<span style="font-size:15px;color:#5a3e28;font-weight:700;">TOTAL HT : </span>'
             f'<span style="font-size:20px;font-weight:800;color:#6b2d0f;">{commande["montant_total_ht"]:.2f} &#8364;</span>'
             '</td></tr></table></td></tr>'
-            '<tr><td style="background:#f9f4ed;padding:20px 32px;border-top:1px solid #e8d9c4;text-align:center;font-size:12px;color:#9a7c5a;">'
-            'Au Comptoir des Lilas &nbsp;&#183;&nbsp; ' + from_addr +
+            '<tr><td style="background:#f9f4ed;padding:16px 32px;border-top:1px solid #e8d9c4;">'
+            '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
+            '<td style="font-size:11px;color:#6b7280;line-height:1.6;">'
+            '<p style="margin:0 0 8px;font-weight:700;color:#5a3e28;">Au Comptoir des Lilas</p>'
+            '<p style="margin:0 0 2px;">122 rue de Paris &nbsp;&#183;&nbsp; 93260 Les Lilas &nbsp;&#183;&nbsp; France</p>'
+            '<p style="margin:0;">Tel. 06 88 50 43 41 &nbsp;&#183;&nbsp; ' + from_addr + '</p>'
+            '<p style="margin:4px 0 0;font-size:10px;color:#9a7c5a;">SIRET : 103 577 607 00015</p>'
+            '</td></tr></table>'
             '</td></tr>'
             '</table></td></tr></table></body></html>'
         )
