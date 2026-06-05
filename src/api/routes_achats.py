@@ -1017,6 +1017,7 @@ async def envoyer_commande(commande_id: int):
             '<p style="margin:4px 0 0;font-size:13px;color:#6b7280;">'
             'N&#176; <strong style="color:#2d1f0f;">' + commande['numero_commande'] + '</strong>'
             ' &nbsp;&#183;&nbsp; Date : <strong style="color:#2d1f0f;">' + commande['date_commande'] + '</strong>'
+            ' &nbsp;&#183;&nbsp; Heure d\'envoi : <strong style="color:#2d1f0f;">' + datetime.now().strftime('%H:%M') + '</strong>'
             ' &nbsp;&#183;&nbsp; Livraison souhait&#233;e : <strong style="color:#2d1f0f;">' + (commande['date_livraison_prevue'] or '&#192; d&#233;finir') + '</strong>'
             '</p></td></tr>'
             '<tr><td style="padding:0 32px;">'
