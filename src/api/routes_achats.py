@@ -426,8 +426,29 @@ async def download_template():
     ex_fill     = PatternFill("solid", fgColor="FFF8E1")
     wrap_top    = Alignment(horizontal="left", vertical="top", wrap_text=True)
 
+    # Colonnes numériques → format Excel appliqué aux cellules de données.
+    # Les exemples sont convertis en nombre pour ne pas rester du texte.
+    FORMATS_NUM = {
+        "prix_achat_ht":     "0.00",    # D — prix : 2 décimales
+        "qte_par_colis":     "0",       # F — quantité : entier
+        "poids_unitaire_kg": "0.000",   # G — poids : 3 décimales
+        "tva_percent":       "0.0",     # H — TVA : 1 décimale
+    }
+
+    def _to_num(v):
+        """Convertit une valeur d'exemple en nombre, ou la laisse vide/texte."""
+        if v in (None, ""):
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return v
+
+    DERNIERE_LIGNE = 500  # plage de saisie sur laquelle on applique le format
+
     for col, (key, header, note, ex_kg, ex_colis) in enumerate(colonnes, 1):
         letter = ws.cell(row=1, column=col).column_letter
+        est_num = key in FORMATS_NUM
 
         # Ligne 1 : en-tête lisible
         cell = ws.cell(row=1, column=col, value=header)
@@ -444,12 +465,18 @@ async def download_template():
         note_cell.alignment = wrap_top
 
         # Lignes 3 et 4 : deux exemples concrets (au kg / au colis)
-        c3 = ws.cell(row=3, column=col, value=ex_kg)
-        c4 = ws.cell(row=4, column=col, value=ex_colis)
+        v3, v4 = (_to_num(ex_kg), _to_num(ex_colis)) if est_num else (ex_kg, ex_colis)
+        c3 = ws.cell(row=3, column=col, value=v3)
+        c4 = ws.cell(row=4, column=col, value=v4)
         for c in (c3, c4):
             c.fill = ex_fill
             c.font = Font(size=10, color="8A6D3B")
             c.alignment = wrap_top
+
+        # Format nombre appliqué aux exemples ET à toute la zone de saisie
+        if est_num:
+            for r in range(3, DERNIERE_LIGNE + 1):
+                ws.cell(row=r, column=col).number_format = FORMATS_NUM[key]
 
         ws.column_dimensions[letter].width = 20
 
