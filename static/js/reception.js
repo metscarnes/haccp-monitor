@@ -930,9 +930,9 @@ elPropreteCheckboxes.forEach(cb => {
 
 // Photo propreté NC
 if (elPropretePhotoZone) {
-  elPropretePhotoZone.addEventListener('click', () => elPropretePhotoInput.click());
+  elPropretePhotoZone.addEventListener('click', () => ouvrirChoixPhoto(elPropretePhotoInput));
   elPropretePhotoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elPropretePhotoInput.click(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(elPropretePhotoInput); }
   });
 }
 if (elPropretePhotoInput) {
@@ -1080,9 +1080,9 @@ function initBlocRefusBl(idx) {
   const clearBtn   = document.getElementById(`rec-refus-bl-fourn-clear-${idx}`);
 
   // Photo
-  photoZone.addEventListener('click', () => photoInput.click());
+  photoZone.addEventListener('click', () => ouvrirChoixPhoto(photoInput));
   photoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); photoInput.click(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(photoInput); }
   });
   photoInput.addEventListener('change', async () => {
     const file = photoInput.files[0];
@@ -1299,9 +1299,9 @@ function initBlocFourn(idx) {
   const results    = document.getElementById(`rec-fourn-results-${idx}`);
   const clearBtn   = document.getElementById(`rec-fourn-clear-${idx}`);
 
-  photoZone.addEventListener('click', () => inputPhoto.click());
+  photoZone.addEventListener('click', () => ouvrirChoixPhoto(inputPhoto));
   photoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputPhoto.click(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(inputPhoto); }
   });
 
   if (voirBtn) {
