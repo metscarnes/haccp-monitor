@@ -2692,6 +2692,24 @@ async def cloturer_reception(
         (conformite_globale, int(livraison_refusee),
          int(information_ddpp), commentaire_nc, reception_id),
     )
+
+    # Marquer « livrée » les commandes liées à cette réception — uniquement à la
+    # clôture (et pas si la livraison a été refusée). Le simple lien créé à
+    # l'étape « Créer la fiche » ne suffit plus à passer la commande en livrée.
+    if not livraison_refusee:
+        await db.execute(
+            """
+            UPDATE commandes
+            SET statut = 'livree'
+            WHERE id IN (
+                SELECT commande_id FROM commande_receptions_mapping
+                WHERE reception_id = ?
+            )
+            AND statut != 'annulee'
+            """,
+            (reception_id,),
+        )
+
     await db.commit()
     return await get_reception(db, reception_id)
 

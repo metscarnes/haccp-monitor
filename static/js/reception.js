@@ -351,13 +351,23 @@ function ajouterLigneCommande() {
   });
 }
 
-// Reconstruit commandeLignes depuis toutes les commandes choisies
+// Reconstruit commandeLignes depuis toutes les commandes choisies.
+// Chaque ligne porte le fournisseur de sa commande (pour rattacher le bon
+// fournisseur au produit en mode multi-commandes).
 function construireLignesCommandes() {
   const lignes = [];
   commandeIds.forEach(cid => {
     if (!cid) return;
     const cmd = toutesCommandes.find(c => c.id === cid);
-    if (cmd && cmd.lignes) lignes.push(...cmd.lignes);
+    if (cmd && cmd.lignes) {
+      cmd.lignes.forEach(l => {
+        lignes.push({
+          ...l,
+          _fournisseur_id:  cmd.fournisseur_id || null,
+          _fournisseur_nom: cmd.fournisseur_nom || null,
+        });
+      });
+    }
   });
   return lignes;
 }
@@ -1533,19 +1543,14 @@ async function creerFiche() {
       }
     }
 
-    // Enregistrer le lien commandes si sélectionnées
+    // Enregistrer le LIEN commande ↔ réception (le passage en « livrée » se fait
+    // seulement à la clôture de la réception, pas ici — cf. cloturer_reception).
     for (const cid of commandeIds.filter(Boolean)) {
       try {
         await apiFetch('/api/achats/commande_receptions_mapping', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ commande_id: cid, reception_id: rec.id }),
-        });
-        // Marquer la commande comme livrée
-        await apiFetch(`/api/achats/commandes/${cid}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ statut: 'livree' }),
         });
       } catch(e) {
         console.warn('[haccp] Mapping commande échoué :', e);
@@ -1557,12 +1562,9 @@ async function creerFiche() {
     majListeLignes();
     majSelectorFournisseur(); // Mettre à jour le sélecteur si mode multi
 
-    // Pré-remplir depuis la commande si liée
-    commandeLigneIdx = 0;
-    if (commandeIds.some(Boolean) && commandeLignes.length > 0) {
-      preRemplirDepuisCommande();
-    } else if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
-      // Comportement habituel : pré-remplir le fournisseur
+    // Rattacher par défaut le fournisseur principal (= celui de la commande si liée,
+    // car le bloc 0 a été auto-rempli avec) à chaque produit ajouté.
+    if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
       fournisseurProduitSelected = {
         id: fourn0.id || null,
         nom: (fourn0.nom || '').trim() || null,
@@ -1570,6 +1572,12 @@ async function creerFiche() {
       if (modeMultiFourn && elFournProduitSel && fournisseursListe.length > 0) {
         elFournProduitSel.value = '0';
       }
+    }
+
+    // Pré-remplir le 1er produit depuis la commande si liée
+    commandeLigneIdx = 0;
+    if (commandeIds.some(Boolean) && commandeLignes.length > 0) {
+      preRemplirDepuisCommande();
     }
 
     allerEtape(3);
@@ -1605,6 +1613,23 @@ function preRemplirDepuisCommande() {
   // Type de DLC du catalogue (dlc / date_abattage / no_dlc) : détermine l'exigence
   // de traçabilité (DLC vs date d'abattage) pour le statut « en attente ».
   dlcTypePrefill = ligne.dlc_type || null;
+  // Adapter le champ date (DLC / date d'abattage / aucune) selon le type catalogue.
+  appliquerModeDate(dlcTypePrefill);
+
+  // Rattacher le fournisseur de CETTE commande au produit (cas multi-commandes).
+  if (ligne._fournisseur_id || ligne._fournisseur_nom) {
+    fournisseurProduitSelected = {
+      id:  ligne._fournisseur_id  || null,
+      nom: (ligne._fournisseur_nom || '').trim() || null,
+    };
+    // En mode multi, refléter ce fournisseur dans le sélecteur visuel de l'étape 4.
+    if (modeMultiFourn && elFournProduitSel) {
+      const idx = fournisseursListe.findIndex(f =>
+        (ligne._fournisseur_id && f.id === ligne._fournisseur_id) ||
+        (ligne._fournisseur_nom && f.nom === ligne._fournisseur_nom));
+      if (idx >= 0) elFournProduitSel.value = String(idx);
+    }
+  }
 
   // Pré-remplir la recherche produit avec la désignation de la commande
   if (elProdSearch) {
@@ -1828,9 +1853,11 @@ document.querySelectorAll('[data-critere]').forEach(btn => {
 });
 
 function majBtnAjouter() {
-  const lotOk = lotInterneGenere || elLot.value.trim() !== '';
-  const dlcOk = elDlc.value.trim() !== '' && !elDlc.classList.contains('rec-champ-invalide');
-  const ok = produitSelectionne !== null && lotOk && dlcOk;
+  // Lot et DLC ne sont PLUS bloquants : un produit sans lot/DLC est accepté et
+  // mis « en attente » (à compléter via la tâche HACCP). Seul le produit est requis.
+  // Une date saisie mais invalide (DLC passée) reste bloquante.
+  const dateInvalide = elDlc.classList.contains('rec-champ-invalide');
+  const ok = produitSelectionne !== null && !dateInvalide;
   elBtnAjouter.disabled   = !ok;
   if (elBtnEnregistrer) elBtnEnregistrer.disabled = !ok;
 }
@@ -1842,16 +1869,10 @@ function mettreEnEvidenceChampsManquants() {
     elProdSearch.title = 'Sélectionnez un produit dans la liste';
     premier = premier || elProdSearch;
   }
-  const lotOk = lotInterneGenere || elLot.value.trim() !== '';
-  if (!lotOk) {
-    elLot.classList.add('rec-champ-invalide');
-    elLot.title = 'Saisissez un N° de lot ou cliquez "Pas de N° de lot"';
-    premier = premier || elLot;
-  }
-  const dlcOk = elDlc.value.trim() !== '' && !elDlc.classList.contains('rec-champ-invalide');
-  if (!dlcOk) {
-    elDlc.classList.add('rec-champ-invalide');
-    elDlc.title = elDlc.value ? 'La DLC ne peut pas être dans le passé' : 'La DLC/DLUO est obligatoire';
+  // Seule une date saisie mais invalide (DLC dans le passé) bloque l'ajout.
+  // Lot/DLC vides sont autorisés (le produit partira « en attente »).
+  if (elDlc.classList.contains('rec-champ-invalide')) {
+    elDlc.title = 'La DLC ne peut pas être dans le passé';
     premier = premier || elDlc;
   }
   if (premier) {
@@ -1873,41 +1894,60 @@ function mettreEnEvidenceChampsManquants() {
   el.addEventListener('focus', () => { el.classList.remove('rec-champ-invalide'); el.title = ''; });
 });
 
-// ── Lot interne ────────────────────────────────────────────
-elBtnPasLot.addEventListener('click', async () => {
-  if (!produitSelectionne || !receptionId) return;
+// ── Pas de N° de lot : 2 options (lot interne OU en attente) ─
+const elLotChoix        = document.getElementById('rec-lot-choix');
+const elLotChoixInterne = document.getElementById('rec-lot-choix-interne');
+const elLotChoixAttente = document.getElementById('rec-lot-choix-attente');
 
-  // D'abord créer une ligne temporaire pour avoir un ligne_id ?
-  // On génère depuis le endpoint lot-interne en passant par un appel dédié
-  // mais sans ligne_id on peut appeler directement l'endpoint avec code_unique
-  elBtnPasLot.disabled = true;
-  elBtnPasLot.textContent = '⏳…';
-  try {
-    const code = produitSelectionne.code_unique;
-    const today = new Date().toLocaleDateString('fr-FR', {
-      day: '2-digit', month: '2-digit', year: '2-digit',
-    }).replace(/\//g, '');
-    // Appel API générique (sera créé côté backend avec code_unique)
-    const data = await apiFetch(
-      `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`
-    );
-    const lotNum = data.lot_interne;
-    elLot.value    = lotNum;
-    elLot.readOnly = true;
-    elLot.style.background = '#f0faf3';
-    elLotGenere.textContent = `Lot interne : ${lotNum}`;
-    elLotGenere.hidden = false;
-    elBtnPasLot.hidden = true;
-    elBtnAnnulerLot.hidden = false;
-    lotInterneGenere = true;
-    majBtnAjouter();
-  } catch (e) {
-    alert(`Erreur génération lot : ${e.message}`);
-  } finally {
-    elBtnPasLot.disabled = false;
-    elBtnPasLot.textContent = 'Pas de N° de lot';
-  }
+// Clic « Pas de N° de lot » → afficher le choix (au lieu de générer directement)
+elBtnPasLot.addEventListener('click', () => {
+  if (!produitSelectionne || !receptionId) return;
+  if (elLotChoix) elLotChoix.hidden = !elLotChoix.hidden;
 });
+
+// Option 1 : générer un lot interne (le produit entre en stock normalement)
+if (elLotChoixInterne) {
+  elLotChoixInterne.addEventListener('click', async () => {
+    if (!produitSelectionne || !receptionId) return;
+    elLotChoixInterne.disabled = true;
+    elLotChoixInterne.textContent = '⏳…';
+    try {
+      const code = produitSelectionne.code_unique;
+      const data = await apiFetch(
+        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`
+      );
+      const lotNum = data.lot_interne;
+      elLot.value    = lotNum;
+      elLot.readOnly = true;
+      elLot.style.background = '#f0faf3';
+      elLotGenere.textContent = `Lot interne : ${lotNum}`;
+      elLotGenere.hidden = false;
+      elBtnPasLot.hidden = true;
+      elBtnAnnulerLot.hidden = false;
+      if (elLotChoix) elLotChoix.hidden = true;
+      lotInterneGenere = true;
+      majBtnAjouter();
+    } catch (e) {
+      alert(`Erreur génération lot : ${e.message}`);
+    } finally {
+      elLotChoixInterne.disabled = false;
+      elLotChoixInterne.textContent = '🏷️ Générer un lot interne';
+    }
+  });
+}
+
+// Option 2 : laisser en attente (lot vide → produit hors stock à compléter plus tard)
+if (elLotChoixAttente) {
+  elLotChoixAttente.addEventListener('click', () => {
+    elLot.value = '';
+    elLot.readOnly = false;
+    lotInterneGenere = false;
+    elLotGenere.textContent = '⛔ En attente — N° de lot à compléter plus tard';
+    elLotGenere.hidden = false;
+    if (elLotChoix) elLotChoix.hidden = true;
+    majBtnAjouter();
+  });
+}
 
 elBtnAnnulerLot.addEventListener('click', () => {
   elLot.value    = '';
@@ -1939,9 +1979,38 @@ elDluoBtn.addEventListener('click', () => {
   elDlcBtn.setAttribute('aria-pressed', 'false');
   elDlcLabelText.textContent = 'DLUO';
 });
+
+// Adapte le champ date selon le type de DLC du catalogue.
+//  - 'date_abattage' → libellé « Date d'abattage », toggle DLC/DLUO masqué, date passée (carcasse)
+//  - 'no_dlc'        → champ date masqué (aucune date requise)
+//  - 'dlc' / null    → comportement standard (toggle DLC/DLUO visible)
+function appliquerModeDate(dlcType) {
+  const toggle  = document.querySelector('.rec-dlc-toggle');
+  const groupe  = elDlc ? elDlc.closest('.rec-form-group') : null;
+  if (dlcType === 'date_abattage') {
+    dlcMode = 'abattage';
+    elDlcLabelText.textContent = "Date d'abattage";
+    if (toggle)  toggle.hidden = true;
+    if (groupe)  groupe.hidden = false;
+    elDlc.removeAttribute('min'); // l'abattage est une date passée
+  } else if (dlcType === 'no_dlc') {
+    dlcMode = 'no_dlc';
+    if (groupe) groupe.hidden = true;
+  } else {
+    dlcMode = 'dlc';
+    elDlcLabelText.textContent = 'DLC';
+    if (toggle) toggle.hidden = false;
+    if (groupe) groupe.hidden = false;
+    elDlcBtn.classList.add('ok-sel');
+    elDluoBtn.classList.remove('ok-sel');
+    elDlcBtn.setAttribute('aria-pressed', 'true');
+    elDluoBtn.setAttribute('aria-pressed', 'false');
+  }
+}
 elDlc.addEventListener('input', () => {
-  // Validation DLC ≥ aujourd'hui
-  if (elDlc.value) {
+  // Validation « ≥ aujourd'hui » uniquement pour DLC/DLUO.
+  // Une date d'abattage est par nature passée → pas de contrôle de futur.
+  if (elDlc.value && dlcMode !== 'abattage') {
     const today = new Date().toISOString().slice(0, 10);
     if (elDlc.value < today) {
       elDlc.classList.add('rec-champ-invalide');
@@ -1981,18 +2050,15 @@ function reinitFormProduit() {
   elLotGenere.hidden = true;
   elBtnPasLot.hidden = false;
   elBtnAnnulerLot.hidden = true;
+  if (typeof elLotChoix !== 'undefined' && elLotChoix) elLotChoix.hidden = true;
 
   // Origine : défaut France à chaque nouveau produit
   if (elOrigine) elOrigine.value = 'France';
   if (elOrigineList) elOrigineList.hidden = true;
 
-  // DLC reset to DLC mode
+  // DLC reset to DLC mode (champ + toggle visibles)
   elDlc.value = '';
-  elDlcBtn.classList.add('ok-sel');
-  elDluoBtn.classList.remove('ok-sel');
-  elDlcBtn.setAttribute('aria-pressed', 'true');
-  elDluoBtn.setAttribute('aria-pressed', 'false');
-  elDlcLabelText.textContent = 'DLC';
+  appliquerModeDate('dlc');
 
   elPh.value  = '';
   elPhPlage.textContent = '';
@@ -2180,8 +2246,9 @@ function _buildPayload() {
   payload.origine = origineVal || 'France';
   const dateVal = elDlc.value;
   if (dateVal) {
-    if (dlcMode === 'dluo') payload.dluo = dateVal;
-    else                    payload.dlc  = dateVal;
+    if (dlcMode === 'dluo')          payload.dluo          = dateVal;
+    else if (dlcMode === 'abattage') payload.date_abattage = dateVal;
+    else                             payload.dlc           = dateVal;
   }
   const ph = parseFloat(elPh.value);
   if (!isNaN(ph)) payload.ph_valeur = ph;
