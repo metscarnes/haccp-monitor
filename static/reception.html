@@ -167,13 +167,11 @@
         </div>
       </div>
       <div id="rec-commande-sel-zone" hidden>
-        <div class="rec-form-group">
-          <label class="rec-champ-label" for="rec-commande-select">Commande</label>
-          <select id="rec-commande-select" class="rec-input">
-            <option value="">Chargement…</option>
-          </select>
-        </div>
-        <div id="rec-commande-resume" class="rec-commande-resume" hidden></div>
+        <!-- Liste des commandes liées (1 ligne par commande) -->
+        <div id="rec-commandes-liste"></div>
+        <button class="rec-btn-add-fourn" id="rec-btn-add-commande" type="button">
+          + Ajouter une commande
+        </button>
       </div>
 
       <!-- Question plusieurs fournisseurs -->

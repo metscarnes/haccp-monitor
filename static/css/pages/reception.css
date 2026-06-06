@@ -1297,6 +1297,16 @@ body.rec-body {
 .rec-refus-bl-bloc .rec-fourn-sup-btn:active { opacity: .7; }
 
 /* ── Lien commande (étape 2) ──────────────────────────────── */
+.rec-commande-row {
+  margin-bottom: .75rem;
+  border: 1px solid #d1fae5;
+  border-radius: var(--radius-sm, 8px);
+  padding: .6rem .75rem;
+  background: #f9fefe;
+}
+.rec-commande-row-select {
+  flex: 1;
+}
 .rec-commande-resume {
   background: #f0fdf4;
   border: 1px solid #86efac;

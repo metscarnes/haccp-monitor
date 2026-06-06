@@ -192,19 +192,22 @@ let fournisseurProduitSelected = null; // {id, nom} fournisseur sélectionné po
 let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé pour dialog
 
 // Lien commande
-let commandeId         = null;    // ID de la commande liée (nullable)
-let commandeLignes     = [];      // lignes de la commande pour pré-remplissage
+let commandeIds        = [];      // IDs des commandes liées (tableau)
+let commandeLignes     = [];      // lignes de toutes les commandes liées pour pré-remplissage
 let commandeLigneIdx   = 0;       // index de la ligne en cours de réception
 let catalogueIdPrefill = null;    // catalogue_fournisseur_id de la ligne de commande pré-remplie
                                   // (propagé vers reception_lignes pour le suivi de stock par référence)
+let toutesCommandes    = [];      // cache de toutes les commandes disponibles
 
 
 // ── Références DOM — Commande ──────────────────────────────
-const elCmdNonBtn      = document.getElementById('rec-cmd-non-btn');
-const elCmdOuiBtn      = document.getElementById('rec-cmd-oui-btn');
-const elCmdSelZone     = document.getElementById('rec-commande-sel-zone');
-const elCmdSelect      = document.getElementById('rec-commande-select');
-const elCmdResume      = document.getElementById('rec-commande-resume');
+const elCmdNonBtn       = document.getElementById('rec-cmd-non-btn');
+const elCmdOuiBtn       = document.getElementById('rec-cmd-oui-btn');
+const elCmdSelZone      = document.getElementById('rec-commande-sel-zone');
+const elCmdSelect       = null; // legacy — remplacé par la liste dynamique
+const elCmdResume       = null; // legacy — remplacé par les résumés inline
+const elCommandesListe  = document.getElementById('rec-commandes-liste');
+const elBtnAddCommande  = document.getElementById('rec-btn-add-commande');
 
 // ── Toggle "Lier à une commande" ───────────────────────────
 if (elCmdNonBtn && elCmdOuiBtn) {
@@ -214,8 +217,9 @@ if (elCmdNonBtn && elCmdOuiBtn) {
     elCmdNonBtn.setAttribute('aria-pressed', 'true');
     elCmdOuiBtn.setAttribute('aria-pressed', 'false');
     elCmdSelZone.hidden = true;
-    commandeId = null;
+    commandeIds = [];
     commandeLignes = [];
+    if (elCommandesListe) elCommandesListe.innerHTML = '';
   });
 
   elCmdOuiBtn.addEventListener('click', async () => {
@@ -225,60 +229,153 @@ if (elCmdNonBtn && elCmdOuiBtn) {
     elCmdNonBtn.setAttribute('aria-pressed', 'false');
     elCmdSelZone.hidden = false;
     await chargerCommandesDisponibles();
+    if (elCommandesListe && elCommandesListe.children.length === 0) {
+      ajouterLigneCommande();
+    }
   });
 }
 
-if (elCmdSelect) {
-  elCmdSelect.addEventListener('change', () => {
-    const id = parseInt(elCmdSelect.value);
-    if (!id) { commandeId = null; commandeLignes = []; elCmdResume.hidden = true; return; }
-    commandeId = id;
-    afficherResumeCommande(id);
-  });
+if (elBtnAddCommande) {
+  elBtnAddCommande.addEventListener('click', ajouterLigneCommande);
 }
 
 async function chargerCommandesDisponibles() {
+  if (toutesCommandes.length) return; // déjà chargées
   try {
-    // Commandes confirmées pas encore livrées
     const cmds = await apiFetch('/api/achats/commandes?statut=confirmee&limit=50');
     const brouillons = await apiFetch('/api/achats/commandes?statut=brouillon&limit=50');
-    const toutes = [...cmds, ...brouillons];
-    elCmdSelect.innerHTML = '<option value="">-- Sélectionnez une commande --</option>';
-    toutes.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = `${c.numero_commande} — ${c.fournisseur_nom} — ${fmtDate(c.date_commande)}`;
-      elCmdSelect.appendChild(opt);
-    });
-    if (!toutes.length) {
-      elCmdSelect.innerHTML = '<option value="">Aucune commande disponible</option>';
-    }
+    toutesCommandes = [...cmds, ...brouillons];
   } catch (e) {
-    elCmdSelect.innerHTML = '<option value="">Erreur de chargement</option>';
+    toutesCommandes = [];
   }
 }
 
-async function afficherResumeCommande(id) {
+function ajouterLigneCommande() {
+  if (!elCommandesListe) return;
+  const rowIdx = elCommandesListe.children.length;
+  const row = document.createElement('div');
+  row.className = 'rec-commande-row';
+  row.dataset.rowIdx = rowIdx;
+
+  const selectEl = document.createElement('select');
+  selectEl.className = 'rec-input rec-commande-row-select';
+  selectEl.innerHTML = '<option value="">-- Sélectionnez une commande --</option>';
+  const dejaChoisis = new Set(commandeIds.filter(Boolean));
+  toutesCommandes.forEach(c => {
+    if (dejaChoisis.has(c.id)) return;
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.numero_commande} — ${c.fournisseur_nom} — ${fmtDate(c.date_commande)}`;
+    selectEl.appendChild(opt);
+  });
+  if (!toutesCommandes.length) {
+    selectEl.innerHTML = '<option value="">Aucune commande disponible</option>';
+  }
+
+  const resumeEl = document.createElement('div');
+  resumeEl.className = 'rec-commande-resume';
+  resumeEl.hidden = true;
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'rec-fourn-clear';
+  removeBtn.setAttribute('aria-label', 'Supprimer cette commande');
+  removeBtn.textContent = '✕';
+  removeBtn.style.cssText = 'margin-left:.5rem;flex-shrink:0;';
+
+  const selectWrap = document.createElement('div');
+  selectWrap.style.cssText = 'display:flex;align-items:center;gap:.5rem;';
+  selectWrap.appendChild(selectEl);
+  selectWrap.appendChild(removeBtn);
+
+  row.appendChild(selectWrap);
+  row.appendChild(resumeEl);
+  elCommandesListe.appendChild(row);
+
+  selectEl.addEventListener('change', async () => {
+    const id = parseInt(selectEl.value);
+    if (!id) {
+      commandeIds[rowIdx] = null;
+      commandeLignes = construireLignesCommandes();
+      resumeEl.hidden = true;
+      resumeEl.innerHTML = '';
+      return;
+    }
+    commandeIds[rowIdx] = id;
+    await afficherResumeCommande(id, resumeEl, rowIdx === 0);
+    commandeLignes = construireLignesCommandes();
+  });
+
+  removeBtn.addEventListener('click', () => {
+    commandeIds.splice(rowIdx, 1);
+    row.remove();
+    // Renuméroter les rowIdx restants
+    Array.from(elCommandesListe.children).forEach((r, i) => {
+      r.dataset.rowIdx = i;
+    });
+    commandeLignes = construireLignesCommandes();
+  });
+}
+
+// Reconstruit commandeLignes depuis toutes les commandes choisies
+function construireLignesCommandes() {
+  const lignes = [];
+  commandeIds.forEach(cid => {
+    if (!cid) return;
+    const cmd = toutesCommandes.find(c => c.id === cid);
+    if (cmd && cmd.lignes) lignes.push(...cmd.lignes);
+  });
+  return lignes;
+}
+
+async function afficherResumeCommande(id, resumeEl, autoFillFourn) {
   try {
     const cmd = await apiFetch(`/api/achats/commandes/${id}`);
-    commandeLignes = cmd.lignes || [];
-    elCmdResume.hidden = false;
-    elCmdResume.innerHTML = `
+    // Mettre à jour le cache de lignes sur l'objet commande
+    const cached = toutesCommandes.find(c => c.id === id);
+    if (cached) cached.lignes = cmd.lignes || [];
+    commandeLignes = construireLignesCommandes();
+
+    resumeEl.hidden = false;
+    resumeEl.innerHTML = `
       <div class="rec-commande-resume-titre">
-        📝 ${cmd.numero_commande} — ${cmd.fournisseur_nom}
+        📝 ${escHtml(cmd.numero_commande)} — ${escHtml(cmd.fournisseur_nom)}
         <span class="rec-commande-prefill-badge">Auto-remplissage activé</span>
       </div>
-      ${commandeLignes.map(l => `
+      ${(cmd.lignes || []).map(l => `
         <div class="rec-commande-resume-ligne">
           <span><strong>${escHtml(l.code_article)}</strong> — ${escHtml(l.designation)}</span>
           <span>${l.quantite_commandee} ${l.unite}</span>
         </div>
       `).join('')}
     `;
+
+    // Auto-remplir le fournisseur du bloc 0 si c'est la première commande
+    if (autoFillFourn && cmd.fournisseur_id) {
+      preRemplirFournisseurBloc(0, { id: cmd.fournisseur_id, nom: cmd.fournisseur_nom });
+    }
   } catch(e) {
-    elCmdResume.innerHTML = '<div style="color:#991b1b;">Erreur de chargement de la commande</div>';
-    elCmdResume.hidden = false;
+    resumeEl.innerHTML = '<div style="color:#991b1b;">Erreur de chargement de la commande</div>';
+    resumeEl.hidden = false;
   }
+}
+
+// Pré-remplir le bloc fournisseur d'index idx avec les données {id, nom}
+function preRemplirFournisseurBloc(idx, fourn) {
+  fournisseursListe[idx] = fournisseursListe[idx] || { id: null, nom: '', photoFile: null, photoUrl: null };
+  fournisseursListe[idx].id  = fourn.id;
+  fournisseursListe[idx].nom = fourn.nom;
+  if (idx === 0) fournisseurId = fourn.id;
+
+  const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
+  const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
+  const searchWrap = document.getElementById(`rec-fourn-search-wrap-${idx}`);
+  if (selWrap && selNom && searchWrap) {
+    selNom.textContent = fourn.nom;
+    selWrap.hidden     = false;
+    searchWrap.hidden  = true;
+  }
+  majSelectorFournisseur();
 }
 
 function fmtDate(d) {
@@ -1315,16 +1412,16 @@ async function creerFiche() {
       }
     }
 
-    // Enregistrer le lien commande si sélectionné
-    if (commandeId) {
+    // Enregistrer le lien commandes si sélectionnées
+    for (const cid of commandeIds.filter(Boolean)) {
       try {
         await apiFetch('/api/achats/commande_receptions_mapping', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ commande_id: commandeId, reception_id: rec.id }),
+          body: JSON.stringify({ commande_id: cid, reception_id: rec.id }),
         });
         // Marquer la commande comme livrée
-        await apiFetch(`/api/achats/commandes/${commandeId}`, {
+        await apiFetch(`/api/achats/commandes/${cid}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ statut: 'livree' }),
@@ -1341,7 +1438,7 @@ async function creerFiche() {
 
     // Pré-remplir depuis la commande si liée
     commandeLigneIdx = 0;
-    if (commandeId && commandeLignes.length > 0) {
+    if (commandeIds.some(Boolean) && commandeLignes.length > 0) {
       preRemplirDepuisCommande();
     } else if (fourn0 && (fourn0.id || (fourn0.nom && fourn0.nom.trim()))) {
       // Comportement habituel : pré-remplir le fournisseur
