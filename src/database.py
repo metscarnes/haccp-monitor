@@ -1301,11 +1301,32 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # designation_libre = libellé de l'article catalogue fournisseur quand aucun
             # produit interne (table produits) n'est rattaché (produit_id NULL).
             "ALTER TABLE reception_lignes ADD COLUMN designation_libre TEXT",
-            # v5.6 — produit_id devient nullable dans reception_lignes.
-            # La migration d'origine (refonte v2.2) créait la table avec NOT NULL,
-            # ce qui bloque les réceptions sans produit interne (catalogue achats).
-            # SQLite ne supporte pas ALTER COLUMN → recréation complète de la table.
-            """CREATE TABLE IF NOT EXISTS reception_lignes_v56 (
+        ]
+        for sql in migrations:
+            try:
+                await db.execute(sql)
+            except Exception:
+                pass
+
+        # v5.6 — produit_id devient nullable dans reception_lignes.
+        # La migration d'origine (refonte v2.2) créait la table avec NOT NULL,
+        # ce qui bloque les réceptions sans produit interne (catalogue achats).
+        # SQLite ne supporte pas ALTER COLUMN → recréation complète de la table.
+        # IDEMPOTENT : on ne recrée la table QUE si produit_id est encore NOT NULL,
+        # sinon on ne touche à rien (évite recréations inutiles + tables orphelines).
+        try:
+            cur_rl = await db.execute("PRAGMA table_info(reception_lignes)")
+            cols_rl = await cur_rl.fetchall()
+            # PRAGMA table_info : (cid, name, type, notnull, dflt_value, pk)
+            produit_id_notnull = any(
+                row[1] == "produit_id" and row[3] == 1 for row in cols_rl
+            )
+            if produit_id_notnull:
+                logger.info("Migration v5.6 : produit_id → nullable dans reception_lignes")
+                await db.executescript("""
+PRAGMA foreign_keys=OFF;
+DROP TABLE IF EXISTS reception_lignes_v56;
+CREATE TABLE reception_lignes_v56 (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_id              INTEGER NOT NULL,
     produit_id                INTEGER,
@@ -1342,8 +1363,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
     FOREIGN KEY (produit_id)               REFERENCES produits(id),
     FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
     FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id)
-)""",
-            """INSERT OR IGNORE INTO reception_lignes_v56
+);
+INSERT INTO reception_lignes_v56
     SELECT id, reception_id, produit_id, catalogue_fournisseur_id,
            fournisseur_id, fournisseur_nom, numero_lot, lot_interne,
            dlc, dluo, date_abattage, dlc_type, statut, attente_motif,
@@ -1354,17 +1375,15 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
            exsudat_conforme, exsudat_observation,
            odeur_conforme, odeur_observation,
            ph_valeur, ph_conforme, conforme, created_at
-    FROM reception_lignes
-    WHERE typeof(reception_lignes.id) = 'integer'""",
-            "DROP TABLE IF EXISTS reception_lignes",
-            "ALTER TABLE reception_lignes_v56 RENAME TO reception_lignes",
-            "CREATE INDEX IF NOT EXISTS idx_reception_lignes_statut ON reception_lignes(statut)",
-        ]
-        for sql in migrations:
-            try:
-                await db.execute(sql)
-            except Exception:
-                pass
+    FROM reception_lignes;
+DROP TABLE reception_lignes;
+ALTER TABLE reception_lignes_v56 RENAME TO reception_lignes;
+CREATE INDEX IF NOT EXISTS idx_reception_lignes_statut ON reception_lignes(statut);
+PRAGMA foreign_keys=ON;
+""")
+                await db.commit()
+        except Exception as e:
+            logger.warning("Migration v5.6 produit_id nullable : %s", e)
 
         # Migration v3.5 — baseline historique du statut réception
         # ALTER TABLE remplit les lignes existantes avec 'en_cours' (default),
