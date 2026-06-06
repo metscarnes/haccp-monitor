@@ -730,6 +730,8 @@ CREATE TABLE IF NOT EXISTS catalogue_fournisseur (
     prix_achat_ht    REAL    NOT NULL DEFAULT 0.0,
     tva_percent      REAL    DEFAULT 5.5,
     conditionnement  TEXT,
+    famille          TEXT,                    -- Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage
+    sous_famille     TEXT,                    -- sous-catégorie dépendante de la famille
     dlc_type         TEXT    DEFAULT 'dlc',   -- 'dlc' | 'date_abattage' | 'no_dlc'
     dlc_jours        INTEGER,
     actif            INTEGER DEFAULT 1,
@@ -1194,6 +1196,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE catalogue_fournisseur ADD COLUMN qte_par_colis REAL",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN poids_unitaire_kg REAL",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN poids_colis_kg REAL",
+            # v5.7 — Catalogue fournisseur : classification famille / sous-famille
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN famille TEXT",
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN sous_famille TEXT",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",
@@ -1206,6 +1211,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 prix_achat_ht    REAL    NOT NULL DEFAULT 0.0,
                 tva_percent      REAL    DEFAULT 5.5,
                 conditionnement  TEXT,
+                famille          TEXT,
+                sous_famille     TEXT,
                 dlc_type         TEXT    DEFAULT 'dlc',
                 dlc_jours        INTEGER,
                 actif            INTEGER DEFAULT 1,

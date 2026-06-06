@@ -14,6 +14,18 @@ let triSens      = 'asc';   // 'asc' | 'desc'
 
 const DLC_LABELS = { dlc: 'DLC', date_abattage: 'Abattage', no_dlc: 'Sans DLC' };
 
+// Familles → sous-familles (listes déroulantes dépendantes).
+// La saisie hors liste reste possible côté serveur (texte libre).
+const FAMILLES = {
+  'Viande':               ['Boeuf', 'Veau', 'Agneau', 'Porc', 'Volaille', 'Cheval'],
+  'Charcuterie':          ['Jambon', 'Pâté, Terrine et Rillette', 'Salaison et Pièce séchée',
+                           'Saucisse à cuire et Saucisson cuit', 'Spécialité charcutière'],
+  'Traiteur':             ['Crudité', 'Fromage', 'Plat préparé', 'Accompagnement', 'Pané', 'Dessert'],
+  'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
+                           'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
+  'Hygiène et emballage': ['Hygiène', 'Emballage'],
+};
+
 const COLONNES = [
   { key: 'fournisseur_nom', label: 'Fournisseur' },
   { key: 'code_article',    label: 'Code article' },
@@ -25,6 +37,8 @@ const COLONNES = [
   { key: 'poids_colis_kg',    label: 'Poids colis' },
   { key: 'tva_percent',     label: 'TVA' },
   { key: 'conditionnement', label: 'Conditionnement' },
+  { key: 'famille',         label: 'Famille' },
+  { key: 'sous_famille',    label: 'Sous-famille' },
   { key: 'dlc_type',        label: 'DLC type' },
 ];
 
@@ -62,10 +76,12 @@ function bindEvents() {
   document.getElementById('form-article').addEventListener('submit', sauver);
   document.getElementById('a-qte-colis').addEventListener('input', recalcPoidsColis);
   document.getElementById('a-poids-unitaire').addEventListener('input', recalcPoidsColis);
+  document.getElementById('a-famille').addEventListener('change', () => majSousFamilleForm());
 
   // Filtres
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-format-prix').addEventListener('change', filtrer);
+  document.getElementById('filtre-famille').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
@@ -164,6 +180,7 @@ function afficherStats() {
 function filtrer() {
   const fourn            = document.getElementById('filtre-fournisseur').value;
   const formatPrix       = document.getElementById('filtre-format-prix').value;
+  const famille          = document.getElementById('filtre-famille').value;
   const dlc              = document.getElementById('filtre-dlc').value;
   const search           = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest     = document.getElementById('filtre-afficher-test').checked;
@@ -176,6 +193,7 @@ function filtrer() {
     if (!afficherInactifs && !a.actif)                               return false;
     if (fourn      && String(a.fournisseur_id) !== fourn)            return false;
     if (formatPrix && a.format_prix !== formatPrix)                  return false;
+    if (famille    && a.famille !== famille)                         return false;
     if (dlc        && a.dlc_type !== dlc)                            return false;
     if (sansPrixOnly   && a.prix_achat_ht > 0)                      return false;
     if (incompletsOnly && !estIncomplet(a))                         return false;
@@ -263,6 +281,8 @@ function afficherTable(liste) {
       <td class="ach-col-num">${a.poids_colis_kg != null ? '<strong>' + a.poids_colis_kg.toFixed(3) + ' kg</strong>' : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'tva_percent','number')" style="cursor:pointer;">${a.tva_percent ?? 5.5}%</td>
       <td ondblclick="editerInline(this,${a.id},'conditionnement','text')" style="cursor:pointer;">${escHtml(a.conditionnement || '—')}</td>
+      <td ondblclick="editerInline(this,${a.id},'famille','select')" style="cursor:pointer;">${a.famille ? escHtml(a.famille) : '<span style="color:#9ca3af">—</span>'}</td>
+      <td ondblclick="editerInline(this,${a.id},'sous_famille','select')" style="cursor:pointer;">${a.sous_famille ? escHtml(a.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'dlc_type','select')" style="cursor:pointer;">
         <span class="ach-badge ach-badge--${a.dlc_type === 'dlc' ? 'dlc' : a.dlc_type === 'date_abattage' ? 'abattage' : 'no-dlc'}">
           ${DLC_LABELS[a.dlc_type] || a.dlc_type}
@@ -378,6 +398,21 @@ function majZoneValeurMasse() {
       html: () => `<input type="text" id="masse-val" placeholder="Ex: Carton 4kg"
         style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">`,
     },
+    famille: {
+      label: 'Nouvelle famille',
+      html: () => {
+        const champStyle = 'min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;';
+        const opts = Object.keys(FAMILLES).map(f => `<option value="${escHtml(f)}">${escHtml(f)}</option>`).join('');
+        return `
+          <select id="masse-val" style="${champStyle}">
+            <option value="">— Sélectionnez —</option>${opts}
+          </select>
+          <label style="font-size:var(--text-sm);font-weight:600;color:#4b5563;margin-top:8px;">Sous-famille (facultatif)</label>
+          <select id="masse-val-sf" disabled style="${champStyle}">
+            <option value="">— Choisir une famille d'abord —</option>
+          </select>`;
+      },
+    },
     dlc_type: {
       label: 'Nouveau type DLC',
       html: () => `<select id="masse-val" style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">
@@ -396,6 +431,23 @@ function majZoneValeurMasse() {
       ${cfg.html()}
     </div>`;
   zone.hidden = false;
+
+  // Famille → sous-famille dépendante dans la modale d'édition en masse
+  if (champ === 'famille') {
+    const selFam = document.getElementById('masse-val');
+    const selSf  = document.getElementById('masse-val-sf');
+    selFam.addEventListener('change', () => {
+      const liste = FAMILLES[selFam.value] || [];
+      if (!selFam.value) {
+        selSf.innerHTML = '<option value="">— Choisir une famille d\'abord —</option>';
+        selSf.disabled  = true;
+        return;
+      }
+      selSf.disabled = false;
+      selSf.innerHTML = '<option value="">— Aucune —</option>'
+        + liste.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+    });
+  }
 }
 
 async function appliquerMasse() {
@@ -414,6 +466,12 @@ async function appliquerMasse() {
     return;
   }
 
+  // La famille embarque une sous-famille facultative (envoyée ensemble).
+  let payload = { [champ]: valeur };
+  if (champ === 'famille') {
+    payload.sous_famille = document.getElementById('masse-val-sf').value || '';
+  }
+
   const btn = document.getElementById('masse-appliquer');
   btn.disabled = true; btn.textContent = 'Application…';
 
@@ -422,7 +480,7 @@ async function appliquerMasse() {
       fetch(`${API_CAT}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [champ]: valeur }),
+        body: JSON.stringify(payload),
       })
     ));
     fermerModalMasse();
@@ -471,11 +529,32 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-poids-unitaire').value = a.poids_unitaire_kg ?? '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
   document.getElementById('a-conditionnement').value = a.conditionnement || '';
+  document.getElementById('a-famille').value = a.famille || '';
+  majSousFamilleForm(a.sous_famille || '');
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
   recalcPoidsColis();
   document.getElementById('btn-supprimer-article').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
+}
+
+// Sous-famille du formulaire : peuplée selon la famille choisie.
+// `valeurAGarder` permet de re-sélectionner la sous-famille existante en mode édition.
+function majSousFamilleForm(valeurAGarder) {
+  const famille = document.getElementById('a-famille').value;
+  const sel     = document.getElementById('a-sous-famille');
+  const liste   = FAMILLES[famille] || [];
+  if (!famille) {
+    sel.innerHTML = '<option value="">— Choisir une famille d\'abord —</option>';
+    sel.disabled  = true;
+    return;
+  }
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">— Aucune —</option>'
+    + liste.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
+  if (valeurAGarder && liste.includes(valeurAGarder)) {
+    sel.value = valeurAGarder;
+  }
 }
 
 // Champ généré : poids total colis = qté par colis × poids unitaire
@@ -494,17 +573,27 @@ function recalcPoidsColis() {
 const SELECT_OPTIONS = {
   format_prix: [['kg','€/kg'], ['colis','€/colis']],
   dlc_type:    [['dlc','DLC'], ['date_abattage','Abattage'], ['no_dlc','Sans DLC']],
+  famille:     () => [['', '— Aucune —'], ...Object.keys(FAMILLES).map(f => [f, f])],
 };
+
+// Options de sous-famille en édition inline, dérivées de la famille de l'article.
+function sousFamilleOptions(article) {
+  const sf = FAMILLES[article?.famille] || [];
+  return [['', '— Aucune —'], ...sf.map(s => [s, s])];
+}
 
 function editerInline(td, articleId, champ, type) {
   if (td.querySelector('input,select')) return; // déjà en édition
-  const valActuelle = articles.find(a => a.id === articleId)?.[champ] ?? '';
+  const article = articles.find(a => a.id === articleId);
+  const valActuelle = article?.[champ] ?? '';
 
   let ctrl;
   if (type === 'select') {
     ctrl = document.createElement('select');
     ctrl.style.cssText = 'width:100%;font:inherit;border:2px solid var(--color-accent);border-radius:4px;padding:2px 4px;';
-    SELECT_OPTIONS[champ].forEach(([val, lbl]) => {
+    let opts = champ === 'sous_famille' ? sousFamilleOptions(article) : SELECT_OPTIONS[champ];
+    if (typeof opts === 'function') opts = opts();
+    opts.forEach(([val, lbl]) => {
       const opt = document.createElement('option');
       opt.value = val; opt.textContent = lbl;
       if (val === String(valActuelle)) opt.selected = true;
@@ -528,11 +617,17 @@ function editerInline(td, articleId, champ, type) {
     let nouvelleVal = type === 'number' ? (parseFloat(ctrl.value) || null) : ctrl.value.trim() || null;
     td.innerHTML = contenuOriginal; // restaure pendant la requête
     if (nouvelleVal === valActuelle) return;
+    const payload = { [champ]: nouvelleVal };
+    // Changer la famille invalide l'ancienne sous-famille → on la réinitialise.
+    if (champ === 'famille') {
+      const sfOk = (FAMILLES[nouvelleVal] || []).includes(article?.sous_famille);
+      if (!sfOk) payload.sous_famille = '';
+    }
     try {
       const r = await fetch(`${API_CAT}/${articleId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [champ]: nouvelleVal }),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
       await chargerCatalogue();
@@ -585,6 +680,8 @@ function viderForm() {
   });
   document.getElementById('a-format-prix').value = 'kg';
   document.getElementById('a-tva').value = '5.5';
+  document.getElementById('a-famille').value = '';
+  majSousFamilleForm();
   document.getElementById('a-dlc-type').value = 'dlc';
   document.getElementById('form-erreur').hidden = true;
 }
@@ -604,6 +701,8 @@ async function sauver(e) {
     poids_unitaire_kg: parseFloat(document.getElementById('a-poids-unitaire').value) || null,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),
     conditionnement: document.getElementById('a-conditionnement').value.trim() || null,
+    famille:         document.getElementById('a-famille').value || null,
+    sous_famille:    document.getElementById('a-sous-famille').value || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
   };
 

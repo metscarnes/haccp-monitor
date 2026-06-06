@@ -82,6 +82,17 @@
       </select>
     </div>
     <div class="ach-filtre">
+      <label>Famille</label>
+      <select id="filtre-famille">
+        <option value="">Toutes</option>
+        <option value="Viande">Viande</option>
+        <option value="Charcuterie">Charcuterie</option>
+        <option value="Traiteur">Traiteur</option>
+        <option value="Aide culinaire">Aide culinaire</option>
+        <option value="Hygiène et emballage">Hygiène et emballage</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
       <label>Type DLC</label>
       <select id="filtre-dlc">
         <option value="">Tous</option>
@@ -150,6 +161,7 @@
             <option value="format_prix">Format prix</option>
             <option value="tva_percent">TVA (%)</option>
             <option value="conditionnement">Conditionnement</option>
+            <option value="famille">Famille / Sous-famille</option>
             <option value="dlc_type">Type DLC</option>
           </select>
         </div>
@@ -185,12 +197,14 @@
           <th id="th-poids_colis_kg"    onclick="changerTri('poids_colis_kg')"    style="cursor:pointer;user-select:none;" class="ach-col-num">Poids colis ⇅</th>
           <th id="th-tva_percent"     onclick="changerTri('tva_percent')"     style="cursor:pointer;user-select:none;">TVA ⇅</th>
           <th id="th-conditionnement" onclick="changerTri('conditionnement')" style="cursor:pointer;user-select:none;">Conditionnement ⇅</th>
+          <th id="th-famille"         onclick="changerTri('famille')"         style="cursor:pointer;user-select:none;">Famille ⇅</th>
+          <th id="th-sous_famille"    onclick="changerTri('sous_famille')"    style="cursor:pointer;user-select:none;">Sous-famille ⇅</th>
           <th id="th-dlc_type"        onclick="changerTri('dlc_type')"        style="cursor:pointer;user-select:none;">DLC type ⇅</th>
           <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="tbody-catalogue">
-        <tr><td colspan="13" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="15" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
@@ -279,6 +293,23 @@
         <div class="ach-champ">
           <label>Conditionnement</label>
           <input type="text" id="a-conditionnement" placeholder="Ex: Carton 4kg, Carcasse…">
+        </div>
+        <div class="ach-champ">
+          <label>Famille</label>
+          <select id="a-famille">
+            <option value="">— Aucune —</option>
+            <option value="Viande">Viande</option>
+            <option value="Charcuterie">Charcuterie</option>
+            <option value="Traiteur">Traiteur</option>
+            <option value="Aide culinaire">Aide culinaire</option>
+            <option value="Hygiène et emballage">Hygiène et emballage</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Sous-famille</label>
+          <select id="a-sous-famille" disabled>
+            <option value="">— Choisir une famille d'abord —</option>
+          </select>
         </div>
         <div class="ach-champ">
           <label>Type DLC</label>

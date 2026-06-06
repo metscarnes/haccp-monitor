@@ -88,10 +88,14 @@ class CatalogueArticleCreate(BaseModel):
     poids_unitaire_kg: Optional[float] = None # poids d'une pièce en kg (brut, si format 'colis')
     tva_percent: Optional[float] = 5.5
     conditionnement: Optional[str] = None
+    famille: Optional[str] = None
+    sous_famille: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
 
 
 class CatalogueArticleUpdate(BaseModel):
+    fournisseur_id: Optional[int] = None
+    code_article: Optional[str] = None
     designation: Optional[str] = None
     prix_achat_ht: Optional[float] = None
     format_prix: Optional[str] = None
@@ -99,6 +103,8 @@ class CatalogueArticleUpdate(BaseModel):
     poids_unitaire_kg: Optional[float] = None
     tva_percent: Optional[float] = None
     conditionnement: Optional[str] = None
+    famille: Optional[str] = None
+    sous_famille: Optional[str] = None
     dlc_type: Optional[str] = None
     actif: Optional[bool] = None
 
@@ -365,6 +371,8 @@ async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
         ("poids_colis_kg",    "Poids total colis (kg)"),
         ("tva_percent",       "TVA (%)"),
         ("conditionnement",   "Conditionnement"),
+        ("famille",           "Famille"),
+        ("sous_famille",      "Sous-famille"),
         ("dlc_type",          "Type DLC"),
     ]
 
@@ -438,6 +446,12 @@ async def download_template():
         ("conditionnement",   "Conditionnement (texte libre)",
          "Précision libre : 'Carcasse ~150kg', 'Carton de 10', 'Sous-vide'... Facultatif.",
          "Carcasse ~150kg", "Carton de 10"),
+        ("famille",           "Famille",
+         "Catégorie : Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage. Facultatif.",
+         "Viande", "Viande"),
+        ("sous_famille",      "Sous-famille",
+         "Sous-catégorie selon la famille (ex pour Viande : Boeuf, Veau, Agneau, Porc, Volaille, Cheval). Facultatif.",
+         "Boeuf", "Boeuf"),
         ("dlc_type",          "Type de DLC",
          "dlc = date limite classique | date_abattage = produit carcasse daté à l'abattage | no_dlc = sans DLC.",
          "date_abattage", "dlc"),
@@ -517,6 +531,19 @@ async def download_template():
     dv.promptTitle = "Le prix est au..."
     ws.add_data_validation(dv)
     dv.add(f"{fmt_letter}5:{fmt_letter}500")
+
+    # Liste déroulante des familles (colonne « famille »)
+    fam_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "famille")
+    fam_letter = ws.cell(row=1, column=fam_col).column_letter
+    dv_fam = DataValidation(
+        type="list",
+        formula1='"Viande,Charcuterie,Traiteur,Aide culinaire,Hygiène et emballage"',
+        allow_blank=True,
+    )
+    dv_fam.prompt = "Choisir une famille de produit"
+    dv_fam.promptTitle = "Famille"
+    ws.add_data_validation(dv_fam)
+    dv_fam.add(f"{fam_letter}5:{fam_letter}500")
 
     # --- Onglet « Mode d'emploi » -------------------------------------------
     guide = wb.create_sheet("Mode d'emploi")
@@ -602,6 +629,8 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
         "poids total colis (kg)": "poids_colis_kg",
         "tva (%)": "tva_percent", "tva": "tva_percent",
         "conditionnement (texte libre)": "conditionnement", "conditionnement": "conditionnement",
+        "famille": "famille",
+        "sous-famille": "sous_famille", "sous famille": "sous_famille", "sous_famille": "sous_famille",
         "type de dlc": "dlc_type", "type dlc": "dlc_type",
     }
 
@@ -661,6 +690,8 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
 
             format_prix     = _normaliser_format_prix(col(row_num, "format_prix")) if "format_prix" in headers else "kg"
             conditionnement = col(row_num, "conditionnement") if "conditionnement" in headers else None
+            famille         = col(row_num, "famille")         if "famille"         in headers else None
+            sous_famille    = col(row_num, "sous_famille")    if "sous_famille"    in headers else None
             dlc_type        = col(row_num, "dlc_type")        if "dlc_type"        in headers else "dlc"
 
             def _num(name):
@@ -690,22 +721,26 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                     """UPDATE catalogue_fournisseur
                        SET designation=?, prix_achat_ht=?, format_prix=?,
                            qte_par_colis=?, poids_unitaire_kg=?, poids_colis_kg=?,
-                           tva_percent=?, conditionnement=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
+                           tva_percent=?, conditionnement=?, famille=?, sous_famille=?,
+                           dlc_type=?, date_maj=CURRENT_TIMESTAMP
                        WHERE id=?""",
                     (designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
-                     tva, conditionnement or None, dlc_type or "dlc", existing["id"])
+                     tva, conditionnement or None, famille or None, sous_famille or None,
+                     dlc_type or "dlc", existing["id"])
                 )
                 stats["mis_a_jour"] += 1
             else:
                 await db.execute(
                     """INSERT INTO catalogue_fournisseur
                        (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
-                        qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
+                        famille, sous_famille, dlc_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (fourn["id"], code, designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
-                     tva, conditionnement or None, dlc_type or "dlc")
+                     tva, conditionnement or None, famille or None, sous_famille or None,
+                     dlc_type or "dlc")
                 )
                 stats["crees"] += 1
 
@@ -746,11 +781,13 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
         cur = await db.execute(
             """INSERT INTO catalogue_fournisseur
                (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
-                qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
+                famille, sous_famille, dlc_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
              format_prix, body.qte_par_colis, body.poids_unitaire_kg,
-             poids_colis, body.tva_percent, body.conditionnement, body.dlc_type)
+             poids_colis, body.tva_percent, body.conditionnement,
+             body.famille, body.sous_famille, body.dlc_type)
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
