@@ -10,16 +10,10 @@ PUT  /api/dlc/parametres                → modifier les seuils
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.api.routes_auth import (
-    verify_token,
-    require_admin,
-    _bearer,
-    _decode_token,
-)
+from src.api.routes_auth import require_admin
 
 import re
 
@@ -106,30 +100,13 @@ async def calendrier(
 # ---------------------------------------------------------------------------
 
 @router.post("/devenir", status_code=201)
-async def enregistrer_devenir(
-    body: DevenirCreate,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
-):
+async def enregistrer_devenir(body: DevenirCreate):
     if body.source_type not in SOURCES_VALIDES:
         raise HTTPException(400, f"source_type invalide (attendu : {SOURCES_VALIDES})")
     if body.statut not in STATUTS_DEVENIR:
         raise HTTPException(400, f"statut invalide (attendu : {STATUTS_DEVENIR})")
 
-    # La suppression (annule) est libre ; les autres statuts exigent le rôle admin.
-    if body.statut != "annule":
-        if credentials is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token manquant",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        payload = _decode_token(credentials.credentials)
-        if payload.get("role", "admin") != "admin":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Accès réservé à l'administrateur",
-            )
-
+    # Traitement du devenir libre (pas de rôle admin requis).
     async with get_db() as db:
         await create_dlc_devenir(
             db,
@@ -143,10 +120,7 @@ async def enregistrer_devenir(
 
 
 @router.post("/devenir/batch", status_code=201)
-async def enregistrer_devenir_batch(
-    body: DevenirBatchCreate,
-    _=Depends(require_admin),
-):
+async def enregistrer_devenir_batch(body: DevenirBatchCreate):
     """Traite en masse plusieurs DLCs (typiquement les expirées non traitées).
 
     Applique le même statut / personnel / commentaire à chaque item.

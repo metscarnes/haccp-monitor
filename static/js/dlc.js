@@ -928,9 +928,6 @@ function construireLigneOrigine(cible) {
 
 // ── Modal Devenir ───────────────────────────────────────
 async function ouvrirModalDevenir(cible) {
-  const token = await demanderMotDePasse();
-  if (!token) return;
-  state.devenirToken  = token;
   state.devenirCible  = cible;
   state.devenirStatut = null;
 
@@ -975,14 +972,12 @@ function rafraichirBoutonValider() {
 
 $('devenir-valider').addEventListener('click', async () => {
   const btn = $('devenir-valider');
-  const token = state.devenirToken;
-  if (!token) { alert('Session expirée, recommencez.'); fermerModalDevenir(); return; }
   btn.disabled = true;
   btn.textContent = 'Enregistrement...';
   try {
     const res = await fetch('/api/dlc/devenir', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         source_type:  state.devenirCible.source_type,
         source_id:    state.devenirCible.source_id,
@@ -1130,12 +1125,6 @@ $('batch-tout').addEventListener('change', e => {
 
 $('batch-valider').addEventListener('click', async () => {
   const btn = $('batch-valider');
-
-  // Le traitement par lot est une opération admin (require_admin côté API) :
-  // on demande le mot de passe pour obtenir un token, comme pour Modifier DLC.
-  const token = await demanderMotDePasse();
-  if (!token) return;
-
   btn.disabled = true;
   btn.textContent = 'Traitement...';
   try {
@@ -1145,7 +1134,7 @@ $('batch-valider').addEventListener('click', async () => {
 
     const res = await fetch('/api/dlc/devenir/batch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         items,
         statut: batchState.statut,
