@@ -337,6 +337,54 @@ body.rec-body {
   border: 3px solid var(--color-ok);
   flex-shrink: 0;
 }
+.rec-photo-voir-btn {
+  display: none;
+  margin-top: .5rem;
+  width: 100%;
+  padding: .5rem;
+  background: transparent;
+  border: 1.5px solid var(--color-ok);
+  border-radius: 8px;
+  color: var(--color-ok);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-photo-voir-btn.visible { display: block; }
+.rec-photo-voir-btn:active { opacity: .7; }
+
+/* ── Overlay aperçu photo BL plein écran ─────────────────── */
+.rec-photo-preview-wrap {
+  position: relative;
+  max-width: 95vw;
+  max-height: 92vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rec-photo-preview-wrap img {
+  max-width: 95vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
+}
+.rec-photo-preview-close {
+  position: absolute;
+  top: -14px;
+  right: -14px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  font-size: 1.1rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
 .rec-fourn-results {
   background: white;
   border: 1.5px solid var(--color-secondary);

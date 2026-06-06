@@ -204,6 +204,9 @@
           </div>
           <input type="file" accept="image/*" capture="environment"
                  id="rec-input-photo-0" hidden aria-hidden="true">
+          <button class="rec-photo-voir-btn" id="rec-photo-voir-btn-0" type="button">
+            Voir la photo
+          </button>
 
           <div class="rec-fourn-search-group">
             <div id="rec-fourn-sel-wrap-0" hidden>
@@ -658,6 +661,16 @@
           Aller à PCR01 →
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- Overlay aperçu photo BL plein écran -->
+  <div class="rec-dialog-overlay" id="rec-photo-preview-overlay" hidden
+       role="dialog" aria-modal="true" aria-label="Aperçu photo bon de livraison">
+    <div class="rec-photo-preview-wrap">
+      <img id="rec-photo-preview-img" src="" alt="Aperçu du bon de livraison">
+      <button class="rec-photo-preview-close" id="rec-photo-preview-close"
+              type="button" aria-label="Fermer l'aperçu">✕</button>
     </div>
   </div>
 

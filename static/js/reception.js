@@ -42,6 +42,23 @@ const elPropreteNc        = document.getElementById('rec-proprete-nc');
 const elCamionBadge       = document.getElementById('rec-camion-badge');
 const elBtnCamionSuivant  = document.getElementById('rec-btn-camion-suivant');
 
+// Overlay aperçu photo BL
+const elPhotoPreviewOverlay = document.getElementById('rec-photo-preview-overlay');
+const elPhotoPreviewImg     = document.getElementById('rec-photo-preview-img');
+const elPhotoPreviewClose   = document.getElementById('rec-photo-preview-close');
+if (elPhotoPreviewClose) {
+  elPhotoPreviewClose.addEventListener('click', () => { elPhotoPreviewOverlay.hidden = true; });
+}
+if (elPhotoPreviewOverlay) {
+  elPhotoPreviewOverlay.addEventListener('click', e => {
+    if (e.target === elPhotoPreviewOverlay) elPhotoPreviewOverlay.hidden = true;
+  });
+}
+function ouvrirApercuPhoto(url) {
+  elPhotoPreviewImg.src = url;
+  elPhotoPreviewOverlay.hidden = false;
+}
+
 // Étape 2
 const elFournUnBtn        = document.getElementById('rec-fourn-un-btn');
 const elFournMultiBtn     = document.getElementById('rec-fourn-multi-btn');
@@ -1168,6 +1185,7 @@ function initBlocFourn(idx) {
   const photoIcone = document.getElementById(`rec-photo-icone-${idx}`);
   const photoTitre = document.getElementById(`rec-photo-titre-${idx}`);
   const photoVign  = document.getElementById(`rec-photo-vignette-${idx}`);
+  const voirBtn    = document.getElementById(`rec-photo-voir-btn-${idx}`);
   const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
   const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
   const searchWrap = document.getElementById(`rec-fourn-search-wrap-${idx}`);
@@ -1180,6 +1198,13 @@ function initBlocFourn(idx) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputPhoto.click(); }
   });
 
+  if (voirBtn) {
+    voirBtn.addEventListener('click', () => {
+      const url = fournisseursListe[idx]?.photoUrl;
+      if (url) ouvrirApercuPhoto(url);
+    });
+  }
+
   inputPhoto.addEventListener('change', async () => {
     const file = inputPhoto.files[0];
     if (!file) return;
@@ -1191,6 +1216,7 @@ function initBlocFourn(idx) {
     photoIcone.textContent = '✅';
     photoTitre.textContent = 'Photo prise';
     photoZone.classList.remove('photo-requise');
+    if (voirBtn) voirBtn.classList.add('visible');
     fournisseursListe[idx].photoFile = await compresserImage(file);
   });
 
@@ -1333,6 +1359,9 @@ function creerBlocFourn(idx, suppressible = true) {
     </div>
     <input type="file" accept="image/*" capture="environment"
            id="rec-input-photo-${idx}" hidden aria-hidden="true">
+    <button class="rec-photo-voir-btn" id="rec-photo-voir-btn-${idx}" type="button">
+      Voir la photo
+    </button>
     <div class="rec-fourn-search-group">
       <div id="rec-fourn-sel-wrap-${idx}" hidden>
         <div class="rec-fourn-sel">
