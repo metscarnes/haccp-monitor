@@ -201,6 +201,10 @@ let ncCoeurResultats   = {};      // {ligne_id: {temp_coeur, conforme_apres_coeu
 let livreurPresent     = null;    // true | false
 let ncFicheIndex       = 0;       // index dans ncProduits pour PCR01
 
+// Mode liste commande (étape 3 batch) : 1 carte par ligne de commande
+let modeBatch          = false;   // true quand l'étape 3 affiche la liste commande
+let batchLignes        = [];      // [{produit, dlcType, fournisseur, lotInterne, el, criteres, observations}]
+
 // État formulaire produit
 let dlcMode            = 'dlc';   // 'dlc' ou 'dluo'
 let lotInterneGenere   = false;   // true quand lot interne auto-généré
@@ -1574,10 +1578,13 @@ async function creerFiche() {
       }
     }
 
-    // Pré-remplir le 1er produit depuis la commande si liée
+    // Commande liée → vue LISTE (toutes les lignes d'un coup).
+    // Sinon → formulaire unitaire classique.
     commandeLigneIdx = 0;
     if (commandeIds.some(Boolean) && commandeLignes.length > 0) {
-      preRemplirDepuisCommande();
+      entrerModeBatch();
+    } else {
+      sortirModeBatch();
     }
 
     allerEtape(3);
@@ -2268,14 +2275,19 @@ function _ligneToLocal(ligne, produit) {
   if (ligne.odeur_conforme       === 0) motifsNc.push('odeur');
   if (ligne.ph_conforme          === 0) motifsNc.push('pH');
 
-  // Résoudre le fournisseur actif pour ce produit (id + nom)
-  const fSel = fournisseurProduitSelected
-    || (fournisseursListe[0] && (fournisseursListe[0].id || fournisseursListe[0].nom)
-        ? { id: fournisseursListe[0].id || null,
-            nom: (fournisseursListe[0].nom || '').trim() || null }
-        : null);
-  const fournId = fSel ? fSel.id : null;
-  let fournNom = fSel ? fSel.nom : null;
+  // Résoudre le fournisseur : priorité aux champs renvoyés par le serveur
+  // (corrects en mode batch multi-commandes), sinon repli sur la sélection locale.
+  let fournId  = ligne.fournisseur_id  ?? null;
+  let fournNom = ligne.fournisseur_nom ?? null;
+  if (!fournId && !fournNom) {
+    const fSel = fournisseurProduitSelected
+      || (fournisseursListe[0] && (fournisseursListe[0].id || fournisseursListe[0].nom)
+          ? { id: fournisseursListe[0].id || null,
+              nom: (fournisseursListe[0].nom || '').trim() || null }
+          : null);
+    fournId  = fSel ? fSel.id  : null;
+    fournNom = fSel ? fSel.nom : null;
+  }
   if (!fournNom && fournId) {
     const fObj = tousFournisseurs.find(f => f.id === fournId);
     if (fObj) fournNom = fObj.nom;
@@ -2395,7 +2407,323 @@ async function enregistrerModification() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+//  MODE LISTE COMMANDE (étape 3 batch)
+// ═══════════════════════════════════════════════════════════
+const elBatchWrap   = document.getElementById('rec-batch-wrap');
+const elBatchListe  = document.getElementById('rec-batch-liste');
+const elBatchTpl    = document.getElementById('rec-batch-ligne-tpl');
+const elFormProduit = document.getElementById('rec-form-produit');
+const elListeAjoutee = document.getElementById('rec-produits-liste-ajoutee-wrap');
+
+// Bascule l'étape 3 en mode liste commande (toutes les lignes d'un coup).
+function entrerModeBatch() {
+  modeBatch = true;
+  batchLignes = [];
+  if (elBatchListe) elBatchListe.innerHTML = '';
+  if (elBatchWrap)  elBatchWrap.hidden = false;
+  // Masquer le formulaire unitaire et la liste « produits ajoutés »
+  if (elFormProduit)  elFormProduit.hidden = true;
+  if (elListeAjoutee) elListeAjoutee.hidden = true;
+  if (elBtnAjouter)   elBtnAjouter.hidden = true;
+
+  commandeLignes.forEach(creerCarteBatch);
+  majBtnTerminerBatch();
+}
+
+// Sort du mode batch (réception sans commande → formulaire unitaire classique).
+function sortirModeBatch() {
+  modeBatch = false;
+  if (elBatchWrap)    elBatchWrap.hidden = true;
+  if (elFormProduit)  elFormProduit.hidden = false;
+  if (elListeAjoutee) elListeAjoutee.hidden = false;
+  if (elBtnAjouter)   elBtnAjouter.hidden = false;
+}
+
+// Résout une désignation de commande vers un produit du catalogue (1er match).
+function resoudreProduit(designation) {
+  const res = filtrerProduits(designation || '');
+  return res.length ? res[0] : null;
+}
+
+// Crée une carte éditable pour une ligne de commande.
+function creerCarteBatch(ligneCmd) {
+  const frag = elBatchTpl.content.cloneNode(true);
+  const carte = frag.querySelector('.rec-batch-carte');
+
+  const produit = resoudreProduit(ligneCmd.designation);
+  const dlcType = ligneCmd.dlc_type || null;
+
+  // État local de la carte
+  const etat = {
+    el: carte,
+    ligneCmd,
+    produit,                       // peut être null → champ recherche affiché
+    dlcType,
+    catalogueId: ligneCmd.catalogue_fournisseur_id || null,
+    fournisseur: {
+      id:  ligneCmd._fournisseur_id  || null,
+      nom: (ligneCmd._fournisseur_nom || '').trim() || null,
+    },
+    lotInterne: false,
+    criteres:     { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 },
+    observations: { couleur: '', consistance: '', exsudat: '', odeur: '' },
+  };
+  batchLignes.push(etat);
+
+  // En-tête
+  const elNom  = carte.querySelector('.rec-batch-nom');
+  const elCode = carte.querySelector('.rec-batch-code');
+  elNom.textContent  = produit ? produit.nom : ligneCmd.designation;
+  elCode.textContent = produit ? (produit.code_unique || '') : `(${ligneCmd.code_article || '?'})`;
+
+  // Résolution produit manuelle si non reconnu
+  if (!produit) {
+    const resolve = carte.querySelector('.rec-batch-resolve');
+    resolve.hidden = false;
+    initRechercheProduitCarte(carte, etat);
+  }
+
+  // Champ date selon dlc_type
+  const dateLabel = carte.querySelector('.rec-batch-date-label');
+  const dateChamp = carte.querySelector('.rec-batch-date-champ');
+  if (dlcType === 'date_abattage') {
+    dateLabel.textContent = "Date d'abattage";
+  } else if (dlcType === 'no_dlc') {
+    dateChamp.hidden = true;
+  } else {
+    dateLabel.textContent = 'DLC';
+  }
+
+  // Poids pré-rempli
+  const elPoids = carte.querySelector('.rec-batch-poids');
+  if (ligneCmd.quantite_commandee != null) elPoids.value = ligneCmd.quantite_commandee;
+
+  // Lot interne
+  const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
+  const inpLot        = carte.querySelector('.rec-batch-lot');
+  btnLotInterne.addEventListener('click', async () => {
+    const prod = etat.produit;
+    if (!prod || !receptionId) { alert('Sélectionnez d\'abord le produit.'); return; }
+    btnLotInterne.disabled = true; btnLotInterne.textContent = '⏳';
+    try {
+      const data = await apiFetch(
+        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(prod.code_unique)}`);
+      inpLot.value = data.lot_interne;
+      inpLot.readOnly = true;
+      inpLot.style.background = '#f0faf3';
+      etat.lotInterne = true;
+      majBadgeCarte(etat);
+    } catch (e) {
+      alert(`Erreur génération lot : ${e.message}`);
+    } finally {
+      btnLotInterne.disabled = false; btnLotInterne.textContent = 'Lot interne';
+    }
+  });
+  inpLot.addEventListener('input', () => {
+    if (etat.lotInterne) { etat.lotInterne = false; inpLot.readOnly = false; inpLot.style.background = ''; }
+    majBadgeCarte(etat);
+  });
+  carte.querySelector('.rec-batch-date').addEventListener('input', () => majBadgeCarte(etat));
+
+  // Dépliant contrôle visuel
+  const toggle = carte.querySelector('.rec-batch-detail-toggle');
+  const detail = carte.querySelector('.rec-batch-detail');
+  toggle.addEventListener('click', () => {
+    const ouvert = detail.classList.toggle('ouvert');
+    toggle.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+  });
+
+  // Critères visuels (réutilise le markup .rec-critere-row)
+  const elCriteres = carte.querySelector('.rec-batch-criteres');
+  const aide = textesAide[produit ? produit.espece : ''] || null;
+  CRITERES.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'rec-critere-row';
+    const labelAide = aide ? `Normal : ${aide[c].normal}` : '';
+    row.innerHTML = `
+      <div class="rec-critere-header">
+        <span class="rec-critere-label">${c.charAt(0).toUpperCase() + c.slice(1)}</span>
+        <span class="rec-critere-aide">${escHtml(labelAide)}</span>
+      </div>
+      <div class="rec-toggle-pair">
+        <button type="button" class="rec-toggle-btn ok-sel" data-val="1" aria-pressed="true">✓ Conforme</button>
+        <button type="button" class="rec-toggle-btn" data-val="0" aria-pressed="false">✗ NC</button>
+      </div>
+      <input type="text" class="rec-obs-input" placeholder="Observation ${c}…" hidden>`;
+    const [btnOk, btnNc] = row.querySelectorAll('.rec-toggle-btn');
+    const obs = row.querySelector('.rec-obs-input');
+    btnOk.addEventListener('click', () => {
+      etat.criteres[c] = 1;
+      btnOk.classList.add('ok-sel'); btnNc.classList.remove('nc-sel');
+      btnOk.setAttribute('aria-pressed', 'true'); btnNc.setAttribute('aria-pressed', 'false');
+      obs.hidden = true;
+      majBadgeCarte(etat);
+    });
+    btnNc.addEventListener('click', () => {
+      etat.criteres[c] = 0;
+      btnNc.classList.add('nc-sel'); btnOk.classList.remove('ok-sel');
+      btnNc.setAttribute('aria-pressed', 'true'); btnOk.setAttribute('aria-pressed', 'false');
+      obs.hidden = false;
+      detail.classList.add('ouvert');
+      toggle.setAttribute('aria-expanded', 'true');
+      majBadgeCarte(etat);
+    });
+    obs.addEventListener('input', () => { etat.observations[c] = obs.value.trim(); });
+    elCriteres.appendChild(row);
+  });
+
+  elBatchListe.appendChild(carte);
+  majBadgeCarte(etat);
+}
+
+// Recherche produit manuelle sur une carte (produit non résolu auto).
+function initRechercheProduitCarte(carte, etat) {
+  const inp  = carte.querySelector('.rec-batch-prod-search');
+  const list = carte.querySelector('.rec-batch-prod-autocomplete');
+  const afficher = (liste) => {
+    list.innerHTML = '';
+    if (!liste.length) { list.hidden = true; return; }
+    liste.slice(0, 12).forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'rec-autocomplete-item';
+      div.textContent = `${p.nom}${p.code_unique ? ' · ' + p.code_unique : ''}`;
+      div.addEventListener('click', () => {
+        etat.produit = p;
+        carte.querySelector('.rec-batch-nom').textContent  = p.nom;
+        carte.querySelector('.rec-batch-code').textContent = p.code_unique || '';
+        carte.querySelector('.rec-batch-resolve').hidden = true;
+        majBadgeCarte(etat);
+      });
+      list.appendChild(div);
+    });
+    list.hidden = false;
+  };
+  inp.addEventListener('input', () => {
+    const q = inp.value.trim();
+    if (!q) { list.hidden = true; return; }
+    afficher(filtrerProduits(q));
+  });
+  document.addEventListener('click', e => {
+    if (!list.contains(e.target) && e.target !== inp) list.hidden = true;
+  }, true);
+}
+
+// Met à jour le badge de statut d'une carte (en attente / OK / NC).
+function majBadgeCarte(etat) {
+  const badge = etat.el.querySelector('.rec-batch-badge');
+  const inpLot = etat.el.querySelector('.rec-batch-lot');
+  const inpDate = etat.el.querySelector('.rec-batch-date');
+  const aLot  = etat.lotInterne || (inpLot.value.trim() !== '');
+  const aDate = etat.dlcType === 'no_dlc' ? true : (inpDate.value.trim() !== '');
+  const estNc = Object.values(etat.criteres).some(v => v === 0);
+
+  etat.el.classList.remove('en-attente', 'nc');
+  if (estNc) {
+    etat.el.classList.add('nc');
+    badge.className = 'rec-batch-badge nc';
+    badge.textContent = '✗ NC';
+  } else if (aLot && aDate) {
+    badge.className = 'rec-batch-badge ok';
+    badge.textContent = '✓ Complet';
+  } else {
+    etat.el.classList.add('en-attente');
+    badge.className = 'rec-batch-badge attente';
+    badge.textContent = '⛔ En attente';
+  }
+}
+
+function majBtnTerminerBatch() {
+  if (!modeBatch) return;
+  // En mode batch, « Récap → » est actif s'il y a au moins une ligne.
+  elBtnTerminer.disabled = (batchLignes.length === 0);
+}
+
+// Construit le payload d'une carte (même forme que _buildPayload unitaire).
+function _buildPayloadBatch(etat) {
+  const payload = {
+    produit_id:           etat.produit.id,
+    couleur_conforme:     etat.criteres.couleur,
+    consistance_conforme: etat.criteres.consistance,
+    exsudat_conforme:     etat.criteres.exsudat,
+    odeur_conforme:       etat.criteres.odeur,
+    lot_interne:          etat.lotInterne ? 1 : 0,
+    origine:              'France',
+  };
+  if (etat.fournisseur.id)  payload.fournisseur_id  = etat.fournisseur.id;
+  if (etat.fournisseur.nom) payload.fournisseur_nom = etat.fournisseur.nom;
+  if (etat.catalogueId)     payload.catalogue_fournisseur_id = etat.catalogueId;
+  if (etat.dlcType)         payload.dlc_type = etat.dlcType;
+
+  const tempCamion = parseFloat(elTempCamion.value);
+  if (!isNaN(tempCamion)) payload.temperature_reception = tempCamion;
+
+  const lot = etat.el.querySelector('.rec-batch-lot').value.trim();
+  if (lot) payload.numero_lot = lot;
+
+  const dateVal = etat.el.querySelector('.rec-batch-date').value;
+  if (dateVal) {
+    if (etat.dlcType === 'date_abattage') payload.date_abattage = dateVal;
+    else                                  payload.dlc           = dateVal;
+  }
+  const poids = parseFloat(etat.el.querySelector('.rec-batch-poids').value);
+  if (!isNaN(poids)) payload.poids_kg = poids;
+
+  // Observations sur critères NC
+  CRITERES.forEach(c => {
+    if (etat.criteres[c] === 0 && etat.observations[c]) {
+      payload[`${c}_observation`] = etat.observations[c];
+    }
+  });
+  const ph = parseFloat(etat.el.querySelector('.rec-batch-ph').value);
+  if (!isNaN(ph)) payload.ph_valeur = ph;
+  return payload;
+}
+
+// Valide toute la liste : POST chaque carte puis passe au récap.
+async function validerBatch() {
+  // Vérifier que chaque carte a un produit résolu et une date DLC non passée
+  const today = new Date().toISOString().slice(0, 10);
+  for (const etat of batchLignes) {
+    if (!etat.produit) {
+      etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      alert('Un produit n\'est pas reconnu — sélectionnez-le dans la carte.');
+      return;
+    }
+    const inpDate = etat.el.querySelector('.rec-batch-date');
+    if (etat.dlcType !== 'date_abattage' && inpDate.value && inpDate.value < today) {
+      inpDate.classList.add('rec-champ-invalide');
+      etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      alert('Une DLC est dans le passé.');
+      return;
+    }
+  }
+
+  elBtnTerminer.disabled = true;
+  const txt = elBtnTerminer.textContent;
+  elBtnTerminer.textContent = 'Enregistrement…';
+  try {
+    for (const etat of batchLignes) {
+      const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_buildPayloadBatch(etat)),
+      });
+      lignesAjoutees.push(_ligneToLocal(ligne, etat.produit));
+    }
+    majListeLignes();
+    remplirRecap();
+    initNcProcedure();
+    allerEtape(4);
+  } catch (err) {
+    alert(`Erreur lors de l'enregistrement : ${err.message}`);
+    elBtnTerminer.disabled = false;
+    elBtnTerminer.textContent = txt;
+  }
+}
+
 elBtnTerminer.addEventListener('click', () => {
+  if (modeBatch) { validerBatch(); return; }
   if (lignesAjoutees.length === 0) return;
   remplirRecap();
   initNcProcedure();

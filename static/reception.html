@@ -250,10 +250,83 @@
     <section class="rec-step" id="rec-step-3"
              aria-label="Étape 4 — Ajout des produits">
 
+      <!-- ═══ MODE LISTE COMMANDE (toutes les lignes d'un coup) ═══ -->
+      <!-- Affiché uniquement quand une commande est liée ; sinon le formulaire
+           unitaire ci-dessous prend le relais. -->
+      <div id="rec-batch-wrap" hidden>
+        <div class="rec-section-titre">Produits de la commande</div>
+        <div class="rec-batch-aide">
+          Renseignez lot &amp; date pour chaque ligne. Sans info → le produit part
+          « en attente » (à compléter plus tard). Le contrôle visuel est conforme par défaut.
+        </div>
+        <div id="rec-batch-liste"><!-- cartes injectées par JS --></div>
+      </div>
 
+      <!-- Template d'une carte produit (mode liste commande) -->
+      <template id="rec-batch-ligne-tpl">
+        <div class="rec-batch-carte">
+          <div class="rec-batch-carte-entete">
+            <div class="rec-batch-carte-titre">
+              <span class="rec-batch-nom"></span>
+              <span class="rec-batch-code"></span>
+            </div>
+            <span class="rec-batch-badge"></span>
+          </div>
 
-      <!-- Liste produits ajoutés -->
-      <div class="rec-produits-liste-ajoutee">
+          <!-- Recherche produit (visible seulement si non résolu auto) -->
+          <div class="rec-batch-resolve" hidden>
+            <label class="rec-champ-label">Produit non reconnu — sélectionnez :</label>
+            <div class="rec-search-wrap">
+              <span class="rec-search-icon" aria-hidden="true">🔍</span>
+              <input type="search" class="rec-search rec-batch-prod-search"
+                     placeholder="Rechercher un produit…" autocomplete="off">
+            </div>
+            <div class="rec-autocomplete rec-batch-prod-autocomplete" hidden role="listbox"></div>
+          </div>
+
+          <div class="rec-batch-champs">
+            <div class="rec-batch-champ">
+              <label class="rec-champ-label">N° de lot
+                <span class="rec-batch-lot-hint">(sinon → en attente)</span>
+              </label>
+              <div class="rec-lot-wrap">
+                <input type="text" class="rec-input rec-batch-lot"
+                       placeholder="ex : LOT-2026-001" autocomplete="off">
+                <button type="button" class="rec-btn-pas-lot rec-batch-lot-interne">
+                  Lot interne
+                </button>
+              </div>
+            </div>
+
+            <div class="rec-batch-champ rec-batch-date-champ">
+              <label class="rec-champ-label rec-batch-date-label">DLC</label>
+              <input type="date" class="rec-input rec-batch-date">
+            </div>
+
+            <div class="rec-batch-champ">
+              <label class="rec-champ-label">Poids reçu (kg)</label>
+              <input type="number" step="0.01" min="0" inputmode="decimal"
+                     class="rec-input rec-batch-poids" placeholder="kg">
+            </div>
+          </div>
+
+          <!-- Dépliant contrôle visuel -->
+          <button type="button" class="rec-batch-detail-toggle" aria-expanded="false">
+            <span class="rec-batch-detail-chevron">▸</span> Contrôle visuel
+          </button>
+          <div class="rec-batch-detail">
+            <div class="rec-batch-criteres"><!-- critères injectés par JS --></div>
+            <div class="rec-form-group" style="margin-top:.5rem;">
+              <label class="rec-champ-label">pH — optionnel</label>
+              <input type="number" step="0.1" min="0" max="14" inputmode="decimal"
+                     class="rec-input rec-batch-ph" placeholder="ex : 5.6">
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Liste produits ajoutés (mode unitaire) -->
+      <div class="rec-produits-liste-ajoutee" id="rec-produits-liste-ajoutee-wrap">
         <div class="rec-produits-liste-ajoutee-header">
           <span>Produits ajoutés</span>
           <span class="rec-nb-produits" id="rec-nb-produits">0</span>

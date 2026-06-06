@@ -1396,3 +1396,84 @@ body.rec-body {
   border-radius: 999px;
   margin-left: .5rem;
 }
+
+/* ── Mode liste commande (étape 3 batch) ──────────────────── */
+.rec-batch-aide {
+  font-size: .82rem;
+  color: var(--color-offline);
+  line-height: 1.4;
+  margin: .25rem 0 .75rem;
+}
+#rec-batch-liste {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+  padding-bottom: 1rem;
+}
+.rec-batch-carte {
+  background: var(--color-card, #fff);
+  border: 1px solid rgba(107,58,31,.15);
+  border-left: 4px solid var(--color-ok);
+  border-radius: 12px;
+  padding: .85rem 1rem;
+}
+.rec-batch-carte.en-attente { border-left-color: #B91C1C; }
+.rec-batch-carte.nc         { border-left-color: var(--color-alert); }
+.rec-batch-carte-entete {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .6rem;
+}
+.rec-batch-carte-titre { flex: 1; }
+.rec-batch-nom  { display: block; font-size: 1rem; font-weight: 800; color: var(--color-text); }
+.rec-batch-code { display: block; font-size: .75rem; color: var(--color-offline); }
+.rec-batch-badge {
+  flex-shrink: 0;
+  font-size: .72rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+.rec-batch-badge.ok      { background: rgba(45,125,70,.12);  color: var(--color-ok); }
+.rec-batch-badge.attente { background: rgba(185,28,28,.10);  color: #B91C1C; }
+.rec-batch-badge.nc      { background: rgba(201,48,48,.12);  color: var(--color-alert); }
+
+.rec-batch-resolve { margin-bottom: .6rem; }
+.rec-batch-champs {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+.rec-batch-champ { display: flex; flex-direction: column; gap: .25rem; }
+.rec-batch-lot-hint { font-weight: 400; color: var(--color-offline); font-size: .8em; }
+
+.rec-batch-detail-toggle {
+  margin-top: .6rem;
+  background: transparent;
+  border: none;
+  color: var(--color-accent);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  padding: .25rem 0;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.rec-batch-detail-chevron { transition: transform .2s; display: inline-block; }
+.rec-batch-detail-toggle[aria-expanded="true"] .rec-batch-detail-chevron { transform: rotate(90deg); }
+.rec-batch-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .25s ease;
+}
+.rec-batch-detail.ouvert { max-height: 1200px; }
+.rec-batch-criteres {
+  display: flex;
+  flex-direction: column;
+  gap: .7rem;
+  padding-top: .6rem;
+}
