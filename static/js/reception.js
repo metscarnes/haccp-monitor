@@ -299,21 +299,37 @@ function ajouterLigneCommande() {
       commandeLignes = construireLignesCommandes();
       resumeEl.hidden = true;
       resumeEl.innerHTML = '';
+      // Vider le fournisseur du bloc BL correspondant
+      viderFournisseurBloc(rowIdx);
       return;
     }
     commandeIds[rowIdx] = id;
-    await afficherResumeCommande(id, resumeEl, rowIdx === 0);
+    await afficherResumeCommande(id, resumeEl, rowIdx);
     commandeLignes = construireLignesCommandes();
   });
 
   removeBtn.addEventListener('click', () => {
-    commandeIds.splice(rowIdx, 1);
+    const idx = parseInt(row.dataset.rowIdx);
+    commandeIds.splice(idx, 1);
     row.remove();
     // Renuméroter les rowIdx restants
     Array.from(elCommandesListe.children).forEach((r, i) => {
       r.dataset.rowIdx = i;
     });
     commandeLignes = construireLignesCommandes();
+    // Supprimer le bloc BL correspondant (si ce n'est pas le bloc 0)
+    if (idx > 0) {
+      const bloc = document.getElementById(`rec-fourn-bloc-${idx}`);
+      if (bloc) {
+        fournisseursListe.splice(idx, 1);
+        bloc.remove();
+      }
+    } else {
+      // Pour le bloc 0, juste vider le fournisseur
+      viderFournisseurBloc(0);
+    }
+    syncModeFournisseur();
+    majSelectorFournisseur();
   });
 }
 
@@ -328,7 +344,7 @@ function construireLignesCommandes() {
   return lignes;
 }
 
-async function afficherResumeCommande(id, resumeEl, autoFillFourn) {
+async function afficherResumeCommande(id, resumeEl, rowIdx) {
   try {
     const cmd = await apiFetch(`/api/achats/commandes/${id}`);
     // Mettre à jour le cache de lignes sur l'objet commande
@@ -350,9 +366,21 @@ async function afficherResumeCommande(id, resumeEl, autoFillFourn) {
       `).join('')}
     `;
 
-    // Auto-remplir le fournisseur du bloc 0 si c'est la première commande
-    if (autoFillFourn && cmd.fournisseur_id) {
-      preRemplirFournisseurBloc(0, { id: cmd.fournisseur_id, nom: cmd.fournisseur_nom });
+    // Créer le bloc BL si nécessaire (rowIdx > 0 = nouveau bloc à injecter)
+    if (rowIdx > 0 && !document.getElementById(`rec-fourn-bloc-${rowIdx}`)) {
+      // S'assurer que fournisseursListe a l'entrée pour cet index
+      while (fournisseursListe.length <= rowIdx) {
+        fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+      }
+      creerBlocFourn(rowIdx, false); // pas de bouton ✕ (géré par la liste commandes)
+    }
+
+    // Activer le mode multi-fournisseurs si plusieurs commandes
+    syncModeFournisseur();
+
+    // Auto-remplir le fournisseur du bloc BL correspondant
+    if (cmd.fournisseur_id) {
+      preRemplirFournisseurBloc(rowIdx, { id: cmd.fournisseur_id, nom: cmd.fournisseur_nom });
     }
   } catch(e) {
     resumeEl.innerHTML = '<div style="color:#991b1b;">Erreur de chargement de la commande</div>';
@@ -376,6 +404,50 @@ function preRemplirFournisseurBloc(idx, fourn) {
     searchWrap.hidden  = true;
   }
   majSelectorFournisseur();
+}
+
+// Vider le fournisseur d'un bloc BL
+function viderFournisseurBloc(idx) {
+  if (!fournisseursListe[idx]) return;
+  fournisseursListe[idx].id  = null;
+  fournisseursListe[idx].nom = '';
+  if (idx === 0) fournisseurId = null;
+
+  const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
+  const searchWrap = document.getElementById(`rec-fourn-search-wrap-${idx}`);
+  const searchInp  = document.getElementById(`rec-fourn-search-${idx}`);
+  if (selWrap) selWrap.hidden = true;
+  if (searchWrap) searchWrap.hidden = false;
+  if (searchInp) searchInp.value = '';
+  majSelectorFournisseur();
+}
+
+// Synchronise le mode multi-fournisseurs selon le nombre de commandes liées
+function syncModeFournisseur() {
+  const nbCommandes = commandeIds.filter(Boolean).length;
+  if (nbCommandes > 1 && !modeMultiFourn) {
+    // Basculer en mode multi silencieusement
+    modeMultiFourn = true;
+    elFournMultiBtn.classList.add('ok-sel');
+    elFournUnBtn.classList.remove('ok-sel');
+    elFournMultiBtn.setAttribute('aria-pressed', 'true');
+    elFournUnBtn.setAttribute('aria-pressed', 'false');
+    elBtnAddFourn.hidden = false;
+    const titre0 = document.getElementById('rec-fourn-bloc-titre-0');
+    if (titre0) titre0.hidden = false;
+    majSelectorFournisseur();
+  } else if (nbCommandes <= 1 && modeMultiFourn) {
+    // Repasser en mode simple si on revient à 1 commande
+    modeMultiFourn = false;
+    elFournUnBtn.classList.add('ok-sel');
+    elFournMultiBtn.classList.remove('ok-sel');
+    elFournUnBtn.setAttribute('aria-pressed', 'true');
+    elFournMultiBtn.setAttribute('aria-pressed', 'false');
+    elBtnAddFourn.hidden = true;
+    const titre0 = document.getElementById('rec-fourn-bloc-titre-0');
+    if (titre0) titre0.hidden = true;
+    majSelectorFournisseur();
+  }
 }
 
 function fmtDate(d) {
@@ -1233,19 +1305,25 @@ elFournMultiBtn.addEventListener('click', () => {
   majSelectorFournisseur();
 });
 
-elBtnAddFourn.addEventListener('click', () => {
-  const idx = fournisseursListe.length;
-  fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+// Crée le HTML + init d'un bloc BL/fournisseur à l'index idx
+// suppressible : affiche le bouton ✕ (mode manuel multi-fourn)
+function creerBlocFourn(idx, suppressible = true) {
+  if (!fournisseursListe[idx]) {
+    fournisseursListe[idx] = { id: null, nom: '', photoFile: null, photoUrl: null };
+  }
 
   const bloc = document.createElement('div');
   bloc.className = 'rec-fourn-bloc';
   bloc.id = `rec-fourn-bloc-${idx}`;
+  const supBtnHtml = suppressible
+    ? `<button class="rec-fourn-sup-btn" data-idx="${idx}" type="button" aria-label="Supprimer">✕</button>`
+    : '';
   bloc.innerHTML = `
     <div class="rec-fourn-bloc-titre">Fournisseur ${idx + 1}
-      <button class="rec-fourn-sup-btn" data-idx="${idx}" type="button" aria-label="Supprimer">✕</button>
+      ${supBtnHtml}
     </div>
     <div class="rec-photo-zone" id="rec-photo-zone-${idx}" role="button" tabindex="0"
-         aria-label="Photo BL optionnelle">
+         aria-label="Photo BL obligatoire">
       <span class="rec-photo-icone" id="rec-photo-icone-${idx}">📋</span>
       <div class="rec-photo-texte">
         <div class="rec-photo-texte-titre" id="rec-photo-titre-${idx}">Photo du bon de livraison</div>
@@ -1271,21 +1349,34 @@ elBtnAddFourn.addEventListener('click', () => {
     </div>`;
   elFournListe.appendChild(bloc);
   initBlocFourn(idx);
-  majSelectorFournisseur(); // Mettre à jour le sélecteur écran 4
+  majSelectorFournisseur();
 
-  bloc.querySelector('.rec-fourn-sup-btn').addEventListener('click', () => {
-    fournisseursListe.splice(idx, 1);
-    bloc.remove();
-    majSelectorFournisseur(); // Mettre à jour après suppression
-    // Renuméroter les titres
-    elFournListe.querySelectorAll('.rec-fourn-bloc-titre').forEach((el, i) => {
-      if (el.id !== 'rec-fourn-bloc-titre-0') {
-        const btnSup = el.querySelector('.rec-fourn-sup-btn');
-        el.firstChild.textContent = `Fournisseur ${i + 1} `;
-        if (btnSup) el.appendChild(btnSup);
-      }
-    });
-  });
+  if (suppressible) {
+    const supBtn = bloc.querySelector('.rec-fourn-sup-btn');
+    if (supBtn) {
+      supBtn.addEventListener('click', () => {
+        fournisseursListe.splice(idx, 1);
+        bloc.remove();
+        majSelectorFournisseur();
+        // Renuméroter les titres
+        elFournListe.querySelectorAll('.rec-fourn-bloc-titre').forEach((el, i) => {
+          if (el.id !== 'rec-fourn-bloc-titre-0') {
+            const btnSup = el.querySelector('.rec-fourn-sup-btn');
+            el.firstChild.textContent = `Fournisseur ${i + 1} `;
+            if (btnSup) el.appendChild(btnSup);
+          }
+        });
+      });
+    }
+  }
+
+  return bloc;
+}
+
+elBtnAddFourn.addEventListener('click', () => {
+  const idx = fournisseursListe.length;
+  fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+  creerBlocFourn(idx, true);
 });
 
 // Créer la fiche
