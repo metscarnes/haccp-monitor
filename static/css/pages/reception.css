@@ -439,7 +439,8 @@ body.rec-body {
 }
 .rec-bl-flottant-corps img {
   display: block;
-  width: 100%;               /* zoom piloté en JS via transform/width */
+  width: 100%;
+  max-width: none;           /* annule le max-width:100% global (reset/base.css) */
   height: auto;
   transform-origin: top left;
 }
