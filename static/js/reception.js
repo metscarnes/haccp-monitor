@@ -2619,6 +2619,8 @@ function creerCarteBatch(ligneCmd) {
   if (uniteEstKg && ligneCmd.quantite_commandee != null) {
     elPoids.value = ligneCmd.quantite_commandee;
   }
+  // Le poids étant obligatoire, on retire le marquage d'erreur dès la saisie.
+  elPoids.addEventListener('input', () => elPoids.classList.remove('rec-champ-invalide'));
 
   // Lot interne
   const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
@@ -2812,6 +2814,17 @@ async function validerBatch() {
   // Le produit interne n'est PAS requis (article catalogue achats = source).
   const today = new Date().toISOString().slice(0, 10);
   for (const etat of batchLignes) {
+    // Poids reçu obligatoire : on ne réceptionne pas une ligne sans poids pesé.
+    const inpPoids = etat.el.querySelector('.rec-batch-poids');
+    const poids = parseFloat(inpPoids.value);
+    if (isNaN(poids) || poids <= 0) {
+      inpPoids.classList.add('rec-champ-invalide');
+      inpPoids.focus();
+      etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      alert('Le poids reçu (kg) est obligatoire et doit être supérieur à 0.');
+      return;
+    }
+
     const inpDate = etat.el.querySelector('.rec-batch-date');
     if (etat.dlcType !== 'date_abattage' && inpDate.value && inpDate.value < today) {
       inpDate.classList.add('rec-champ-invalide');
