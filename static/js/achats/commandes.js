@@ -251,7 +251,7 @@ function afficherCataloguePanier() {
   });
 
   if (!liste.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="ach-vide">Aucun article</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="ach-vide">Aucun article</td></tr>';
     majTotalPanier();
     return;
   }
@@ -261,6 +261,7 @@ function afficherCataloguePanier() {
     const unite = uniteArticle(a);
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
+    const totalLigne = qte > 0 ? qte * a.prix_achat_ht : null;
     return `
       <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}">
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
@@ -280,6 +281,9 @@ function afficherCataloguePanier() {
             <span class="ach-stepper-unite">${unite}</span>
           </div>
         </td>
+        <td class="ach-col-num">${totalLigne !== null
+            ? `<strong>${fmtPrix(totalLigne)} €</strong>`
+            : '<span style="color:#9ca3af">—</span>'}</td>
       </tr>`;
   }).join('');
 
