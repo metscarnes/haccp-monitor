@@ -245,7 +245,7 @@ function afficherCataloguePanier() {
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
-    if (selOnly && !panier[a.id]) return false;
+    if (selOnly && !panier[String(a.id)]) return false;
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
@@ -257,7 +257,7 @@ function afficherCataloguePanier() {
   }
 
   tbody.innerHTML = liste.map(a => {
-    const qte = panier[a.id] || 0;
+    const qte = panier[String(a.id)] || 0;
     const unite = uniteArticle(a);
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
