@@ -50,6 +50,7 @@ from src.api.routes_hub             import router as router_hub
 from src.api.routes_elearning       import router as router_elearning
 from src.api.routes_auth            import router as router_auth
 from src.api.routes_achats          import router as router_achats
+from src.api.routes_attente         import router as router_attente
 
 load_dotenv()
 
@@ -265,6 +266,9 @@ app.include_router(router_auth)
 
 # Routes API — Module Achats (fournisseurs, catalogue, commandes)
 app.include_router(router_achats)
+
+# Routes API — Produits en attente de traçabilité (lot/DLC manquant)
+app.include_router(router_attente)
 
 
 # ---------------------------------------------------------------------------

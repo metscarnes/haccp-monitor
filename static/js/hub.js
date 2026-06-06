@@ -140,6 +140,7 @@ const elListeAuj     = document.getElementById('hub-popup-aujourdhui');
 const elListeAVenir  = document.getElementById('hub-popup-avenir');
 
 let popupDejaOuvert = false;   // évite la réouverture auto à chaque refresh
+let aDesNonMasquables = false; // ≥1 tâche prioritaire non-masquable présente
 
 function estEnSnooze() {
   const until = Number(localStorage.getItem(SNOOZE_KEY) ?? 0);
@@ -153,9 +154,11 @@ function escHtml(str) {
 }
 
 function ligneTacheHtml(t) {
-  const classeEtat = t.etat === 'en_retard' ? 'hub-popup-item--retard' : '';
+  const classes = ['hub-popup-item'];
+  if (t.etat === 'en_retard') classes.push('hub-popup-item--retard');
+  if (t.non_masquable)        classes.push('hub-popup-item--priorite');
   return `
-    <li class="hub-popup-item ${classeEtat}">
+    <li class="${classes.join(' ')}">
       <a href="${t.url}" class="hub-popup-lien">
         <span class="hub-popup-icone" aria-hidden="true">${t.icone ?? '📋'}</span>
         <span class="hub-popup-texte">
@@ -172,6 +175,14 @@ function listeVideHtml(msg) {
 }
 
 function majBoutonSnooze() {
+  // Une tâche prioritaire non-masquable interdit le snooze.
+  if (aDesNonMasquables) {
+    elPopupSnooze.textContent = '⛔ Alerte prioritaire — non masquable';
+    elPopupSnooze.classList.remove('hub-popup-snooze--actif');
+    elPopupSnooze.disabled = true;
+    return;
+  }
+  elPopupSnooze.disabled = false;
   if (estEnSnooze()) {
     elPopupSnooze.textContent = '🔔 Réafficher l\'alerte';
     elPopupSnooze.classList.add('hub-popup-snooze--actif');
@@ -193,6 +204,8 @@ function fermerPopup() {
 }
 
 function basculerSnooze() {
+  // Impossible de masquer tant qu'une tâche prioritaire non-masquable est présente.
+  if (aDesNonMasquables) return;
   if (estEnSnooze()) {
     localStorage.removeItem(SNOOZE_KEY);
     majBoutonSnooze();
@@ -225,6 +238,9 @@ async function chargerResumeTaches() {
   const avenir = data.a_venir     ?? [];
   const total  = auj.length + avenir.length;
 
+  // Tâche(s) prioritaire(s) non-masquable(s) : court-circuitent le snooze.
+  aDesNonMasquables = auj.some(t => t.non_masquable);
+
   // Cloche : visible uniquement s'il y a quelque chose à signaler
   elCloche.hidden = (total === 0);
   if (total > 0) {
@@ -242,8 +258,15 @@ async function chargerResumeTaches() {
     ? avenir.map(ligneTacheHtml).join('')
     : listeVideHtml('Aucune échéance dans les 14 prochains jours');
 
-  // Ouverture auto au premier chargement (si non vide et pas en snooze)
-  if (!popupDejaOuvert && total > 0) {
+  // Si le popup est déjà ouvert, rafraîchir l'état du bouton snooze.
+  if (!elPopupOverlay.hidden) majBoutonSnooze();
+
+  // Ouverture automatique :
+  // - une tâche non-masquable force l'ouverture, MÊME en snooze, à chaque refresh ;
+  // - sinon, ouverture une seule fois au premier chargement si pas en snooze.
+  if (aDesNonMasquables) {
+    ouvrirPopup();
+  } else if (!popupDejaOuvert && total > 0) {
     popupDejaOuvert = true;
     if (!estEnSnooze()) ouvrirPopup();
   }

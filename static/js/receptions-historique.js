@@ -52,8 +52,8 @@ document.addEventListener('input',      resetInactivite, true);
 resetInactivite();
 
 // ── Fetch helper ────────────────────────────────────────────
-async function apiFetch(url) {
-  const res = await fetch(url, { cache: 'no-store' });
+async function apiFetch(url, opts) {
+  const res = await fetch(url, { cache: 'no-store', ...(opts || {}) });
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} — ${txt || url}`);
@@ -424,10 +424,12 @@ function remplirDetail(el, rec) {
 // ── Création ligne produit ────────────────────────────────────
 function creerLigne(lig) {
   const estNC = lig.conforme === 0;
+  const enAttente = lig.statut === 'en_attente';
 
   const div = document.createElement('div');
   div.className = `rh-ligne ${estNC ? 'rh-ligne--nc' : ''}`;
-  div.style.cssText = `border: 3px solid ${estNC ? '#C93030' : '#2D7D46'}; border-radius: 8px; padding: 12px;`;
+  const couleurBord = enAttente ? '#B91C1C' : (estNC ? '#C93030' : '#2D7D46');
+  div.style.cssText = `border: 3px solid ${couleurBord}; border-radius: 8px; padding: 12px;`;
 
   const entete = document.createElement('div');
   entete.className = 'rh-ligne-entete';
@@ -446,8 +448,13 @@ function creerLigne(lig) {
   entete.appendChild(gauche);
 
   const badge = document.createElement('span');
-  badge.className = `rh-ligne-badge ${estNC ? 'rh-ligne-badge--nc' : 'rh-ligne-badge--ok'}`;
-  badge.textContent = estNC ? '✗ NC' : '✓ OK';
+  if (enAttente) {
+    badge.className = 'rh-ligne-badge rh-ligne-badge--nc';
+    badge.textContent = '⛔ En attente';
+  } else {
+    badge.className = `rh-ligne-badge ${estNC ? 'rh-ligne-badge--nc' : 'rh-ligne-badge--ok'}`;
+    badge.textContent = estNC ? '✗ NC' : '✓ OK';
+  }
   entete.appendChild(badge);
   div.appendChild(entete);
 
@@ -501,7 +508,99 @@ function creerLigne(lig) {
     }
   }
 
+  // Produit en attente : mini-formulaire de complétion lot/DLC (ou date d'abattage)
+  if (enAttente) {
+    div.appendChild(creerFormCompletion(lig));
+  }
+
   return div;
+}
+
+// ── Mini-formulaire de complétion d'un produit en attente ─────
+function creerFormCompletion(lig) {
+  const dateAbattage = lig.dlc_type === 'date_abattage';
+  const noDlc        = lig.dlc_type === 'no_dlc';
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:10px;padding-top:10px;border-top:1px dashed #B91C1C;display:flex;flex-direction:column;gap:8px;';
+
+  const champLabel = (txt) => {
+    const l = document.createElement('div');
+    l.style.cssText = 'font-size:12px;font-weight:700;color:#6B3A1F;text-transform:uppercase;letter-spacing:.04em;';
+    l.textContent = txt;
+    return l;
+  };
+  const mkInput = (type, field, value, ph) => {
+    const i = document.createElement('input');
+    i.type = type;
+    i.dataset.field = field;
+    if (value) i.value = String(value).slice(0, 10);
+    if (ph) i.placeholder = ph;
+    i.style.cssText = 'border:2px solid #6B3A1F;border-radius:8px;font-size:16px;height:46px;padding:0 10px;width:100%;';
+    return i;
+  };
+
+  wrap.appendChild(champLabel('N° de lot'));
+  const inpLot = mkInput('text', 'numero_lot', lig.numero_lot, 'N° de lot…');
+  wrap.appendChild(inpLot);
+
+  let inpDate = null;
+  if (!noDlc) {
+    wrap.appendChild(champLabel(dateAbattage ? "Date d'abattage" : 'DLC'));
+    inpDate = mkInput('date', dateAbattage ? 'date_abattage' : 'dlc',
+                      dateAbattage ? lig.date_abattage : lig.dlc, null);
+    wrap.appendChild(inpDate);
+  }
+
+  const erreur = document.createElement('div');
+  erreur.style.cssText = 'color:#C93030;font-size:13px;font-weight:600;';
+  erreur.hidden = true;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = '✓ Compléter et entrer en stock';
+  btn.style.cssText = 'background:#2D7D46;border:none;border-radius:8px;color:#fff;font-size:16px;font-weight:700;height:48px;cursor:pointer;';
+
+  btn.addEventListener('click', async () => {
+    erreur.hidden = true;
+    const payload = {};
+    const lot = inpLot.value.trim();
+    if (lot) payload.numero_lot = lot;
+    if (inpDate && inpDate.value.trim()) payload[inpDate.dataset.field] = inpDate.value.trim();
+
+    if (!lot || (inpDate && !inpDate.value.trim())) {
+      erreur.textContent = 'Renseignez le N° de lot et la date.';
+      erreur.hidden = false;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Validation…';
+    try {
+      const res = await apiFetch(`/api/attente/lignes/${lig.ligne_id || lig.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.statut === 'complet') {
+        // Recharger pour refléter le nouvel état (badge OK, plus de formulaire)
+        location.reload();
+      } else {
+        erreur.textContent = 'Information encore incomplète.';
+        erreur.hidden = false;
+        btn.disabled = false;
+        btn.textContent = '✓ Compléter et entrer en stock';
+      }
+    } catch (e) {
+      erreur.textContent = 'Erreur d’enregistrement. Réessayez.';
+      erreur.hidden = false;
+      btn.disabled = false;
+      btn.textContent = '✓ Compléter et entrer en stock';
+    }
+  });
+
+  wrap.appendChild(btn);
+  wrap.appendChild(erreur);
+  return wrap;
 }
 
 // ── Modal photo plein écran ──────────────────────────────────

@@ -214,6 +214,7 @@ let commandeLignes     = [];      // lignes de toutes les commandes liées pour 
 let commandeLigneIdx   = 0;       // index de la ligne en cours de réception
 let catalogueIdPrefill = null;    // catalogue_fournisseur_id de la ligne de commande pré-remplie
                                   // (propagé vers reception_lignes pour le suivi de stock par référence)
+let dlcTypePrefill     = null;    // dlc_type du catalogue ('dlc'|'date_abattage'|'no_dlc')
 let toutesCommandes    = [];      // cache de toutes les commandes disponibles
 
 
@@ -1601,6 +1602,9 @@ function preRemplirDepuisCommande() {
   // Mémoriser la référence catalogue pour la propager vers la ligne de réception
   // (permet de compter le stock par référence catalogue dans le module commandes).
   catalogueIdPrefill = ligne.catalogue_fournisseur_id || null;
+  // Type de DLC du catalogue (dlc / date_abattage / no_dlc) : détermine l'exigence
+  // de traçabilité (DLC vs date d'abattage) pour le statut « en attente ».
+  dlcTypePrefill = ligne.dlc_type || null;
 
   // Pré-remplir la recherche produit avec la désignation de la commande
   if (elProdSearch) {
@@ -1957,6 +1961,7 @@ function reinitFormProduit() {
   dlcMode            = 'dlc';
   fournisseurProduitSelected = null;
   catalogueIdPrefill = null;   // réf catalogue valable seulement pour la ligne pré-remplie
+  dlcTypePrefill     = null;
 
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
@@ -2031,6 +2036,15 @@ function majListeLignes() {
 
     info.appendChild(nom);
     if (parts.length) info.appendChild(detail);
+
+    // Bandeau « en attente » : produit accepté mais hors stock tant que lot/DLC manquant
+    if (l.statut === 'en_attente') {
+      carte.classList.add('en-attente');
+      const att = document.createElement('div');
+      att.className = 'rec-ligne-attente';
+      att.textContent = `⛔ En attente — ${libelleMotifAttente(l.attente_motif)}`;
+      info.appendChild(att);
+    }
 
     const btnModif = document.createElement('button');
     btnModif.className   = 'rec-ligne-modifier';
@@ -2173,6 +2187,8 @@ function _buildPayload() {
   if (!isNaN(ph)) payload.ph_valeur = ph;
   // Référence catalogue issue de la commande (suivi du stock par référence)
   if (catalogueIdPrefill) payload.catalogue_fournisseur_id = catalogueIdPrefill;
+  // Type de DLC catalogue → détermine l'exigence de traçabilité (statut en attente)
+  if (dlcTypePrefill) payload.dlc_type = dlcTypePrefill;
   return payload;
 }
 
@@ -2211,8 +2227,18 @@ function _ligneToLocal(ligne, produit) {
     origine:             ligne.origine || 'France',
     dlc:                 ligne.dlc,
     dluo:                ligne.dluo,
+    statut:              ligne.statut || 'complet',
+    attente_motif:       ligne.attente_motif || null,
     motifs:              motifsNc,
   };
+}
+
+// Libellé court du motif d'attente (lot/DLC manquant)
+function libelleMotifAttente(motif) {
+  if (motif === 'lot_dlc') return 'lot + DLC à compléter';
+  if (motif === 'lot')     return 'lot à compléter';
+  if (motif === 'dlc')     return 'DLC à compléter';
+  return 'à compléter';
 }
 
 async function ajouterLigne() {

@@ -887,7 +887,10 @@ async def get_commande(commande_id: int):
         result = dict(commande)
 
         cur2 = await db.execute(
-            "SELECT * FROM commande_lignes WHERE commande_id = ? ORDER BY id",
+            """SELECT cl.*, cf.dlc_type AS dlc_type
+               FROM commande_lignes cl
+               LEFT JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
+               WHERE cl.commande_id = ? ORDER BY cl.id""",
             (commande_id,)
         )
         result["lignes"] = [dict(r) for r in await cur2.fetchall()]

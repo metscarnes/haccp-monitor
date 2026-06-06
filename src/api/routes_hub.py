@@ -47,6 +47,30 @@ async def taches_resume():
 
     async with get_db() as db:
 
+        # ── 0. Produits en attente de traçabilité (PRIORITÉ 1, NON-MASQUABLE) ──
+        # Tant qu'un produit reçu n'a pas son lot/DLC, il est bloqué hors stock.
+        # Cette alerte ne peut pas être masquée par le snooze (cf. hub.js).
+        try:
+            rows = await db.execute_fetchall(
+                "SELECT COUNT(*) FROM reception_lignes "
+                "WHERE COALESCE(statut, 'complet') = 'en_attente'"
+            )
+            n_attente = rows[0][0] if rows else 0
+            if n_attente:
+                aujourd_hui.append({
+                    "code":          "produits_attente",
+                    "libelle":       "Produits en attente de traçabilité",
+                    "url":           "/produits-attente.html",
+                    "icone":         "⛔",
+                    "etat":          "en_retard",
+                    "priorite":      1,
+                    "non_masquable": True,
+                    "detail":        f"{n_attente} produit(s) sans lot/DLC — "
+                                     "à compléter (stock bloqué)",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé produits en attente : %s", exc)
+
         # ── 1. Nettoyage quotidien ──────────────────────────────
         try:
             rows = await db.execute_fetchall(

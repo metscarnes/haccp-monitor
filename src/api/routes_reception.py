@@ -150,6 +150,8 @@ class LigneCreate(BaseModel):
     lot_interne: int = 0
     dlc: Optional[str] = None
     dluo: Optional[str] = None
+    date_abattage: Optional[str] = None
+    dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: str = "France"
     poids_kg: Optional[float] = None
     temperature_reception: Optional[float] = None
@@ -174,6 +176,8 @@ class LigneUpdate(BaseModel):
     lot_interne: int = 0
     dlc: Optional[str] = None
     dluo: Optional[str] = None
+    date_abattage: Optional[str] = None
+    dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: Optional[str] = None
     poids_kg: Optional[float] = None
     temperature_reception: Optional[float] = None

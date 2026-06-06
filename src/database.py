@@ -1291,6 +1291,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
                 FOREIGN KEY (personnel_id)       REFERENCES personnel(id)
             )""",
+            # v5.4 — Produits en attente de complétion (lot/DLC manquant à la réception).
+            # statut='en_attente' → le produit n'entre PAS en stock tant que lot/DLC non saisis.
+            "ALTER TABLE reception_lignes ADD COLUMN statut TEXT DEFAULT 'complet'",
+            "ALTER TABLE reception_lignes ADD COLUMN dlc_type TEXT",        # 'dlc' | 'date_abattage' | 'no_dlc'
+            "ALTER TABLE reception_lignes ADD COLUMN attente_motif TEXT",   # 'lot' | 'dlc' | 'lot_dlc'
+            "CREATE INDEX IF NOT EXISTS idx_reception_lignes_statut ON reception_lignes(statut)",
         ]
         for sql in migrations:
             try:
@@ -2505,6 +2511,37 @@ def _calc_temperature_conforme(temp_recep: Optional[float], temp_conservation: O
     return 1       # Conforme
 
 
+def _calc_statut_attente(data: dict) -> tuple[str, Optional[str]]:
+    """Détermine si une ligne de réception est complète ou en attente de traçabilité.
+
+    Un produit est mis « en_attente » s'il manque le N° de lot et/ou la date selon
+    son dlc_type. Tant qu'il est en attente, il n'entre pas au stock (filtré dans
+    get_stock_unifie). Renvoie (statut, attente_motif).
+
+    dlc_type :
+        'no_dlc'        → aucune date requise
+        'date_abattage' → date d'abattage requise (carcasses en maturation)
+        'dlc' / None    → DLC ou DLUO requise
+    """
+    dlc_type = data.get("dlc_type")
+    manque_lot = not (data.get("numero_lot") or "").strip()
+
+    if dlc_type == "no_dlc":
+        manque_date = False
+    elif dlc_type == "date_abattage":
+        manque_date = not data.get("date_abattage")
+    else:  # 'dlc' ou inconnu
+        manque_date = not (data.get("dlc") or data.get("dluo"))
+
+    if manque_lot and manque_date:
+        return "en_attente", "lot_dlc"
+    if manque_lot:
+        return "en_attente", "lot"
+    if manque_date:
+        return "en_attente", "dlc"
+    return "complet", None
+
+
 async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data: dict) -> int:
     """Ajoute une ligne produit à une réception avec calcul automatique de conformité."""
     # Récupérer la réception pour savoir si le camion était conforme
@@ -2545,10 +2582,14 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             conforme = 0
             break
 
+    # Statut traçabilité : en_attente si lot/DLC manquant → exclu du stock
+    statut, attente_motif = _calc_statut_attente(data)
+
     cursor = await db.execute(
         """
         INSERT INTO reception_lignes
             (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
+             date_abattage, dlc_type, statut, attente_motif,
              origine, poids_kg, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
@@ -2556,7 +2597,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
@@ -2568,6 +2609,10 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             int(data.get("lot_interne", 0)),
             data.get("dlc"),
             data.get("dluo"),
+            data.get("date_abattage"),
+            data.get("dlc_type"),
+            statut,
+            attente_motif,
             data.get("origine", "France"),
             data.get("poids_kg"),
             temp_recep,
@@ -2683,9 +2728,10 @@ async def update_reception_ligne(
     data: dict,
 ) -> Optional[dict]:
     """Met à jour une ligne de réception et recalcule la conformité."""
-    # Récupérer la réception associée pour avoir la temp camion
+    # Récupérer la ligne existante (valeurs de traçabilité à conserver si non fournies)
     cur = await db.execute(
-        "SELECT reception_id, produit_id FROM reception_lignes WHERE id = ?", (ligne_id,)
+        "SELECT reception_id, produit_id, numero_lot, dlc, dluo, date_abattage, dlc_type "
+        "FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     row = await cur.fetchone()
     if not row:
@@ -2728,11 +2774,35 @@ async def update_reception_ligne(
             conforme = 0
             break
 
+    # Traçabilité : fusionner avec l'existant (une complétion partielle ne doit pas
+    # écraser une valeur déjà saisie), puis recalculer le statut en_attente/complet.
+    def _merge(key: str):
+        v = data.get(key)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return row[key]
+        return v
+
+    numero_lot    = _merge("numero_lot")
+    dlc           = _merge("dlc")
+    dluo          = _merge("dluo")
+    date_abattage = _merge("date_abattage")
+    dlc_type      = _merge("dlc_type")
+
+    statut, attente_motif = _calc_statut_attente({
+        "numero_lot":    numero_lot,
+        "dlc":           dlc,
+        "dluo":          dluo,
+        "date_abattage": date_abattage,
+        "dlc_type":      dlc_type,
+    })
+
     await db.execute(
         """
         UPDATE reception_lignes SET
             produit_id = ?, fournisseur_id = ?, numero_lot = ?, lot_interne = ?,
-            dlc = ?, dluo = ?, origine = ?, poids_kg = ?,
+            dlc = ?, dluo = ?, date_abattage = ?, dlc_type = ?,
+            statut = ?, attente_motif = ?,
+            origine = ?, poids_kg = ?,
             temperature_reception = ?, temperature_conforme = ?,
             temperature_coeur = ?,
             couleur_conforme = ?, couleur_observation = ?,
@@ -2745,10 +2815,14 @@ async def update_reception_ligne(
         (
             produit_id,
             data.get("fournisseur_id"),
-            data.get("numero_lot"),
+            numero_lot,
             int(data.get("lot_interne", 0)),
-            data.get("dlc"),
-            data.get("dluo"),
+            dlc,
+            dluo,
+            date_abattage,
+            dlc_type,
+            statut,
+            attente_motif,
             data.get("origine", "France"),
             data.get("poids_kg"),
             temp_recep,
@@ -2774,6 +2848,110 @@ async def update_reception_ligne(
         "SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     updated = await cur4.fetchone()
+    return dict(updated) if updated else None
+
+
+async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
+    """Liste les lignes de réception en attente de complétion (lot/DLC manquant).
+
+    Ces produits ne sont PAS encore en stock. Renvoie de quoi les afficher et les
+    compléter : produit, fournisseur, réception (date/heure/n°), motif manquant.
+    """
+    cur = await db.execute(
+        """
+        SELECT
+            rl.id              AS ligne_id,
+            rl.reception_id    AS reception_id,
+            rl.numero_lot      AS numero_lot,
+            rl.dlc             AS dlc,
+            rl.dluo            AS dluo,
+            rl.date_abattage   AS date_abattage,
+            rl.dlc_type        AS dlc_type,
+            rl.attente_motif   AS attente_motif,
+            rl.poids_kg        AS poids_kg,
+            rl.origine         AS origine,
+            p.id               AS produit_id,
+            p.nom              AS produit_nom,
+            p.code_unique      AS code_unique,
+            COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
+            r.date_reception   AS date_reception,
+            r.heure_reception  AS heure_reception,
+            r.statut           AS reception_statut
+        FROM reception_lignes rl
+        JOIN receptions   r ON r.id = rl.reception_id
+        LEFT JOIN produits     p ON p.id = rl.produit_id
+        LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+        WHERE COALESCE(rl.statut, 'complet') = 'en_attente'
+        ORDER BY r.date_reception DESC, r.heure_reception DESC, rl.id DESC
+        """
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def count_lignes_en_attente(db: aiosqlite.Connection) -> int:
+    """Nombre de lignes de réception en attente de complétion (pour le Hub)."""
+    cur = await db.execute(
+        "SELECT COUNT(*) FROM reception_lignes "
+        "WHERE COALESCE(statut, 'complet') = 'en_attente'"
+    )
+    row = await cur.fetchone()
+    return row[0] if row else 0
+
+
+async def completer_ligne_attente(
+    db: aiosqlite.Connection,
+    ligne_id: int,
+    numero_lot: Optional[str] = None,
+    dlc: Optional[str] = None,
+    dluo: Optional[str] = None,
+    date_abattage: Optional[str] = None,
+) -> Optional[dict]:
+    """Complète les infos de traçabilité d'une ligne en attente et recalcule le statut.
+
+    Ne touche qu'aux champs lot/DLC/DLUO/date_abattage (préserve conformité et
+    observations). Si lot + date sont désormais présents, statut repasse à 'complet'
+    et le produit entre en stock. Renvoie la ligne mise à jour, ou None si introuvable.
+    """
+    cur = await db.execute(
+        "SELECT numero_lot, dlc, dluo, date_abattage, dlc_type "
+        "FROM reception_lignes WHERE id = ?", (ligne_id,)
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+
+    def _pick(new, old):
+        if new is None or (isinstance(new, str) and not new.strip()):
+            return old
+        return new
+
+    numero_lot    = _pick(numero_lot, row["numero_lot"])
+    dlc           = _pick(dlc, row["dlc"])
+    dluo          = _pick(dluo, row["dluo"])
+    date_abattage = _pick(date_abattage, row["date_abattage"])
+    dlc_type      = row["dlc_type"]
+
+    statut, attente_motif = _calc_statut_attente({
+        "numero_lot":    numero_lot,
+        "dlc":           dlc,
+        "dluo":          dluo,
+        "date_abattage": date_abattage,
+        "dlc_type":      dlc_type,
+    })
+
+    await db.execute(
+        """
+        UPDATE reception_lignes SET
+            numero_lot = ?, dlc = ?, dluo = ?, date_abattage = ?,
+            statut = ?, attente_motif = ?
+        WHERE id = ?
+        """,
+        (numero_lot, dlc, dluo, date_abattage, statut, attente_motif, ligne_id),
+    )
+    await db.commit()
+
+    cur2 = await db.execute("SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,))
+    updated = await cur2.fetchone()
     return dict(updated) if updated else None
 
 
@@ -4019,6 +4197,7 @@ async def get_dlc_calendrier(
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
+              AND COALESCE(rl.statut, 'complet') <> 'en_attente'
               {cat_filter}
             """,
             (date_debut, date_fin, boutique_id, *cat_params),
@@ -4286,6 +4465,7 @@ async def get_stock_unifie(
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
+              AND COALESCE(rl.statut, 'complet') <> 'en_attente'
               {extra_sql}
               AND NOT EXISTS (
                   SELECT 1 FROM dlc_devenir dd

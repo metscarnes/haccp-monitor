@@ -447,6 +447,20 @@
   border-color: #C93030;
   background: rgba(201,48,48,.06);
 }
+.hub-popup-item--priorite {
+  border: 2px solid #B91C1C;
+  background: rgba(185,28,28,.10);
+  box-shadow: 0 0 0 3px rgba(185,28,28,.12);
+  animation: hub-priorite-pulse 1.6s ease-in-out infinite;
+}
+@keyframes hub-priorite-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(185,28,28,.12); }
+  50%      { box-shadow: 0 0 0 5px rgba(185,28,28,.22); }
+}
+.hub-popup-snooze:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
 
 .hub-popup-lien {
   display: grid;

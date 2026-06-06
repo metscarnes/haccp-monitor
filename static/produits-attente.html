@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#3D2008">
+  <title>Produits en attente — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    :root {
+      --fond:      #F5ECD7;
+      --texte:     #3D2008;
+      --accent:    #6B3A1F;
+      --secondaire:#D4A574;
+      --ok:        #2D7D46;
+      --attention: #E8913A;
+      --alerte:    #C93030;
+    }
+    * { box-sizing: border-box; }
+    body {
+      background: var(--fond);
+      color: var(--texte);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      margin: 0;
+      min-height: 100dvh;
+    }
+
+    .pa-header {
+      background: var(--alerte);
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .pa-btn-retour {
+      background: none;
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 600;
+      height: 48px;
+      padding: 0 16px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .pa-btn-retour:active { opacity: .7; }
+    .pa-header-titre {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      flex: 1;
+      text-align: center;
+    }
+    .pa-horloge {
+      font-size: 16px;
+      font-weight: 600;
+      flex-shrink: 0;
+      min-width: 48px;
+      text-align: right;
+    }
+
+    .pa-bandeau {
+      background: rgba(201,48,48,.10);
+      border-bottom: 1px solid rgba(201,48,48,.25);
+      color: var(--alerte);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 16px;
+      line-height: 1.4;
+    }
+
+    .pa-compteur {
+      padding: 10px 16px;
+      font-size: 15px;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .pa-liste {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 4px 16px 32px;
+    }
+
+    .pa-carte {
+      background: #FFF;
+      border: 1px solid rgba(107,58,31,.15);
+      border-left: 4px solid var(--alerte);
+      border-radius: 12px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .pa-carte-titre {
+      font-size: 17px;
+      font-weight: 800;
+      color: var(--texte);
+      margin-bottom: 2px;
+    }
+    .pa-carte-sous {
+      font-size: 13px;
+      color: #8a6d54;
+      margin-bottom: 6px;
+    }
+    .pa-carte-motif {
+      display: inline-block;
+      background: rgba(201,48,48,.10);
+      color: var(--alerte);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+
+    .pa-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .pa-champ-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .pa-input {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 17px;
+      height: 50px;
+      padding: 0 12px;
+      width: 100%;
+    }
+    .pa-input:focus { outline: none; border-color: var(--texte); }
+    .pa-input--invalide { border-color: var(--alerte); background: rgba(201,48,48,.05); }
+
+    .pa-btn-valider {
+      background: var(--ok);
+      border: none;
+      border-radius: 10px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 17px;
+      font-weight: 700;
+      height: 52px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .pa-btn-valider:active { opacity: .85; }
+    .pa-btn-valider:disabled { opacity: .5; cursor: not-allowed; }
+
+    .pa-erreur {
+      color: var(--alerte);
+      font-size: 13px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .pa-message {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--accent);
+    }
+    .pa-message-icone { font-size: 42px; margin-bottom: 10px; }
+    .pa-message-texte { font-size: 16px; font-weight: 600; }
+  </style>
+</head>
+<body>
+<script src="/static/js/core/guard.js"></script>
+
+  <header class="pa-header">
+    <button class="pa-btn-retour" id="pa-btn-retour" aria-label="Retour hub">← Retour</button>
+    <div class="pa-header-titre">⛔ PRODUITS EN ATTENTE</div>
+    <div class="pa-horloge" id="pa-horloge" aria-live="polite"></div>
+  </header>
+
+  <div class="pa-bandeau">
+    Tâche HACCP prioritaire — ces produits ne sont PAS comptés en stock tant que le
+    N° de lot et la DLC (ou la date d'abattage) ne sont pas renseignés.
+  </div>
+
+  <div class="pa-compteur" id="pa-compteur" aria-live="polite"></div>
+
+  <div class="pa-liste" id="pa-liste" role="list" aria-label="Produits en attente"></div>
+
+  <div class="pa-message" id="pa-message" hidden>
+    <div class="pa-message-icone" id="pa-message-icone">⏳</div>
+    <div class="pa-message-texte" id="pa-message-texte">Chargement…</div>
+  </div>
+
+  <script src="/static/js/produits-attente.js"></script>
+</body>
+</html>

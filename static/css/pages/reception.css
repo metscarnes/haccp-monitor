@@ -470,6 +470,16 @@ body.rec-body {
 .rec-ligne-info { flex: 1; }
 .rec-ligne-nom  { font-size: .9rem; font-weight: 700; color: var(--color-text); }
 .rec-ligne-detail { font-size: .75rem; color: var(--color-offline); }
+.rec-ligne-carte.en-attente {
+  background: rgba(185,28,28,.05);
+  border-left: 3px solid #B91C1C;
+}
+.rec-ligne-attente {
+  margin-top: .2rem;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #B91C1C;
+}
 .rec-ligne-badge {
   font-size: .75rem;
   font-weight: 700;
