@@ -752,7 +752,7 @@
     </div>
   </div>
 
-  <!-- Overlay aperçu photo BL plein écran -->
+  <!-- Overlay aperçu photo BL plein écran (vérif cadrage étape 2) -->
   <div class="rec-dialog-overlay" id="rec-photo-preview-overlay" hidden
        role="dialog" aria-modal="true" aria-label="Aperçu photo bon de livraison">
     <div class="rec-photo-preview-wrap">
@@ -760,6 +760,24 @@
       <button class="rec-photo-preview-close" id="rec-photo-preview-close"
               type="button" aria-label="Fermer l'aperçu">✕</button>
     </div>
+  </div>
+
+  <!-- Fenêtre flottante BL (non-modale) : consulter le BL tout en saisissant.
+       Déplaçable (barre de titre), zoomable (boutons + / −), redimensionnable. -->
+  <div class="rec-bl-flottant" id="rec-bl-flottant" hidden
+       role="dialog" aria-label="Bon de livraison (fenêtre flottante)">
+    <div class="rec-bl-flottant-barre" id="rec-bl-flottant-barre">
+      <span class="rec-bl-flottant-titre">📋 Bon de livraison</span>
+      <div class="rec-bl-flottant-actions">
+        <button type="button" id="rec-bl-zoom-moins" aria-label="Dézoomer">−</button>
+        <button type="button" id="rec-bl-zoom-plus"  aria-label="Zoomer">+</button>
+        <button type="button" id="rec-bl-flottant-fermer" aria-label="Fermer">✕</button>
+      </div>
+    </div>
+    <div class="rec-bl-flottant-corps" id="rec-bl-flottant-corps">
+      <img id="rec-bl-flottant-img" src="" alt="Bon de livraison" draggable="false">
+    </div>
+    <div class="rec-bl-flottant-resize" id="rec-bl-flottant-resize" aria-hidden="true"></div>
   </div>
 
   <script src="/static/js/core/origine.js"></script>

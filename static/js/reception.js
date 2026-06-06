@@ -59,6 +59,97 @@ function ouvrirApercuPhoto(url) {
   elPhotoPreviewOverlay.hidden = false;
 }
 
+// ── Fenêtre flottante BL (non-modale, déplaçable / zoomable / redimensionnable) ──
+const elBlFlottant       = document.getElementById('rec-bl-flottant');
+const elBlBarre          = document.getElementById('rec-bl-flottant-barre');
+const elBlImg            = document.getElementById('rec-bl-flottant-img');
+const elBlFermer         = document.getElementById('rec-bl-flottant-fermer');
+const elBlZoomPlus       = document.getElementById('rec-bl-zoom-plus');
+const elBlZoomMoins      = document.getElementById('rec-bl-zoom-moins');
+const elBlResize         = document.getElementById('rec-bl-flottant-resize');
+let blZoom = 1;
+
+function ouvrirBlFlottant(url) {
+  if (!elBlFlottant) return;
+  elBlImg.src = url;
+  blZoom = 1;
+  appliquerZoomBl();
+  // Réinitialiser la position si hors écran
+  elBlFlottant.style.left = Math.max(8, (window.innerWidth - elBlFlottant.offsetWidth) / 2) + 'px';
+  elBlFlottant.hidden = false;
+}
+function appliquerZoomBl() {
+  // Zoom = largeur de l'image relative au corps (overflow auto permet de naviguer)
+  elBlImg.style.width = (blZoom * 100) + '%';
+}
+if (elBlFermer)    elBlFermer.addEventListener('click', () => { elBlFlottant.hidden = true; });
+if (elBlZoomPlus)  elBlZoomPlus.addEventListener('click', () => { blZoom = Math.min(5, blZoom + 0.25); appliquerZoomBl(); });
+if (elBlZoomMoins) elBlZoomMoins.addEventListener('click', () => { blZoom = Math.max(0.5, blZoom - 0.25); appliquerZoomBl(); });
+
+// Déplacement de la fenêtre via la barre de titre (souris + tactile)
+function initDragBl() {
+  if (!elBlBarre || !elBlFlottant) return;
+  let startX, startY, startLeft, startTop, dragging = false;
+  const onDown = (e) => {
+    // ne pas déclencher le drag depuis les boutons d'action
+    if (e.target.closest('.rec-bl-flottant-actions')) return;
+    dragging = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY;
+    const r = elBlFlottant.getBoundingClientRect();
+    startLeft = r.left; startTop = r.top;
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const p = e.touches ? e.touches[0] : e;
+    let nl = startLeft + (p.clientX - startX);
+    let nt = startTop  + (p.clientY - startY);
+    // garder la fenêtre dans le viewport
+    nl = Math.max(0, Math.min(nl, window.innerWidth  - 60));
+    nt = Math.max(0, Math.min(nt, window.innerHeight - 40));
+    elBlFlottant.style.left = nl + 'px';
+    elBlFlottant.style.top  = nt + 'px';
+    e.preventDefault();
+  };
+  const onUp = () => { dragging = false; };
+  elBlBarre.addEventListener('mousedown', onDown);
+  elBlBarre.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchend', onUp);
+}
+// Redimensionnement via la poignée coin bas-droit
+function initResizeBl() {
+  if (!elBlResize || !elBlFlottant) return;
+  let startX, startY, startW, startH, resizing = false;
+  const onDown = (e) => {
+    resizing = true;
+    const p = e.touches ? e.touches[0] : e;
+    startX = p.clientX; startY = p.clientY;
+    const r = elBlFlottant.getBoundingClientRect();
+    startW = r.width; startH = r.height;
+    e.preventDefault(); e.stopPropagation();
+  };
+  const onMove = (e) => {
+    if (!resizing) return;
+    const p = e.touches ? e.touches[0] : e;
+    elBlFlottant.style.width  = Math.max(240, startW + (p.clientX - startX)) + 'px';
+    elBlFlottant.style.height = Math.max(220, startH + (p.clientY - startY)) + 'px';
+    e.preventDefault();
+  };
+  const onUp = () => { resizing = false; };
+  elBlResize.addEventListener('mousedown', onDown);
+  elBlResize.addEventListener('touchstart', onDown, { passive: false });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('touchend', onUp);
+}
+initDragBl();
+initResizeBl();
+
 // Étape 2
 const elFournUnBtn        = document.getElementById('rec-fourn-un-btn');
 const elFournMultiBtn     = document.getElementById('rec-fourn-multi-btn');
@@ -2494,7 +2585,8 @@ function creerCarteBatch(ligneCmd) {
     const photoUrl = blocFourn && blocFourn.photoUrl;
     if (photoUrl) {
       btnBl.hidden = false;
-      btnBl.addEventListener('click', () => ouvrirApercuPhoto(photoUrl));
+      // Fenêtre flottante non-modale : on peut continuer à saisir/scroller derrière.
+      btnBl.addEventListener('click', () => ouvrirBlFlottant(photoUrl));
     }
   }
 

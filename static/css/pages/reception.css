@@ -385,6 +385,75 @@ body.rec-body {
   display: flex; align-items: center; justify-content: center;
   line-height: 1;
 }
+
+/* ── Fenêtre flottante BL (non-modale, déplaçable, zoomable) ── */
+.rec-bl-flottant {
+  position: fixed;
+  top: 80px;
+  left: 50%;
+  width: 380px;
+  height: 460px;
+  min-width: 240px;
+  min-height: 220px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.45);
+  z-index: 10000;          /* au-dessus de tout, mais sans overlay bloquant */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  touch-action: none;       /* gestes gérés par le JS (drag) */
+}
+.rec-bl-flottant[hidden] { display: none; }
+.rec-bl-flottant-barre {
+  flex-shrink: 0;
+  background: var(--color-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .4rem .6rem;
+  cursor: move;
+  user-select: none;
+}
+.rec-bl-flottant-titre { font-size: .85rem; font-weight: 700; }
+.rec-bl-flottant-actions { display: flex; gap: .35rem; }
+.rec-bl-flottant-actions button {
+  width: 34px; height: 34px;
+  border: none;
+  border-radius: 7px;
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.rec-bl-flottant-actions button:active { background: rgba(255,255,255,.4); }
+.rec-bl-flottant-corps {
+  flex: 1;
+  overflow: auto;            /* navigation dans l'image zoomée */
+  background: #222;
+  -webkit-overflow-scrolling: touch;
+}
+.rec-bl-flottant-corps img {
+  display: block;
+  width: 100%;               /* zoom piloté en JS via transform/width */
+  height: auto;
+  transform-origin: top left;
+}
+.rec-bl-flottant-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 50%, rgba(107,58,31,.5) 50%);
+  touch-action: none;
+}
 .rec-fourn-results {
   background: white;
   border: 1.5px solid var(--color-secondary);
