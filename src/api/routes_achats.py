@@ -802,10 +802,6 @@ async def delete_article(article_id: int, permanent: bool = Query(False), _=Depe
                 "UPDATE reception_lignes SET catalogue_fournisseur_id = NULL WHERE catalogue_fournisseur_id = ?",
                 (article_id,)
             )
-            await db.execute(
-                "UPDATE commande_receptions_mapping SET catalogue_fournisseur_id = NULL WHERE catalogue_fournisseur_id = ?",
-                (article_id,)
-            )
             await db.execute("DELETE FROM catalogue_fournisseur WHERE id = ?", (article_id,))
         else:
             await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (article_id,))
