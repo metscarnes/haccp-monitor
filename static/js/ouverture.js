@@ -186,7 +186,7 @@ function selectionnerPersonnel(id, prenom, btnClique) {
 
 // ── ÉTAPE 2 : Photo ────────────────────────────────────────
 elBtnCamera.addEventListener('click', () => {
-  elInputPhoto.click();
+  ouvrirChoixPhoto(elInputPhoto);
 });
 
 // Compression navigateur : redimensionne à PHOTO_MAX_SIDE et ré-encode en JPEG.
