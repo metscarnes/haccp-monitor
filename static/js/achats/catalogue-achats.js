@@ -125,21 +125,27 @@ function estTest(a) {
 }
 
 function estIncomplet(a) {
-  // Liste des champs attendus — au moins un vide = incomplet
-  return !a.prix_achat_ht
-      || !a.format_prix
-      || !a.conditionnement
-      || !a.dlc_type
-      || a.tva_percent === null || a.tva_percent === undefined;
+  if (!a.code_article)  return true;
+  if (!a.designation)   return true;
+  if (!a.prix_achat_ht) return true;
+  if (!a.format_prix)   return true;
+  if (a.format_prix === 'colis') {
+    if (a.qte_par_colis == null)     return true;
+    if (a.poids_unitaire_kg == null) return true;
+  }
+  return false;
 }
 
 function champsManquants(a) {
   const m = [];
-  if (!a.prix_achat_ht)   m.push('Prix');
-  if (!a.format_prix)     m.push('Format');
-  if (!a.conditionnement) m.push('Conditionnement');
-  if (!a.dlc_type)        m.push('DLC type');
-  if (a.tva_percent === null || a.tva_percent === undefined) m.push('TVA');
+  if (!a.code_article)  m.push('Code article');
+  if (!a.designation)   m.push('Désignation');
+  if (!a.prix_achat_ht) m.push('Prix HT');
+  if (!a.format_prix)   m.push('Format');
+  if (a.format_prix === 'colis') {
+    if (a.qte_par_colis == null)     m.push('Qté/colis');
+    if (a.poids_unitaire_kg == null) m.push('Poids unitaire');
+  }
   return m;
 }
 
