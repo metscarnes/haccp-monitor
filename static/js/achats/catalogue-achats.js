@@ -20,6 +20,9 @@ const COLONNES = [
   { key: 'designation',     label: 'Désignation' },
   { key: 'prix_achat_ht',   label: 'Prix HT' },
   { key: 'format_prix',     label: 'Format' },
+  { key: 'qte_par_colis',     label: 'Qté/colis' },
+  { key: 'poids_unitaire_kg', label: 'Poids unit.' },
+  { key: 'poids_colis_kg',    label: 'Poids colis' },
   { key: 'tva_percent',     label: 'TVA' },
   { key: 'conditionnement', label: 'Conditionnement' },
   { key: 'dlc_type',        label: 'DLC type' },
@@ -40,7 +43,15 @@ function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveauModal);
   document.getElementById('btn-export').addEventListener('click', exporterCatalogue);
   document.getElementById('btn-import').addEventListener('click', () => {
+    // Ouvre la modale propre : pas de fichier → bouton désactivé, résultat masqué
+    document.getElementById('import-fichier').value = '';
+    document.getElementById('import-resultat').hidden = true;
+    document.getElementById('import-lancer').disabled = true;
     document.getElementById('modal-import').hidden = false;
+  });
+  // Le bouton Importer ne s'active qu'une fois un fichier choisi
+  document.getElementById('import-fichier').addEventListener('change', (e) => {
+    document.getElementById('import-lancer').disabled = !e.target.files.length;
   });
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
@@ -231,6 +242,9 @@ function afficherTable(liste) {
       </td>
       <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
       <td><span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span></td>
+      <td class="ach-col-num">${a.qte_par_colis != null ? a.qte_par_colis : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-col-num">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-col-num">${a.poids_colis_kg != null ? '<strong>' + a.poids_colis_kg.toFixed(3) + ' kg</strong>' : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${a.tva_percent ?? 5.5}%</td>
       <td>${escHtml(a.conditionnement || '—')}</td>
       <td>
@@ -515,11 +529,16 @@ function exporterCatalogue() {
 }
 
 // ── Import Excel ─────────────────────────────────────────────
+let importEnCours = false;
+
 async function lancerImport() {
-  const fichier = document.getElementById('import-fichier').files[0];
+  if (importEnCours) return;                    // anti double-clic / spam
+  const inputFichier = document.getElementById('import-fichier');
+  const fichier = inputFichier.files[0];
   if (!fichier) { alert('Sélectionnez un fichier Excel'); return; }
 
   const btn = document.getElementById('import-lancer');
+  importEnCours = true;
   btn.disabled = true; btn.textContent = 'Import en cours…';
 
   const formData = new FormData();
@@ -530,18 +549,34 @@ async function lancerImport() {
     const result = await r.json();
     const zone = document.getElementById('import-resultat');
     zone.hidden = false;
+
     if (r.ok) {
+      const erreurs = result.erreurs?.length ? `\nErreurs : ${result.erreurs.length}` : '';
       zone.className = 'ach-import-resultat ach-import-resultat--ok';
-      zone.textContent = `✅ Import terminé\nCréés : ${result.crees}\nMis à jour : ${result.mis_a_jour}\n${result.erreurs?.length ? 'Erreurs :\n' + result.erreurs.join('\n') : ''}`;
+      zone.textContent = `✅ Import terminé\nCréés : ${result.crees}\nMis à jour : ${result.mis_a_jour}${result.erreurs?.length ? '\nErreurs :\n' + result.erreurs.join('\n') : ''}`;
+
       await chargerCatalogue();
-    } else {
-      zone.className = 'ach-import-resultat ach-import-resultat--err';
-      zone.textContent = '❌ Erreur : ' + (result.detail || JSON.stringify(result));
+
+      // Pop-up de confirmation explicite
+      alert(`✅ Import validé\n\nArticles créés : ${result.crees}\nArticles mis à jour : ${result.mis_a_jour}${erreurs}`);
+
+      // Fermer la modale et réinitialiser (évite le ré-import du même fichier par spam)
+      document.getElementById('modal-import').hidden = true;
+      inputFichier.value = '';
+      zone.hidden = true;
+      btn.textContent = 'Importer';
+      return;   // le bouton reste désactivé tant qu'aucun nouveau fichier n'est choisi
     }
+
+    // Erreur serveur
+    zone.className = 'ach-import-resultat ach-import-resultat--err';
+    zone.textContent = '❌ Erreur : ' + (result.detail || JSON.stringify(result));
+    btn.disabled = false; btn.textContent = 'Importer';
   } catch(e) {
     alert('Erreur : ' + e.message);
-  } finally {
     btn.disabled = false; btn.textContent = 'Importer';
+  } finally {
+    importEnCours = false;
   }
 }
 
