@@ -2491,9 +2491,24 @@ function creerCarteBatch(ligneCmd) {
     dateLabel.textContent = 'DLC';
   }
 
-  // Poids pré-rempli
-  const elPoids = carte.querySelector('.rec-batch-poids');
-  if (ligneCmd.quantite_commandee != null) elPoids.value = ligneCmd.quantite_commandee;
+  // Poids reçu : toujours en kg (poids réel pesé, le stock HACCP est en kg).
+  // L'unité de commande (colis, pièce…) n'est qu'un repère affiché dans le label.
+  // On ne pré-remplit le poids que si la commande est déjà en kg.
+  const elPoids      = carte.querySelector('.rec-batch-poids');
+  const elPoidsLabel = carte.querySelector('.rec-batch-poids-label');
+  const uniteCmd = (ligneCmd.unite || '').trim();
+  const uniteEstKg = /^kg$/i.test(uniteCmd) || uniteCmd === '';
+  if (elPoidsLabel) {
+    if (ligneCmd.quantite_commandee != null && uniteCmd) {
+      elPoidsLabel.textContent =
+        `Poids reçu (kg) — commandé : ${ligneCmd.quantite_commandee} ${uniteCmd}`;
+    } else {
+      elPoidsLabel.textContent = 'Poids reçu (kg)';
+    }
+  }
+  if (uniteEstKg && ligneCmd.quantite_commandee != null) {
+    elPoids.value = ligneCmd.quantite_commandee;
+  }
 
   // Lot interne
   const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
