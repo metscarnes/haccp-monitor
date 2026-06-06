@@ -99,10 +99,20 @@
     async function demarrer() {
       stopStream();
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facing } },
-          audio: false,
-        });
+        // `exact` force réellement la caméra demandée (arrière par défaut) ;
+        // `ideal` est seulement une préférence et le navigateur peut l'ignorer.
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: facing } },
+            audio: false,
+          });
+        } catch (e) {
+          // L'appareil n'a pas la caméra demandée (ex: pas d'arrière) → repli souple.
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing },
+            audio: false,
+          });
+        }
         video.srcObject = stream;
         elErr.hidden = true;
       } catch (err) {
