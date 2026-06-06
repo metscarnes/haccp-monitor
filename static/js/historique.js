@@ -831,10 +831,14 @@ function recCreerLigne(lig, receptionFournisseurNom = null) {
   const grille = document.createElement('div');
   grille.className = 'he-ligne-grille';
 
+  const poidsRecu = (lig.poids_kg != null && lig.poids_kg !== '')
+    ? `${lig.poids_kg} kg`
+    : '—';
   const champs = [
     { label: 'Fournisseur', valeur: lig.fournisseur_nom || receptionFournisseurNom || '—' },
     { label: 'N° lot', valeur: lig.numero_lot || '—' },
     { label: 'Origine', valeur: lig.origine || '—' },
+    { label: 'Poids reçu', valeur: poidsRecu },
     { label: 'DLC', valeur: formatDateFR(lig.dlc) },
     { label: 'T° réception', valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur', valeur: formatTemp(lig.temperature_coeur) },
