@@ -1398,6 +1398,16 @@ body.rec-body {
 }
 
 /* ── Mode liste commande (étape 3 batch) ──────────────────── */
+/* Le wrap occupe l'espace dispo de l'étape 3 et défile ; le footer « Récap »
+   est en position absolue (~84px), d'où le padding-bottom de sécurité. */
+#rec-batch-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem 1rem 96px;
+}
+#rec-batch-wrap[hidden] { display: none; }
 .rec-batch-aide {
   font-size: .82rem;
   color: var(--color-offline);
