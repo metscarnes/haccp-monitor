@@ -984,7 +984,7 @@ CREATE TABLE IF NOT EXISTS receptions (
 CREATE TABLE IF NOT EXISTS reception_lignes (
     id                        INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_id              INTEGER NOT NULL,
-    produit_id                INTEGER NOT NULL,
+    produit_id                INTEGER,
     fournisseur_id            INTEGER,
     numero_lot                TEXT,
     dlc                       DATE,
@@ -1301,6 +1301,64 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # designation_libre = libellé de l'article catalogue fournisseur quand aucun
             # produit interne (table produits) n'est rattaché (produit_id NULL).
             "ALTER TABLE reception_lignes ADD COLUMN designation_libre TEXT",
+            # v5.6 — produit_id devient nullable dans reception_lignes.
+            # La migration d'origine (refonte v2.2) créait la table avec NOT NULL,
+            # ce qui bloque les réceptions sans produit interne (catalogue achats).
+            # SQLite ne supporte pas ALTER COLUMN → recréation complète de la table.
+            """CREATE TABLE IF NOT EXISTS reception_lignes_v56 (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    reception_id              INTEGER NOT NULL,
+    produit_id                INTEGER,
+    catalogue_fournisseur_id  INTEGER,
+    fournisseur_id            INTEGER,
+    fournisseur_nom           TEXT,
+    numero_lot                TEXT,
+    lot_interne               INTEGER DEFAULT 0,
+    dlc                       DATE,
+    dluo                      DATE,
+    date_abattage             DATE,
+    dlc_type                  TEXT,
+    statut                    TEXT    DEFAULT 'complet',
+    attente_motif             TEXT,
+    designation_libre         TEXT,
+    origine                   TEXT    DEFAULT 'France',
+    poids_kg                  REAL,
+    temperature_reception     REAL,
+    temperature_conforme      INTEGER,
+    temperature_coeur         REAL,
+    couleur_conforme          INTEGER DEFAULT 1,
+    couleur_observation       TEXT,
+    consistance_conforme      INTEGER DEFAULT 1,
+    consistance_observation   TEXT,
+    exsudat_conforme          INTEGER DEFAULT 1,
+    exsudat_observation       TEXT,
+    odeur_conforme            INTEGER DEFAULT 1,
+    odeur_observation         TEXT,
+    ph_valeur                 REAL,
+    ph_conforme               INTEGER,
+    conforme                  INTEGER DEFAULT 1,
+    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (reception_id)             REFERENCES receptions(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id)
+)""",
+            """INSERT OR IGNORE INTO reception_lignes_v56
+    SELECT id, reception_id, produit_id, catalogue_fournisseur_id,
+           fournisseur_id, fournisseur_nom, numero_lot, lot_interne,
+           dlc, dluo, date_abattage, dlc_type, statut, attente_motif,
+           designation_libre, origine, poids_kg, temperature_reception,
+           temperature_conforme, temperature_coeur,
+           couleur_conforme, couleur_observation,
+           consistance_conforme, consistance_observation,
+           exsudat_conforme, exsudat_observation,
+           odeur_conforme, odeur_observation,
+           ph_valeur, ph_conforme, conforme, created_at
+    FROM reception_lignes
+    WHERE typeof(reception_lignes.id) = 'integer'""",
+            "DROP TABLE IF EXISTS reception_lignes",
+            "ALTER TABLE reception_lignes_v56 RENAME TO reception_lignes",
+            "CREATE INDEX IF NOT EXISTS idx_reception_lignes_statut ON reception_lignes(statut)",
         ]
         for sql in migrations:
             try:
