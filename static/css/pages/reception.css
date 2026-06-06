@@ -1439,6 +1439,22 @@ body.rec-body {
 .rec-batch-carte-titre { flex: 1; }
 .rec-batch-nom  { display: block; font-size: 1rem; font-weight: 800; color: var(--color-text); }
 .rec-batch-code { display: block; font-size: .75rem; color: var(--color-offline); }
+.rec-batch-fourn { display: block; font-size: .8rem; font-weight: 600; color: var(--color-accent); margin-top: .15rem; }
+.rec-batch-fourn:empty { display: none; }
+.rec-batch-bl-btn {
+  width: 100%;
+  margin-bottom: .7rem;
+  padding: .6rem;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-batch-bl-btn:active { opacity: .8; }
 .rec-batch-badge {
   flex-shrink: 0;
   font-size: .72rem;

@@ -2480,6 +2480,24 @@ function creerCarteBatch(ligneCmd) {
   elNom.textContent  = etat.designation;
   elCode.textContent = ligneCmd.code_article ? `Réf. ${ligneCmd.code_article}` : '';
 
+  // Fournisseur de la ligne
+  const elFourn = carte.querySelector('.rec-batch-fourn');
+  if (elFourn) elFourn.textContent = etat.fournisseur.nom ? `🏪 ${etat.fournisseur.nom}` : '';
+
+  // Bouton « Voir le bon de livraison » : retrouve la photo BL du bloc fournisseur
+  // correspondant (prise à l'étape 2). Affiché seulement si une photo existe.
+  const btnBl = carte.querySelector('.rec-batch-bl-btn');
+  if (btnBl) {
+    const blocFourn = fournisseursListe.find(f =>
+      (etat.fournisseur.id  && f.id  === etat.fournisseur.id) ||
+      (etat.fournisseur.nom && f.nom === etat.fournisseur.nom));
+    const photoUrl = blocFourn && blocFourn.photoUrl;
+    if (photoUrl) {
+      btnBl.hidden = false;
+      btnBl.addEventListener('click', () => ouvrirApercuPhoto(photoUrl));
+    }
+  }
+
   // Champ date selon dlc_type
   const dateLabel = carte.querySelector('.rec-batch-date-label');
   const dateChamp = carte.querySelector('.rec-batch-date-champ');
