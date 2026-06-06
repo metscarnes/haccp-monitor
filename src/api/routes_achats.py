@@ -789,14 +789,28 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
         return dict(await cur2.fetchone())
 
 
-@router.delete("/catalogue/{article_id}", status_code=204)
+@router.delete("/catalogue/{article_id}", status_code=200)
 async def delete_article(article_id: int, permanent: bool = Query(False), _=Depends(require_admin)):
     async with get_db() as db:
         if permanent:
+            # Couper les liens FK avant suppression (les lignes historiques restent, juste délié)
+            await db.execute(
+                "UPDATE commande_lignes SET catalogue_fournisseur_id = NULL WHERE catalogue_fournisseur_id = ?",
+                (article_id,)
+            )
+            await db.execute(
+                "UPDATE reception_lignes SET catalogue_fournisseur_id = NULL WHERE catalogue_fournisseur_id = ?",
+                (article_id,)
+            )
+            await db.execute(
+                "UPDATE commande_receptions_mapping SET catalogue_fournisseur_id = NULL WHERE catalogue_fournisseur_id = ?",
+                (article_id,)
+            )
             await db.execute("DELETE FROM catalogue_fournisseur WHERE id = ?", (article_id,))
         else:
             await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (article_id,))
         await db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

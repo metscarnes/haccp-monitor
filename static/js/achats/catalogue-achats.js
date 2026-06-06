@@ -247,7 +247,8 @@ function afficherTable(liste) {
         <input type="checkbox" class="chk-article" data-id="${a.id}"
                style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
       </td>
-      <td ondblclick="editerInline(this,${a.id},'code_article','text')" style="cursor:pointer;${hl('Code article')}">${escHtml(a.code_article)}</td>
+      <td>${escHtml(a.fournisseur_nom)}</td>
+      <td ondblclick="editerInline(this,${a.id},'code_article','text')" style="cursor:pointer;${hl('Code article')}"><code>${escHtml(a.code_article)}</code></td>
       <td class="ach-cell-nom" ondblclick="editerInline(this,${a.id},'designation','text')" style="cursor:pointer;${hl('Désignation')}">
         ${escHtml(a.designation)}
         ${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
