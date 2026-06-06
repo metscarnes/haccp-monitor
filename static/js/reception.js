@@ -930,9 +930,9 @@ elPropreteCheckboxes.forEach(cb => {
 
 // Photo propreté NC
 if (elPropretePhotoZone) {
-  elPropretePhotoZone.addEventListener('click', () => ouvrirChoixPhoto(elPropretePhotoInput));
+  elPropretePhotoZone.addEventListener('click', () => elPropretePhotoInput.click());
   elPropretePhotoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(elPropretePhotoInput); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elPropretePhotoInput.click(); }
   });
 }
 if (elPropretePhotoInput) {
@@ -1000,7 +1000,7 @@ function ajouterBlocRefusBl() {
       </div>
       <img id="rec-refus-bl-photo-vignette-${idx}" class="rec-photo-vignette" alt="Aperçu BL" hidden>
     </div>
-    <input type="file" accept="image/*" capture="environment"
+    <input type="file" accept="image/*" capture
            id="rec-refus-bl-photo-input-${idx}" hidden aria-hidden="true">
 
     <div class="rec-fourn-search-group">
@@ -1080,9 +1080,9 @@ function initBlocRefusBl(idx) {
   const clearBtn   = document.getElementById(`rec-refus-bl-fourn-clear-${idx}`);
 
   // Photo
-  photoZone.addEventListener('click', () => ouvrirChoixPhoto(photoInput));
+  photoZone.addEventListener('click', () => photoInput.click());
   photoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(photoInput); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); photoInput.click(); }
   });
   photoInput.addEventListener('change', async () => {
     const file = photoInput.files[0];
@@ -1299,9 +1299,9 @@ function initBlocFourn(idx) {
   const results    = document.getElementById(`rec-fourn-results-${idx}`);
   const clearBtn   = document.getElementById(`rec-fourn-clear-${idx}`);
 
-  photoZone.addEventListener('click', () => ouvrirChoixPhoto(inputPhoto));
+  photoZone.addEventListener('click', () => inputPhoto.click());
   photoZone.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(inputPhoto); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputPhoto.click(); }
   });
 
   if (voirBtn) {
@@ -1463,7 +1463,7 @@ function creerBlocFourn(idx, suppressible = true) {
       </div>
       <img id="rec-photo-vignette-${idx}" class="rec-photo-vignette" alt="" hidden>
     </div>
-    <input type="file" accept="image/*" capture="environment"
+    <input type="file" accept="image/*" capture
            id="rec-input-photo-${idx}" hidden aria-hidden="true">
     <button class="rec-photo-voir-btn" id="rec-photo-voir-btn-${idx}" type="button">
       Voir la photo
