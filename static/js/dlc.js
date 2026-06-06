@@ -1130,6 +1130,12 @@ $('batch-tout').addEventListener('change', e => {
 
 $('batch-valider').addEventListener('click', async () => {
   const btn = $('batch-valider');
+
+  // Le traitement par lot est une opération admin (require_admin côté API) :
+  // on demande le mot de passe pour obtenir un token, comme pour Modifier DLC.
+  const token = await demanderMotDePasse();
+  if (!token) return;
+
   btn.disabled = true;
   btn.textContent = 'Traitement...';
   try {
@@ -1139,7 +1145,7 @@ $('batch-valider').addEventListener('click', async () => {
 
     const res = await fetch('/api/dlc/devenir/batch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         items,
         statut: batchState.statut,
