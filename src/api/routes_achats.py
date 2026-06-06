@@ -235,6 +235,28 @@ async def update_fournisseur_achats(fid: int, body: FournisseurUpdate, _=Depends
         return dict(await cur2.fetchone())
 
 
+@router.delete("/fournisseurs/{fid}", status_code=200)
+async def delete_fournisseur(fid: int, _=Depends(require_admin)):
+    async with get_db() as db:
+        cur = await db.execute("SELECT id, nom FROM fournisseurs WHERE id = ?", (fid,))
+        existing = await cur.fetchone()
+        if not existing:
+            raise HTTPException(404, "Fournisseur introuvable")
+        cur2 = await db.execute(
+            "SELECT COUNT(*) AS nb FROM catalogue_fournisseur WHERE fournisseur_id = ?", (fid,)
+        )
+        nb_articles = (await cur2.fetchone())["nb"]
+        if nb_articles > 0:
+            raise HTTPException(
+                409,
+                f"Impossible de supprimer : ce fournisseur a {nb_articles} article(s) dans le catalogue. "
+                "Supprimez d'abord les articles ou réassignez-les."
+            )
+        await db.execute("DELETE FROM fournisseurs WHERE id = ?", (fid,))
+        await db.commit()
+        return {"ok": True, "nom": existing["nom"]}
+
+
 # ---------------------------------------------------------------------------
 # Catalogue fournisseur
 # ---------------------------------------------------------------------------

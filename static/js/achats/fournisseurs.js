@@ -30,6 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveauModal);
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
+  document.getElementById('btn-supprimer').addEventListener('click', supprimerFournisseur);
   document.getElementById('form-fournisseur').addEventListener('submit', sauver);
 
   // Slider délai paiement — mise à jour label en temps réel
@@ -111,6 +112,7 @@ function afficherTable() {
 function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouveau fournisseur';
+  document.getElementById('btn-supprimer').hidden = true;
   viderForm();
   document.getElementById('modal-fournisseur').hidden = false;
   document.getElementById('f-nom').focus();
@@ -142,6 +144,7 @@ function ouvrirEditionModal(id) {
     cb.checked = joursCoches.includes(cb.value);
   });
 
+  document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-fournisseur').hidden = false;
 }
@@ -220,6 +223,32 @@ async function sauver(e) {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Enregistrer';
+  }
+}
+
+// ── Suppression ─────────────────────────────────────────────
+async function supprimerFournisseur() {
+  const id  = document.getElementById('f-id').value;
+  const nom = document.getElementById('f-nom').value;
+  if (!confirm(`Supprimer définitivement "${nom}" ?\n\nCette action est irréversible.`)) return;
+
+  const btn = document.getElementById('btn-supprimer');
+  btn.disabled = true; btn.textContent = 'Suppression…';
+
+  try {
+    const r = await fetch(`${API}/${id}`, { method: 'DELETE' });
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.detail || 'Erreur serveur');
+    }
+    fermerModal();
+    await charger();
+  } catch(err) {
+    const zone = document.getElementById('form-erreur');
+    zone.textContent = err.message;
+    zone.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Supprimer';
   }
 }
 
