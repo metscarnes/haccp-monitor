@@ -234,27 +234,35 @@ function afficherTable(liste) {
     tbody.innerHTML = `<tr><td colspan="${COLONNES.length + 2}" class="ach-vide">Aucun article trouvé</td></tr>`;
     return;
   }
-  tbody.innerHTML = liste.map(a => `
+  const manquantsSet = (a) => new Set(champsManquants(a));
+  const surbrillance = 'background:#fff3e0;';
+
+  tbody.innerHTML = liste.map(a => {
+    const manque = manquantsSet(a);
+    const hl = (champ) => manque.has(champ) ? surbrillance : '';
+    const estColis = a.format_prix === 'colis';
+    return `
     <tr class="${!a.actif ? 'ach-row--inactif' : ''}">
       <td style="width:36px;text-align:center;padding:0 8px;">
         <input type="checkbox" class="chk-article" data-id="${a.id}"
                style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
       </td>
-      <td>${escHtml(a.fournisseur_nom)}</td>
-      <td><code>${escHtml(a.code_article)}</code></td>
-      <td class="ach-cell-nom">
+      <td ondblclick="editerInline(this,${a.id},'code_article','text')" style="cursor:pointer;${hl('Code article')}">${escHtml(a.code_article)}</td>
+      <td class="ach-cell-nom" ondblclick="editerInline(this,${a.id},'designation','text')" style="cursor:pointer;${hl('Désignation')}">
         ${escHtml(a.designation)}
         ${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
-        ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${champsManquants(a).join(', ')}</span>` : ''}
+        ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${[...manque].join(', ')}</span>` : ''}
       </td>
-      <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} €</td>
-      <td><span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span></td>
-      <td class="ach-col-num">${a.qte_par_colis != null ? a.qte_par_colis : '<span style="color:#9ca3af">—</span>'}</td>
-      <td class="ach-col-num">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'prix_achat_ht','number')" style="cursor:pointer;${hl('Prix HT')}">${fmtPrix(a.prix_achat_ht)} €</td>
+      <td ondblclick="editerInline(this,${a.id},'format_prix','select')" style="cursor:pointer;${hl('Format')}">
+        <span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span>
+      </td>
+      <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'qte_par_colis','number')" style="cursor:pointer;${estColis && hl('Qté/colis')}">${a.qte_par_colis != null ? a.qte_par_colis : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'poids_unitaire_kg','number')" style="cursor:pointer;${estColis && hl('Poids unitaire')}">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${a.poids_colis_kg != null ? '<strong>' + a.poids_colis_kg.toFixed(3) + ' kg</strong>' : '<span style="color:#9ca3af">—</span>'}</td>
-      <td>${a.tva_percent ?? 5.5}%</td>
-      <td>${escHtml(a.conditionnement || '—')}</td>
-      <td>
+      <td ondblclick="editerInline(this,${a.id},'tva_percent','number')" style="cursor:pointer;">${a.tva_percent ?? 5.5}%</td>
+      <td ondblclick="editerInline(this,${a.id},'conditionnement','text')" style="cursor:pointer;">${escHtml(a.conditionnement || '—')}</td>
+      <td ondblclick="editerInline(this,${a.id},'dlc_type','select')" style="cursor:pointer;">
         <span class="ach-badge ach-badge--${a.dlc_type === 'dlc' ? 'dlc' : a.dlc_type === 'date_abattage' ? 'abattage' : 'no-dlc'}">
           ${DLC_LABELS[a.dlc_type] || a.dlc_type}
         </span>
@@ -266,8 +274,8 @@ function afficherTable(liste) {
           : `<button class="ach-btn ach-btn--small ach-btn--ok"    onclick="toggleActif(${a.id}, true)"  title="Réactiver">↺</button>`
         }
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 
   // Reset checkbox "tout sélectionner"
   document.getElementById('chk-tout').checked = false;
@@ -479,6 +487,66 @@ function recalcPoidsColis() {
   } else {
     out.value = '';
   }
+}
+
+// ── Édition inline (double-clic sur cellule) ─────────────────
+const SELECT_OPTIONS = {
+  format_prix: [['kg','€/kg'], ['colis','€/colis']],
+  dlc_type:    [['dlc','DLC'], ['date_abattage','Abattage'], ['no_dlc','Sans DLC']],
+};
+
+function editerInline(td, articleId, champ, type) {
+  if (td.querySelector('input,select')) return; // déjà en édition
+  const valActuelle = articles.find(a => a.id === articleId)?.[champ] ?? '';
+
+  let ctrl;
+  if (type === 'select') {
+    ctrl = document.createElement('select');
+    ctrl.style.cssText = 'width:100%;font:inherit;border:2px solid var(--color-accent);border-radius:4px;padding:2px 4px;';
+    SELECT_OPTIONS[champ].forEach(([val, lbl]) => {
+      const opt = document.createElement('option');
+      opt.value = val; opt.textContent = lbl;
+      if (val === String(valActuelle)) opt.selected = true;
+      ctrl.appendChild(opt);
+    });
+  } else {
+    ctrl = document.createElement('input');
+    ctrl.type = type === 'number' ? 'number' : 'text';
+    ctrl.value = valActuelle ?? '';
+    ctrl.step = 'any';
+    ctrl.style.cssText = 'width:100%;font:inherit;border:2px solid var(--color-accent);border-radius:4px;padding:2px 4px;box-sizing:border-box;';
+  }
+
+  const contenuOriginal = td.innerHTML;
+  td.innerHTML = '';
+  td.appendChild(ctrl);
+  ctrl.focus();
+  if (ctrl.select) ctrl.select();
+
+  async function valider() {
+    let nouvelleVal = type === 'number' ? (parseFloat(ctrl.value) || null) : ctrl.value.trim() || null;
+    td.innerHTML = contenuOriginal; // restaure pendant la requête
+    if (nouvelleVal === valActuelle) return;
+    try {
+      const r = await fetch(`${API_CAT}/${articleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [champ]: nouvelleVal }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+      await chargerCatalogue();
+    } catch(err) {
+      alert('Erreur : ' + err.message);
+    }
+  }
+
+  ctrl.addEventListener('blur', valider);
+  ctrl.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { ctrl.blur(); }
+    if (e.key === 'Escape') { td.innerHTML = contenuOriginal; ctrl.removeEventListener('blur', valider); }
+  });
+  // Pour select : valider immédiatement au changement
+  if (type === 'select') ctrl.addEventListener('change', () => ctrl.blur());
 }
 
 async function supprimerArticle() {
