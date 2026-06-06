@@ -142,7 +142,8 @@ class FournisseurUpdate(BaseModel):
 
 
 class LigneCreate(BaseModel):
-    produit_id: int
+    produit_id: Optional[int] = None        # facultatif : réception basée catalogue achats
+    designation_libre: Optional[str] = None # libellé article si pas de produit interne
     catalogue_fournisseur_id: Optional[int] = None
     fournisseur_id: Optional[int] = None
     fournisseur_nom: Optional[str] = None
@@ -326,11 +327,16 @@ async def ajouter_ligne(reception_id: int, body: LigneCreate):
         if not await cur.fetchone():
             raise HTTPException(404, "Réception non trouvée")
 
-        cur2 = await db.execute(
-            "SELECT id FROM produits WHERE id = ?", (body.produit_id,)
-        )
-        if not await cur2.fetchone():
-            raise HTTPException(400, "produit_id introuvable")
+        # produit_id facultatif (réception basée catalogue achats). S'il est fourni,
+        # il doit exister. Sinon, designation_libre identifie l'article.
+        if body.produit_id is not None:
+            cur2 = await db.execute(
+                "SELECT id FROM produits WHERE id = ?", (body.produit_id,)
+            )
+            if not await cur2.fetchone():
+                raise HTTPException(400, "produit_id introuvable")
+        elif not (body.designation_libre or "").strip():
+            raise HTTPException(400, "produit_id ou designation_libre requis")
 
         lid = await add_reception_ligne(db, reception_id, body.model_dump())
 

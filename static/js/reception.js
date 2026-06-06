@@ -2440,25 +2440,28 @@ function sortirModeBatch() {
   if (elBtnAjouter)   elBtnAjouter.hidden = false;
 }
 
-// Résout une désignation de commande vers un produit du catalogue (1er match).
+// Tente un rattachement souple vers un produit interne (bonus, non bloquant).
+// Le catalogue achats est la source : si rien ne matche, on garde la désignation.
 function resoudreProduit(designation) {
   const res = filtrerProduits(designation || '');
-  return res.length ? res[0] : null;
+  return res.length === 1 ? res[0] : null;  // match seulement si non ambigu
 }
 
-// Crée une carte éditable pour une ligne de commande.
+// Crée une carte éditable pour une ligne de commande (article du catalogue achats).
 function creerCarteBatch(ligneCmd) {
   const frag = elBatchTpl.content.cloneNode(true);
   const carte = frag.querySelector('.rec-batch-carte');
 
-  const produit = resoudreProduit(ligneCmd.designation);
+  const produit = resoudreProduit(ligneCmd.designation);  // peut rester null
   const dlcType = ligneCmd.dlc_type || null;
 
-  // État local de la carte
+  // État local de la carte. L'article du catalogue achats fait foi : produit
+  // interne facultatif (rattachement souple), designation = libellé commande.
   const etat = {
     el: carte,
     ligneCmd,
-    produit,                       // peut être null → champ recherche affiché
+    produit,                       // null = pas de produit interne (OK, non bloquant)
+    designation: ligneCmd.designation || ligneCmd.code_article || 'Article',
     dlcType,
     catalogueId: ligneCmd.catalogue_fournisseur_id || null,
     fournisseur: {
@@ -2471,18 +2474,11 @@ function creerCarteBatch(ligneCmd) {
   };
   batchLignes.push(etat);
 
-  // En-tête
+  // En-tête : toujours le libellé de la commande (catalogue achats)
   const elNom  = carte.querySelector('.rec-batch-nom');
   const elCode = carte.querySelector('.rec-batch-code');
-  elNom.textContent  = produit ? produit.nom : ligneCmd.designation;
-  elCode.textContent = produit ? (produit.code_unique || '') : `(${ligneCmd.code_article || '?'})`;
-
-  // Résolution produit manuelle si non reconnu
-  if (!produit) {
-    const resolve = carte.querySelector('.rec-batch-resolve');
-    resolve.hidden = false;
-    initRechercheProduitCarte(carte, etat);
-  }
+  elNom.textContent  = etat.designation;
+  elCode.textContent = ligneCmd.code_article ? `Réf. ${ligneCmd.code_article}` : '';
 
   // Champ date selon dlc_type
   const dateLabel = carte.querySelector('.rec-batch-date-label');
@@ -2503,12 +2499,15 @@ function creerCarteBatch(ligneCmd) {
   const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
   const inpLot        = carte.querySelector('.rec-batch-lot');
   btnLotInterne.addEventListener('click', async () => {
-    const prod = etat.produit;
-    if (!prod || !receptionId) { alert('Sélectionnez d\'abord le produit.'); return; }
+    if (!receptionId) return;
+    // Base du lot interne : code produit interne si rattaché, sinon réf. catalogue achats.
+    const code = (etat.produit && etat.produit.code_unique)
+      || etat.ligneCmd.code_article
+      || 'ART';
     btnLotInterne.disabled = true; btnLotInterne.textContent = '⏳';
     try {
       const data = await apiFetch(
-        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(prod.code_unique)}`);
+        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`);
       inpLot.value = data.lot_interne;
       inpLot.readOnly = true;
       inpLot.style.background = '#f0faf3';
@@ -2642,14 +2641,16 @@ function majBtnTerminerBatch() {
 // Construit le payload d'une carte (même forme que _buildPayload unitaire).
 function _buildPayloadBatch(etat) {
   const payload = {
-    produit_id:           etat.produit.id,
     couleur_conforme:     etat.criteres.couleur,
     consistance_conforme: etat.criteres.consistance,
     exsudat_conforme:     etat.criteres.exsudat,
     odeur_conforme:       etat.criteres.odeur,
     lot_interne:          etat.lotInterne ? 1 : 0,
     origine:              'France',
+    // Article du catalogue achats : produit interne facultatif, libellé toujours envoyé.
+    designation_libre:    etat.designation,
   };
+  if (etat.produit)         payload.produit_id = etat.produit.id;
   if (etat.fournisseur.id)  payload.fournisseur_id  = etat.fournisseur.id;
   if (etat.fournisseur.nom) payload.fournisseur_nom = etat.fournisseur.nom;
   if (etat.catalogueId)     payload.catalogue_fournisseur_id = etat.catalogueId;
@@ -2682,14 +2683,10 @@ function _buildPayloadBatch(etat) {
 
 // Valide toute la liste : POST chaque carte puis passe au récap.
 async function validerBatch() {
-  // Vérifier que chaque carte a un produit résolu et une date DLC non passée
+  // Seule garde : une DLC saisie ne doit pas être dans le passé (pas pour l'abattage).
+  // Le produit interne n'est PAS requis (article catalogue achats = source).
   const today = new Date().toISOString().slice(0, 10);
   for (const etat of batchLignes) {
-    if (!etat.produit) {
-      etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      alert('Un produit n\'est pas reconnu — sélectionnez-le dans la carte.');
-      return;
-    }
     const inpDate = etat.el.querySelector('.rec-batch-date');
     if (etat.dlcType !== 'date_abattage' && inpDate.value && inpDate.value < today) {
       inpDate.classList.add('rec-champ-invalide');
@@ -2709,7 +2706,9 @@ async function validerBatch() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(_buildPayloadBatch(etat)),
       });
-      lignesAjoutees.push(_ligneToLocal(ligne, etat.produit));
+      // Produit d'affichage : produit interne si rattaché, sinon désignation catalogue.
+      const prodAffiche = etat.produit || { id: null, nom: etat.designation };
+      lignesAjoutees.push(_ligneToLocal(ligne, prodAffiche));
     }
     majListeLignes();
     remplirRecap();

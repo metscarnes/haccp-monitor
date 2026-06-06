@@ -1295,8 +1295,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # statut='en_attente' → le produit n'entre PAS en stock tant que lot/DLC non saisis.
             "ALTER TABLE reception_lignes ADD COLUMN statut TEXT DEFAULT 'complet'",
             "ALTER TABLE reception_lignes ADD COLUMN dlc_type TEXT",        # 'dlc' | 'date_abattage' | 'no_dlc'
-            "ALTER TABLE reception_lignes ADD COLUMN attente_motif TEXT",   # 'lot' | 'dlc' | 'lot_dlc'
+            "ALTER TABLE reception_lignes ADD COLUMN attente_motif TEXT",   # 'lot' | 'dlc' | 'lot_dlc' | 'produit'
             "CREATE INDEX IF NOT EXISTS idx_reception_lignes_statut ON reception_lignes(statut)",
+            # v5.5 — Réception basée sur le catalogue achats : produit interne facultatif.
+            # designation_libre = libellé de l'article catalogue fournisseur quand aucun
+            # produit interne (table produits) n'est rattaché (produit_id NULL).
+            "ALTER TABLE reception_lignes ADD COLUMN designation_libre TEXT",
         ]
         for sql in migrations:
             try:
@@ -2551,12 +2555,17 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     rec_row = await cur.fetchone()
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
-    # Récupérer temperature_conservation du produit
-    cur2 = await db.execute(
-        "SELECT temperature_conservation FROM produits WHERE id = ?", (data["produit_id"],)
-    )
-    prod_row = await cur2.fetchone()
-    temp_conservation = prod_row["temperature_conservation"] if prod_row else None
+    # Récupérer temperature_conservation du produit interne (facultatif).
+    # En réception basée sur le catalogue achats, produit_id peut être NULL :
+    # la ligne reste valable, identifiée par designation_libre + catalogue_fournisseur_id.
+    produit_id = data.get("produit_id")
+    temp_conservation = None
+    if produit_id:
+        cur2 = await db.execute(
+            "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
+        )
+        prod_row = await cur2.fetchone()
+        temp_conservation = prod_row["temperature_conservation"] if prod_row else None
 
     # Calculer temperature_conforme selon la logique de tolérance HACCP
     temp_recep = data.get("temperature_reception")
@@ -2589,7 +2598,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
         """
         INSERT INTO reception_lignes
             (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
-             date_abattage, dlc_type, statut, attente_motif,
+             date_abattage, dlc_type, statut, attente_motif, designation_libre,
              origine, poids_kg, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
@@ -2597,11 +2606,11 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
-            data["produit_id"],
+            produit_id,
             data.get("catalogue_fournisseur_id"),
             data.get("fournisseur_id"),
             data.get("fournisseur_nom"),
@@ -2613,6 +2622,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             data.get("dlc_type"),
             statut,
             attente_motif,
+            data.get("designation_libre"),
             data.get("origine", "France"),
             data.get("poids_kg"),
             temp_recep,
@@ -2889,7 +2899,7 @@ async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
             rl.poids_kg        AS poids_kg,
             rl.origine         AS origine,
             p.id               AS produit_id,
-            p.nom              AS produit_nom,
+            COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
             p.code_unique      AS code_unique,
             COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
             r.date_reception   AS date_reception,
@@ -2898,6 +2908,7 @@ async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
         FROM reception_lignes rl
         JOIN receptions   r ON r.id = rl.reception_id
         LEFT JOIN produits     p ON p.id = rl.produit_id
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
         LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
         WHERE COALESCE(rl.statut, 'complet') = 'en_attente'
         ORDER BY r.date_reception DESC, r.heure_reception DESC, rl.id DESC
@@ -3155,11 +3166,12 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
     cur2 = await db.execute(
         """
         SELECT rl.*,
-               pr.nom  AS produit_nom,
+               COALESCE(pr.nom, cf.designation, rl.designation_libre) AS produit_nom,
                pr.espece,
                COALESCE(fv.nom, rl.fournisseur_nom) AS fournisseur_nom
         FROM reception_lignes rl
         LEFT JOIN produits     pr ON pr.id = rl.produit_id
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
         LEFT JOIN fournisseurs fv ON fv.id = rl.fournisseur_id
         WHERE rl.reception_id = ?
         ORDER BY rl.id
@@ -4190,8 +4202,8 @@ async def get_dlc_calendrier(
                 rl.poids_kg          AS quantite,
                 'kg'                 AS unite,
                 p.id                 AS produit_id,
-                p.nom                AS produit_nom,
-                p.categorie          AS categorie,
+                COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
+                COALESCE(p.categorie, 'matiere_premiere') AS categorie,
                 f.nom                AS fournisseur_nom,
                 r.date_reception     AS date_origine,
                 r.heure_reception    AS heure_origine,
@@ -4203,7 +4215,8 @@ async def get_dlc_calendrier(
                 TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM reception_lignes rl
             JOIN receptions r       ON r.id  = rl.reception_id
-            JOIN produits   p       ON p.id  = rl.produit_id
+            LEFT JOIN produits   p       ON p.id  = rl.produit_id
+            LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             LEFT JOIN personnel pers_recep ON pers_recep.id = r.personnel_id
             LEFT JOIN dlc_devenir dd
@@ -4211,7 +4224,7 @@ async def get_dlc_calendrier(
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
             WHERE rl.dlc IS NOT NULL
               AND rl.dlc BETWEEN ? AND ?
-              AND p.boutique_id = ?
+              AND (p.id IS NULL OR p.boutique_id = ?)
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
@@ -4460,9 +4473,9 @@ async def get_stock_unifie(
                 'reception_ligne'  AS source_type,
                 rl.id              AS source_id,
                 p.id               AS produit_id,
-                p.nom              AS produit_nom,
-                p.categorie        AS categorie,
-                p.type_produit     AS type_produit,
+                COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
+                COALESCE(p.categorie, 'matiere_premiere') AS categorie,
+                COALESCE(p.type_produit, 'brut')          AS type_produit,
                 p.espece           AS espece,
                 COALESCE(rl.dlc, rl.dluo) AS dlc,
                 rl.dlc IS NULL AND rl.dluo IS NOT NULL AS est_dluo,
@@ -4476,10 +4489,11 @@ async def get_stock_unifie(
                 f.nom              AS fournisseur_nom
             FROM reception_lignes rl
             JOIN receptions   r ON r.id = rl.reception_id
-            JOIN produits     p ON p.id = rl.produit_id
+            LEFT JOIN produits     p ON p.id = rl.produit_id
+            LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
             LEFT JOIN personnel pers_recep ON pers_recep.id = r.personnel_id
-            WHERE p.boutique_id = ?
+            WHERE (p.id IS NULL OR p.boutique_id = ?)
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
