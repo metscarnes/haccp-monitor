@@ -289,9 +289,12 @@
           </select>
         </div>
         <div id="form-erreur" class="ach-form-erreur" hidden></div>
-        <div class="ach-modal-footer">
-          <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
-          <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
+        <div class="ach-modal-footer" style="justify-content:space-between;">
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-article" hidden>Supprimer</button>
+          <div style="display:flex;gap:var(--space-2);">
+            <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
+            <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
+          </div>
         </div>
       </form>
     </div>

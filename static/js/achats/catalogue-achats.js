@@ -55,6 +55,7 @@ function bindEvents() {
   });
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
+  document.getElementById('btn-supprimer-article').addEventListener('click', supprimerArticle);
   document.getElementById('import-fermer').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-lancer').addEventListener('click', lancerImport);
@@ -299,7 +300,7 @@ async function actionMasse(action) {
     await Promise.all(ids.map(id => {
       if (action === 'desactiver') return fetch(`${API_CAT}/${id}`, { method: 'DELETE' });
       if (action === 'reactiver')  return fetch(`${API_CAT}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actif: true }) });
-      if (action === 'supprimer')  return fetch(`${API_CAT}/${id}`, { method: 'DELETE' }); // même endpoint pour l'instant
+      if (action === 'supprimer')  return fetch(`${API_CAT}/${id}?permanent=true`, { method: 'DELETE' });
     }));
     await chargerCatalogue();
   } finally {
@@ -433,6 +434,7 @@ async function toggleActif(id, actif) {
 function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouvel article';
+  document.getElementById('btn-supprimer-article').hidden = true;
   viderForm();
   document.getElementById('modal-article').hidden = false;
   document.getElementById('a-code').focus();
@@ -456,6 +458,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-conditionnement').value = a.conditionnement || '';
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
   recalcPoidsColis();
+  document.getElementById('btn-supprimer-article').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
 }
@@ -469,6 +472,30 @@ function recalcPoidsColis() {
     out.value = (Math.round(qte * poids * 1000) / 1000) + ' kg';
   } else {
     out.value = '';
+  }
+}
+
+async function supprimerArticle() {
+  const id          = document.getElementById('a-id').value;
+  const designation = document.getElementById('a-designation').value;
+  if (!confirm(`Supprimer définitivement "${designation}" ?\n\nL'article sera effacé de la base de données. Cette action est irréversible.`)) return;
+
+  const btn = document.getElementById('btn-supprimer-article');
+  btn.disabled = true; btn.textContent = 'Suppression…';
+
+  try {
+    const r = await fetch(`${API_CAT}/${id}?permanent=true`, { method: 'DELETE' });
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.detail || 'Erreur serveur');
+    }
+    fermerModal();
+    await chargerCatalogue();
+  } catch(err) {
+    const z = document.getElementById('form-erreur');
+    z.textContent = err.message; z.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Supprimer';
   }
 }
 

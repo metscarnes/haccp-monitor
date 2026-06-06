@@ -790,9 +790,12 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
 
 
 @router.delete("/catalogue/{article_id}", status_code=204)
-async def delete_article(article_id: int, _=Depends(require_admin)):
+async def delete_article(article_id: int, permanent: bool = Query(False), _=Depends(require_admin)):
     async with get_db() as db:
-        await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (article_id,))
+        if permanent:
+            await db.execute("DELETE FROM catalogue_fournisseur WHERE id = ?", (article_id,))
+        else:
+            await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (article_id,))
         await db.commit()
 
 
