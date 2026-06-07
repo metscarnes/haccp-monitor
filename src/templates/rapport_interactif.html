@@ -54,6 +54,22 @@
   }
   .header .titre { color: var(--dore); font-weight: 600; }
   .header .meta { color: var(--creme); opacity: 0.8; font-size: 0.75rem; }
+  .header .btn-retour {
+    padding: 0.5rem 1rem;
+    background: var(--brun);
+    color: var(--creme);
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .header .btn-retour:hover { background: #5a3415; }
+  .header .btn-retour:active { transform: scale(0.98); }
 
   /* ---------- CONTAINER ---------- */
   .container { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
@@ -627,6 +643,7 @@
 <!-- HEADER DISCRET -->
 <div class="header">
   <div class="header-content">
+    <button class="btn-retour" onclick="window.history.back()">← Retour</button>
     <span class="titre">Mets Carnés Holding — Rapport HACCP</span>
     <span class="meta">{{ boutique.nom }} · Généré le {{ genere_le }}</span>
   </div>
