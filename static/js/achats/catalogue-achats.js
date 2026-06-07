@@ -5,6 +5,8 @@ const API_FOURN = '/api/achats/fournisseurs';
 
 let articles     = [];
 let fournisseurs = [];
+let produitsInternes = [];           // catalogue produits de base (pour le pont Production)
+let produitLabelToId = new Map();    // libellé datalist → produit_id
 let modeEdition  = false;
 let listeFiltree = [];   // résultat du dernier filtrer()
 
@@ -44,7 +46,7 @@ const COLONNES = [
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([chargerFournisseurs(), chargerCatalogue()]);
+  await Promise.all([chargerFournisseurs(), chargerCatalogue(), chargerProduitsInternes()]);
   bindEvents();
   const params = new URLSearchParams(location.search);
   if (params.get('fournisseur')) {
@@ -77,6 +79,12 @@ function bindEvents() {
   document.getElementById('a-qte-colis').addEventListener('input', recalcPoidsColis);
   document.getElementById('a-poids-unitaire').addEventListener('input', recalcPoidsColis);
   document.getElementById('a-famille').addEventListener('change', () => majSousFamilleForm());
+  // Pont produit interne : résoudre l'id à la saisie, bouton délier
+  document.getElementById('a-produit-recherche').addEventListener('input', resoudreProduitInterne);
+  document.getElementById('a-produit-clear').addEventListener('click', () => {
+    document.getElementById('a-produit-recherche').value = '';
+    document.getElementById('a-produit-id').value = '';
+  });
 
   // Filtres
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
@@ -123,6 +131,32 @@ async function chargerFournisseurs() {
     sel.insertAdjacentHTML('beforeend', `<option value="${f.id}">${escHtml(f.nom)}</option>`);
     selForm.insertAdjacentHTML('beforeend', `<option value="${f.id}">${escHtml(f.nom)}</option>`);
   });
+}
+
+// Catalogue produits de base → datalist pour le rattachement « Produit interne ».
+async function chargerProduitsInternes() {
+  try {
+    const r = await fetch('/api/produits');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    produitsInternes = await r.json();
+  } catch (e) {
+    console.error('Chargement produits internes impossible :', e);
+    produitsInternes = [];
+    return;
+  }
+  const dl = document.getElementById('dl-produits');
+  produitLabelToId = new Map();
+  dl.innerHTML = produitsInternes.map(p => {
+    const label = p.code_unique ? `${p.nom} — ${p.code_unique}` : p.nom;
+    produitLabelToId.set(label, p.id);
+    return `<option value="${escHtml(label)}"></option>`;
+  }).join('');
+}
+
+// Libellé datalist d'un produit (réversible via produitLabelToId).
+function labelProduit(p) {
+  if (!p) return '';
+  return p.code_unique ? `${p.nom} — ${p.code_unique}` : p.nom;
 }
 
 async function chargerCatalogue() {
@@ -270,6 +304,7 @@ function afficherTable(liste) {
       <td class="ach-cell-nom" ondblclick="editerInline(this,${a.id},'designation','text')" style="cursor:pointer;${hl('Désignation')}">
         ${escHtml(a.designation)}
         ${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
+        ${a.produit_id ? `<span class="ach-badge ach-badge--dlc" title="Rattaché au produit interne — visible en Production" style="margin-left:6px;">🔗 ${escHtml(a.produit_nom || 'Produit')}</span>` : ''}
         ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${[...manque].join(', ')}</span>` : ''}
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'prix_achat_ht','number')" style="cursor:pointer;${hl('Prix HT')}">${fmtPrix(a.prix_achat_ht)} €</td>
@@ -504,6 +539,13 @@ async function toggleActif(id, actif) {
 }
 
 // ── Modal article ────────────────────────────────────────────
+// Résout l'id du produit interne à partir du libellé saisi dans le datalist.
+// Champ vide ou libellé inconnu (saisie libre) → id vide.
+function resoudreProduitInterne() {
+  const val = document.getElementById('a-produit-recherche').value.trim();
+  document.getElementById('a-produit-id').value = produitLabelToId.get(val) ?? '';
+}
+
 function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouvel article';
@@ -532,6 +574,11 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-famille').value = a.famille || '';
   majSousFamilleForm(a.sous_famille || '');
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
+  // Produit interne rattaché (pont Production)
+  const prod = a.produit_id ? produitsInternes.find(p => p.id === a.produit_id) : null;
+  document.getElementById('a-produit-recherche').value =
+    prod ? labelProduit(prod) : (a.produit_nom || '');
+  document.getElementById('a-produit-id').value = a.produit_id || '';
   recalcPoidsColis();
   document.getElementById('btn-supprimer-article').hidden = false;
   document.getElementById('form-erreur').hidden = true;
@@ -675,7 +722,8 @@ function fermerModal() {
 
 function viderForm() {
   ['a-id','a-code','a-designation','a-prix','a-conditionnement',
-   'a-qte-colis','a-poids-unitaire','a-poids-colis'].forEach(id => {
+   'a-qte-colis','a-poids-unitaire','a-poids-colis',
+   'a-produit-recherche','a-produit-id'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('a-format-prix').value = 'kg';
@@ -705,6 +753,15 @@ async function sauver(e) {
     sous_famille:    document.getElementById('a-sous-famille').value || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
   };
+
+  // Pont produit interne : id résolu = rattachement ; vide = pas de lien.
+  // En édition, on envoie 0 pour délier explicitement (NULL en base).
+  const produitId = document.getElementById('a-produit-id').value;
+  if (produitId) {
+    body.produit_id = parseInt(produitId, 10);
+  } else if (modeEdition) {
+    body.produit_id = 0;
+  }
 
   try {
     const id = document.getElementById('a-id').value;

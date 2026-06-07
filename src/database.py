@@ -734,9 +734,11 @@ CREATE TABLE IF NOT EXISTS catalogue_fournisseur (
     sous_famille     TEXT,                    -- sous-catégorie dépendante de la famille
     dlc_type         TEXT    DEFAULT 'dlc',   -- 'dlc' | 'date_abattage' | 'no_dlc'
     dlc_jours        INTEGER,
+    produit_id       INTEGER,                 -- pont vers le produit interne (Production/FIFO)
     actif            INTEGER DEFAULT 1,
     date_maj         DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+    FOREIGN KEY (produit_id)     REFERENCES produits(id),
     UNIQUE(fournisseur_id, code_article)
 );
 
@@ -1199,6 +1201,11 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v5.7 — Catalogue fournisseur : classification famille / sous-famille
             "ALTER TABLE catalogue_fournisseur ADD COLUMN famille TEXT",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN sous_famille TEXT",
+            # v5.8 — Pont catalogue achats → produit interne : un article du catalogue
+            # achats peut être rattaché à un produit (table produits). À la réception,
+            # ce lien remplit produit_id automatiquement → le lot devient visible pour
+            # la Production (recettes + moteur FIFO, qui s'appuient sur produit_id).
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN produit_id INTEGER REFERENCES produits(id)",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",
@@ -2643,6 +2650,21 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     # En réception basée sur le catalogue achats, produit_id peut être NULL :
     # la ligne reste valable, identifiée par designation_libre + catalogue_fournisseur_id.
     produit_id = data.get("produit_id")
+
+    # Pont catalogue achats → produit interne : si la ligne provient d'un article
+    # du catalogue achats sans produit interne explicite, on récupère le produit
+    # rattaché à cet article (mapping défini dans le catalogue achats). Le lot
+    # devient alors visible pour la Production (recettes + FIFO sur produit_id).
+    catalogue_id = data.get("catalogue_fournisseur_id")
+    if not produit_id and catalogue_id:
+        cur_cat = await db.execute(
+            "SELECT produit_id FROM catalogue_fournisseur WHERE id = ?", (catalogue_id,)
+        )
+        cat_row = await cur_cat.fetchone()
+        if cat_row and cat_row["produit_id"]:
+            produit_id = cat_row["produit_id"]
+            data["produit_id"] = produit_id  # propage pour l'INSERT et les calculs
+
     temp_conservation = None
     if produit_id:
         cur2 = await db.execute(

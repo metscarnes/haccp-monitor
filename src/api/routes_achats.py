@@ -91,6 +91,7 @@ class CatalogueArticleCreate(BaseModel):
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
+    produit_id: Optional[int] = None          # pont vers le produit interne (Production/FIFO)
 
 
 class CatalogueArticleUpdate(BaseModel):
@@ -107,6 +108,7 @@ class CatalogueArticleUpdate(BaseModel):
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = None
     actif: Optional[bool] = None
+    produit_id: Optional[int] = None          # pont vers le produit interne ; 0 = délier
 
 
 class CommandeLigneCreate(BaseModel):
@@ -276,9 +278,10 @@ async def get_catalogue(
 ):
     async with get_db() as db:
         sql = """
-            SELECT c.*, f.nom AS fournisseur_nom
+            SELECT c.*, f.nom AS fournisseur_nom, p.nom AS produit_nom
             FROM catalogue_fournisseur c
             JOIN fournisseurs f ON f.id = c.fournisseur_id
+            LEFT JOIN produits p ON p.id = c.produit_id
             WHERE f.boutique_id = 1
         """
         params = []
@@ -753,7 +756,11 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
 async def get_article(article_id: int):
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT c.*, f.nom AS fournisseur_nom FROM catalogue_fournisseur c JOIN fournisseurs f ON f.id = c.fournisseur_id WHERE c.id = ?",
+            "SELECT c.*, f.nom AS fournisseur_nom, p.nom AS produit_nom "
+            "FROM catalogue_fournisseur c "
+            "JOIN fournisseurs f ON f.id = c.fournisseur_id "
+            "LEFT JOIN produits p ON p.id = c.produit_id "
+            "WHERE c.id = ?",
             (article_id,)
         )
         row = await cur.fetchone()
@@ -782,12 +789,12 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
             """INSERT INTO catalogue_fournisseur
                (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                 qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
-                famille, sous_famille, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                famille, sous_famille, dlc_type, produit_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
              format_prix, body.qte_par_colis, body.poids_unitaire_kg,
              poids_colis, body.tva_percent, body.conditionnement,
-             body.famille, body.sous_famille, body.dlc_type)
+             body.famille, body.sous_famille, body.dlc_type, body.produit_id)
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
@@ -805,6 +812,10 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
         fields = {k: v for k, v in body.model_dump().items() if v is not None}
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
+
+        # Pont produit interne : produit_id = 0 signifie « délier » → NULL en base.
+        if fields.get("produit_id") == 0:
+            fields["produit_id"] = None
 
         if "format_prix" in fields:
             fields["format_prix"] = _normaliser_format_prix(fields["format_prix"])
