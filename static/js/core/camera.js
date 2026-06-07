@@ -103,13 +103,21 @@
         // `ideal` est seulement une préférence et le navigateur peut l'ignorer.
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { exact: facing } },
+            video: {
+              facingMode: { exact: facing },
+              width:  { ideal: 3840 },
+              height: { ideal: 2160 },
+            },
             audio: false,
           });
         } catch (e) {
           // L'appareil n'a pas la caméra demandée (ex: pas d'arrière) → repli souple.
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: facing },
+            video: {
+              facingMode: facing,
+              width:  { ideal: 3840 },
+              height: { ideal: 2160 },
+            },
             audio: false,
           });
         }
@@ -145,7 +153,7 @@
         const file = new File([blob], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
         fermer();
         injecterFichier(input, file);
-      }, 'image/jpeg', 0.92);
+      }, 'image/jpeg', 0.95);
     });
 
     demarrer();
