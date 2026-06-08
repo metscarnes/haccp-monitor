@@ -553,7 +553,7 @@ async def download_template():
     sf_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "sous_famille")
     sf_letter = ws.cell(row=1, column=sf_col).column_letter
     sous_familles = (
-        "Bœuf,Veau,Agneau,Porc,Volaille,Cheval,"
+        "Boeuf,Veau,Agneau,Porc,Volaille,Cheval,"
         "Saucisse,Jambon,Pâté,Rillettes,Lardons,"
         "Plat cuisiné,Entrée,Dessert,"
         "Épice,Farine,Huile,Sel,Sucre,Sauce,"
@@ -663,7 +663,7 @@ async def download_template():
         ("", False, "333333", None, 11),
         ("11. Sous-famille  [facultatif]", True, "2D5A3A", None, 11),
         ("    Sous-catégorie selon la famille choisie.", False, "333333", None, 11),
-        ("    Exemples pour Viande : Bœuf | Veau | Agneau | Porc | Volaille | Cheval", False, "8A6D3B", "FFF8E1", 10),
+        ("    Exemples pour Viande : Boeuf | Veau | Agneau | Porc | Volaille | Cheval", False, "8A6D3B", "FFF8E1", 10),
         ("    Exemples pour Charcuterie : Saucisse | Jambon | Pâté | Rillettes", False, "8A6D3B", "FFF8E1", 10),
         ("", False, "333333", None, 11),
         ("12. Type de DLC  [facultatif, défaut = dlc]", True, "2D5A3A", None, 11),
@@ -677,12 +677,12 @@ async def download_template():
         ("Exemple A — Carcasse bœuf vendue AU KILO :", True, "2D5A3A", None, 11),
         ("   Fournisseur=Boucherie Martin | Code=CARC-BF | Désignation=Carcasse bœuf", False, "8A6D3B", "FFF8E1", 10),
         ("   Prix=9.70 | Prix au=kg | Qté colis=(vide) | Poids unitaire=(vide)", False, "8A6D3B", "FFF8E1", 10),
-        ("   TVA=5.5 | Conditionnement=Carcasse ~150kg | Famille=Viande | Sous-famille=Bœuf | DLC=date_abattage", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Conditionnement=Carcasse ~150kg | Famille=Viande | Sous-famille=Boeuf | DLC=date_abattage", False, "8A6D3B", "FFF8E1", 10),
         ("", False, "333333", None, 11),
         ("Exemple B — Steaks hachés vendus AU COLIS (carton de 10 × 185 g) :", True, "2D5A3A", None, 11),
         ("   Fournisseur=Boucherie Martin | Code=STK-185 | Désignation=Steak haché 185g", False, "8A6D3B", "FFF8E1", 10),
         ("   Prix=18.00 | Prix au=colis | Qté colis=10 | Poids unitaire=0.185", False, "8A6D3B", "FFF8E1", 10),
-        ("   TVA=5.5 | Conditionnement=Carton de 10 | Famille=Viande | Sous-famille=Bœuf | DLC=dlc", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Conditionnement=Carton de 10 | Famille=Viande | Sous-famille=Boeuf | DLC=dlc", False, "8A6D3B", "FFF8E1", 10),
         ("   → Poids total du colis calculé automatiquement : 10 × 0,185 = 1,85 kg", False, "555555", None, 10),
         ("", False, "333333", None, 11),
         ("QUESTIONS FRÉQUENTES", True, "2D7D46", None, 12),
