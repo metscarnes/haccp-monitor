@@ -290,7 +290,7 @@ async def get_catalogue(
         if q:
             sql += " AND (c.designation LIKE ? OR c.code_article LIKE ?)"
             params += [f"%{q}%", f"%{q}%"]
-        sql += " ORDER BY f.nom, c.designation"
+        sql += " ORDER BY f.nom, c.famille, c.sous_famille, c.designation"
         cur = await db.execute(sql, params)
         articles = [dict(r) for r in await cur.fetchall()]
 
@@ -352,7 +352,7 @@ async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
         if fournisseur_id:
             sql += " AND c.fournisseur_id = ?"
             params.append(fournisseur_id)
-        sql += " ORDER BY f.nom, c.designation"
+        sql += " ORDER BY f.nom, c.famille, c.sous_famille, c.designation"
         cur = await db.execute(sql, params)
         articles = [dict(r) for r in await cur.fetchall()]
 
