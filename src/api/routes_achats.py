@@ -1421,7 +1421,12 @@ async def envoyer_commande(commande_id: int):
             raise HTTPException(400, "Aucun email commercial renseigné pour ce fournisseur")
 
         cur2 = await db.execute(
-            "SELECT * FROM commande_lignes WHERE commande_id = ? ORDER BY id",
+            """SELECT cl.*,
+                      cf.prix_achat_ht AS cat_prix_ht,
+                      cf.format_prix   AS cat_format_prix
+               FROM commande_lignes cl
+               LEFT JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
+               WHERE cl.commande_id = ? ORDER BY cl.id""",
             (commande_id,)
         )
         lignes = [dict(r) for r in await cur2.fetchall()]
@@ -1438,17 +1443,24 @@ async def envoyer_commande(commande_id: int):
         from_addr = os.getenv("SMTP_FROM", smtp_user)
 
         # Construire le corps du mail (HTML + fallback texte)
+        def _prix_catalogue(l):
+            prix = l.get('cat_prix_ht')
+            fmt  = l.get('cat_format_prix') or 'kg'
+            if prix is None:
+                return '—'
+            unite_lbl = '€/kg' if fmt == 'kg' else '€/colis'
+            return f"{prix:.2f} {unite_lbl}"
+
         lignes_rows = "".join(
             f"""<tr>
               <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;font-family:monospace;font-size:13px;color:#5a3e28;">{l['code_article'] or '—'}</td>
               <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;font-size:14px;">{l['designation']}</td>
               <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;white-space:nowrap;">{l['quantite_commandee']} {l['unite']}</td>
-              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;white-space:nowrap;">{l['prix_unitaire_ht']:.2f} €</td>
-              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;font-weight:700;white-space:nowrap;">{l['montant_ht']:.2f} €</td>
+              <td style="padding:10px 12px;border-bottom:1px solid #f1ead9;text-align:right;white-space:nowrap;">{_prix_catalogue(l)}</td>
             </tr>"""
             for l in lignes
         )
-        commentaire_bloc = f"""<tr><td colspan="5" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande['commentaire'] else ""
+        commentaire_bloc = f"""<tr><td colspan="4" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande['commentaire'] else ""
 
         app_url = os.getenv("APP_URL", "http://localhost:8000").rstrip("/")
         logo_url = f"{app_url}/static/assets/logo.png"
@@ -1483,7 +1495,6 @@ async def envoyer_commande(commande_id: int):
             '<th style="padding:10px 12px;text-align:left;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">D&#233;signation</th>'
             '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Qt&#233;</th>'
             '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Prix HT</th>'
-            '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Montant HT</th>'
             '</tr></thead>'
             '<tbody>' + lignes_rows + commentaire_bloc + '</tbody>'
             '</table></td></tr>'
