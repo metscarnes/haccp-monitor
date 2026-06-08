@@ -40,6 +40,7 @@ function bindEvents() {
   document.getElementById('panier-search').addEventListener('input', afficherCataloguePanier);
   document.getElementById('panier-filtre-fournisseur').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('btn-test-plus1').addEventListener('click', testPlus1);
 
   // Commande existante
   document.getElementById('modal-cmd-fermer').addEventListener('click', fermerModalCmd);
@@ -475,6 +476,20 @@ function panierSetUnite(catId, unite) {
   if (a && !peutCommander(a, unite)) unite = 'colis'; // garde-fou : repli sur colis
   uniteChoisies[catId] = unite;                       // mémorise le choix (même sans qté)
   if (panier[catId]) panier[catId].unite = unite;
+  panierSauver();
+  afficherCataloguePanier();
+}
+
+// Bouton de test : ajoute 1 à la quantité de tous les articles visibles
+function testPlus1() {
+  const tbody = document.getElementById('tbody-panier-catalogue');
+  const inputs = tbody.querySelectorAll('input[type="number"]');
+  inputs.forEach(input => {
+    const catId = parseInt(input.getAttribute('onchange').match(/\d+/)[0]);
+    const qteActuelle = panierQte(String(catId));
+    const nouvelleQte = qteActuelle + 1;
+    panier[catId] = { quantite: nouvelleQte, unite: panierUnite(String(catId)) };
+  });
   panierSauver();
   afficherCataloguePanier();
 }
