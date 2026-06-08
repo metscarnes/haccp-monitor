@@ -349,9 +349,9 @@
           Importez votre catalogue fournisseur depuis un fichier Excel.<br>
           Téléchargez d'abord le template pour respecter le format attendu.
         </p>
-        <a href="/api/achats/catalogue/template" class="ach-btn" download="template_catalogue_fournisseur.xlsx">
+        <button class="ach-btn" onclick="triggerDownload('/api/achats/catalogue/template', 'template_catalogue_fournisseur.xlsx')">
           ⬇ Télécharger le template Excel
-        </a>
+        </button>
         <div class="ach-champ">
           <label>Fichier Excel (.xlsx)</label>
           <input type="file" id="import-fichier" accept=".xlsx">

@@ -2,6 +2,15 @@
 
 const API_VENTE = '/api/vente/catalogue';
 
+function triggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 let produits     = [];
 let modeEdition  = false;
 let listeFiltree = [];
@@ -30,8 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveau);
-  document.getElementById('btn-export').addEventListener('click', () => { window.location.href = '/api/vente/catalogue/export'; });
-  document.getElementById('btn-template').addEventListener('click', () => { window.location.href = '/api/vente/catalogue/template'; });
+  document.getElementById('btn-export').addEventListener('click', () => { triggerDownload('/api/vente/catalogue/export', 'catalogue_vente.xlsx'); });
+  document.getElementById('btn-template').addEventListener('click', () => { triggerDownload('/api/vente/catalogue/template', 'template_catalogue_vente.xlsx'); });
   document.getElementById('btn-import').addEventListener('click', () => {
     document.getElementById('import-fichier').value = '';
     document.getElementById('import-resultat').hidden = true;

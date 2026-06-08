@@ -1,6 +1,15 @@
 /* catalogue-achats.js — Catalogue fournisseur */
 
 const API_CAT   = '/api/achats/catalogue';
+
+function triggerDownload(url, filename) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
 const API_FOURN = '/api/achats/fournisseurs';
 
 let articles     = [];
