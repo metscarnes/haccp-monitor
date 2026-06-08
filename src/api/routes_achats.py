@@ -27,6 +27,7 @@ DELETE /api/achats/commandes/{id}/lignes/{ligne_id}      → supprimer ligne
 
 import io
 import logging
+import unicodedata
 from datetime import date, datetime
 from typing import List, Optional
 
@@ -107,6 +108,20 @@ class CatalogueArticleUpdate(BaseModel):
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = None
     actif: Optional[bool] = None
+
+
+class ComparatifGroupeCreate(BaseModel):
+    nom: str
+    sous_famille: Optional[str] = None
+
+
+class ComparatifGroupeUpdate(BaseModel):
+    nom: Optional[str] = None
+    sous_famille: Optional[str] = None
+
+
+class ComparatifLigneAdd(BaseModel):
+    catalogue_fournisseur_id: int
 
 
 class CommandeLigneCreate(BaseModel):
@@ -1511,3 +1526,255 @@ async def envoyer_commande(commande_id: int):
         except Exception as e:
             logger.error("Erreur envoi mail commande %d : %s", commande_id, e)
             raise HTTPException(500, f"Erreur envoi mail : {e}")
+
+
+# ===========================================================================
+# Comparateur fournisseurs
+#
+# On regroupe plusieurs articles du catalogue (de fournisseurs différents) qui
+# désignent le même produit physique, puis on les compare au **prix au kilo**
+# normalisé pour arbitrer le meilleur achat. Le €/kg est calculé à la volée
+# depuis le catalogue ; quand le poids manque, on n'invente PAS de chiffre.
+# ===========================================================================
+
+
+def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
+    """Prix au kilo normalisé d'un article catalogue.
+
+    - format 'kg'    : le prix est déjà au kilo → tel quel.
+    - format 'colis' : prix du colis / poids total du colis (qté × poids unitaire).
+    Retourne None si on ne peut pas le calculer honnêtement (prix absent, ou
+    colis sans poids renseigné) → l'UI affiche « €/kg indisponible ».
+    """
+    if prix_achat_ht is None:
+        return None
+    if format_prix == "kg":
+        return round(float(prix_achat_ht), 4)
+    if format_prix == "colis" and poids_colis_kg:
+        return round(float(prix_achat_ht) / float(poids_colis_kg), 4)
+    return None
+
+
+def _normaliser_texte(s: str) -> set:
+    """Tokens normalisés (minuscule, sans accents, mots de 2+ lettres) d'un libellé,
+    pour mesurer la proximité sémantique entre désignations fournisseurs."""
+    if not s:
+        return set()
+    s = unicodedata.normalize("NFKD", s.lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return {t for t in "".join(c if c.isalnum() else " " for c in s).split() if len(t) >= 2}
+
+
+def _similarite(a: str, b: str) -> float:
+    """Indice de Jaccard entre les tokens de deux désignations (0..1)."""
+    ta, tb = _normaliser_texte(a), _normaliser_texte(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+@router.get("/comparatif/groupes")
+async def list_comparatif_groupes(_=Depends(require_admin)):
+    """Liste des groupes de comparaison, avec le nombre d'articles de chacun."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT g.*, COUNT(gl.catalogue_fournisseur_id) AS nb_lignes
+            FROM comparatif_groupe g
+            LEFT JOIN comparatif_groupe_ligne gl ON gl.groupe_id = g.id
+            WHERE g.boutique_id = 1
+            GROUP BY g.id
+            ORDER BY g.nom
+            """
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+@router.post("/comparatif/groupes", status_code=201)
+async def create_comparatif_groupe(body: ComparatifGroupeCreate, _=Depends(require_admin)):
+    nom = (body.nom or "").strip()
+    if not nom:
+        raise HTTPException(400, "Le nom du groupe est obligatoire")
+    async with get_db() as db:
+        cur = await db.execute(
+            "INSERT INTO comparatif_groupe (boutique_id, nom, sous_famille) VALUES (1, ?, ?)",
+            (nom, body.sous_famille),
+        )
+        await db.commit()
+        cur2 = await db.execute("SELECT * FROM comparatif_groupe WHERE id = ?", (cur.lastrowid,))
+        return dict(await cur2.fetchone())
+
+
+@router.put("/comparatif/groupes/{groupe_id}")
+async def update_comparatif_groupe(groupe_id: int, body: ComparatifGroupeUpdate, _=Depends(require_admin)):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Groupe introuvable")
+        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        if "nom" in fields:
+            fields["nom"] = fields["nom"].strip()
+            if not fields["nom"]:
+                raise HTTPException(400, "Le nom ne peut pas être vide")
+        if not fields:
+            raise HTTPException(400, "Aucun champ à modifier")
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        await db.execute(
+            f"UPDATE comparatif_groupe SET {set_clause} WHERE id = ?",
+            list(fields.values()) + [groupe_id],
+        )
+        await db.commit()
+        cur2 = await db.execute("SELECT * FROM comparatif_groupe WHERE id = ?", (groupe_id,))
+        return dict(await cur2.fetchone())
+
+
+@router.delete("/comparatif/groupes/{groupe_id}")
+async def delete_comparatif_groupe(groupe_id: int, _=Depends(require_admin)):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Groupe introuvable")
+        await db.execute("DELETE FROM comparatif_groupe_ligne WHERE groupe_id = ?", (groupe_id,))
+        await db.execute("DELETE FROM comparatif_groupe WHERE id = ?", (groupe_id,))
+        await db.commit()
+        return {"supprime": True}
+
+
+@router.post("/comparatif/groupes/{groupe_id}/lignes", status_code=201)
+async def add_comparatif_ligne(groupe_id: int, body: ComparatifLigneAdd, _=Depends(require_admin)):
+    """Ajoute un article du catalogue au groupe de comparaison."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Groupe introuvable")
+        cur_a = await db.execute(
+            """SELECT c.id FROM catalogue_fournisseur c
+               JOIN fournisseurs f ON f.id = c.fournisseur_id
+               WHERE c.id = ? AND f.boutique_id = 1""",
+            (body.catalogue_fournisseur_id,),
+        )
+        if not await cur_a.fetchone():
+            raise HTTPException(404, "Article catalogue introuvable")
+        await db.execute(
+            "INSERT OR IGNORE INTO comparatif_groupe_ligne (groupe_id, catalogue_fournisseur_id) VALUES (?, ?)",
+            (groupe_id, body.catalogue_fournisseur_id),
+        )
+        await db.commit()
+        return {"ajoute": True}
+
+
+@router.delete("/comparatif/groupes/{groupe_id}/lignes/{cat_id}")
+async def remove_comparatif_ligne(groupe_id: int, cat_id: int, _=Depends(require_admin)):
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM comparatif_groupe_ligne WHERE groupe_id = ? AND catalogue_fournisseur_id = ?",
+            (groupe_id, cat_id),
+        )
+        await db.commit()
+        return {"retire": True}
+
+
+@router.get("/comparatif/groupes/{groupe_id}")
+async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
+    """Le « VS » : les articles du groupe enrichis du prix €/kg normalisé, le moins
+    cher (par €/kg calculable) marqué `meilleur`."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        groupe = await cur.fetchone()
+        if not groupe:
+            raise HTTPException(404, "Groupe introuvable")
+
+        cur_l = await db.execute(
+            """
+            SELECT c.*, f.nom AS fournisseur_nom
+            FROM comparatif_groupe_ligne gl
+            JOIN catalogue_fournisseur c ON c.id = gl.catalogue_fournisseur_id
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE gl.groupe_id = ?
+            ORDER BY f.nom, c.designation
+            """,
+            (groupe_id,),
+        )
+        lignes = [dict(r) for r in await cur_l.fetchall()]
+
+        for ligne in lignes:
+            ligne["prix_kg"] = _calc_prix_kg(
+                ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg")
+            )
+            ligne["meilleur"] = False
+
+        prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None]
+        if prix_valides:
+            meilleur_prix = min(prix_valides)
+            for ligne in lignes:
+                if ligne["prix_kg"] == meilleur_prix:
+                    ligne["meilleur"] = True
+
+        return {"groupe": dict(groupe), "lignes": lignes}
+
+
+@router.get("/comparatif/suggestions")
+async def comparatif_suggestions(
+    ligne_id: int = Query(..., description="Article catalogue de référence"),
+    groupe_id: Optional[int] = Query(None, description="Exclure les articles déjà dans ce groupe"),
+    _=Depends(require_admin),
+):
+    """Suggère des articles catalogue proches de `ligne_id` : même sous-famille,
+    triés par similarité de désignation. Assiste la construction d'un groupe ;
+    l'utilisateur garde la décision finale."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """SELECT c.* FROM catalogue_fournisseur c
+               JOIN fournisseurs f ON f.id = c.fournisseur_id
+               WHERE c.id = ? AND f.boutique_id = 1""",
+            (ligne_id,),
+        )
+        ref = await cur.fetchone()
+        if not ref:
+            raise HTTPException(404, "Article de référence introuvable")
+        ref = dict(ref)
+
+        deja = set()
+        if groupe_id:
+            cur_d = await db.execute(
+                "SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne WHERE groupe_id = ?",
+                (groupe_id,),
+            )
+            deja = {r[0] for r in await cur_d.fetchall()}
+
+        # Strict : même sous-famille uniquement (si renseignée sur la référence).
+        sql = """
+            SELECT c.*, f.nom AS fournisseur_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1 AND c.id != ?
+        """
+        params = [ref["id"]]
+        if ref.get("sous_famille"):
+            sql += " AND c.sous_famille = ?"
+            params.append(ref["sous_famille"])
+        cur_c = await db.execute(sql, params)
+        candidats = [dict(r) for r in await cur_c.fetchall()]
+
+        suggestions = []
+        for c in candidats:
+            if c["id"] in deja:
+                continue
+            score = _similarite(ref["designation"], c["designation"])
+            if score > 0:
+                c["score"] = round(score, 3)
+                c["prix_kg"] = _calc_prix_kg(
+                    c.get("format_prix"), c.get("prix_achat_ht"), c.get("poids_colis_kg")
+                )
+                suggestions.append(c)
+
+        suggestions.sort(key=lambda x: x["score"], reverse=True)
+        return suggestions[:20]

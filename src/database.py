@@ -1335,6 +1335,24 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE reception_lignes ADD COLUMN designation_libre TEXT",
             # v6.1 — Catalogue vente : classification famille / sous-famille (même référentiel qu'achats)
             "ALTER TABLE catalogue_vente ADD COLUMN sous_famille TEXT",
+            # v6.2 — Comparateur fournisseurs : groupes de comparaison (paniers d'articles
+            # catalogue désignant le même produit physique) pour arbitrer au prix €/kg.
+            # Le prix €/kg est calculé à la volée depuis catalogue_fournisseur (format_prix,
+            # prix_achat_ht, poids_colis_kg) — aucune colonne ajoutée au catalogue.
+            """CREATE TABLE IF NOT EXISTS comparatif_groupe (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id   INTEGER NOT NULL DEFAULT 1,
+                nom           TEXT    NOT NULL,
+                sous_famille  TEXT,
+                date_creation DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS comparatif_groupe_ligne (
+                groupe_id                INTEGER NOT NULL,
+                catalogue_fournisseur_id INTEGER NOT NULL,
+                PRIMARY KEY (groupe_id, catalogue_fournisseur_id),
+                FOREIGN KEY (groupe_id) REFERENCES comparatif_groupe(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+            )""",
         ]
         for sql in migrations:
             try:
