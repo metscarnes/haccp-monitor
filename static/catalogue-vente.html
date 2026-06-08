@@ -13,7 +13,6 @@
 </head>
 <body class="ach-body">
 <script>
-  // ── Garde d'accès : page réservée à l'administrateur ──────────
   (function(){
     var PAGE = '/catalogue-vente.html';
     function versLogin(){
@@ -43,16 +42,31 @@
 
   <div class="ach-stats">
     <div class="ach-stat ach-stat--ok">
-      <span class="ach-stat-valeur" id="stat-total">0</span>
-      <span class="ach-stat-label">produits finis actifs</span>
+      <div class="ach-stat-num" id="stat-total">—</div>
+      <div class="ach-stat-lbl">Produits actifs</div>
+    </div>
+    <div class="ach-stat ach-stat--warn">
+      <div class="ach-stat-num" id="stat-sans-prix">—</div>
+      <div class="ach-stat-lbl">Prix à 0€</div>
+    </div>
+    <div class="ach-stat ach-stat--info">
+      <div class="ach-stat-num" id="stat-affiches">—</div>
+      <div class="ach-stat-lbl">Affichés</div>
     </div>
   </div>
 
   <div class="ach-filtres">
+
+    <!-- Ligne 1 : filtres sélecteurs -->
     <div class="ach-filtre">
       <label>Famille</label>
       <select id="filtre-famille">
         <option value="">Toutes</option>
+        <option value="Viande">Viande</option>
+        <option value="Charcuterie">Charcuterie</option>
+        <option value="Traiteur">Traiteur</option>
+        <option value="Aide culinaire">Aide culinaire</option>
+        <option value="Hygiène et emballage">Hygiène et emballage</option>
       </select>
     </div>
     <div class="ach-filtre">
@@ -63,36 +77,120 @@
     </div>
     <div class="ach-filtre ach-filtre--search">
       <label>Recherche</label>
-      <input type="search" id="filtre-search" placeholder="Rechercher un produit fini…">
+      <input type="search" id="filtre-search" placeholder="Nom ou code de vente…">
     </div>
+
+    <!-- Ligne 2 : coches -->
     <div style="width:100%;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding-top:var(--space-2);border-top:1px solid #e8d9c4;margin-top:var(--space-1);">
       <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
         <input type="checkbox" id="filtre-inactifs" style="width:18px;height:18px;accent-color:var(--color-accent);">
-        Afficher les inactifs
+        Afficher produits inactifs
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
+        <input type="checkbox" id="filtre-sans-prix" style="width:18px;height:18px;accent-color:var(--color-accent);">
+        Prix à 0€ uniquement
       </label>
       <div class="ach-resultat" id="resultat-count" style="margin-left:auto;"></div>
     </div>
+
   </div>
 
-  <div id="zone-erreur" class="ach-form-erreur" hidden></div>
+  <div id="zone-erreur" class="ach-erreur" hidden></div>
+
+  <!-- ── Barre actions en masse ── -->
+  <div id="barre-masse" hidden>
+    <span style="font-weight:700;font-size:var(--text-sm);">
+      <span id="masse-nb">0</span> produit(s) sélectionné(s)
+    </span>
+    <button class="ach-btn ach-btn--small ach-btn--primary" id="btn-masse-modifier">✏ Modifier un champ</button>
+    <button class="ach-btn ach-btn--small ach-btn--danger"  id="btn-masse-desactiver">Désactiver</button>
+    <button class="ach-btn ach-btn--small ach-btn--ok"      id="btn-masse-reactiver">Réactiver</button>
+    <button class="ach-btn ach-btn--small" style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;"
+            id="btn-masse-supprimer">Supprimer</button>
+  </div>
+
+  <!-- ── Modal modification en masse ── -->
+  <div class="ach-modal" id="modal-masse" hidden>
+    <div class="ach-modal-card" style="max-width:480px;">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">✏ Modifier en masse — <span id="masse-modal-nb">0</span> produit(s)</h2>
+        <button class="ach-modal-fermer" id="modal-masse-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);">
+
+        <div class="ach-champ">
+          <label>Champ à modifier <span class="ach-req">*</span></label>
+          <select id="masse-champ">
+            <option value="">— Sélectionnez un champ —</option>
+            <option value="tva_percent">TVA (%)</option>
+            <option value="dlc_jours">DLC (jours)</option>
+            <option value="temperature_conservation">Température de conservation</option>
+            <option value="format_etiquette">Format d'étiquette</option>
+            <option value="famille">Famille / Sous-famille</option>
+          </select>
+        </div>
+
+        <div id="masse-valeur-zone" hidden></div>
+        <div id="masse-erreur" class="ach-form-erreur" hidden></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:var(--space-2);padding-top:var(--space-2);border-top:1px solid #e8d9c4;">
+          <button class="ach-btn" id="masse-annuler">Annuler</button>
+          <button class="ach-btn ach-btn--primary" id="masse-appliquer" disabled>Appliquer</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div class="ach-table-wrap">
-    <table class="ach-table">
+    <table class="ach-table" id="table-vente">
       <thead>
         <tr>
-          <th>Nom</th>
-          <th>Prix vente TTC</th>
-          <th>TVA</th>
-          <th>DLC (j)</th>
-          <th>Température</th>
-          <th>Famille</th>
-          <th>Sous-famille</th>
-          <th></th>
+          <th style="width:40px;text-align:center;padding:0 8px;">
+            <input type="checkbox" id="chk-tout" title="Tout sélectionner"
+                   style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
+          </th>
+          <th id="th-nom"                      onclick="changerTri('nom')"                      style="cursor:pointer;user-select:none;">Nom ⇅</th>
+          <th id="th-code_vente"               onclick="changerTri('code_vente')"               style="cursor:pointer;user-select:none;">Code ⇅</th>
+          <th id="th-prix_vente_ttc"           onclick="changerTri('prix_vente_ttc')"           style="cursor:pointer;user-select:none;" class="ach-col-num">Prix TTC ⇅</th>
+          <th id="th-tva_percent"              onclick="changerTri('tva_percent')"              style="cursor:pointer;user-select:none;">TVA ⇅</th>
+          <th id="th-dlc_jours"               onclick="changerTri('dlc_jours')"               style="cursor:pointer;user-select:none;" class="ach-col-num">DLC (j) ⇅</th>
+          <th id="th-temperature_conservation" onclick="changerTri('temperature_conservation')" style="cursor:pointer;user-select:none;">Température ⇅</th>
+          <th id="th-famille"                  onclick="changerTri('famille')"                  style="cursor:pointer;user-select:none;">Famille ⇅</th>
+          <th id="th-sous_famille"             onclick="changerTri('sous_famille')"             style="cursor:pointer;user-select:none;">Sous-famille ⇅</th>
+          <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
-      <tbody id="tbody-vente"></tbody>
+      <tbody id="tbody-vente">
+        <tr><td colspan="10" class="ach-vide">Chargement…</td></tr>
+      </tbody>
     </table>
   </div>
+
+  <style>
+    .ach-row--inactif { opacity: .5; }
+    .ach-row--inactif .ach-cell-nom { text-decoration: line-through; }
+    #table-vente thead th:hover { background: #e8d9c4; }
+
+    #table-vente input[type="checkbox"] {
+      display: block !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      width: 20px !important;
+      height: 20px !important;
+      cursor: pointer;
+      appearance: checkbox;
+      -webkit-appearance: checkbox;
+    }
+    #barre-masse:not([hidden]) {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      flex-wrap: wrap;
+      padding: var(--space-2) var(--space-4);
+      background: #fef3c7;
+      border-bottom: 2px solid #fbbf24;
+    }
+  </style>
 
   <!-- ── Modal produit fini ── -->
   <div class="ach-modal" id="modal-vente" hidden>
@@ -114,7 +212,7 @@
         <div class="ach-champ">
           <label>TVA (%)</label>
           <select id="v-tva">
-            <option value="5.5">5.5% (alimentaire)</option>
+            <option value="5.5">5,5% (alimentaire)</option>
             <option value="10">10%</option>
             <option value="20">20%</option>
           </select>
@@ -170,19 +268,25 @@
 
   <!-- ── Modal import ── -->
   <div class="ach-modal" id="modal-import" hidden>
-    <div class="ach-modal-card" style="max-width:480px;">
+    <div class="ach-modal-card">
       <header class="ach-modal-header">
-        <h2 class="ach-modal-titre">Importer un fichier Excel</h2>
+        <h2 class="ach-modal-titre">⬆ Importer catalogue Excel</h2>
         <button class="ach-modal-fermer" id="import-fermer">✕</button>
       </header>
-      <div style="padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);">
-        <p style="font-size:var(--text-sm);color:#4b5563;">
-          Utilisez le template téléchargeable ci-dessus. Une ligne = un produit fini.<br>
-          Les produits existants (même nom) seront <strong>mis à jour</strong>.
+      <div class="ach-import-corps">
+        <p class="ach-import-info">
+          Importez votre catalogue de vente depuis un fichier Excel.<br>
+          Téléchargez d'abord le template pour respecter le format attendu.
         </p>
-        <input type="file" id="import-fichier" accept=".xlsx,.xls" style="font-size:var(--text-sm);">
-        <div id="import-resultat" hidden style="font-size:var(--text-sm);padding:var(--space-2);border-radius:6px;"></div>
-        <div class="ach-modal-footer">
+        <a href="/api/vente/catalogue/template" class="ach-btn" download>
+          ⬇ Télécharger le template Excel
+        </a>
+        <div class="ach-champ">
+          <label>Fichier Excel (.xlsx)</label>
+          <input type="file" id="import-fichier" accept=".xlsx">
+        </div>
+        <div id="import-resultat" hidden></div>
+        <div class="ach-modal-footer" style="padding-top:0; border-top:none; margin-top:0;">
           <button type="button" class="ach-btn" id="import-annuler">Annuler</button>
           <button type="button" class="ach-btn ach-btn--primary" id="import-lancer" disabled>Importer</button>
         </div>
