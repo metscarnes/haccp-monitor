@@ -12,10 +12,13 @@ let catalogueTous = [];   // tout le catalogue, tous fournisseurs (avec stock)
 let catalogueCourant = []; // catalogue du fournisseur de la commande en édition
 let cmdCourante  = null;
 let forcerEnvoiFlag = false; // Flag pour forcer l'envoi malgré les délais
-// Panier : map { catalogueId → { quantite, unite } }. unite ∈ { 'kg', 'colis' }.
+// Panier : map { catalogueId → { quantite, unite } }. unite ∈ { 'kg','piece','colis' }.
 // Les autres infos (prix, designation…) sont relues dans catalogueTous au
 // moment de l'affichage / génération.
 let panier       = {};
+// Unité choisie par ligne même sans quantité (UX tablette : on peut cliquer
+// l'unité avant de taper). Non persistée — réinitialisée à chaque session.
+let uniteChoisies = {};
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
@@ -161,7 +164,15 @@ function panierNormaliser() {
 
 // Accès aux deux composantes du panier
 function panierQte(catId)   { const e = panier[catId]; return e ? (e.quantite || 0) : 0; }
-function panierUnite(catId) { const e = panier[catId]; return e ? (e.unite || 'kg') : 'kg'; }
+// Unité d'une ligne : celle du panier si présent, sinon le choix mémorisé
+// (uniteChoisies), sinon l'unité par défaut de l'article.
+function panierUnite(catId) {
+  const e = panier[catId];
+  if (e && e.unite) return e.unite;
+  if (uniteChoisies[catId]) return uniteChoisies[catId];
+  const a = catalogueTous.find(x => x.id === parseInt(catId));
+  return a ? uniteParDefaut(a) : 'kg';
+}
 
 function panierSauver() {
   localStorage.setItem(LS_KEY, JSON.stringify(panier));
@@ -237,6 +248,38 @@ function prixUnitaire(a, unite) {
 // Libellé court d'une unité de commande.
 function uniteLabel(unite) {
   return unite === 'piece' ? 'pièce' : unite;   // 'kg' | 'pièce' | 'colis'
+}
+
+// Formate un poids en kg (3 décimales max, virgule, sans zéros inutiles).
+function fmtKg(v) {
+  return parseFloat(v.toFixed(3)).toString().replace('.', ',');
+}
+// Formate un nb de pièces/colis (entier si rond, sinon ~).
+function fmtUnites(v) {
+  const arrondi = Math.round(v);
+  const proche = Math.abs(v - arrondi) < 0.01;
+  return (proche ? arrondi : parseFloat(v.toFixed(1))).toString().replace('.', ',');
+}
+
+// Détail « ce qu'on reçoit » pour une quantité dans une unité donnée.
+// Renvoie une string descriptive (ex. "≈ 11 pièces · 93,5 kg") ou '' si rien d'utile.
+function detailReception(a, qte, unite) {
+  if (!qte) return '';
+  const poidsColis = poidsColisKg(a);
+  const poidsUnit  = poidsUnitKg(a);
+  const parColis   = qteParColis(a);
+  const parts = [];
+
+  if (unite === 'colis') {
+    if (parColis !== null)   parts.push(`${fmtUnites(qte * parColis)} pièce(s)`);
+    if (poidsColis !== null) parts.push(`${fmtKg(qte * poidsColis)} kg`);
+  } else if (unite === 'piece') {
+    if (poidsUnit !== null)  parts.push(`${fmtKg(qte * poidsUnit)} kg`);
+  } else { // kg
+    if (poidsColis !== null) parts.push(`${fmtUnites(qte / poidsColis)} colis`);
+    if (poidsUnit !== null)  parts.push(`${fmtUnites(qte / poidsUnit)} pièce(s)`);
+  }
+  return parts.length ? '≈ ' + parts.join(' · ') : '';
 }
 
 // Total estimé d'une ligne du panier (qté × prix unitaire selon l'unité choisie).
@@ -350,7 +393,7 @@ function afficherCataloguePanier() {
   tbody.innerHTML = liste.map(a => {
     const id = String(a.id);
     const qte = panierQte(id);
-    const unite = panierQte(id) ? panierUnite(id) : uniteParDefaut(a);
+    const unite = panierUnite(id);
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
     const kgOk = peutCommanderKg(a);
@@ -371,18 +414,24 @@ function afficherCataloguePanier() {
             ? `<strong>${stock}</strong>`
             : '<span style="color:#9ca3af">0</span>'}</td>
         <td>
-          <div class="ach-stepper">
+          <div class="ach-qte-cell">
             <input type="number" min="0" step="any" value="${qte || ''}" placeholder="0"
-                   onchange="panierSetQte(${a.id}, this.value)">
-            <select class="ach-stepper-unite-sel" onchange="panierSetUnite(${a.id}, this.value)">
-              <option value="kg"    ${unite === 'kg' ? 'selected' : ''} ${kgOk ? '' : 'disabled'}>kg</option>
-              <option value="piece" ${unite === 'piece' ? 'selected' : ''} ${pieceOk ? '' : 'disabled'}>pièce</option>
-              <option value="colis" ${unite === 'colis' ? 'selected' : ''}>colis</option>
-            </select>
+                   class="ach-qte-input" onchange="panierSetQte(${a.id}, this.value)">
+            <div class="ach-unite-btns" role="group">
+              <button type="button" class="ach-unite-btn ${unite === 'kg' ? 'is-active' : ''}"
+                      ${kgOk ? '' : 'disabled'} onclick="panierSetUnite(${a.id}, 'kg')">kg</button>
+              <button type="button" class="ach-unite-btn ${unite === 'piece' ? 'is-active' : ''}"
+                      ${pieceOk ? '' : 'disabled'} onclick="panierSetUnite(${a.id}, 'piece')">pièce</button>
+              <button type="button" class="ach-unite-btn ${unite === 'colis' ? 'is-active' : ''}"
+                      onclick="panierSetUnite(${a.id}, 'colis')">colis</button>
+            </div>
           </div>
           ${puAffiche !== null
             ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${uniteLabel(unite)}</div>`
             : `<div class="ach-stepper-hint" style="color:#b45309">conversion impossible</div>`}
+          ${qte > 0 && detailReception(a, qte, unite)
+            ? `<div class="ach-recep-detail">${detailReception(a, qte, unite)}</div>`
+            : ''}
         </td>
         <td class="ach-col-num">${totalLigne !== null
             ? `<strong>${fmtPrix(totalLigne)} €</strong>`
@@ -411,28 +460,21 @@ function majTotalPanier() {
 function panierSetQte(catId, valeur) {
   let qte = parseFloat(valeur);
   if (isNaN(qte) || qte < 0) qte = 0;
-  const a = catalogueTous.find(x => x.id === parseInt(catId));
   if (qte > 0) {
-    const unite = panierUnite(catId) || (a ? uniteParDefaut(a) : 'kg');
-    panier[catId] = { quantite: qte, unite };
+    panier[catId] = { quantite: qte, unite: panierUnite(catId) };
   } else {
-    delete panier[catId];
+    delete panier[catId];   // l'unité reste mémorisée dans uniteChoisies
   }
   panierSauver();
   afficherCataloguePanier();
 }
 
-// Changement de l'unité de commande (kg / colis) pour une ligne
+// Changement de l'unité de commande (kg / pièce / colis) pour une ligne
 function panierSetUnite(catId, unite) {
   const a = catalogueTous.find(x => x.id === parseInt(catId));
   if (a && !peutCommander(a, unite)) unite = 'colis'; // garde-fou : repli sur colis
-  if (panier[catId]) {
-    panier[catId].unite = unite;
-  } else {
-    panier[catId] = { quantite: 0, unite }; // mémorise le choix avant saisie
-  }
-  // Si pas de quantité, ne rien persister comme ligne vide
-  if (!panierQte(catId)) delete panier[catId];
+  uniteChoisies[catId] = unite;                       // mémorise le choix (même sans qté)
+  if (panier[catId]) panier[catId].unite = unite;
   panierSauver();
   afficherCataloguePanier();
 }

@@ -265,20 +265,60 @@
   color: #6b7280;
   min-width: 34px;
 }
-.ach-stepper-unite-sel {
+/* Cellule quantité : champ + boutons d'unité (tactile) */
+.ach-qte-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.ach-qte-input {
+  width: 64px;
+  text-align: right;
   border: 1px solid #d6c3a8;
   border-radius: 6px;
-  padding: 3px 4px;
-  font-size: var(--text-xs);
+  padding: 6px 8px;
+  font-size: var(--text-sm);
+}
+.ach-unite-btns {
+  display: inline-flex;
+  border: 1px solid #d6c3a8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ach-unite-btn {
+  border: none;
+  border-left: 1px solid #d6c3a8;
   background: #f4ead9;
   color: #5a3e28;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 7px 10px;
+  min-width: 40px;
   cursor: pointer;
+  line-height: 1;
+}
+.ach-unite-btn:first-child { border-left: none; }
+.ach-unite-btn:hover:not(:disabled):not(.is-active) { background: #e8d9c4; }
+.ach-unite-btn.is-active {
+  background: var(--color-accent);
+  color: #fff;
+}
+.ach-unite-btn:disabled {
+  opacity: .35;
+  cursor: not-allowed;
 }
 .ach-stepper-hint {
   font-size: var(--text-xs);
   color: #6b7280;
   text-align: right;
-  margin-top: 2px;
+  margin-top: 3px;
+}
+.ach-recep-detail {
+  font-size: var(--text-xs);
+  color: #2563eb;
+  text-align: right;
+  margin-top: 1px;
 }
 .ach-row--au-panier { background: #f0f9f1; }
 .ach-modal-header {
