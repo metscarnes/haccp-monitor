@@ -17,6 +17,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveau);
+  document.getElementById('btn-import').addEventListener('click', () => {
+    document.getElementById('import-fichier').value = '';
+    document.getElementById('import-lancer').disabled = true;
+    document.getElementById('import-resultat').hidden = true;
+    document.getElementById('modal-import').hidden = false;
+  });
+  document.getElementById('import-fermer').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
+  document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
+  document.getElementById('import-fichier').addEventListener('change', e => {
+    document.getElementById('import-lancer').disabled = !e.target.files.length;
+  });
+  document.getElementById('import-lancer').addEventListener('click', lancerImport);
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
   document.getElementById('btn-supprimer').addEventListener('click', supprimer);
@@ -206,6 +218,39 @@ async function supprimer() {
     z.textContent = err.message; z.hidden = false;
   } finally {
     btn.disabled = false; btn.textContent = 'Supprimer';
+  }
+}
+
+// ── Import Excel ─────────────────────────────────────────────
+async function lancerImport() {
+  const fichier = document.getElementById('import-fichier').files[0];
+  if (!fichier) return;
+  const btn = document.getElementById('import-lancer');
+  btn.disabled = true; btn.textContent = 'Import en cours…';
+  const res = document.getElementById('import-resultat');
+  res.hidden = true;
+
+  try {
+    const fd = new FormData();
+    fd.append('fichier', fichier);
+    const r = await fetch('/api/vente/catalogue/import', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Erreur serveur');
+
+    const errMsg = data.erreurs?.length
+      ? `\n⚠ ${data.erreurs.length} erreur(s) : ${data.erreurs.join(', ')}`
+      : '';
+    res.textContent = `✓ ${data.crees} créé(s), ${data.mis_a_jour} mis à jour.${errMsg}`;
+    res.style.background = data.erreurs?.length ? '#FFF3CD' : '#D1FAE5';
+    res.style.color = data.erreurs?.length ? '#856404' : '#065F46';
+    res.hidden = false;
+    await charger();
+  } catch (err) {
+    res.textContent = '✕ ' + err.message;
+    res.style.background = '#FEE2E2'; res.style.color = '#991B1B';
+    res.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Importer';
   }
 }
 

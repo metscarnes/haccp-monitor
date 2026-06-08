@@ -34,6 +34,8 @@
     <a href="/production-hub.html" class="ach-retour">← Production</a>
     <div class="ach-bar-titre">🏷️ CATALOGUE DE VENTE</div>
     <div class="ach-bar-actions">
+      <a href="/api/vente/catalogue/template" class="ach-btn" id="btn-template" download>⬇ Template</a>
+      <button class="ach-btn" id="btn-import">⬆ Importer</button>
       <button class="ach-btn ach-btn--primary" id="btn-nouveau">+ Ajouter un produit fini</button>
     </div>
   </header>
@@ -162,6 +164,28 @@
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ── Modal import ── -->
+  <div class="ach-modal" id="modal-import" hidden>
+    <div class="ach-modal-card" style="max-width:480px;">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Importer un fichier Excel</h2>
+        <button class="ach-modal-fermer" id="import-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-3);">
+        <p style="font-size:var(--text-sm);color:#4b5563;">
+          Utilisez le template téléchargeable ci-dessus. Une ligne = un produit fini.<br>
+          Les produits existants (même nom) seront <strong>mis à jour</strong>.
+        </p>
+        <input type="file" id="import-fichier" accept=".xlsx,.xls" style="font-size:var(--text-sm);">
+        <div id="import-resultat" hidden style="font-size:var(--text-sm);padding:var(--space-2);border-radius:6px;"></div>
+        <div class="ach-modal-footer">
+          <button type="button" class="ach-btn" id="import-annuler">Annuler</button>
+          <button type="button" class="ach-btn ach-btn--primary" id="import-lancer" disabled>Importer</button>
+        </div>
+      </div>
     </div>
   </div>
 
