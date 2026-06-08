@@ -1466,6 +1466,10 @@ async def envoyer_commande(commande_id: int):
             '</td></tr>'
             '<tr><td style="padding:24px 32px 8px;border-bottom:2px solid #e8d9c4;">'
             '<p style="margin:0;font-size:18px;font-weight:700;color:#6b2d0f;">Bon de commande</p>'
+            '<p style="margin:6px 0 0;font-size:14px;color:#2d1f0f;">'
+            '&#128204; <strong>Destinataire : ' + commande['fournisseur_nom'] + '</strong>'
+            ' &nbsp;&#183;&nbsp; ' + commande['email_commercial'] +
+            '</p>'
             '<p style="margin:4px 0 0;font-size:13px;color:#6b7280;">'
             'N&#176; <strong style="color:#2d1f0f;">' + commande['numero_commande'] + '</strong>'
             ' &nbsp;&#183;&nbsp; Date : <strong style="color:#2d1f0f;">' + commande['date_commande'] + '</strong>'
@@ -1483,12 +1487,6 @@ async def envoyer_commande(commande_id: int):
             '</tr></thead>'
             '<tbody>' + lignes_rows + commentaire_bloc + '</tbody>'
             '</table></td></tr>'
-            '<tr><td style="padding:0 32px 24px;">'
-            '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
-            '<td style="padding:14px 12px;background:#f3ebdf;border-top:2px solid #d4c5af;text-align:right;">'
-            '<span style="font-size:15px;color:#5a3e28;font-weight:700;">TOTAL HT : </span>'
-            f'<span style="font-size:20px;font-weight:800;color:#6b2d0f;">{commande["montant_total_ht"]:.2f} &#8364;</span>'
-            '</td></tr></table></td></tr>'
             '<tr><td style="background:#f9f4ed;padding:16px 32px;border-top:1px solid #e8d9c4;">'
             '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
             '<td style="font-size:11px;color:#6b7280;line-height:1.6;">'
@@ -1506,7 +1504,7 @@ async def envoyer_commande(commande_id: int):
             f"× {l['prix_unitaire_ht']:.2f}€ HT = {l['montant_ht']:.2f}€ HT"
             for l in lignes
         )
-        corps = f"Commande {commande['numero_commande']} du {commande['date_commande']}\n\n{corps_txt}\n\nTOTAL HT : {commande['montant_total_ht']:.2f}€"
+        corps = f"Commande {commande['numero_commande']} du {commande['date_commande']}\nDestinataire : {commande['fournisseur_nom']} <{commande['email_commercial']}>\n\n{corps_txt}"
 
         # Envoi mail via smtplib (config dans variables d'env)
         if not smtp_host or not smtp_user:
