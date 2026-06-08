@@ -427,6 +427,7 @@ async def download_template():
 
     from openpyxl.comments import Comment
     from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.workbook.defined_name import DefinedName
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -582,7 +583,7 @@ async def download_template():
         col_letter_l = ws_listes.cell(row=1, column=col_l).column_letter
         range_ref    = f"Listes!${col_letter_l}$1:${col_letter_l}${len(sfs)}"
         safe_name    = fam.replace(" ", "_").replace("é", "e").replace("è", "e").replace("ê", "e").replace("î", "i").replace("ô", "o").replace("â", "a").replace("û", "u")
-        wb.defined_names[safe_name] = f"{range_ref}"
+        wb.defined_names[safe_name] = DefinedName(safe_name, attr_text=range_ref)
 
     # Colonne K — sous_famille : liste dépendante de la famille via INDIRECT
     sf_col    = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "sous_famille")
