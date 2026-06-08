@@ -14,17 +14,7 @@ let triSens      = 'asc';   // 'asc' | 'desc'
 
 const DLC_LABELS = { dlc: 'DLC', date_abattage: 'Abattage', no_dlc: 'Sans DLC' };
 
-// Familles → sous-familles (listes déroulantes dépendantes).
-// La saisie hors liste reste possible côté serveur (texte libre).
-const FAMILLES = {
-  'Viande':               ['Boeuf', 'Veau', 'Agneau', 'Porc', 'Volaille', 'Cheval'],
-  'Charcuterie':          ['Jambon', 'Pâté, Terrine et Rillette', 'Salaison et Pièce séchée',
-                           'Saucisse à cuire et Saucisson cuit', 'Spécialité charcutière'],
-  'Traiteur':             ['Crudité', 'Fromage', 'Plat préparé', 'Accompagnement', 'Pané', 'Dessert'],
-  'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
-                           'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
-  'Hygiène et emballage': ['Hygiène', 'Emballage'],
-};
+// FAMILLES est défini dans /static/js/core/familles.js (chargé avant ce script).
 
 const COLONNES = [
   { key: 'fournisseur_nom', label: 'Fournisseur' },
@@ -541,20 +531,11 @@ function ouvrirEditionModal(id) {
 // Sous-famille du formulaire : peuplée selon la famille choisie.
 // `valeurAGarder` permet de re-sélectionner la sous-famille existante en mode édition.
 function majSousFamilleForm(valeurAGarder) {
-  const famille = document.getElementById('a-famille').value;
-  const sel     = document.getElementById('a-sous-famille');
-  const liste   = FAMILLES[famille] || [];
-  if (!famille) {
-    sel.innerHTML = '<option value="">— Choisir une famille d\'abord —</option>';
-    sel.disabled  = true;
-    return;
-  }
-  sel.disabled = false;
-  sel.innerHTML = '<option value="">— Aucune —</option>'
-    + liste.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('');
-  if (valeurAGarder && liste.includes(valeurAGarder)) {
-    sel.value = valeurAGarder;
-  }
+  majSousFamille(
+    document.getElementById('a-famille').value,
+    document.getElementById('a-sous-famille'),
+    valeurAGarder || ''
+  );
 }
 
 // Champ généré : poids total colis = qté par colis × poids unitaire

@@ -65,6 +65,7 @@
           <th>Température</th>
           <th>Format étiquette</th>
           <th>Famille</th>
+          <th>Sous-famille</th>
           <th></th>
         </tr>
       </thead>
@@ -120,7 +121,15 @@
         </div>
         <div class="ach-champ">
           <label>Famille</label>
-          <input type="text" id="v-famille" placeholder="ex : Charcuterie, Traiteur…">
+          <select id="v-famille">
+            <option value="">— Famille —</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Sous-famille</label>
+          <select id="v-sous-famille" disabled>
+            <option value="">— Sous-famille —</option>
+          </select>
         </div>
         <div class="ach-champ">
           <label>Code de vente</label>
@@ -138,6 +147,7 @@
     </div>
   </div>
 
+  <script src="/static/js/core/familles.js"></script>
   <script src="/static/js/vente/catalogue-vente.js"></script>
 </body>
 </html>

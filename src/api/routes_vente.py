@@ -40,6 +40,7 @@ class ProduitVenteCreate(BaseModel):
     temperature_conservation: Optional[str] = "0°C à +4°C"
     format_etiquette: Optional[str] = "standard_60x40"
     famille: Optional[str] = None
+    sous_famille: Optional[str] = None
 
 
 class ProduitVenteUpdate(BaseModel):
@@ -51,6 +52,7 @@ class ProduitVenteUpdate(BaseModel):
     temperature_conservation: Optional[str] = None
     format_etiquette: Optional[str] = None
     famille: Optional[str] = None
+    sous_famille: Optional[str] = None
     actif: Optional[bool] = None
 
 
@@ -71,7 +73,7 @@ async def liste_catalogue_vente(
         if q:
             sql += " AND nom LIKE ?"
             params.append(f"%{q}%")
-        sql += " ORDER BY nom"
+        sql += " ORDER BY famille, sous_famille, nom"
         cur = await db.execute(sql, params)
         return [dict(r) for r in await cur.fetchall()]
 
@@ -92,11 +94,11 @@ async def creer_produit_vente(body: ProduitVenteCreate, _=Depends(require_admin)
         cur = await db.execute(
             """INSERT INTO catalogue_vente
                    (boutique_id, nom, code_vente, prix_vente_ttc, tva_percent,
-                    dlc_jours, temperature_conservation, format_etiquette, famille)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    dlc_jours, temperature_conservation, format_etiquette, famille, sous_famille)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.nom, body.code_vente, body.prix_vente_ttc, body.tva_percent,
              body.dlc_jours, body.temperature_conservation, body.format_etiquette,
-             body.famille),
+             body.famille, body.sous_famille),
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (cur.lastrowid,))

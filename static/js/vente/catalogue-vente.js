@@ -19,6 +19,13 @@ function bindEvents() {
   document.getElementById('form-vente').addEventListener('submit', sauver);
   document.getElementById('filtre-search').addEventListener('input', render);
   document.getElementById('filtre-inactifs').addEventListener('change', charger);
+  document.getElementById('v-famille').addEventListener('change', () => {
+    majSousFamille(
+      document.getElementById('v-famille').value,
+      document.getElementById('v-sous-famille'),
+      ''
+    );
+  });
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -43,7 +50,7 @@ function render() {
 
   const tbody = document.getElementById('tbody-vente');
   if (!liste.length) {
-    tbody.innerHTML = `<tr><td colspan="8" class="ach-vide">Aucun produit fini</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" class="ach-vide">Aucun produit fini</td></tr>`;
     return;
   }
   tbody.innerHTML = liste.map(p => `
@@ -58,6 +65,7 @@ function render() {
       <td>${escHtml(p.temperature_conservation || '—')}</td>
       <td>${escHtml(p.format_etiquette || '—')}</td>
       <td>${escHtml(p.famille || '—')}</td>
+      <td>${escHtml(p.sous_famille || '—')}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
         ${p.actif
@@ -84,6 +92,7 @@ function ouvrirNouveau() {
   document.getElementById('modal-titre').textContent = 'Nouveau produit fini';
   document.getElementById('btn-supprimer').hidden = true;
   viderForm();
+  peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), '');
   document.getElementById('modal-vente').hidden = false;
   document.getElementById('v-nom').focus();
 }
@@ -100,7 +109,8 @@ function ouvrirEdition(id) {
   document.getElementById('v-dlc').value = p.dlc_jours ?? 3;
   document.getElementById('v-temp').value = p.temperature_conservation || '0°C à +4°C';
   document.getElementById('v-format').value = p.format_etiquette || 'standard_60x40';
-  document.getElementById('v-famille').value = p.famille || '';
+  peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), p.famille || '');
+  majSousFamille(p.famille || '', document.getElementById('v-sous-famille'), p.sous_famille || '');
   document.getElementById('v-code').value = p.code_vente || '';
   document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('form-erreur').hidden = true;
@@ -119,7 +129,6 @@ function viderForm() {
   document.getElementById('v-dlc').value = '3';
   document.getElementById('v-temp').value = '0°C à +4°C';
   document.getElementById('v-format').value = 'standard_60x40';
-  document.getElementById('v-famille').value = '';
   document.getElementById('v-code').value = '';
   document.getElementById('form-erreur').hidden = true;
 }
@@ -136,7 +145,8 @@ async function sauver(e) {
     dlc_jours:                parseInt(document.getElementById('v-dlc').value, 10) || 3,
     temperature_conservation: document.getElementById('v-temp').value,
     format_etiquette:         document.getElementById('v-format').value,
-    famille:                  document.getElementById('v-famille').value.trim() || null,
+    famille:                  document.getElementById('v-famille').value || null,
+    sous_famille:             document.getElementById('v-sous-famille').value || null,
     code_vente:               document.getElementById('v-code').value.trim() || null,
   };
 

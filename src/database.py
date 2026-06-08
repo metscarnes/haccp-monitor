@@ -406,6 +406,7 @@ CREATE TABLE IF NOT EXISTS catalogue_vente (
     temperature_conservation TEXT    NOT NULL DEFAULT '0°C à +4°C',
     format_etiquette         TEXT    DEFAULT 'standard_60x40',
     famille                  TEXT,
+    sous_famille             TEXT,
     actif                    BOOLEAN DEFAULT 1,
     created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
@@ -1332,6 +1333,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # designation_libre = libellé de l'article catalogue fournisseur quand aucun
             # produit interne (table produits) n'est rattaché (produit_id NULL).
             "ALTER TABLE reception_lignes ADD COLUMN designation_libre TEXT",
+            # v6.1 — Catalogue vente : classification famille / sous-famille (même référentiel qu'achats)
+            "ALTER TABLE catalogue_vente ADD COLUMN sous_famille TEXT",
         ]
         for sql in migrations:
             try:
