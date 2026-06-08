@@ -136,8 +136,11 @@
 
       <!-- Total panier -->
       <div class="ach-total-bar">
-        <span><span id="panier-nb-articles">0</span> article(s) — Total HT :</span>
-        <span id="panier-total">0,00 €</span>
+        <span><span id="panier-nb-articles">0</span> article(s)</span>
+        <span style="display:flex; gap:var(--space-4); align-items:center;">
+          <span style="font-size:var(--text-sm); color:#6b7280;">HT : <strong id="panier-total">0,00 €</strong></span>
+          <span style="font-size:var(--text-base); color:#6b2d0f;">TTC : <strong id="panier-total-ttc">0,00 €</strong></span>
+        </span>
       </div>
 
       <!-- Options génération -->
@@ -207,8 +210,10 @@
       </div>
 
       <div class="ach-total-bar">
-        <span>Total HT :</span>
-        <span id="cmd-total">0,00 €</span>
+        <span style="display:flex; gap:var(--space-4); align-items:center;">
+          <span style="font-size:var(--text-sm); color:#6b7280;">HT : <strong id="cmd-total">0,00 €</strong></span>
+          <span style="font-size:var(--text-base); color:#6b2d0f;">TTC : <strong id="cmd-total-ttc">0,00 €</strong></span>
+        </span>
       </div>
 
       <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">

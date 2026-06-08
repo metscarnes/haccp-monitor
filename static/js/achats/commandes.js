@@ -468,16 +468,20 @@ function afficherCataloguePanier() {
 }
 
 function majTotalPanier() {
-  let total = 0;
+  let totalHT = 0, totalTTC = 0;
   for (const catId of Object.keys(panier)) {
     const a = catalogueTous.find(x => x.id === parseInt(catId));
     const qte = panierQte(catId);
     if (a && qte) {
       const t = totalLignePanier(a, qte, panierUnite(catId));
-      if (t !== null) total += t;
+      if (t !== null) {
+        totalHT += t;
+        totalTTC += t * (1 + (parseFloat(a.tva_percent) || 5.5) / 100);
+      }
     }
   }
-  document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
+  document.getElementById('panier-total').textContent = fmtPrix(totalHT) + ' €';
+  document.getElementById('panier-total-ttc').textContent = fmtPrix(totalTTC) + ' €';
   document.getElementById('panier-nb-articles').textContent = panierNbArticles();
 }
 
@@ -657,8 +661,10 @@ function afficherLignes(lignes) {
 }
 
 function calculerTotal(lignes) {
-  const total = lignes.reduce((s, l) => s + (l.montant_ht || 0), 0);
-  document.getElementById('cmd-total').textContent = fmtPrix(total) + ' €';
+  const totalHT  = lignes.reduce((s, l) => s + (l.montant_ht || 0), 0);
+  const totalTTC = lignes.reduce((s, l) => s + (l.montant_ht || 0) * (1 + (parseFloat(l.tva_percent) || 5.5) / 100), 0);
+  document.getElementById('cmd-total').textContent     = fmtPrix(totalHT)  + ' €';
+  document.getElementById('cmd-total-ttc').textContent = fmtPrix(totalTTC) + ' €';
 }
 
 async function sauverCommande() {
