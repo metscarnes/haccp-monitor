@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveau);
+  document.getElementById('btn-export').addEventListener('click', () => { window.location.href = '/api/vente/catalogue/export'; });
+  document.getElementById('btn-template').addEventListener('click', () => { window.location.href = '/api/vente/catalogue/template'; });
   document.getElementById('btn-import').addEventListener('click', () => {
     document.getElementById('import-fichier').value = '';
     document.getElementById('import-lancer').disabled = true;

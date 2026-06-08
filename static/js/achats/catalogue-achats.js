@@ -720,10 +720,7 @@ async function sauver(e) {
 function exporterCatalogue() {
   const fournisseurId = document.getElementById('filtre-fournisseur').value;
   const url = '/api/achats/catalogue/export' + (fournisseurId ? `?fournisseur_id=${fournisseurId}` : '');
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'catalogue_fournisseur.xlsx';
-  a.click();
+  window.location.href = url;
 }
 
 // ── Import Excel ─────────────────────────────────────────────
