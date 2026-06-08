@@ -7,6 +7,10 @@ let modeEdition = false;
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  peuplerSelectFamille(document.getElementById('filtre-famille'), null, '');
+  // Réinsérer "Toutes" en tête du filtre famille (peuplerSelectFamille met "— Famille —")
+  document.getElementById('filtre-famille').firstChild.textContent = 'Toutes';
+  document.getElementById('filtre-famille').firstChild.value = '';
   bindEvents();
   charger();
 });
@@ -19,6 +23,17 @@ function bindEvents() {
   document.getElementById('form-vente').addEventListener('submit', sauver);
   document.getElementById('filtre-search').addEventListener('input', render);
   document.getElementById('filtre-inactifs').addEventListener('change', charger);
+  document.getElementById('filtre-famille').addEventListener('change', () => {
+    const fam = document.getElementById('filtre-famille').value;
+    const sel = document.getElementById('filtre-sous-famille');
+    majSousFamille(fam, sel, '');
+    const opt0 = document.createElement('option');
+    opt0.value = ''; opt0.textContent = 'Toutes';
+    sel.insertBefore(opt0, sel.firstChild);
+    sel.value = '';
+    render();
+  });
+  document.getElementById('filtre-sous-famille').addEventListener('change', render);
   document.getElementById('v-famille').addEventListener('change', () => {
     majSousFamille(
       document.getElementById('v-famille').value,
@@ -42,15 +57,25 @@ async function charger() {
 }
 
 function render() {
-  const search = document.getElementById('filtre-search').value.toLowerCase();
-  const liste = produits.filter(p => !search || (p.nom || '').toLowerCase().includes(search));
+  const search      = document.getElementById('filtre-search').value.toLowerCase();
+  const famille     = document.getElementById('filtre-famille').value;
+  const sousFamille = document.getElementById('filtre-sous-famille').value;
+
+  const liste = produits.filter(p => {
+    if (search      && !(p.nom || '').toLowerCase().includes(search))   return false;
+    if (famille     && p.famille     !== famille)                        return false;
+    if (sousFamille && p.sous_famille !== sousFamille)                   return false;
+    return true;
+  });
 
   const actifs = produits.filter(p => p.actif);
   document.getElementById('stat-total').textContent = actifs.length;
+  document.getElementById('resultat-count').textContent =
+    `${liste.length} produit${liste.length > 1 ? 's' : ''}`;
 
   const tbody = document.getElementById('tbody-vente');
   if (!liste.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="ach-vide">Aucun produit fini</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" class="ach-vide">Aucun produit fini</td></tr>`;
     return;
   }
   tbody.innerHTML = liste.map(p => `
@@ -63,7 +88,6 @@ function render() {
       <td>${p.tva_percent ?? 5.5}%</td>
       <td class="ach-col-num">${p.dlc_jours ?? '—'}</td>
       <td>${escHtml(p.temperature_conservation || '—')}</td>
-      <td>${escHtml(p.format_etiquette || '—')}</td>
       <td>${escHtml(p.famille || '—')}</td>
       <td>${escHtml(p.sous_famille || '—')}</td>
       <td class="ach-col-actions">

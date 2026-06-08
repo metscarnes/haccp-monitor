@@ -46,10 +46,29 @@
   </div>
 
   <div class="ach-filtres">
-    <input type="search" id="filtre-search" class="ach-champ" placeholder="Rechercher un produit fini…" style="flex:1;min-width:200px;">
-    <label style="display:flex;align-items:center;gap:6px;">
-      <input type="checkbox" id="filtre-inactifs"> Afficher les inactifs
-    </label>
+    <div class="ach-filtre">
+      <label>Famille</label>
+      <select id="filtre-famille">
+        <option value="">Toutes</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Sous-famille</label>
+      <select id="filtre-sous-famille" disabled>
+        <option value="">Toutes</option>
+      </select>
+    </div>
+    <div class="ach-filtre ach-filtre--search">
+      <label>Recherche</label>
+      <input type="search" id="filtre-search" placeholder="Rechercher un produit fini…">
+    </div>
+    <div style="width:100%;display:flex;flex-wrap:wrap;gap:var(--space-3);align-items:center;padding-top:var(--space-2);border-top:1px solid #e8d9c4;margin-top:var(--space-1);">
+      <label style="display:inline-flex;align-items:center;gap:8px;font-size:var(--text-sm);font-weight:600;color:#4b5563;cursor:pointer;">
+        <input type="checkbox" id="filtre-inactifs" style="width:18px;height:18px;accent-color:var(--color-accent);">
+        Afficher les inactifs
+      </label>
+      <div class="ach-resultat" id="resultat-count" style="margin-left:auto;"></div>
+    </div>
   </div>
 
   <div id="zone-erreur" class="ach-form-erreur" hidden></div>
@@ -63,7 +82,6 @@
           <th>TVA</th>
           <th>DLC (j)</th>
           <th>Température</th>
-          <th>Format étiquette</th>
           <th>Famille</th>
           <th>Sous-famille</th>
           <th></th>

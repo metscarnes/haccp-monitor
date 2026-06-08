@@ -71,7 +71,18 @@ function bindEvents() {
   // Filtres
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-format-prix').addEventListener('change', filtrer);
-  document.getElementById('filtre-famille').addEventListener('change', filtrer);
+  document.getElementById('filtre-famille').addEventListener('change', () => {
+    const fam = document.getElementById('filtre-famille').value;
+    const sel = document.getElementById('filtre-sous-famille');
+    majSousFamille(fam, sel, '');
+    // réinsérer "Toutes" en tête et forcer la sélection vide
+    const opt0 = document.createElement('option');
+    opt0.value = ''; opt0.textContent = 'Toutes';
+    sel.insertBefore(opt0, sel.firstChild);
+    sel.value = '';
+    filtrer();
+  });
+  document.getElementById('filtre-sous-famille').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
@@ -171,6 +182,7 @@ function filtrer() {
   const fourn            = document.getElementById('filtre-fournisseur').value;
   const formatPrix       = document.getElementById('filtre-format-prix').value;
   const famille          = document.getElementById('filtre-famille').value;
+  const sousFamille      = document.getElementById('filtre-sous-famille').value;
   const dlc              = document.getElementById('filtre-dlc').value;
   const search           = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest     = document.getElementById('filtre-afficher-test').checked;
@@ -184,6 +196,7 @@ function filtrer() {
     if (fourn      && String(a.fournisseur_id) !== fourn)            return false;
     if (formatPrix && a.format_prix !== formatPrix)                  return false;
     if (famille    && a.famille !== famille)                         return false;
+    if (sousFamille && a.sous_famille !== sousFamille)               return false;
     if (dlc        && a.dlc_type !== dlc)                            return false;
     if (sansPrixOnly   && a.prix_achat_ht > 0)                      return false;
     if (incompletsOnly && !estIncomplet(a))                         return false;
