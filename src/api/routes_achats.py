@@ -412,6 +412,8 @@ async def download_template():
 
     from openpyxl.comments import Comment
     from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.styles import Protection
+    from openpyxl.worksheet.protection import SheetProtection
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -524,26 +526,102 @@ async def download_template():
     ws.row_dimensions[2].height = 58
     ws.freeze_panes = "A5"  # données à saisir à partir de la ligne 5
 
-    # Liste déroulante kg/colis sur la colonne format_prix (anti-erreur)
+    # Colonne E — format_prix : kg / colis  [OBLIGATOIRE]
     fmt_letter = ws.cell(row=1, column=5).column_letter
-    dv = DataValidation(type="list", formula1='"kg,colis"', allow_blank=False)
+    dv = DataValidation(type="list", formula1='"kg,colis"', allow_blank=False,
+                        showErrorMessage=True, errorTitle="Valeur requise",
+                        error="Choisissez « kg » ou « colis » dans la liste.")
     dv.prompt = "Choisir : kg (prix au kilo) ou colis (prix au colis/pièce)"
     dv.promptTitle = "Le prix est au..."
     ws.add_data_validation(dv)
     dv.add(f"{fmt_letter}5:{fmt_letter}500")
 
-    # Liste déroulante des familles (colonne « famille »)
+    # Colonne J — famille  [OBLIGATOIRE]
     fam_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "famille")
     fam_letter = ws.cell(row=1, column=fam_col).column_letter
     dv_fam = DataValidation(
         type="list",
         formula1='"Viande,Charcuterie,Traiteur,Aide culinaire,Hygiène et emballage"',
-        allow_blank=True,
+        allow_blank=False,
+        showErrorMessage=True, errorTitle="Valeur requise",
+        error="Choisissez une famille dans la liste.",
     )
     dv_fam.prompt = "Choisir une famille de produit"
     dv_fam.promptTitle = "Famille"
     ws.add_data_validation(dv_fam)
     dv_fam.add(f"{fam_letter}5:{fam_letter}500")
+
+    # Colonne K — sous_famille  [OBLIGATOIRE]
+    sf_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "sous_famille")
+    sf_letter = ws.cell(row=1, column=sf_col).column_letter
+    sous_familles = (
+        "Bœuf,Veau,Agneau,Porc,Volaille,Cheval,"
+        "Saucisse,Jambon,Pâté,Rillettes,Lardons,"
+        "Plat cuisiné,Entrée,Dessert,"
+        "Épice,Farine,Huile,Sel,Sucre,Sauce,"
+        "Emballage,Produit hygiène,Matériel"
+    )
+    dv_sf = DataValidation(
+        type="list",
+        formula1=f'"{sous_familles}"',
+        allow_blank=False,
+        showErrorMessage=True, errorTitle="Valeur requise",
+        error="Choisissez une sous-famille dans la liste.",
+    )
+    dv_sf.prompt = "Choisir une sous-famille"
+    dv_sf.promptTitle = "Sous-famille"
+    ws.add_data_validation(dv_sf)
+    dv_sf.add(f"{sf_letter}5:{sf_letter}500")
+
+    # Masquer les colonnes I (conditionnement) et L (dlc_type)
+    for hidden_key in ("conditionnement", "dlc_type"):
+        hidden_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == hidden_key)
+        hidden_letter = ws.cell(row=1, column=hidden_col).column_letter
+        ws.column_dimensions[hidden_letter].hidden = True
+
+    # --- Colonnes F et G bloquées si E = kg (validation custom) ---
+    # Excel évalue la formule sur la cellule cible : autorisé seulement si E de la même ligne = "colis"
+    for blocked_key in ("qte_par_colis", "poids_unitaire_kg"):
+        b_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == blocked_key)
+        b_letter = ws.cell(row=1, column=b_col).column_letter
+        dv_block = DataValidation(
+            type="custom",
+            formula1=f'=EXACT(E5,"colis")',
+            allow_blank=True,
+            showErrorMessage=True,
+            errorTitle="Colonne non applicable",
+            error='Cette colonne n\'est à remplir que si "Prix au" (colonne E) vaut "colis". Laissez vide pour un produit au kilo.',
+        )
+        dv_block.showInputMessage = True
+        dv_block.promptTitle = "Au kilo ?"
+        dv_block.prompt = "Laisser vide si le prix est au kilo (colonne E = kg)."
+        ws.add_data_validation(dv_block)
+        dv_block.add(f"{b_letter}5:{b_letter}500")
+
+    # --- Protection de la feuille : lignes 1-4 verrouillées, zone saisie libre ---
+    # Par défaut toutes les cellules ont locked=True ; on déverrouille la zone saisie.
+    # Les cellules F5:G500 restent locked=True pour que la protection bloque les formules.
+    for row in range(5, DERNIERE_LIGNE + 1):
+        for col_idx in range(1, len(colonnes) + 1):
+            key = colonnes[col_idx - 1][0]
+            # F (qte_par_colis) et G (poids_unitaire_kg) : on garde locked pour interdire les formules
+            # mais la validation custom gère déjà l'accès conditionnel
+            if key not in ("qte_par_colis", "poids_unitaire_kg"):
+                ws.cell(row=row, column=col_idx).protection = Protection(locked=False)
+
+    # Activer la protection : autorise sélection des cellules verrouillées et non verrouillées,
+    # mais interdit toute modification des cellules locked (lignes 1-4 + colonnes F/G)
+    ws.protection = SheetProtection(
+        password="",          # sans mot de passe : le fournisseur peut déprotéger s'il le souhaite,
+        sheet=True,           # mais ça évite les modifications accidentelles
+        selectLockedCells=True,
+        selectUnlockedCells=True,
+        formatCells=False,
+        formatColumns=False,
+        formatRows=False,
+        insertRows=False,
+        deleteRows=False,
+    )
 
     # --- Onglet « Mode d'emploi » -------------------------------------------
     guide = wb.create_sheet("Mode d'emploi")
