@@ -264,6 +264,15 @@ async def download_template_vente():
         dn = DefinedName(safe_name, attr_text=range_ref)
         wb.defined_names.add(dn)
 
+    # Valeurs TVA dans l'onglet Listes (évite le problème de virgule comme séparateur)
+    TVA_VALEURS = ["5,5", "10", "20"]
+    tva_list_col = len(FAMILLES_SF) + 1
+    for row_l, v in enumerate(TVA_VALEURS, 1):
+        ws_listes.cell(row=row_l, column=tva_list_col, value=v)
+    tva_list_letter = ws_listes.cell(row=1, column=tva_list_col).column_letter
+    tva_range_ref   = f"Listes!${tva_list_letter}$1:${tva_list_letter}${len(TVA_VALEURS)}"
+    wb.defined_names.add(DefinedName("TVA", attr_text=tva_range_ref))
+
     # Validation famille
     fam_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "famille")
     fam_letter = ws.cell(row=1, column=fam_col).column_letter
@@ -292,7 +301,7 @@ async def download_template_vente():
     tva_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "tva_percent")
     tva_letter = ws.cell(row=1, column=tva_col).column_letter
     dv_tva = DataValidation(
-        type="list", formula1='"5,5;10;20"',
+        type="list", formula1="TVA",
         allow_blank=True, showErrorMessage=True,
         errorTitle="TVA invalide", error="Choisissez 5,5 ; 10 ou 20.",
     )
