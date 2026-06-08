@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Catalogue de vente — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/achats.css">
+</head>
+<body class="ach-body">
+<script>
+  // ── Garde d'accès : page réservée à l'administrateur ──────────
+  (function(){
+    var PAGE = '/catalogue-vente.html';
+    function versLogin(){
+      sessionStorage.setItem('auth_redirect', PAGE);
+      window.location.replace('/login.html?admin=1');
+    }
+    var token = localStorage.getItem('admin_token');
+    var exp   = Number(localStorage.getItem('admin_token_expires')||0);
+    if(!token || Date.now() > exp){ versLogin(); return; }
+    fetch('/api/auth/verify', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+      .then(function(d){ if(d.role !== 'admin'){ versLogin(); } })
+      .catch(function(){ versLogin(); });
+  })();
+</script>
+
+  <header class="ach-bar">
+    <a href="/production-hub.html" class="ach-retour">← Production</a>
+    <div class="ach-bar-titre">🏷️ CATALOGUE DE VENTE</div>
+    <div class="ach-bar-actions">
+      <button class="ach-btn ach-btn--primary" id="btn-nouveau">+ Ajouter un produit fini</button>
+    </div>
+  </header>
+
+  <div class="ach-stats">
+    <div class="ach-stat ach-stat--ok">
+      <span class="ach-stat-valeur" id="stat-total">0</span>
+      <span class="ach-stat-label">produits finis actifs</span>
+    </div>
+  </div>
+
+  <div class="ach-filtres">
+    <input type="search" id="filtre-search" class="ach-champ" placeholder="Rechercher un produit fini…" style="flex:1;min-width:200px;">
+    <label style="display:flex;align-items:center;gap:6px;">
+      <input type="checkbox" id="filtre-inactifs"> Afficher les inactifs
+    </label>
+  </div>
+
+  <div id="zone-erreur" class="ach-form-erreur" hidden></div>
+
+  <div class="ach-table-wrap">
+    <table class="ach-table">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Prix vente TTC</th>
+          <th>TVA</th>
+          <th>DLC (j)</th>
+          <th>Température</th>
+          <th>Format étiquette</th>
+          <th>Famille</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody-vente"></tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal produit fini ── -->
+  <div class="ach-modal" id="modal-vente" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-titre">Nouveau produit fini</h2>
+        <button class="ach-modal-fermer" id="modal-fermer">✕</button>
+      </header>
+      <form class="ach-form" id="form-vente" autocomplete="off">
+        <input type="hidden" id="v-id">
+        <div class="ach-champ ach-champ--full">
+          <label>Nom du produit fini <span style="color:#c0392b;">*</span></label>
+          <input type="text" id="v-nom" required placeholder="ex : Merguez de bœuf">
+        </div>
+        <div class="ach-champ">
+          <label>Prix de vente TTC (€)</label>
+          <input type="number" id="v-prix" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="ach-champ">
+          <label>TVA (%)</label>
+          <select id="v-tva">
+            <option value="5.5">5.5% (alimentaire)</option>
+            <option value="10">10%</option>
+            <option value="20">20%</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>DLC (en jours) <span style="color:#c0392b;">*</span></label>
+          <input type="number" id="v-dlc" min="0" max="365" value="3">
+        </div>
+        <div class="ach-champ">
+          <label>Température de conservation</label>
+          <select id="v-temp">
+            <option value="0°C à +4°C">0°C à +4°C (réfrigéré)</option>
+            <option value="+2°C / +4°C">+2°C / +4°C (viande fraîche)</option>
+            <option value="-18°C">-18°C (congelé)</option>
+            <option value="Ambiant">Ambiant</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Format d'étiquette</label>
+          <select id="v-format">
+            <option value="standard_60x40">Standard 60×40</option>
+            <option value="grand_100x60">Grand 100×60</option>
+            <option value="petit_40x30">Petit 40×30</option>
+          </select>
+        </div>
+        <div class="ach-champ">
+          <label>Famille</label>
+          <input type="text" id="v-famille" placeholder="ex : Charcuterie, Traiteur…">
+        </div>
+        <div class="ach-champ">
+          <label>Code de vente</label>
+          <input type="text" id="v-code" placeholder="(facultatif)">
+        </div>
+        <div id="form-erreur" class="ach-form-erreur" hidden></div>
+        <div class="ach-modal-footer" style="justify-content:space-between;">
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer" hidden>Supprimer</button>
+          <div style="display:flex;gap:var(--space-2);">
+            <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
+            <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/js/vente/catalogue-vente.js"></script>
+</body>
+</html>

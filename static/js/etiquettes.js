@@ -279,11 +279,11 @@ async function chargerIngredientsRecette(id) {
 
     const raw = detail.ingredients ?? detail.lignes ?? [];
     state.ingredients = raw.map(ing => ({
-      recette_ingredient_id: ing.id ?? ing.recette_ingredient_id,
-      produit_id:            ing.produit_id,
-      nom:                   ing.produit_nom ?? ing.nom ?? '',
-      quantite_base:         ing.quantite ?? 0,
-      unite:                 ing.unite ?? 'kg',
+      recette_ingredient_id:    ing.id ?? ing.recette_ingredient_id,
+      catalogue_fournisseur_id: ing.catalogue_fournisseur_id ?? null,
+      nom:                      ing.produit_nom ?? ing.designation ?? ing.nom ?? '',
+      quantite_base:            ing.quantite ?? 0,
+      unite:                    ing.unite ?? 'kg',
     }));
   } catch {
     state.ingredients    = [];
@@ -319,7 +319,7 @@ function recalculerQuantites() {
     } else {
       qty = ing.quantite_base;
     }
-    state.quantities[ing.produit_id] = qty;
+    state.quantities[ing.recette_ingredient_id] = qty;
   });
 }
 
@@ -329,11 +329,11 @@ function afficherIngredients() {
     return;
   }
   elIngredients.innerHTML = state.ingredients.map(ing => {
-    const qty = state.quantities[ing.produit_id] ?? 0;
+    const qty = state.quantities[ing.recette_ingredient_id] ?? 0;
     return `
       <div class="fab-ingredient-ligne">
         <div class="fab-ingredient-nom">${escHtml(ing.nom)}</div>
-        <div class="fab-ingredient-qty-display" data-pid="${ing.produit_id}">
+        <div class="fab-ingredient-qty-display" data-pid="${ing.recette_ingredient_id}">
           ${qty > 0 ? qty : '—'}
         </div>
         <div class="fab-ingredient-unite">${escHtml(ing.unite)}</div>
@@ -671,9 +671,9 @@ async function ouvrirModalSubstitution(ingNom) {
   elSubOverlay.hidden = false;
 
   try {
-    // Un row par lot disponible (et non par produit) : permet de choisir
-    // un lot spécifique parmi plusieurs lots du même produit.
-    const lots = await apiFetch('/api/produits/lots-disponibles?type=brut');
+    // Un row par lot disponible (et non par article) : permet de choisir
+    // un lot spécifique parmi plusieurs lots du même article du catalogue achats.
+    const lots = await apiFetch('/api/fabrications/lots-disponibles');
     subAllProduits = exclureLotCourant(lots);
     const filtres = filtrerProduitsIntelligent(subAllProduits, ingNom);
     afficherSubProduits(filtres);
@@ -954,7 +954,7 @@ function afficherRecap() {
   });
 
   const linesHtml = state.ingredients.map(ing => {
-    const qty = state.quantities[ing.produit_id] ?? 0;
+    const qty = state.quantities[ing.recette_ingredient_id] ?? 0;
     const lot = lotsMap[String(ing.recette_ingredient_id)] ?? '—';
     return `
       <div class="fab-recap-ing-ligne">
@@ -993,7 +993,7 @@ elBtnGenerer.addEventListener('click', async () => {
     const ing = state.ingredients.find(
       i => String(i.recette_ingredient_id) === String(riId)
     );
-    return ing ? (state.quantities[ing.produit_id] ?? 0) : 0;
+    return ing ? (state.quantities[ing.recette_ingredient_id] ?? 0) : 0;
   }
 
   // Construit la map lots par recette_ingredient_id
@@ -1016,7 +1016,7 @@ elBtnGenerer.addEventListener('click', async () => {
       lotsParRiId[riId] = {
         recette_ingredient_id: ing.recette_ingredient_id,
         reception_ligne_id:    null,
-        quantite:              state.quantities[ing.produit_id] ?? 0,
+        quantite:              state.quantities[ing.recette_ingredient_id] ?? 0,
       };
     }
   });
@@ -1078,10 +1078,10 @@ elBtnGenerer.addEventListener('click', async () => {
         });
       }
 
-      // Quantité — dans state.quantities[produit_id], jointure via state.ingredients
+      // Quantité — clé state.quantities = recette_ingredient_id
       const riId  = lot.recette_ingredient_id ?? lot.ingredient_id;
       const ing   = state.ingredients.find(i => String(i.recette_ingredient_id) === String(riId));
-      const qte   = ing ? (state.quantities[ing.produit_id] ?? '') : '';
+      const qte   = ing ? (state.quantities[ing.recette_ingredient_id] ?? '') : '';
       const unite = ing?.unite ?? '';
       const qteTexte = qte !== '' ? `${qte}${unite} ` : '';
 

@@ -53,14 +53,14 @@
 
       <div class="ar-form-group">
         <label class="ar-label" for="ar-produit-fini">
-          Produit fini associé <span class="ar-requis" aria-hidden="true">*</span>
+          Produit fini (catalogue de vente) <span class="ar-requis" aria-hidden="true">*</span>
         </label>
         <div class="ar-autocomplete-wrap">
           <input
             type="search"
             id="ar-produit-fini"
             class="ar-input"
-            placeholder="Rechercher un produit fini…"
+            placeholder="Rechercher / créer un produit de vente…"
             autocomplete="off"
             aria-required="true"
             aria-autocomplete="list"
@@ -149,24 +149,24 @@
 
         <div class="ar-form-group">
           <label class="ar-label" for="ar-ingr-produit">
-            Produit <span class="ar-hint-label">(existant ou saisie libre)</span>
+            Article du catalogue achats <span class="ar-hint-label">(ou saisie libre à raccorder)</span>
           </label>
           <div class="ar-autocomplete-wrap">
             <input
               type="text"
               id="ar-ingr-produit"
               class="ar-input"
-              placeholder="ex : Sel, Poivre, Viande bœuf…"
+              placeholder="ex : Épaule de bœuf, Boyau mouton…"
               autocomplete="off"
               aria-autocomplete="list"
               aria-controls="ar-ingr-produit-liste"
             >
             <div class="ar-autocomplete-liste" id="ar-ingr-produit-liste" hidden
-                 role="listbox" aria-label="Produits disponibles"></div>
+                 role="listbox" aria-label="Articles du catalogue achats"></div>
           </div>
           <input type="hidden" id="ar-ingr-produit-id">
           <div class="ar-hint-nouveau" id="ar-ingr-hint" hidden>
-            Ingrédient libre — sera créé automatiquement à l'enregistrement
+            Ingrédient libre — non relié au catalogue achats (FIFO indisponible tant qu'il n'est pas raccordé)
           </div>
         </div>
 

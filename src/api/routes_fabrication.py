@@ -36,14 +36,15 @@ router = APIRouter(prefix="/api", tags=["fabrication"])
 # ---------------------------------------------------------------------------
 
 class IngredientCreate(BaseModel):
-    produit_id: int
+    catalogue_fournisseur_id: Optional[int] = None   # article du catalogue achats
+    designation: Optional[str] = None                # libellé (autonome / à raccorder)
     quantite: Optional[float] = None
     unite: Optional[str] = None          # kg, g, L, pièce…
 
 
 class RecetteCreate(BaseModel):
     nom: str
-    produit_fini_id: int
+    catalogue_vente_id: Optional[int] = None         # produit fini (catalogue de vente)
     dlc_jours: int
     instructions: Optional[str] = None
     ingredients: list[IngredientCreate] = []
@@ -51,14 +52,15 @@ class RecetteCreate(BaseModel):
 
 class IngredientUpdate(BaseModel):
     id: Optional[int] = None             # présent → mise à jour, absent → nouvel ingrédient
-    produit_id: int
+    catalogue_fournisseur_id: Optional[int] = None
+    designation: Optional[str] = None
     quantite: Optional[float] = None
     unite: Optional[str] = None
 
 
 class RecetteUpdate(BaseModel):
     nom: str
-    produit_fini_id: int
+    catalogue_vente_id: Optional[int] = None
     dlc_jours: int
     instructions: Optional[str] = None
     ingredients: list[IngredientUpdate] = []
@@ -114,7 +116,7 @@ async def creer_recette(payload: RecetteCreate):
             recette = await create_recette(
                 db,
                 nom=payload.nom,
-                produit_fini_id=payload.produit_fini_id,
+                catalogue_vente_id=payload.catalogue_vente_id,
                 dlc_jours=payload.dlc_jours,
                 instructions=payload.instructions,
                 ingredients=[ing.model_dump() for ing in payload.ingredients],
@@ -139,7 +141,7 @@ async def modifier_recette(recette_id: int, payload: RecetteUpdate):
                 db,
                 recette_id=recette_id,
                 nom=payload.nom,
-                produit_fini_id=payload.produit_fini_id,
+                catalogue_vente_id=payload.catalogue_vente_id,
                 dlc_jours=payload.dlc_jours,
                 instructions=payload.instructions,
                 ingredients=[ing.model_dump() for ing in payload.ingredients],
@@ -187,14 +189,14 @@ async def fifo_lots(recette_id: int = Query(..., description="ID de la recette �
 # B2. Lot FIFO unitaire pour un produit donné (utilisé par le wizard substitution)
 # ---------------------------------------------------------------------------
 
-@router.get("/fabrications/produit-fifo/{produit_id}")
-async def fifo_produit(produit_id: int):
+@router.get("/fabrications/produit-fifo/{catalogue_fournisseur_id}")
+async def fifo_produit(catalogue_fournisseur_id: int):
     """
-    Retourne le meilleur lot FIFO disponible pour un produit donné :
+    Retourne le meilleur lot FIFO disponible pour un article du catalogue achats :
     la ligne de reception_lignes avec la DLC la plus courte
     (à égalité : date de réception la plus ancienne).
 
-    Retourne 404 si aucune réception n'existe pour ce produit.
+    Retourne 404 si aucune réception n'existe pour cet article.
     """
     async with get_db() as db:
         cur = await db.execute(
@@ -208,7 +210,7 @@ async def fifo_produit(produit_id: int):
                    r.date_reception
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
-            WHERE  rl.produit_id = ?
+            WHERE  rl.catalogue_fournisseur_id = ?
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
@@ -224,21 +226,69 @@ async def fifo_produit(produit_id: int):
                 r.date_reception ASC
             LIMIT 1
             """,
-            (produit_id,),
+            (catalogue_fournisseur_id,),
         )
         row = await cur.fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Aucun lot disponible pour ce produit")
+        raise HTTPException(status_code=404, detail="Aucun lot disponible pour cet article")
     return dict(row)
 
 
 # ---------------------------------------------------------------------------
-# B3. Diagnostic FIFO : tous les lots d'un produit avec leur statut d'éligibilité
+# B2bis. Tous les lots disponibles en stock (réceptions via catalogue achats)
+#        → un row par lot, pour la modale de substitution.
 # ---------------------------------------------------------------------------
 
-@router.get("/fabrications/debug-fifo/{produit_id}")
-async def debug_fifo(produit_id: int):
-    """Retourne TOUS les lots d'un produit avec le détail de leur éligibilité FIFO."""
+@router.get("/fabrications/lots-disponibles")
+async def lots_disponibles_achats():
+    """
+    Retourne UN row par lot disponible en stock, identifié par l'article du
+    catalogue achats (id = catalogue_fournisseur_id, nom = designation).
+    Classé par DLC ascendante (FIFO). Utilisé par la substitution de lot.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT
+                cf.id           AS id,
+                cf.designation  AS nom,
+                cf.code_article AS code_unique,
+                rl.id           AS reception_ligne_id,
+                rl.numero_lot   AS numero_lot,
+                rl.origine      AS origine,
+                rl.dlc          AS dlc,
+                rl.dluo         AS dluo,
+                rl.poids_kg     AS poids_kg,
+                r.date_reception AS date_reception
+            FROM reception_lignes rl
+            JOIN receptions r ON r.id = rl.reception_id
+            JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+            WHERE r.statut = 'cloturee'
+              AND rl.conforme = 1
+              AND r.livraison_refusee = 0
+              AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                   OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+              AND NOT EXISTS (
+                  SELECT 1 FROM dlc_devenir d
+                  WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+              )
+            ORDER BY
+                CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                COALESCE(rl.dlc, rl.dluo) ASC,
+                r.date_reception ASC
+            """
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# B3. Diagnostic FIFO : tous les lots d'un article avec leur statut d'éligibilité
+# ---------------------------------------------------------------------------
+
+@router.get("/fabrications/debug-fifo/{catalogue_fournisseur_id}")
+async def debug_fifo(catalogue_fournisseur_id: int):
+    """Retourne TOUS les lots d'un article achats avec le détail de leur éligibilité FIFO."""
     async with get_db() as db:
         cur = await db.execute(
             """
@@ -274,10 +324,10 @@ async def debug_fifo(produit_id: int):
                 END AS raison_exclusion
             FROM reception_lignes rl
             JOIN receptions r ON r.id = rl.reception_id
-            WHERE rl.produit_id = ?
+            WHERE rl.catalogue_fournisseur_id = ?
             ORDER BY r.date_reception DESC, rl.id DESC
             """,
-            (produit_id,),
+            (catalogue_fournisseur_id,),
         )
         rows = await cur.fetchall()
     return [dict(r) for r in rows]

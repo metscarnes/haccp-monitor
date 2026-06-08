@@ -393,24 +393,48 @@ CREATE INDEX IF NOT EXISTS idx_ouvertures_timestamp
 -- PHASE 3 — Module Fabrication (Recettes & Traçabilité)
 -- ===========================================================================
 
+-- Catalogue de VENTE : produits finis fabriqués (sortie de production, étiquette).
+-- Source du « produit fini » des recettes, indépendant du catalogue interne (produits).
+CREATE TABLE IF NOT EXISTS catalogue_vente (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
+    nom                      TEXT    NOT NULL,
+    code_vente               TEXT,
+    prix_vente_ttc           REAL,
+    tva_percent              REAL    DEFAULT 5.5,
+    dlc_jours                INTEGER NOT NULL DEFAULT 3,
+    temperature_conservation TEXT    NOT NULL DEFAULT '0°C à +4°C',
+    format_etiquette         TEXT    DEFAULT 'standard_60x40',
+    famille                  TEXT,
+    actif                    BOOLEAN DEFAULT 1,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id) REFERENCES boutiques(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_catalogue_vente_actif
+    ON catalogue_vente(actif, nom);
+
+-- Recettes : le produit fini vient du catalogue de VENTE,
+-- les ingrédients du catalogue d'ACHATS (catalogue_fournisseur).
 CREATE TABLE IF NOT EXISTS recettes (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    nom             TEXT    NOT NULL,
-    produit_fini_id INTEGER NOT NULL,
-    dlc_jours       INTEGER NOT NULL,
-    instructions    TEXT,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (produit_fini_id) REFERENCES produits(id)
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom                TEXT    NOT NULL,
+    catalogue_vente_id INTEGER,
+    dlc_jours          INTEGER NOT NULL,
+    instructions       TEXT,
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id)
 );
 
 CREATE TABLE IF NOT EXISTS recette_ingredients (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    recette_id  INTEGER NOT NULL,
-    produit_id  INTEGER NOT NULL,
-    quantite    REAL,
-    unite       TEXT,
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    recette_id               INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,     -- article d'achat (ingrédient) ; NULL = à raccorder
+    designation              TEXT,         -- libellé autonome de l'ingrédient
+    quantite                 REAL,
+    unite                    TEXT,
     FOREIGN KEY (recette_id) REFERENCES recettes(id) ON DELETE CASCADE,
-    FOREIGN KEY (produit_id) REFERENCES produits(id)
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
 );
 
 CREATE TABLE IF NOT EXISTS fabrications (
@@ -734,11 +758,9 @@ CREATE TABLE IF NOT EXISTS catalogue_fournisseur (
     sous_famille     TEXT,                    -- sous-catégorie dépendante de la famille
     dlc_type         TEXT    DEFAULT 'dlc',   -- 'dlc' | 'date_abattage' | 'no_dlc'
     dlc_jours        INTEGER,
-    produit_id       INTEGER,                 -- pont vers le produit interne (Production/FIFO)
     actif            INTEGER DEFAULT 1,
     date_maj         DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
-    FOREIGN KEY (produit_id)     REFERENCES produits(id),
     UNIQUE(fournisseur_id, code_article)
 );
 
@@ -1201,11 +1223,6 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v5.7 — Catalogue fournisseur : classification famille / sous-famille
             "ALTER TABLE catalogue_fournisseur ADD COLUMN famille TEXT",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN sous_famille TEXT",
-            # v5.8 — Pont catalogue achats → produit interne : un article du catalogue
-            # achats peut être rattaché à un produit (table produits). À la réception,
-            # ce lien remplit produit_id automatiquement → le lot devient visible pour
-            # la Production (recettes + moteur FIFO, qui s'appuient sur produit_id).
-            "ALTER TABLE catalogue_fournisseur ADD COLUMN produit_id INTEGER REFERENCES produits(id)",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",
@@ -1724,6 +1741,165 @@ PRAGMA foreign_keys=ON;
 
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
+
+    # ===================================================================
+    # Migration v6.0 — Production basée sur les catalogues Achats & Vente
+    #   • Produit fini d'une recette → catalogue_vente (au lieu de produits)
+    #   • Ingrédients d'une recette  → catalogue_fournisseur (au lieu de produits)
+    #   • Rapprochement automatique des ingrédients par nom ; les non-résolus
+    #     gardent leur libellé (designation) et catalogue_fournisseur_id NULL.
+    # Idempotent : ne s'exécute que si recettes possède encore produit_fini_id.
+    # Exécutée sur une connexion DÉDIÉE (post-init) : le rebuild de table par
+    # DROP/CREATE exige qu'aucun autre curseur ne soit ouvert sur la connexion.
+    # ===================================================================
+    try:
+        async with get_db() as db:
+            cur_rec = await db.execute("PRAGMA table_info(recettes)")
+            cols_rec = {row[1] for row in await cur_rec.fetchall()}
+            if "produit_fini_id" in cols_rec and "catalogue_vente_id" not in cols_rec:
+                logger.info("Migration v6.0 : bascule Production vers catalogues Achats/Vente")
+                await _migrer_production_v6(db)
+                await db.commit()
+                logger.info("Migration v6.0 : terminée")
+    except Exception as e:
+        logger.warning("Migration v6.0 production catalogues : %s", e)
+
+
+def _normaliser_nom(s: str) -> str:
+    """Normalise un libellé pour le rapprochement (minuscule, sans accents, espaces compactés)."""
+    import unicodedata
+    s = (s or "").strip().lower()
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+    return " ".join(s.split())
+
+
+async def _migrer_production_v6(db: aiosqlite.Connection) -> None:
+    """Bascule recettes/recette_ingredients vers les catalogues Vente & Achats.
+
+    - Crée une entrée catalogue_vente par produit fini référencé par une recette.
+    - Rapproche chaque ingrédient (ancien produit interne) d'un article du catalogue
+      achats par nom ; sinon catalogue_fournisseur_id reste NULL (à raccorder à la main).
+    - Préserve les id de recettes et recette_ingredients (intégrité fabrication_lots).
+    """
+    # Solde toute transaction héritée d'init_db : sans ça, le DROP plus bas peut
+    # échouer en « database table is locked » à cause d'un état de transaction ouvert.
+    await db.commit()
+
+    # NB : on lit tout d'abord (curseurs fermés via `async with`), PUIS on écrit.
+    # Un curseur de lecture encore ouvert sur recettes/recette_ingredients
+    # ferait échouer le DROP suivant (« database table is locked »).
+
+    # 1) Produits finis distincts (champs d'étiquette à reporter dans catalogue_vente)
+    async with db.execute(
+        """
+        SELECT DISTINCT p.id, p.nom, p.dlc_jours,
+               p.temperature_conservation, p.format_etiquette
+        FROM recettes r
+        JOIN produits p ON p.id = r.produit_fini_id
+        """
+    ) as cur:
+        produits_finis = [dict(r) for r in await cur.fetchall()]
+
+    # 2) Index designation (normalisée) → catalogue_fournisseur_id
+    async with db.execute("SELECT id, designation FROM catalogue_fournisseur") as cur:
+        cf_rows = [dict(r) for r in await cur.fetchall()]
+    cf_map: dict[str, int] = {}
+    for row in cf_rows:
+        key = _normaliser_nom(row["designation"])
+        if key and key not in cf_map:
+            cf_map[key] = row["id"]
+
+    # 3) Snapshot de l'ancien contenu avant rebuild
+    async with db.execute(
+        "SELECT id, nom, produit_fini_id, dlc_jours, instructions, created_at FROM recettes"
+    ) as cur:
+        anciennes_recettes = [dict(r) for r in await cur.fetchall()]
+
+    async with db.execute(
+        """
+        SELECT ri.id, ri.recette_id, ri.produit_id, ri.quantite, ri.unite,
+               p.nom AS produit_nom
+        FROM recette_ingredients ri
+        LEFT JOIN produits p ON p.id = ri.produit_id
+        """
+    ) as cur:
+        anciens_ingredients = [dict(r) for r in await cur.fetchall()]
+
+    # 4) Création des produits finis dans catalogue_vente (après les lectures)
+    vente_map: dict[int, int] = {}
+    for row in produits_finis:
+        async with db.execute(
+            """INSERT INTO catalogue_vente
+                   (nom, dlc_jours, temperature_conservation, format_etiquette)
+               VALUES (?, ?, ?, ?)""",
+            (row["nom"], row["dlc_jours"] or 3,
+             row["temperature_conservation"] or "0°C à +4°C",
+             row["format_etiquette"] or "standard_60x40"),
+        ) as cur_ins:
+            vente_map[row["id"]] = cur_ins.lastrowid
+
+    # 5) Rebuild des tables sous le nouveau modèle.
+    # Le DDL est exécuté en un seul executescript (autocommit, FK off le temps du
+    # remplacement) : on évite ainsi les verrous liés à l'entrelacement
+    # execute/executescript. On recrée recettes/recette_ingredients sous le MÊME nom
+    # (drop puis create) → les FK des tables enfants (fabrications, fabrication_lots)
+    # restent valides par référence de nom.
+    await db.commit()  # libère les curseurs de lecture avant le DDL
+    await db.executescript("""
+PRAGMA foreign_keys=OFF;
+DROP TABLE IF EXISTS recette_ingredients;
+DROP TABLE IF EXISTS recettes;
+CREATE TABLE recettes (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom                TEXT    NOT NULL,
+    catalogue_vente_id INTEGER,
+    dlc_jours          INTEGER NOT NULL,
+    instructions       TEXT,
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id)
+);
+CREATE TABLE recette_ingredients (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    recette_id               INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,
+    designation              TEXT,
+    quantite                 REAL,
+    unite                    TEXT,
+    FOREIGN KEY (recette_id) REFERENCES recettes(id) ON DELETE CASCADE,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+);
+PRAGMA foreign_keys=ON;
+""")
+
+    for r in anciennes_recettes:
+        await db.execute(
+            """INSERT INTO recettes
+                   (id, nom, catalogue_vente_id, dlc_jours, instructions, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (r["id"], r["nom"], vente_map.get(r["produit_fini_id"]),
+             r["dlc_jours"], r["instructions"], r["created_at"]),
+        )
+
+    non_resolus: list[str] = []
+    for ing in anciens_ingredients:
+        nom = ing["produit_nom"] or ""
+        cf_id = cf_map.get(_normaliser_nom(nom)) if nom else None
+        if cf_id is None and nom:
+            non_resolus.append(nom)
+        await db.execute(
+            """INSERT INTO recette_ingredients
+                   (id, recette_id, catalogue_fournisseur_id, designation, quantite, unite)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (ing["id"], ing["recette_id"], cf_id, nom or None,
+             ing["quantite"], ing["unite"]),
+        )
+
+    if non_resolus:
+        logger.warning(
+            "Migration v6.0 : %d ingrédient(s) non rapproché(s) au catalogue achats "
+            "(à raccorder à la main) : %s",
+            len(set(non_resolus)), ", ".join(sorted(set(non_resolus))),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -2650,21 +2826,6 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     # En réception basée sur le catalogue achats, produit_id peut être NULL :
     # la ligne reste valable, identifiée par designation_libre + catalogue_fournisseur_id.
     produit_id = data.get("produit_id")
-
-    # Pont catalogue achats → produit interne : si la ligne provient d'un article
-    # du catalogue achats sans produit interne explicite, on récupère le produit
-    # rattaché à cet article (mapping défini dans le catalogue achats). Le lot
-    # devient alors visible pour la Production (recettes + FIFO sur produit_id).
-    catalogue_id = data.get("catalogue_fournisseur_id")
-    if not produit_id and catalogue_id:
-        cur_cat = await db.execute(
-            "SELECT produit_id FROM catalogue_fournisseur WHERE id = ?", (catalogue_id,)
-        )
-        cat_row = await cur_cat.fetchone()
-        if cat_row and cat_row["produit_id"]:
-            produit_id = cat_row["produit_id"]
-            data["produit_id"] = produit_id  # propage pour l'INSERT et les calculs
-
     temp_conservation = None
     if produit_id:
         cur2 = await db.execute(
@@ -3846,14 +4007,15 @@ async def update_fiche_incident(db: aiosqlite.Connection, fiche_id: int, data: d
 # ===========================================================================
 
 async def get_recettes(db: aiosqlite.Connection) -> list[dict]:
-    """Retourne la liste des recettes avec le nom du produit fini."""
+    """Retourne la liste des recettes avec le nom du produit fini (catalogue de vente)."""
     cur = await db.execute(
         """
         SELECT r.id, r.nom, r.dlc_jours, r.instructions, r.created_at,
-               p.id   AS produit_fini_id,
-               p.nom  AS produit_fini_nom
+               r.catalogue_vente_id,
+               cv.nom            AS produit_fini_nom,
+               cv.prix_vente_ttc AS prix_vente_ttc
         FROM recettes r
-        JOIN produits p ON p.id = r.produit_fini_id
+        LEFT JOIN catalogue_vente cv ON cv.id = r.catalogue_vente_id
         ORDER BY r.nom
         """
     )
@@ -3862,14 +4024,17 @@ async def get_recettes(db: aiosqlite.Connection) -> list[dict]:
 
 
 async def get_recette(db: aiosqlite.Connection, recette_id: int) -> Optional[dict]:
-    """Retourne une recette avec ses ingrédients."""
+    """Retourne une recette avec ses ingrédients (articles du catalogue achats)."""
     cur = await db.execute(
         """
         SELECT r.id, r.nom, r.dlc_jours, r.instructions, r.created_at,
-               p.id  AS produit_fini_id,
-               p.nom AS produit_fini_nom
+               r.catalogue_vente_id,
+               cv.nom                      AS produit_fini_nom,
+               cv.prix_vente_ttc           AS prix_vente_ttc,
+               cv.temperature_conservation AS temperature_conservation,
+               cv.format_etiquette         AS format_etiquette
         FROM recettes r
-        JOIN produits p ON p.id = r.produit_fini_id
+        LEFT JOIN catalogue_vente cv ON cv.id = r.catalogue_vente_id
         WHERE r.id = ?
         """,
         (recette_id,),
@@ -3879,13 +4044,18 @@ async def get_recette(db: aiosqlite.Connection, recette_id: int) -> Optional[dic
         return None
     recette = dict(row)
 
+    # Ingrédients = articles du catalogue achats. La designation est stockée sur
+    # la ligne (autonome) ; on remonte aussi le fournisseur quand l'article existe.
     cur2 = await db.execute(
         """
         SELECT ri.id, ri.quantite, ri.unite,
-               p.id  AS produit_id,
-               p.nom AS produit_nom
+               ri.catalogue_fournisseur_id,
+               COALESCE(cf.designation, ri.designation) AS designation,
+               COALESCE(cf.designation, ri.designation) AS produit_nom,
+               f.nom AS fournisseur_nom
         FROM recette_ingredients ri
-        JOIN produits p ON p.id = ri.produit_id
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = ri.catalogue_fournisseur_id
+        LEFT JOIN fournisseurs           f ON f.id = cf.fournisseur_id
         WHERE ri.recette_id = ?
         ORDER BY ri.id
         """,
@@ -3898,25 +4068,29 @@ async def get_recette(db: aiosqlite.Connection, recette_id: int) -> Optional[dic
 async def create_recette(
     db: aiosqlite.Connection,
     nom: str,
-    produit_fini_id: int,
+    catalogue_vente_id: Optional[int],
     dlc_jours: int,
     instructions: Optional[str],
     ingredients: list[dict],
 ) -> dict:
     """
     Crée une recette complète (recette + recette_ingredients).
-    Chaque item de `ingredients` doit contenir : produit_id, quantite?, unite?
+    Chaque item de `ingredients` peut contenir :
+        catalogue_fournisseur_id?, designation?, quantite?, unite?
     """
     cur = await db.execute(
-        "INSERT INTO recettes (nom, produit_fini_id, dlc_jours, instructions) VALUES (?,?,?,?)",
-        (nom, produit_fini_id, dlc_jours, instructions),
+        "INSERT INTO recettes (nom, catalogue_vente_id, dlc_jours, instructions) VALUES (?,?,?,?)",
+        (nom, catalogue_vente_id, dlc_jours, instructions),
     )
     recette_id = cur.lastrowid
 
     for ing in ingredients:
         await db.execute(
-            "INSERT INTO recette_ingredients (recette_id, produit_id, quantite, unite) VALUES (?,?,?,?)",
-            (recette_id, ing["produit_id"], ing.get("quantite"), ing.get("unite")),
+            """INSERT INTO recette_ingredients
+                   (recette_id, catalogue_fournisseur_id, designation, quantite, unite)
+               VALUES (?,?,?,?,?)""",
+            (recette_id, ing.get("catalogue_fournisseur_id"), ing.get("designation"),
+             ing.get("quantite"), ing.get("unite")),
         )
 
     await db.commit()
@@ -3935,7 +4109,7 @@ async def update_recette(
     db: aiosqlite.Connection,
     recette_id: int,
     nom: str,
-    produit_fini_id: int,
+    catalogue_vente_id: Optional[int],
     dlc_jours: int,
     instructions: Optional[str],
     ingredients: list[dict],
@@ -3944,7 +4118,7 @@ async def update_recette(
     Met à jour une recette existante (champs + ingrédients).
 
     Diff intelligent sur les ingrédients (préserve la traçabilité) :
-      - Item avec `id` connu  → UPDATE quantite/unite (le produit_id n'est pas modifiable)
+      - Item avec `id` connu  → UPDATE quantite/unite/article
       - Item sans `id`        → INSERT
       - Id existant absent du payload → DELETE si non référencé par fabrication_lots,
         sinon RecetteIngredientEnUsage est levée.
@@ -3956,15 +4130,15 @@ async def update_recette(
         return None
 
     await db.execute(
-        "UPDATE recettes SET nom = ?, produit_fini_id = ?, dlc_jours = ?, instructions = ? WHERE id = ?",
-        (nom, produit_fini_id, dlc_jours, instructions, recette_id),
+        "UPDATE recettes SET nom = ?, catalogue_vente_id = ?, dlc_jours = ?, instructions = ? WHERE id = ?",
+        (nom, catalogue_vente_id, dlc_jours, instructions, recette_id),
     )
 
     cur = await db.execute(
         """
-        SELECT ri.id, p.nom AS produit_nom
+        SELECT ri.id, COALESCE(cf.designation, ri.designation) AS produit_nom
         FROM recette_ingredients ri
-        JOIN produits p ON p.id = ri.produit_id
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = ri.catalogue_fournisseur_id
         WHERE ri.recette_id = ?
         """,
         (recette_id,),
@@ -3981,19 +4155,27 @@ async def update_recette(
         )
         if await cur.fetchone():
             await db.rollback()
-            raise RecetteIngredientEnUsage(existants[ri_id])
+            raise RecetteIngredientEnUsage(existants[ri_id] or "ingrédient")
         await db.execute("DELETE FROM recette_ingredients WHERE id = ?", (ri_id,))
 
     for ing in ingredients:
         if ing.get("id") is not None and int(ing["id"]) in existants:
             await db.execute(
-                "UPDATE recette_ingredients SET quantite = ?, unite = ? WHERE id = ?",
-                (ing.get("quantite"), ing.get("unite"), int(ing["id"])),
+                """UPDATE recette_ingredients
+                   SET quantite = ?, unite = ?,
+                       catalogue_fournisseur_id = ?, designation = ?
+                   WHERE id = ?""",
+                (ing.get("quantite"), ing.get("unite"),
+                 ing.get("catalogue_fournisseur_id"), ing.get("designation"),
+                 int(ing["id"])),
             )
         else:
             await db.execute(
-                "INSERT INTO recette_ingredients (recette_id, produit_id, quantite, unite) VALUES (?,?,?,?)",
-                (recette_id, ing["produit_id"], ing.get("quantite"), ing.get("unite")),
+                """INSERT INTO recette_ingredients
+                       (recette_id, catalogue_fournisseur_id, designation, quantite, unite)
+                   VALUES (?,?,?,?,?)""",
+                (recette_id, ing.get("catalogue_fournisseur_id"), ing.get("designation"),
+                 ing.get("quantite"), ing.get("unite")),
             )
 
     await db.commit()
@@ -4016,45 +4198,48 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
 
     result = []
     for ing in recette["ingredients"]:
-        cur = await db.execute(
-            """
-            SELECT rl.id        AS reception_ligne_id,
-                   rl.numero_lot,
-                   rl.origine    AS origine,
-                   rl.dlc,
-                   rl.dluo,
-                   rl.poids_kg,
-                   r.date_reception
-            FROM   reception_lignes rl
-            JOIN   receptions r ON r.id = rl.reception_id
-            WHERE  rl.produit_id = ?
-              AND r.statut = 'cloturee'
-              AND rl.conforme = 1
-              AND r.livraison_refusee = 0
-              AND (COALESCE(rl.dlc, rl.dluo) IS NULL
-                   OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
-              AND NOT EXISTS (
-                  SELECT 1 FROM dlc_devenir d
-                  WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
-              )
-            ORDER BY
-                CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
-                COALESCE(rl.dlc, rl.dluo) ASC,
-                r.date_reception ASC
-            LIMIT 1
-            """,
-            (ing["produit_id"],),
-        )
-        lot_row = await cur.fetchone()
-        lot = dict(lot_row) if lot_row else None
+        cat_id = ing.get("catalogue_fournisseur_id")
+        lot = None
+        if cat_id is not None:
+            cur = await db.execute(
+                """
+                SELECT rl.id        AS reception_ligne_id,
+                       rl.numero_lot,
+                       rl.origine    AS origine,
+                       rl.dlc,
+                       rl.dluo,
+                       rl.poids_kg,
+                       r.date_reception
+                FROM   reception_lignes rl
+                JOIN   receptions r ON r.id = rl.reception_id
+                WHERE  rl.catalogue_fournisseur_id = ?
+                  AND r.statut = 'cloturee'
+                  AND rl.conforme = 1
+                  AND r.livraison_refusee = 0
+                  AND (COALESCE(rl.dlc, rl.dluo) IS NULL
+                       OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+                  AND NOT EXISTS (
+                      SELECT 1 FROM dlc_devenir d
+                      WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
+                  )
+                ORDER BY
+                    CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                    COALESCE(rl.dlc, rl.dluo) ASC,
+                    r.date_reception ASC
+                LIMIT 1
+                """,
+                (cat_id,),
+            )
+            lot_row = await cur.fetchone()
+            lot = dict(lot_row) if lot_row else None
 
         result.append({
-            "recette_ingredient_id": ing["id"],
-            "produit_id":            ing["produit_id"],
-            "produit_nom":           ing["produit_nom"],
-            "quantite_prevue":       ing["quantite"],
-            "unite":                 ing["unite"],
-            "lot_fifo":              lot,
+            "recette_ingredient_id":   ing["id"],
+            "catalogue_fournisseur_id": cat_id,
+            "produit_nom":             ing["produit_nom"],
+            "quantite_prevue":         ing["quantite"],
+            "unite":                   ing["unite"],
+            "lot_fifo":                lot,
         })
 
     return result
@@ -4211,7 +4396,7 @@ async def get_fabrications_historique(
         cur2 = await db.execute(
             """
             SELECT
-                p.nom           AS produit_nom,
+                COALESCE(cf.designation, ri.designation) AS produit_nom,
                 rl.numero_lot,
                 rl.origine      AS origine,
                 rl.dlc,
@@ -4220,11 +4405,11 @@ async def get_fabrications_historique(
                 rec.id          AS reception_id
             FROM fabrication_lots fl
             JOIN recette_ingredients ri ON ri.id  = fl.recette_ingredient_id
-            JOIN produits           p   ON p.id   = ri.produit_id
+            LEFT JOIN catalogue_fournisseur cf ON cf.id = ri.catalogue_fournisseur_id
             LEFT JOIN reception_lignes rl  ON rl.id  = fl.reception_ligne_id
             LEFT JOIN receptions       rec ON rec.id = rl.reception_id
             WHERE fl.fabrication_id = ?
-            ORDER BY p.nom
+            ORDER BY produit_nom
             """,
             (fab["id"],),
         )
@@ -4343,7 +4528,9 @@ async def get_dlc_calendrier(
             items.append(dict(row))
 
     if source in (None, "fabrication"):
-        cat_filter = "AND p.categorie = ?" if categorie else ""
+        # Produit fini = catalogue de vente. Le filtre « catégorie » s'applique
+        # sur la famille du produit de vente (équivalent fonctionnel).
+        cat_filter = "AND cv.famille = ?" if categorie else ""
         cat_params = (categorie,) if categorie else ()
         cur = await db.execute(
             f"""
@@ -4356,9 +4543,9 @@ async def get_dlc_calendrier(
                 fab.poids_fabrique   AS poids_fabrique,
                 r.instructions       AS recette_instructions,
                 'kg'                 AS unite,
-                p.id                 AS produit_id,
-                p.nom                AS produit_nom,
-                p.categorie          AS categorie,
+                cv.id                AS produit_id,
+                COALESCE(cv.nom, r.nom) AS produit_nom,
+                cv.famille           AS categorie,
                 NULL                 AS fournisseur_nom,
                 fab.date             AS date_origine,
                 fab.created_at       AS fabrication_created_at,
@@ -4369,13 +4556,13 @@ async def get_dlc_calendrier(
                 TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM fabrications fab
             JOIN recettes   r ON r.id = fab.recette_id
-            JOIN produits   p ON p.id = r.produit_fini_id
+            LEFT JOIN catalogue_vente cv ON cv.id = r.catalogue_vente_id
             LEFT JOIN dlc_devenir dd
                    ON dd.source_type = 'fabrication' AND dd.source_id = fab.id
             LEFT JOIN personnel pers ON pers.id = dd.personnel_id
             WHERE fab.dlc_finale IS NOT NULL
               AND fab.dlc_finale BETWEEN ? AND ?
-              AND p.boutique_id = ?
+              AND (cv.boutique_id = ? OR cv.boutique_id IS NULL)
               {cat_filter}
             """,
             (date_debut, date_fin, boutique_id, *cat_params),
@@ -4387,7 +4574,7 @@ async def get_dlc_calendrier(
             cur2 = await db.execute(
                 """
                 SELECT
-                    p.nom           AS produit_nom,
+                    COALESCE(cf.designation, ri.designation) AS produit_nom,
                     rl.numero_lot,
                     rl.origine      AS origine,
                     rl.dlc,
@@ -4396,11 +4583,11 @@ async def get_dlc_calendrier(
                     rec.id          AS reception_id
                 FROM fabrication_lots fl
                 JOIN recette_ingredients ri ON ri.id  = fl.recette_ingredient_id
-                JOIN produits           p   ON p.id   = ri.produit_id
+                LEFT JOIN catalogue_fournisseur cf ON cf.id = ri.catalogue_fournisseur_id
                 LEFT JOIN reception_lignes rl  ON rl.id  = fl.reception_ligne_id
                 LEFT JOIN receptions       rec ON rec.id = rl.reception_id
                 WHERE fl.fabrication_id = ?
-                ORDER BY p.nom
+                ORDER BY produit_nom
                 """,
                 (fab["source_id"],),
             )
@@ -4622,11 +4809,11 @@ async def get_stock_unifie(
             SELECT
                 'fabrication'      AS source_type,
                 fab.id             AS source_id,
-                p.id               AS produit_id,
-                p.nom              AS produit_nom,
-                p.categorie        AS categorie,
-                p.type_produit     AS type_produit,
-                p.espece           AS espece,
+                cv.id              AS produit_id,
+                COALESCE(cv.nom, rec.nom) AS produit_nom,
+                cv.famille         AS categorie,
+                'transforme'       AS type_produit,
+                NULL               AS espece,
                 fab.dlc_finale     AS dlc,
                 fab.lot_interne    AS numero_lot,
                 fab.poids_fabrique AS quantite,
@@ -4636,8 +4823,8 @@ async def get_stock_unifie(
                 NULL               AS fournisseur_nom
             FROM fabrications fab
             JOIN recettes rec ON rec.id = fab.recette_id
-            JOIN produits p   ON p.id   = rec.produit_fini_id
-            WHERE p.boutique_id = ?
+            LEFT JOIN catalogue_vente cv ON cv.id = rec.catalogue_vente_id
+            WHERE (cv.boutique_id = ? OR cv.boutique_id IS NULL)
               AND fab.dlc_finale IS NOT NULL
               {extra_sql}
               AND NOT EXISTS (

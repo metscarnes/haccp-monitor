@@ -319,20 +319,6 @@
             <option value="no_dlc">Sans DLC</option>
           </select>
         </div>
-        <div class="ach-champ ach-champ--full">
-          <label>Produit interne (Production)</label>
-          <div style="display:flex;gap:var(--space-2);align-items:center;">
-            <input type="text" id="a-produit-recherche" list="dl-produits"
-                   placeholder="Rechercher un produit du catalogue de base…" style="flex:1;">
-            <input type="hidden" id="a-produit-id">
-            <button type="button" class="ach-btn ach-btn--small" id="a-produit-clear" title="Délier">✕</button>
-          </div>
-          <datalist id="dl-produits"></datalist>
-          <small style="color:#6b7280;">
-            Rattache cet article d'achat à un produit interne. À la réception, le lot
-            devient automatiquement disponible dans la Production (recettes &amp; FIFO).
-          </small>
-        </div>
         <div id="form-erreur" class="ach-form-erreur" hidden></div>
         <div class="ach-modal-footer" style="justify-content:space-between;">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-article" hidden>Supprimer</button>
