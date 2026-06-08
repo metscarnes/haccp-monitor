@@ -1,4 +1,4 @@
-﻿"""
+"""
 routes_vente.py — Catalogue de VENTE (produits finis fabriqués)
 
 Le catalogue de vente est la source des « produits finis » des recettes
