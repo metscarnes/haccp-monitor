@@ -89,6 +89,7 @@ class CatalogueArticleCreate(BaseModel):
     poids_unitaire_kg: Optional[float] = None # poids d'une pièce en kg (brut, si format 'colis')
     tva_percent: Optional[float] = 5.5
     conditionnement: Optional[str] = None
+    unites_autorisees: Optional[str] = None   # CSV parmi kg/piece/colis
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
@@ -104,6 +105,7 @@ class CatalogueArticleUpdate(BaseModel):
     poids_unitaire_kg: Optional[float] = None
     tva_percent: Optional[float] = None
     conditionnement: Optional[str] = None
+    unites_autorisees: Optional[str] = None   # CSV parmi kg/piece/colis
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = None
@@ -940,11 +942,12 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
             """INSERT INTO catalogue_fournisseur
                (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                 qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
-                famille, sous_famille, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                unites_autorisees, famille, sous_famille, dlc_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
              format_prix, body.qte_par_colis, body.poids_unitaire_kg,
              poids_colis, body.tva_percent, body.conditionnement,
+             body.unites_autorisees or 'kg,piece,colis',
              body.famille, body.sous_famille, body.dlc_type)
         )
         await db.commit()

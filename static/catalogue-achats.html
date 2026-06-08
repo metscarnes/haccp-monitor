@@ -166,7 +166,7 @@
             <option value="prix_achat_ht">Prix achat HT (€)</option>
             <option value="format_prix">Format prix</option>
             <option value="tva_percent">TVA (%)</option>
-            <option value="conditionnement">Conditionnement</option>
+            <option value="unites_autorisees">Unités de commande autorisées</option>
             <option value="famille">Famille / Sous-famille</option>
             <option value="dlc_type">Type DLC</option>
           </select>
@@ -202,7 +202,7 @@
           <th id="th-poids_unitaire_kg" onclick="changerTri('poids_unitaire_kg')" style="cursor:pointer;user-select:none;" class="ach-col-num">Poids unit. ⇅</th>
           <th id="th-poids_colis_kg"    onclick="changerTri('poids_colis_kg')"    style="cursor:pointer;user-select:none;" class="ach-col-num">Poids colis ⇅</th>
           <th id="th-tva_percent"     onclick="changerTri('tva_percent')"     style="cursor:pointer;user-select:none;">TVA ⇅</th>
-          <th id="th-conditionnement" onclick="changerTri('conditionnement')" style="cursor:pointer;user-select:none;">Conditionnement ⇅</th>
+          <th id="th-unites_autorisees" onclick="changerTri('unites_autorisees')" style="cursor:pointer;user-select:none;">Unités cmd ⇅</th>
           <th id="th-famille"         onclick="changerTri('famille')"         style="cursor:pointer;user-select:none;">Famille ⇅</th>
           <th id="th-sous_famille"    onclick="changerTri('sous_famille')"    style="cursor:pointer;user-select:none;">Sous-famille ⇅</th>
           <th id="th-dlc_type"        onclick="changerTri('dlc_type')"        style="cursor:pointer;user-select:none;">DLC type ⇅</th>
@@ -297,8 +297,12 @@
           </select>
         </div>
         <div class="ach-champ">
-          <label>Conditionnement</label>
-          <input type="text" id="a-conditionnement" placeholder="Ex: Carton 4kg, Carcasse…">
+          <label>Unités de commande autorisées <span style="font-weight:400;color:#9ca3af;">(par le fournisseur)</span></label>
+          <div class="ach-unites-check">
+            <label><input type="checkbox" id="a-unite-kg" value="kg"> kg</label>
+            <label><input type="checkbox" id="a-unite-piece" value="piece"> pièce</label>
+            <label><input type="checkbox" id="a-unite-colis" value="colis"> colis</label>
+          </div>
         </div>
         <div class="ach-champ">
           <label>Famille</label>

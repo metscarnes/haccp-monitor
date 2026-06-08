@@ -308,6 +308,28 @@
   opacity: .35;
   cursor: not-allowed;
 }
+/* Checkboxes des unités autorisées (formulaire catalogue + édition de masse) */
+.ach-unites-check {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+.ach-unites-check label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #4b5563;
+  cursor: pointer;
+}
+.ach-unites-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
 .ach-stepper-hint {
   font-size: var(--text-xs);
   color: #6b7280;

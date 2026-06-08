@@ -1224,6 +1224,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v5.7 — Catalogue fournisseur : classification famille / sous-famille
             "ALTER TABLE catalogue_fournisseur ADD COLUMN famille TEXT",
             "ALTER TABLE catalogue_fournisseur ADD COLUMN sous_famille TEXT",
+            # v5.8 — Catalogue fournisseur : unités de commande autorisées par le
+            # fournisseur (remplace le champ libre conditionnement). Liste CSV
+            # parmi kg / piece / colis. Défaut = tout autorisé (rien de cassé).
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN unites_autorisees TEXT DEFAULT 'kg,piece,colis'",
             # v5.0 — reception_lignes : lien vers catalogue fournisseur + date abattage carcasses
             "ALTER TABLE reception_lignes ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
             "ALTER TABLE reception_lignes ADD COLUMN date_abattage DATE",

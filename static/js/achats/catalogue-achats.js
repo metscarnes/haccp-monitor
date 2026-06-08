@@ -35,7 +35,7 @@ const COLONNES = [
   { key: 'poids_unitaire_kg', label: 'Poids unit.' },
   { key: 'poids_colis_kg',    label: 'Poids colis' },
   { key: 'tva_percent',     label: 'TVA' },
-  { key: 'conditionnement', label: 'Conditionnement' },
+  { key: 'unites_autorisees', label: 'Unités cmd' },
   { key: 'famille',         label: 'Famille' },
   { key: 'sous_famille',    label: 'Sous-famille' },
   { key: 'dlc_type',        label: 'DLC type' },
@@ -292,7 +292,7 @@ function afficherTable(liste) {
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'poids_unitaire_kg','number')" style="cursor:pointer;${estColis && hl('Poids unitaire')}">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${a.poids_colis_kg != null ? '<strong>' + a.poids_colis_kg.toFixed(3) + ' kg</strong>' : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'tva_percent','number')" style="cursor:pointer;">${a.tva_percent ?? 5.5}%</td>
-      <td ondblclick="editerInline(this,${a.id},'conditionnement','text')" style="cursor:pointer;">${escHtml(a.conditionnement || '—')}</td>
+      <td>${fmtUnitesAutorisees(a.unites_autorisees)}</td>
       <td ondblclick="editerInline(this,${a.id},'famille','select')" style="cursor:pointer;">${a.famille ? escHtml(a.famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'sous_famille','select')" style="cursor:pointer;">${a.sous_famille ? escHtml(a.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'dlc_type','select')" style="cursor:pointer;">
@@ -405,10 +405,13 @@ function majZoneValeurMasse() {
         <option value="10">10%</option>
         <option value="20">20%</option></select>`,
     },
-    conditionnement: {
-      label: 'Nouveau conditionnement',
-      html: () => `<input type="text" id="masse-val" placeholder="Ex: Carton 4kg"
-        style="min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;width:100%;">`,
+    unites_autorisees: {
+      label: 'Unités de commande autorisées',
+      html: () => `<div class="ach-unites-check" id="masse-unites">
+        <label><input type="checkbox" value="kg" checked> kg</label>
+        <label><input type="checkbox" value="piece" checked> pièce</label>
+        <label><input type="checkbox" value="colis" checked> colis</label>
+      </div>`,
     },
     famille: {
       label: 'Nouvelle famille',
@@ -465,8 +468,23 @@ function majZoneValeurMasse() {
 async function appliquerMasse() {
   const ids   = idsSelectionnes();
   const champ = document.getElementById('masse-champ').value;
+  if (!ids.length || !champ) return;
+
+  // Cas spécial : unités autorisées = checkboxes → chaîne CSV
+  if (champ === 'unites_autorisees') {
+    const zone = document.getElementById('masse-unites');
+    const sel = [...zone.querySelectorAll('input:checked')].map(c => c.value);
+    if (!sel.length) {
+      const z = document.getElementById('masse-erreur');
+      z.textContent = 'Cochez au moins une unité'; z.hidden = false;
+      return;
+    }
+    await appliquerMassePayload(ids, { unites_autorisees: sel.join(',') });
+    return;
+  }
+
   const valEl = document.getElementById('masse-val');
-  if (!ids.length || !champ || !valEl) return;
+  if (!valEl) return;
 
   let valeur = valEl.value;
   if (champ === 'prix_achat_ht') valeur = parseFloat(valeur);
@@ -483,10 +501,13 @@ async function appliquerMasse() {
   if (champ === 'famille') {
     payload.sous_famille = document.getElementById('masse-val-sf').value || '';
   }
+  await appliquerMassePayload(ids, payload);
+}
 
+// Applique un payload à tous les articles sélectionnés (PUT en parallèle).
+async function appliquerMassePayload(ids, payload) {
   const btn = document.getElementById('masse-appliquer');
   btn.disabled = true; btn.textContent = 'Application…';
-
   try {
     await Promise.all(ids.map(id =>
       fetch(`${API_CAT}/${id}`, {
@@ -540,7 +561,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-qte-colis').value = a.qte_par_colis ?? '';
   document.getElementById('a-poids-unitaire').value = a.poids_unitaire_kg ?? '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
-  document.getElementById('a-conditionnement').value = a.conditionnement || '';
+  setUnitesForm(a.unites_autorisees);
   document.getElementById('a-famille').value = a.famille || '';
   majSousFamilleForm(a.sous_famille || '');
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
@@ -558,6 +579,27 @@ function majSousFamilleForm(valeurAGarder) {
     document.getElementById('a-sous-famille'),
     valeurAGarder || ''
   );
+}
+
+// ── Unités de commande autorisées (checkboxes kg/pièce/colis) ──
+const UNITES_IDS = { kg: 'a-unite-kg', piece: 'a-unite-piece', colis: 'a-unite-colis' };
+
+// Coche les cases selon la chaîne CSV (ex. "kg,colis"). Vide/null → tout coché.
+function setUnitesForm(csv) {
+  const liste = (csv && csv.trim())
+    ? csv.split(',').map(s => s.trim()).filter(Boolean)
+    : ['kg', 'piece', 'colis'];
+  for (const [unite, id] of Object.entries(UNITES_IDS)) {
+    document.getElementById(id).checked = liste.includes(unite);
+  }
+}
+
+// Lit les cases cochées → chaîne CSV. Si rien coché, repli sur tout autorisé.
+function getUnitesForm() {
+  const sel = Object.entries(UNITES_IDS)
+    .filter(([, id]) => document.getElementById(id).checked)
+    .map(([unite]) => unite);
+  return (sel.length ? sel : ['kg', 'piece', 'colis']).join(',');
 }
 
 // Champ généré : poids total colis = qté par colis × poids unitaire
@@ -677,12 +719,13 @@ function fermerModal() {
 }
 
 function viderForm() {
-  ['a-id','a-code','a-designation','a-prix','a-conditionnement',
+  ['a-id','a-code','a-designation','a-prix',
    'a-qte-colis','a-poids-unitaire','a-poids-colis'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('a-format-prix').value = 'kg';
   document.getElementById('a-tva').value = '5.5';
+  setUnitesForm(null);   // tout coché par défaut
   document.getElementById('a-famille').value = '';
   majSousFamilleForm();
   document.getElementById('a-dlc-type').value = 'dlc';
@@ -703,7 +746,7 @@ async function sauver(e) {
     qte_par_colis:     parseFloat(document.getElementById('a-qte-colis').value) || null,
     poids_unitaire_kg: parseFloat(document.getElementById('a-poids-unitaire').value) || null,
     tva_percent:     parseFloat(document.getElementById('a-tva').value),
-    conditionnement: document.getElementById('a-conditionnement').value.trim() || null,
+    unites_autorisees: getUnitesForm(),
     famille:         document.getElementById('a-famille').value || null,
     sous_famille:    document.getElementById('a-sous-famille').value || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
@@ -790,6 +833,18 @@ function afficherErreur(msg) {
   z.textContent = msg; z.hidden = false;
 }
 function fmtPrix(v) { return (v ?? 0).toFixed(2); }
+
+// Affiche les unités autorisées sous forme de petits badges (kg · pièce · colis).
+const UNITE_LABELS = { kg: 'kg', piece: 'pièce', colis: 'colis' };
+function fmtUnitesAutorisees(csv) {
+  const liste = (csv && csv.trim())
+    ? csv.split(',').map(s => s.trim()).filter(Boolean)
+    : ['kg', 'piece', 'colis'];
+  if (!liste.length) return '<span style="color:#9ca3af">—</span>';
+  return liste.map(u =>
+    `<span class="ach-badge ach-badge--dlc" style="margin:1px;">${escHtml(UNITE_LABELS[u] || u)}</span>`
+  ).join(' ');
+}
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
