@@ -190,27 +190,53 @@ function poidsColisKg(a) {
   const p = parseFloat(a.poids_colis_kg);
   return (!isNaN(p) && p > 0) ? p : null;
 }
-
-// Peut-on commander cet article au kg ? Toujours possible si prix au kg.
-// Si prix au colis : seulement si le poids du colis est connu (conversion).
-function peutCommanderKg(a) {
-  return a.format_prix === 'kg' || poidsColisKg(a) !== null;
+// Poids d'une pièce en kg (peut être absent/0 → null).
+function poidsUnitKg(a) {
+  const p = parseFloat(a.poids_unitaire_kg);
+  return (!isNaN(p) && p > 0) ? p : null;
+}
+// Nb de pièces par colis (peut être absent/0 → null).
+function qteParColis(a) {
+  const n = parseFloat(a.qte_par_colis);
+  return (!isNaN(n) && n > 0) ? n : null;
 }
 
-// Prix unitaire HT pour une unité de commande donnée ('kg' | 'colis').
-// Renvoie null si le calcul est impossible (poids colis manquant).
-//   format kg    : prix_kg connu directement ; prix_colis = prix_kg × poids_colis
-//   format colis : prix_colis connu directement ; prix_kg = prix_colis / poids_colis
+// Une unité de commande est-elle possible pour cet article ?
+// 'colis' : toujours. 'kg'/'pièce' : seulement si la conversion est calculable.
+function peutCommander(a, unite) {
+  switch (unite) {
+    case 'colis': return true;
+    case 'kg':    return prixUnitaire(a, 'kg') !== null;
+    case 'piece': return prixUnitaire(a, 'piece') !== null;
+    default:      return false;
+  }
+}
+function peutCommanderKg(a)    { return peutCommander(a, 'kg'); }
+function peutCommanderPiece(a) { return peutCommander(a, 'piece'); }
+
+// Prix unitaire HT pour une unité de commande ('kg' | 'piece' | 'colis').
+// Renvoie null si la conversion est impossible (donnée manquante).
+//   format kg    : prix = €/kg     → pièce = prix×poids_unit ; colis = prix×poids_colis
+//   format colis : prix = €/colis  → kg = prix÷poids_colis ; pièce = prix÷qte_par_colis
 function prixUnitaire(a, unite) {
-  const prix = parseFloat(a.prix_achat_ht) || 0;
-  const poids = poidsColisKg(a);
+  const prix       = parseFloat(a.prix_achat_ht) || 0;
+  const poidsColis = poidsColisKg(a);
+  const poidsUnit  = poidsUnitKg(a);
+  const parColis   = qteParColis(a);
   if (a.format_prix === 'kg') {
-    if (unite === 'colis') return poids !== null ? prix * poids : null;
+    if (unite === 'piece') return poidsUnit  !== null ? prix * poidsUnit  : null;
+    if (unite === 'colis') return poidsColis !== null ? prix * poidsColis : null;
     return prix;                       // kg
   }
-  // format 'colis' (ou ancien 'piece')
-  if (unite === 'kg') return poids !== null ? prix / poids : null;
+  // format 'colis' (ou ancien 'piece') : prix = €/colis
+  if (unite === 'kg')    return poidsColis !== null ? prix / poidsColis : null;
+  if (unite === 'piece') return parColis   !== null ? prix / parColis   : null;
   return prix;                         // colis
+}
+
+// Libellé court d'une unité de commande.
+function uniteLabel(unite) {
+  return unite === 'piece' ? 'pièce' : unite;   // 'kg' | 'pièce' | 'colis'
 }
 
 // Total estimé d'une ligne du panier (qté × prix unitaire selon l'unité choisie).
@@ -328,6 +354,7 @@ function afficherCataloguePanier() {
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
     const kgOk = peutCommanderKg(a);
+    const pieceOk = peutCommanderPiece(a);
     const totalLigne = qte > 0 ? totalLignePanier(a, qte, unite) : null;
     // Indice de conversion : prix équivalent dans l'autre unité
     const puAffiche = prixUnitaire(a, unite);
@@ -349,12 +376,13 @@ function afficherCataloguePanier() {
                    onchange="panierSetQte(${a.id}, this.value)">
             <select class="ach-stepper-unite-sel" onchange="panierSetUnite(${a.id}, this.value)">
               <option value="kg"    ${unite === 'kg' ? 'selected' : ''} ${kgOk ? '' : 'disabled'}>kg</option>
+              <option value="piece" ${unite === 'piece' ? 'selected' : ''} ${pieceOk ? '' : 'disabled'}>pièce</option>
               <option value="colis" ${unite === 'colis' ? 'selected' : ''}>colis</option>
             </select>
           </div>
           ${puAffiche !== null
-            ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${unite}</div>`
-            : `<div class="ach-stepper-hint" style="color:#b45309">poids colis manquant</div>`}
+            ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${uniteLabel(unite)}</div>`
+            : `<div class="ach-stepper-hint" style="color:#b45309">conversion impossible</div>`}
         </td>
         <td class="ach-col-num">${totalLigne !== null
             ? `<strong>${fmtPrix(totalLigne)} €</strong>`
@@ -397,7 +425,7 @@ function panierSetQte(catId, valeur) {
 // Changement de l'unité de commande (kg / colis) pour une ligne
 function panierSetUnite(catId, unite) {
   const a = catalogueTous.find(x => x.id === parseInt(catId));
-  if (unite === 'kg' && a && !peutCommanderKg(a)) unite = 'colis'; // garde-fou
+  if (a && !peutCommander(a, unite)) unite = 'colis'; // garde-fou : repli sur colis
   if (panier[catId]) {
     panier[catId].unite = unite;
   } else {
