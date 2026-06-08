@@ -242,6 +242,27 @@ async def download_template_vente():
     ws.row_dimensions[2].height = 52
     ws.freeze_panes = "A4"
 
+    # ── Onglet Listes (caché) : sous-familles par colonne + plages nommées ──
+    FAMILLES_SF = {
+        'Viande':               ['Boeuf', 'Veau', 'Agneau', 'Porc', 'Volaille', 'Cheval'],
+        'Charcuterie':          ['Jambon', 'Pâté, Terrine et Rillette', 'Salaison et Pièce séchée',
+                                 'Saucisse à cuire et Saucisson cuit', 'Spécialité charcutière'],
+        'Traiteur':             ['Crudité', 'Fromage', 'Plat préparé', 'Accompagnement', 'Pané', 'Dessert'],
+        'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
+                                 'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
+        'Hygiène et emballage': ['Hygiène', 'Emballage'],
+    }
+    ws_listes = wb.create_sheet("Listes")
+    ws_listes.sheet_state = "hidden"
+    for col_l, (fam, sfs) in enumerate(FAMILLES_SF.items(), 1):
+        for row_l, sf in enumerate(sfs, 1):
+            ws_listes.cell(row=row_l, column=col_l, value=sf)
+        col_letter = ws_listes.cell(row=1, column=col_l).column_letter
+        range_ref  = f"Listes!${col_letter}$1:${col_letter}${len(sfs)}"
+        safe_name  = fam.replace(" ", "_").replace("é", "e").replace("è", "e").replace("ê", "e").replace("î", "i").replace("ô", "o").replace("â", "a").replace("û", "u")
+        wb.defined_names[safe_name] = f"{range_ref}"
+
+    # Validation famille
     fam_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "famille")
     fam_letter = ws.cell(row=1, column=fam_col).column_letter
     dv_fam = DataValidation(
@@ -253,12 +274,25 @@ async def download_template_vente():
     ws.add_data_validation(dv_fam)
     dv_fam.add(f"{fam_letter}4:{fam_letter}500")
 
+    # Validation sous-famille : liste dépendante de la famille via INDIRECT
+    sf_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "sous_famille")
+    sf_letter = ws.cell(row=1, column=sf_col).column_letter
+    dv_sf = DataValidation(
+        type="list",
+        formula1=f'INDIRECT(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({fam_letter}4,"é","e"),"è","e")," ","_"))',
+        allow_blank=True, showErrorMessage=False,
+    )
+    dv_sf.promptTitle = "Sous-famille"
+    dv_sf.prompt = "Choisissez d'abord une famille (colonne Famille)"
+    ws.add_data_validation(dv_sf)
+    dv_sf.add(f"{sf_letter}4:{sf_letter}500")
+
     tva_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "tva_percent")
     tva_letter = ws.cell(row=1, column=tva_col).column_letter
     dv_tva = DataValidation(
-        type="list", formula1='"5.5,10,20"',
+        type="list", formula1='"5,5,10,20"',
         allow_blank=True, showErrorMessage=True,
-        errorTitle="TVA invalide", error="Choisissez 5.5, 10 ou 20.",
+        errorTitle="TVA invalide", error="Choisissez 5,5, 10 ou 20.",
     )
     ws.add_data_validation(dv_tva)
     dv_tva.add(f"{tva_letter}4:{tva_letter}500")

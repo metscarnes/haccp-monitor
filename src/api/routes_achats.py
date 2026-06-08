@@ -549,25 +549,36 @@ async def download_template():
     ws.add_data_validation(dv_fam)
     dv_fam.add(f"{fam_letter}5:{fam_letter}500")
 
-    # Colonne K — sous_famille  [OBLIGATOIRE]
-    sf_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "sous_famille")
+    # Onglet Listes (caché) : sous-familles par colonne + plages nommées pour INDIRECT
+    FAMILLES_SF = {
+        'Viande':               ['Boeuf', 'Veau', 'Agneau', 'Porc', 'Volaille', 'Cheval'],
+        'Charcuterie':          ['Jambon', 'Pâté, Terrine et Rillette', 'Salaison et Pièce séchée',
+                                 'Saucisse à cuire et Saucisson cuit', 'Spécialité charcutière'],
+        'Traiteur':             ['Crudité', 'Fromage', 'Plat préparé', 'Accompagnement', 'Pané', 'Dessert'],
+        'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
+                                 'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
+        'Hygiène et emballage': ['Hygiène', 'Emballage'],
+    }
+    ws_listes = wb.create_sheet("Listes")
+    ws_listes.sheet_state = "hidden"
+    for col_l, (fam, sfs) in enumerate(FAMILLES_SF.items(), 1):
+        for row_l, sf in enumerate(sfs, 1):
+            ws_listes.cell(row=row_l, column=col_l, value=sf)
+        col_letter_l = ws_listes.cell(row=1, column=col_l).column_letter
+        range_ref    = f"Listes!${col_letter_l}$1:${col_letter_l}${len(sfs)}"
+        safe_name    = fam.replace(" ", "_").replace("é", "e").replace("è", "e").replace("ê", "e").replace("î", "i").replace("ô", "o").replace("â", "a").replace("û", "u")
+        wb.defined_names[safe_name] = f"{range_ref}"
+
+    # Colonne K — sous_famille : liste dépendante de la famille via INDIRECT
+    sf_col    = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == "sous_famille")
     sf_letter = ws.cell(row=1, column=sf_col).column_letter
-    sous_familles = (
-        "Boeuf,Veau,Agneau,Porc,Volaille,Cheval,"
-        "Saucisse,Jambon,Pâté,Rillettes,Lardons,"
-        "Plat cuisiné,Entrée,Dessert,"
-        "Épice,Farine,Huile,Sel,Sucre,Sauce,"
-        "Emballage,Produit hygiène,Matériel"
-    )
     dv_sf = DataValidation(
         type="list",
-        formula1=f'"{sous_familles}"',
-        allow_blank=False,
-        showErrorMessage=True, errorTitle="Valeur requise",
-        error="Choisissez une sous-famille dans la liste.",
+        formula1=f'INDIRECT(SUBSTITUTE(SUBSTITUTE(SUBSTITUTE({fam_letter}5,"é","e"),"è","e")," ","_"))',
+        allow_blank=True, showErrorMessage=False,
     )
-    dv_sf.prompt = "Choisir une sous-famille"
     dv_sf.promptTitle = "Sous-famille"
+    dv_sf.prompt = "Choisissez d'abord une famille (colonne Famille)"
     ws.add_data_validation(dv_sf)
     dv_sf.add(f"{sf_letter}5:{sf_letter}500")
 
