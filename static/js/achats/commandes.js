@@ -12,8 +12,9 @@ let catalogueTous = [];   // tout le catalogue, tous fournisseurs (avec stock)
 let catalogueCourant = []; // catalogue du fournisseur de la commande en édition
 let cmdCourante  = null;
 let forcerEnvoiFlag = false; // Flag pour forcer l'envoi malgré les délais
-// Panier : map { catalogueId → { quantite } }. Les autres infos (prix, designation…)
-// sont relues dans catalogueTous au moment de l'affichage / génération.
+// Panier : map { catalogueId → { quantite, unite } }. unite ∈ { 'kg', 'colis' }.
+// Les autres infos (prix, designation…) sont relues dans catalogueTous au
+// moment de l'affichage / génération.
 let panier       = {};
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
@@ -133,10 +134,34 @@ function afficherTable(liste) {
 function panierCharger() {
   try {
     panier = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-    if (Array.isArray(panier)) panier = {};   // compat ancien format
+    if (Array.isArray(panier)) panier = {};   // compat ancien format (tableau)
   } catch { panier = {}; }
+  panierNormaliser();
   majBadgePanier();
 }
+
+// Convertit toute entrée au format objet { quantite, unite }.
+// Ancien format : la valeur était directement un nombre (= quantité).
+function panierNormaliser() {
+  for (const [catId, val] of Object.entries(panier)) {
+    if (typeof val === 'number') {
+      const a = catalogueTous.find(x => x.id === parseInt(catId));
+      panier[catId] = { quantite: val, unite: a ? uniteParDefaut(a) : 'kg' };
+    } else if (val && typeof val === 'object') {
+      if (typeof val.quantite !== 'number') val.quantite = parseFloat(val.quantite) || 0;
+      if (!val.unite) {
+        const a = catalogueTous.find(x => x.id === parseInt(catId));
+        val.unite = a ? uniteParDefaut(a) : 'kg';
+      }
+    } else {
+      delete panier[catId];
+    }
+  }
+}
+
+// Accès aux deux composantes du panier
+function panierQte(catId)   { const e = panier[catId]; return e ? (e.quantite || 0) : 0; }
+function panierUnite(catId) { const e = panier[catId]; return e ? (e.unite || 'kg') : 'kg'; }
 
 function panierSauver() {
   localStorage.setItem(LS_KEY, JSON.stringify(panier));
@@ -154,10 +179,44 @@ function majBadgePanier() {
   else { badge.hidden = true; }
 }
 
-// Unité de commande selon le format de prix de l'article.
+// Unité de commande par défaut = unité naturelle du prix de l'article.
 // 'kg' → on commande des kilos ; sinon ('colis', ancien 'piece') → des colis.
-function uniteArticle(a) {
+function uniteParDefaut(a) {
   return (a.format_prix === 'kg') ? 'kg' : 'colis';
+}
+
+// Poids d'un colis en kg (champ généré, peut être absent/0 → null).
+function poidsColisKg(a) {
+  const p = parseFloat(a.poids_colis_kg);
+  return (!isNaN(p) && p > 0) ? p : null;
+}
+
+// Peut-on commander cet article au kg ? Toujours possible si prix au kg.
+// Si prix au colis : seulement si le poids du colis est connu (conversion).
+function peutCommanderKg(a) {
+  return a.format_prix === 'kg' || poidsColisKg(a) !== null;
+}
+
+// Prix unitaire HT pour une unité de commande donnée ('kg' | 'colis').
+// Renvoie null si le calcul est impossible (poids colis manquant).
+//   format kg    : prix_kg connu directement ; prix_colis = prix_kg × poids_colis
+//   format colis : prix_colis connu directement ; prix_kg = prix_colis / poids_colis
+function prixUnitaire(a, unite) {
+  const prix = parseFloat(a.prix_achat_ht) || 0;
+  const poids = poidsColisKg(a);
+  if (a.format_prix === 'kg') {
+    if (unite === 'colis') return poids !== null ? prix * poids : null;
+    return prix;                       // kg
+  }
+  // format 'colis' (ou ancien 'piece')
+  if (unite === 'kg') return poids !== null ? prix / poids : null;
+  return prix;                         // colis
+}
+
+// Total estimé d'une ligne du panier (qté × prix unitaire selon l'unité choisie).
+function totalLignePanier(a, qte, unite) {
+  const pu = prixUnitaire(a, unite);
+  return pu !== null ? qte * pu : null;
 }
 
 async function panierSauverBDD() {
@@ -181,9 +240,12 @@ async function panierSauverBDD() {
 // Construit la liste détaillée du panier à partir de catalogueTous
 function panierVersLignes() {
   const lignes = [];
-  for (const [catId, qte] of Object.entries(panier)) {
+  for (const catId of Object.keys(panier)) {
     const a = catalogueTous.find(x => x.id === parseInt(catId));
+    const qte = panierQte(catId);
     if (!a || !qte) continue;
+    const unite = panierUnite(catId);
+    const pu = prixUnitaire(a, unite);
     lignes.push({
       catalogue_fournisseur_id: a.id,
       fournisseur_id:  a.fournisseur_id,
@@ -191,8 +253,8 @@ function panierVersLignes() {
       code_article:    a.code_article,
       designation:     a.designation,
       quantite:        qte,
-      unite:           uniteArticle(a),
-      prix_ht:         a.prix_achat_ht,
+      unite:           unite,
+      prix_ht:         pu !== null ? pu : (parseFloat(a.prix_achat_ht) || 0),
     });
   }
   return lignes;
@@ -206,7 +268,10 @@ async function panierRestaurerBDD() {
     if (!confirm(`Un panier sauvegardé contient ${lignes.length} article(s). Le restaurer ?`)) return;
     panier = {};
     lignes.forEach(l => {
-      if (l.catalogue_fournisseur_id) panier[l.catalogue_fournisseur_id] = l.quantite;
+      if (!l.catalogue_fournisseur_id) return;
+      const a = catalogueTous.find(x => x.id === l.catalogue_fournisseur_id);
+      const unite = l.unite || (a ? uniteParDefaut(a) : 'kg');
+      panier[l.catalogue_fournisseur_id] = { quantite: l.quantite, unite };
     });
     panierSauver();
   } catch(e) { /* silencieux */ }
@@ -245,7 +310,7 @@ function afficherCataloguePanier() {
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
-    if (selOnly && !panier[String(a.id)]) return false;
+    if (selOnly && !panierQte(String(a.id))) return false;
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
@@ -257,11 +322,15 @@ function afficherCataloguePanier() {
   }
 
   tbody.innerHTML = liste.map(a => {
-    const qte = panier[String(a.id)] || 0;
-    const unite = uniteArticle(a);
+    const id = String(a.id);
+    const qte = panierQte(id);
+    const unite = panierQte(id) ? panierUnite(id) : uniteParDefaut(a);
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
     const stock = a.stock ?? 0;
-    const totalLigne = qte > 0 ? qte * a.prix_achat_ht : null;
+    const kgOk = peutCommanderKg(a);
+    const totalLigne = qte > 0 ? totalLignePanier(a, qte, unite) : null;
+    // Indice de conversion : prix équivalent dans l'autre unité
+    const puAffiche = prixUnitaire(a, unite);
     return `
       <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}">
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
@@ -278,8 +347,14 @@ function afficherCataloguePanier() {
           <div class="ach-stepper">
             <input type="number" min="0" step="any" value="${qte || ''}" placeholder="0"
                    onchange="panierSetQte(${a.id}, this.value)">
-            <span class="ach-stepper-unite">${unite}</span>
+            <select class="ach-stepper-unite-sel" onchange="panierSetUnite(${a.id}, this.value)">
+              <option value="kg"    ${unite === 'kg' ? 'selected' : ''} ${kgOk ? '' : 'disabled'}>kg</option>
+              <option value="colis" ${unite === 'colis' ? 'selected' : ''}>colis</option>
+            </select>
           </div>
+          ${puAffiche !== null
+            ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${unite}</div>`
+            : `<div class="ach-stepper-hint" style="color:#b45309">poids colis manquant</div>`}
         </td>
         <td class="ach-col-num">${totalLigne !== null
             ? `<strong>${fmtPrix(totalLigne)} €</strong>`
@@ -292,24 +367,44 @@ function afficherCataloguePanier() {
 
 function majTotalPanier() {
   let total = 0;
-  for (const [catId, qte] of Object.entries(panier)) {
+  for (const catId of Object.keys(panier)) {
     const a = catalogueTous.find(x => x.id === parseInt(catId));
-    if (a && qte) total += qte * a.prix_achat_ht;
+    const qte = panierQte(catId);
+    if (a && qte) {
+      const t = totalLignePanier(a, qte, panierUnite(catId));
+      if (t !== null) total += t;
+    }
   }
   document.getElementById('panier-total').textContent = fmtPrix(total) + ' €';
   document.getElementById('panier-nb-articles').textContent = panierNbArticles();
 }
 
-// Saisie directe dans le champ (saisie libre)
+// Saisie directe de la quantité (saisie libre)
 function panierSetQte(catId, valeur) {
   let qte = parseFloat(valeur);
   if (isNaN(qte) || qte < 0) qte = 0;
-  appliquerQte(catId, qte);
+  const a = catalogueTous.find(x => x.id === parseInt(catId));
+  if (qte > 0) {
+    const unite = panierUnite(catId) || (a ? uniteParDefaut(a) : 'kg');
+    panier[catId] = { quantite: qte, unite };
+  } else {
+    delete panier[catId];
+  }
+  panierSauver();
+  afficherCataloguePanier();
 }
 
-function appliquerQte(catId, qte) {
-  if (qte > 0) panier[catId] = qte;
-  else delete panier[catId];
+// Changement de l'unité de commande (kg / colis) pour une ligne
+function panierSetUnite(catId, unite) {
+  const a = catalogueTous.find(x => x.id === parseInt(catId));
+  if (unite === 'kg' && a && !peutCommanderKg(a)) unite = 'colis'; // garde-fou
+  if (panier[catId]) {
+    panier[catId].unite = unite;
+  } else {
+    panier[catId] = { quantite: 0, unite }; // mémorise le choix avant saisie
+  }
+  // Si pas de quantité, ne rien persister comme ligne vide
+  if (!panierQte(catId)) delete panier[catId];
   panierSauver();
   afficherCataloguePanier();
 }

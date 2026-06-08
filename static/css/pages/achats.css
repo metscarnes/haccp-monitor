@@ -265,6 +265,21 @@
   color: #6b7280;
   min-width: 34px;
 }
+.ach-stepper-unite-sel {
+  border: 1px solid #d6c3a8;
+  border-radius: 6px;
+  padding: 3px 4px;
+  font-size: var(--text-xs);
+  background: #f4ead9;
+  color: #5a3e28;
+  cursor: pointer;
+}
+.ach-stepper-hint {
+  font-size: var(--text-xs);
+  color: #6b7280;
+  text-align: right;
+  margin-top: 2px;
+}
 .ach-row--au-panier { background: #f0f9f1; }
 .ach-modal-header {
   display: flex;
