@@ -412,8 +412,6 @@ async def download_template():
 
     from openpyxl.comments import Comment
     from openpyxl.worksheet.datavalidation import DataValidation
-    from openpyxl.styles import Protection
-    from openpyxl.worksheet.protection import SheetProtection
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -598,30 +596,6 @@ async def download_template():
         ws.add_data_validation(dv_block)
         dv_block.add(f"{b_letter}5:{b_letter}500")
 
-    # --- Protection de la feuille : lignes 1-4 verrouillées, zone saisie libre ---
-    # Par défaut toutes les cellules ont locked=True ; on déverrouille la zone saisie.
-    # Les cellules F5:G500 restent locked=True pour que la protection bloque les formules.
-    for row in range(5, DERNIERE_LIGNE + 1):
-        for col_idx in range(1, len(colonnes) + 1):
-            key = colonnes[col_idx - 1][0]
-            # F (qte_par_colis) et G (poids_unitaire_kg) : on garde locked pour interdire les formules
-            # mais la validation custom gère déjà l'accès conditionnel
-            if key not in ("qte_par_colis", "poids_unitaire_kg"):
-                ws.cell(row=row, column=col_idx).protection = Protection(locked=False)
-
-    # Activer la protection : autorise sélection des cellules verrouillées et non verrouillées,
-    # mais interdit toute modification des cellules locked (lignes 1-4 + colonnes F/G)
-    ws.protection = SheetProtection(
-        password="",          # sans mot de passe : le fournisseur peut déprotéger s'il le souhaite,
-        sheet=True,           # mais ça évite les modifications accidentelles
-        selectLockedCells=True,
-        selectUnlockedCells=True,
-        formatCells=False,
-        formatColumns=False,
-        formatRows=False,
-        insertRows=False,
-        deleteRows=False,
-    )
 
     # --- Onglet « Mode d'emploi » -------------------------------------------
     guide = wb.create_sheet("Mode d'emploi")
