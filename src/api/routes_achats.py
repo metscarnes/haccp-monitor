@@ -547,36 +547,115 @@ async def download_template():
 
     # --- Onglet « Mode d'emploi » -------------------------------------------
     guide = wb.create_sheet("Mode d'emploi")
-    guide.column_dimensions["A"].width = 95
+    guide.column_dimensions["A"].width = 100
+    title_fill  = PatternFill("solid", fgColor="2D7D46")
+    section_fill = PatternFill("solid", fgColor="E8F5E9")
+    ex_fill2    = PatternFill("solid", fgColor="FFF8E1")
+
     lignes_guide = [
-        ("COMMENT REMPLIR CE CATALOGUE", True),
-        ("", False),
-        ("1. Une ligne = un produit. Commencez à saisir à partir de la ligne 5 de l'onglet « Catalogue ».", False),
-        ("   (les lignes 3 et 4 sont des exemples, vous pouvez les écraser ou les supprimer).", False),
-        ("", False),
-        ("2. La colonne la plus importante est « Prix au (kg / colis) » :", True),
-        ("     • Écrivez « kg »    si le prix indiqué est le prix d'UN KILO.", False),
-        ("     • Écrivez « colis » si le prix indiqué est le prix d'UN COLIS entier (ou d'une pièce).", False),
-        ("", False),
-        ("3. Si le prix est AU KILO (kg) :", True),
-        ("     → laissez VIDES les colonnes « Qté par colis » et « Poids unitaire ».", False),
-        ("     → le coût d'une commande sera : poids commandé × prix au kilo.", False),
-        ("", False),
-        ("4. Si le prix est AU COLIS :", True),
-        ("     → remplissez « Qté par colis » (nb de pièces) et « Poids unitaire (kg) ».", False),
-        ("     → exemple : 10 steaks de 185 g  →  Qté par colis = 10, Poids unitaire = 0.185.", False),
-        ("     → le poids total du colis (10 × 0,185 = 1,85 kg) est calculé automatiquement, ne le saisissez pas.", False),
-        ("", False),
-        ("5. Les poids sont en KILOS avec un point décimal (0.185 et non 185 g).", False),
-        ("   Le point ou la virgule sont acceptés.", False),
-        ("", False),
-        ("Merci ! En cas de doute sur une ligne, laissez un commentaire ou contactez-nous.", True),
+        # (texte, gras, couleur_texte, couleur_fond, taille)
+        ("COMMENT REMPLIR CE CATALOGUE — MODE D'EMPLOI", True,  "FFFFFF", "2D7D46", 13),
+        ("", False, "333333", None, 11),
+        ("VUE D'ENSEMBLE", True, "2D7D46", "E8F5E9", 11),
+        ("• Ce fichier contient 2 onglets : « Catalogue » (vos données) et ce mode d'emploi.", False, "333333", "E8F5E9", 11),
+        ("• Une ligne = un produit. Commencez à saisir à partir de la LIGNE 5 de l'onglet « Catalogue ».", False, "333333", "E8F5E9", 11),
+        ("• Les lignes 3 et 4 sont des exemples — vous pouvez les écraser ou les supprimer.", False, "333333", "E8F5E9", 11),
+        ("• Les colonnes marquées OBLIGATOIRE doivent être remplies, les autres sont facultatives.", False, "333333", "E8F5E9", 11),
+        ("", False, "333333", None, 11),
+        ("COLONNE PAR COLONNE", True, "2D7D46", None, 12),
+        ("", False, "333333", None, 11),
+        ("1. Fournisseur  [OBLIGATOIRE]", True, "2D5A3A", None, 11),
+        ("   Le nom exact de votre société, tel qu'il est enregistré dans notre système.", False, "333333", None, 11),
+        ("   Exemple : « Boucherie Martin »", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("2. Code article  [OBLIGATOIRE]", True, "2D5A3A", None, 11),
+        ("   Votre référence interne du produit. Doit être unique par fournisseur.", False, "333333", None, 11),
+        ("   Exemples : « CARC-BF », « STK-185 », « PORC-ECH-001 »", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("3. Désignation  [OBLIGATOIRE]", True, "2D5A3A", None, 11),
+        ("   Libellé complet et lisible du produit.", False, "333333", None, 11),
+        ("   Exemples : « Carcasse bœuf », « Steak haché 185g », « Épaule d'agneau »", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("4. Prix achat HT (€)  [OBLIGATOIRE]", True, "2D5A3A", None, 11),
+        ("   Le prix hors-taxe. ATTENTION : ce prix est-il AU KILO ou AU COLIS ?", False, "333333", None, 11),
+        ("   C'est la colonne suivante (« Prix au ») qui le précise.", False, "333333", None, 11),
+        ("   Exemples : 9.70  (au kilo)  |  18.00  (au colis)", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("5. Prix au (kg / colis)  [OBLIGATOIRE] — LA COLONNE CLÉ", True, "C0392B", None, 11),
+        ("   Écrivez exactement « kg » ou « colis » (liste déroulante disponible) :", False, "333333", None, 11),
+        ("     • kg    → le prix de la colonne 4 est le prix d'UN KILO.", False, "333333", None, 11),
+        ("     • colis → le prix de la colonne 4 est le prix d'UN COLIS entier (ou d'une pièce).", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("6. Qté par colis  [si prix au colis]", True, "2D5A3A", None, 11),
+        ("   Nombre de pièces contenues dans un colis.", False, "333333", None, 11),
+        ("   → Laisser VIDE si le prix est au kilo.", False, "333333", None, 11),
+        ("   Exemple : 10  (un carton de 10 steaks)", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("7. Poids unitaire (kg)  [si prix au colis]", True, "2D5A3A", None, 11),
+        ("   Poids d'UNE SEULE pièce, en kilos. Utilisez un point comme séparateur décimal.", False, "333333", None, 11),
+        ("   → Laisser VIDE si le prix est au kilo.", False, "333333", None, 11),
+        ("   Exemples : 0.185  (185 g)  |  2.500  (2,5 kg)  |  0.350  (350 g)", False, "8A6D3B", "FFF8E1", 10),
+        ("   Note : la virgule est aussi acceptée (0,185 fonctionne).", False, "888888", None, 10),
+        ("", False, "333333", None, 11),
+        ("8. TVA (%)  [OBLIGATOIRE]", True, "2D5A3A", None, 11),
+        ("   5.5  pour la viande, charcuterie et produits alimentaires de base.", False, "333333", None, 11),
+        ("   20   pour tout le reste (emballages, produits d'hygiène, etc.).", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("9. Conditionnement (texte libre)  [facultatif]", True, "2D5A3A", None, 11),
+        ("   Description libre du conditionnement.", False, "333333", None, 11),
+        ("   Exemples : « Carcasse ~150 kg », « Carton de 10 », « Sous-vide », « Filet »", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("10. Famille  [facultatif]", True, "2D5A3A", None, 11),
+        ("    Catégorie principale du produit (liste déroulante) :", False, "333333", None, 11),
+        ("    Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("11. Sous-famille  [facultatif]", True, "2D5A3A", None, 11),
+        ("    Sous-catégorie selon la famille choisie.", False, "333333", None, 11),
+        ("    Exemples pour Viande : Bœuf | Veau | Agneau | Porc | Volaille | Cheval", False, "8A6D3B", "FFF8E1", 10),
+        ("    Exemples pour Charcuterie : Saucisse | Jambon | Pâté | Rillettes", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("12. Type de DLC  [facultatif, défaut = dlc]", True, "2D5A3A", None, 11),
+        ("    Indique comment la date de consommation est gérée pour ce produit :", False, "333333", None, 11),
+        ("    • dlc           → Date Limite de Consommation classique (étiquette apposée).", False, "333333", None, 11),
+        ("    • date_abattage → Produit carcasse : la date est celle de l'abattage (tracé par lot).", False, "333333", None, 11),
+        ("    • no_dlc        → Produit sans DLC (ex : emballage, sel, épice...).", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("EXEMPLES COMPLETS", True, "2D7D46", "E8F5E9", 12),
+        ("", False, "333333", None, 11),
+        ("Exemple A — Carcasse bœuf vendue AU KILO :", True, "2D5A3A", None, 11),
+        ("   Fournisseur=Boucherie Martin | Code=CARC-BF | Désignation=Carcasse bœuf", False, "8A6D3B", "FFF8E1", 10),
+        ("   Prix=9.70 | Prix au=kg | Qté colis=(vide) | Poids unitaire=(vide)", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Conditionnement=Carcasse ~150kg | Famille=Viande | Sous-famille=Bœuf | DLC=date_abattage", False, "8A6D3B", "FFF8E1", 10),
+        ("", False, "333333", None, 11),
+        ("Exemple B — Steaks hachés vendus AU COLIS (carton de 10 × 185 g) :", True, "2D5A3A", None, 11),
+        ("   Fournisseur=Boucherie Martin | Code=STK-185 | Désignation=Steak haché 185g", False, "8A6D3B", "FFF8E1", 10),
+        ("   Prix=18.00 | Prix au=colis | Qté colis=10 | Poids unitaire=0.185", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Conditionnement=Carton de 10 | Famille=Viande | Sous-famille=Bœuf | DLC=dlc", False, "8A6D3B", "FFF8E1", 10),
+        ("   → Poids total du colis calculé automatiquement : 10 × 0,185 = 1,85 kg", False, "555555", None, 10),
+        ("", False, "333333", None, 11),
+        ("QUESTIONS FRÉQUENTES", True, "2D7D46", None, 12),
+        ("", False, "333333", None, 11),
+        ("Q : Mon produit est une pièce unique (ex : épaule entière à 12 €). Comment le saisir ?", True, "2D5A3A", None, 11),
+        ("R : Prix au = « colis », Qté par colis = 1, Poids unitaire = poids moyen de la pièce.", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("Q : J'ai des produits sans poids fixe (ex : pièces au kilo variable). Comment faire ?", True, "2D5A3A", None, 11),
+        ("R : Utilisez « kg » comme format de prix. Les colonnes Qté et Poids unitaire restent vides.", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("Q : La colonne « Poids total colis » est calculée — que dois-je saisir ?", True, "2D5A3A", None, 11),
+        ("R : Rien. Elle est calculée automatiquement à l'import (Qté × Poids unitaire). Laissez-la vide.", False, "333333", None, 11),
+        ("", False, "333333", None, 11),
+        ("Merci ! En cas de doute, contactez-nous — nous vous aiderons à compléter le fichier.", True, "2D7D46", "E8F5E9", 11),
     ]
-    for i, (txt, bold) in enumerate(lignes_guide, 1):
+
+    for i, row_data in enumerate(lignes_guide, 1):
+        txt, bold, color, bg, size = row_data
         c = guide.cell(row=i, column=1, value=txt)
-        c.font = Font(bold=bold, size=12 if (bold and i == 1) else 11,
-                      color="2D7D46" if bold else "333333")
+        c.font = Font(bold=bold, size=size, color=color)
         c.alignment = Alignment(wrap_text=True, vertical="top")
+        if bg:
+            c.fill = PatternFill("solid", fgColor=bg)
+        guide.row_dimensions[i].height = 18 if txt else 8
+
     wb.active = wb.sheetnames.index("Catalogue")
 
     buf = io.BytesIO()
