@@ -152,6 +152,7 @@ async def download_template_vente():
         from openpyxl.styles import Font, PatternFill, Alignment
         from openpyxl.comments import Comment
         from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.workbook.defined_name import DefinedName
     except ImportError:
         raise HTTPException(500, "openpyxl requis pour générer le template")
 
@@ -260,7 +261,8 @@ async def download_template_vente():
         col_letter = ws_listes.cell(row=1, column=col_l).column_letter
         range_ref  = f"Listes!${col_letter}$1:${col_letter}${len(sfs)}"
         safe_name  = fam.replace(" ", "_").replace("é", "e").replace("è", "e").replace("ê", "e").replace("î", "i").replace("ô", "o").replace("â", "a").replace("û", "u")
-        wb.defined_names[safe_name] = f"{range_ref}"
+        dn = DefinedName(safe_name, attr_text=range_ref)
+        wb.defined_names.add(dn)
 
     # Validation famille
     fam_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "famille")
