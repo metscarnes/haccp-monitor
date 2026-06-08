@@ -387,7 +387,7 @@ async def export_catalogue(fournisseur_id: Optional[int] = Query(None)):
         ("poids_unitaire_kg", "Poids unitaire (kg)"),
         ("poids_colis_kg",    "Poids total colis (kg)"),
         ("tva_percent",       "TVA (%)"),
-        ("conditionnement",   "Conditionnement"),
+        ("unites_autorisees",  "Unités de commande"),
         ("famille",           "Famille"),
         ("sous_famille",      "Sous-famille"),
         ("dlc_type",          "Type DLC"),
