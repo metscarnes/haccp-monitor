@@ -292,9 +292,9 @@ async def download_template_vente():
     tva_col    = next(i for i, (k, *_) in enumerate(colonnes, 1) if k == "tva_percent")
     tva_letter = ws.cell(row=1, column=tva_col).column_letter
     dv_tva = DataValidation(
-        type="list", formula1='"5,5,10,20"',
+        type="list", formula1='"5.5,10,20"',
         allow_blank=True, showErrorMessage=True,
-        errorTitle="TVA invalide", error="Choisissez 5,5, 10 ou 20.",
+        errorTitle="TVA invalide", error="Choisissez 5.5, 10 ou 20.",
     )
     ws.add_data_validation(dv_tva)
     dv_tva.add(f"{tva_letter}4:{tva_letter}500")
