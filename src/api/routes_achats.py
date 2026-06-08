@@ -461,9 +461,9 @@ async def download_template():
         ("tva_percent",       "TVA (%)",
          "Taux de TVA : 5.5 pour la viande, 20 sinon.",
          "5.5", "5.5"),
-        ("conditionnement",   "Conditionnement (texte libre)",
-         "Précision libre : 'Carcasse ~150kg', 'Carton de 10', 'Sous-vide'... Facultatif.",
-         "Carcasse ~150kg", "Carton de 10"),
+        ("unites_autorisees", "Unités de commande",
+         "Unités que le fournisseur accepte. Séparer par virgule parmi : kg, piece, colis. Laisser vide = tout autorisé.",
+         "kg,piece,colis", "colis"),
         ("famille",           "Famille",
          "Catégorie : Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage. Facultatif.",
          "Viande", "Viande"),
@@ -600,8 +600,8 @@ async def download_template():
     ws.add_data_validation(dv_sf)
     dv_sf.add(f"{sf_letter}5:{sf_letter}500")
 
-    # Masquer les colonnes I (conditionnement) et L (dlc_type)
-    for hidden_key in ("conditionnement", "dlc_type"):
+    # Masquer la colonne L (dlc_type) — avancé, rarement saisi manuellement
+    for hidden_key in ("dlc_type",):
         hidden_col = next(i for i, (k, *_rest) in enumerate(colonnes, 1) if k == hidden_key)
         hidden_letter = ws.cell(row=1, column=hidden_col).column_letter
         ws.column_dimensions[hidden_letter].hidden = True
@@ -682,9 +682,14 @@ async def download_template():
         ("   5.5  pour la viande, charcuterie et produits alimentaires de base.", False, "333333", None, 11),
         ("   20   pour tout le reste (emballages, produits d'hygiène, etc.).", False, "333333", None, 11),
         ("", False, "333333", None, 11),
-        ("9. Conditionnement (texte libre)  [facultatif]", True, "2D5A3A", None, 11),
-        ("   Description libre du conditionnement.", False, "333333", None, 11),
-        ("   Exemples : « Carcasse ~150 kg », « Carton de 10 », « Sous-vide », « Filet »", False, "8A6D3B", "FFF8E1", 10),
+        ("9. Unités de commande  [facultatif, défaut = tout autorisé]", True, "2D5A3A", None, 11),
+        ("   Indique quelles unités le fournisseur accepte en commande.", False, "333333", None, 11),
+        ("   Saisir une ou plusieurs valeurs séparées par des virgules parmi : kg, piece, colis", False, "333333", None, 11),
+        ("   Laisser vide = toutes les unités sont autorisées (équivalent à « kg,piece,colis »).", False, "333333", None, 11),
+        ("   Exemples :", False, "333333", None, 11),
+        ("   « colis »          → fournisseur vend uniquement au colis entier (commande à la pièce interdite)", False, "8A6D3B", "FFF8E1", 10),
+        ("   « kg,colis »       → fournisseur vend au kilo ou au colis, mais pas à la pièce", False, "8A6D3B", "FFF8E1", 10),
+        ("   « kg,piece,colis » → toutes les conversions autorisées (ou laisser vide)", False, "8A6D3B", "FFF8E1", 10),
         ("", False, "333333", None, 11),
         ("10. Famille  [facultatif]", True, "2D5A3A", None, 11),
         ("    Catégorie principale du produit (liste déroulante) :", False, "333333", None, 11),
@@ -706,13 +711,14 @@ async def download_template():
         ("Exemple A — Carcasse bœuf vendue AU KILO :", True, "2D5A3A", None, 11),
         ("   Fournisseur=Boucherie Martin | Code=CARC-BF | Désignation=Carcasse bœuf", False, "8A6D3B", "FFF8E1", 10),
         ("   Prix=9.70 | Prix au=kg | Qté colis=(vide) | Poids unitaire=(vide)", False, "8A6D3B", "FFF8E1", 10),
-        ("   TVA=5.5 | Conditionnement=Carcasse ~150kg | Famille=Viande | Sous-famille=Boeuf | DLC=date_abattage", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Unités=kg,piece,colis | Famille=Viande | Sous-famille=Boeuf | DLC=date_abattage", False, "8A6D3B", "FFF8E1", 10),
         ("", False, "333333", None, 11),
-        ("Exemple B — Steaks hachés vendus AU COLIS (carton de 10 × 185 g) :", True, "2D5A3A", None, 11),
+        ("Exemple B — Steaks hachés vendus AU COLIS (carton de 10 × 185 g), commande au colis uniquement :", True, "2D5A3A", None, 11),
         ("   Fournisseur=Boucherie Martin | Code=STK-185 | Désignation=Steak haché 185g", False, "8A6D3B", "FFF8E1", 10),
         ("   Prix=18.00 | Prix au=colis | Qté colis=10 | Poids unitaire=0.185", False, "8A6D3B", "FFF8E1", 10),
-        ("   TVA=5.5 | Conditionnement=Carton de 10 | Famille=Viande | Sous-famille=Boeuf | DLC=dlc", False, "8A6D3B", "FFF8E1", 10),
+        ("   TVA=5.5 | Unités=colis | Famille=Viande | Sous-famille=Boeuf | DLC=dlc", False, "8A6D3B", "FFF8E1", 10),
         ("   → Poids total du colis calculé automatiquement : 10 × 0,185 = 1,85 kg", False, "555555", None, 10),
+        ("   → Unités=colis : seule la commande au colis entier est autorisée pour ce fournisseur", False, "555555", None, 10),
         ("", False, "333333", None, 11),
         ("QUESTIONS FRÉQUENTES", True, "2D7D46", None, 12),
         ("", False, "333333", None, 11),
@@ -789,6 +795,8 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
         "poids total colis (kg)": "poids_colis_kg",
         "tva (%)": "tva_percent", "tva": "tva_percent",
         "conditionnement (texte libre)": "conditionnement", "conditionnement": "conditionnement",
+        "unités de commande": "unites_autorisees", "unites de commande": "unites_autorisees",
+        "unites_autorisees": "unites_autorisees",
         "famille": "famille",
         "sous-famille": "sous_famille", "sous famille": "sous_famille", "sous_famille": "sous_famille",
         "type de dlc": "dlc_type", "type dlc": "dlc_type",
@@ -848,9 +856,10 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
             except ValueError:
                 tva = 5.5
 
-            format_prix     = _normaliser_format_prix(col(row_num, "format_prix")) if "format_prix" in headers else "kg"
-            conditionnement = col(row_num, "conditionnement") if "conditionnement" in headers else None
-            famille         = col(row_num, "famille")         if "famille"         in headers else None
+            format_prix       = _normaliser_format_prix(col(row_num, "format_prix")) if "format_prix" in headers else "kg"
+            conditionnement   = col(row_num, "conditionnement")   if "conditionnement"   in headers else None
+            unites_autorisees = col(row_num, "unites_autorisees") if "unites_autorisees" in headers else None
+            famille           = col(row_num, "famille")           if "famille"           in headers else None
             sous_famille    = col(row_num, "sous_famille")    if "sous_famille"    in headers else None
             dlc_type        = col(row_num, "dlc_type")        if "dlc_type"        in headers else "dlc"
 
@@ -881,12 +890,13 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                     """UPDATE catalogue_fournisseur
                        SET designation=?, prix_achat_ht=?, format_prix=?,
                            qte_par_colis=?, poids_unitaire_kg=?, poids_colis_kg=?,
-                           tva_percent=?, conditionnement=?, famille=?, sous_famille=?,
-                           dlc_type=?, date_maj=CURRENT_TIMESTAMP
+                           tva_percent=?, conditionnement=?, unites_autorisees=?,
+                           famille=?, sous_famille=?, dlc_type=?, date_maj=CURRENT_TIMESTAMP
                        WHERE id=?""",
                     (designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
-                     tva, conditionnement or None, famille or None, sous_famille or None,
+                     tva, conditionnement or None, unites_autorisees or None,
+                     famille or None, sous_famille or None,
                      dlc_type or "dlc", existing["id"])
                 )
                 stats["mis_a_jour"] += 1
@@ -895,11 +905,12 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                     """INSERT INTO catalogue_fournisseur
                        (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                         qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
-                        famille, sous_famille, dlc_type)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        unites_autorisees, famille, sous_famille, dlc_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (fourn["id"], code, designation, prix, format_prix,
                      qte_par_colis, poids_unitaire_kg, poids_colis_kg,
-                     tva, conditionnement or None, famille or None, sous_famille or None,
+                     tva, conditionnement or None, unites_autorisees or None,
+                     famille or None, sous_famille or None,
                      dlc_type or "dlc")
                 )
                 stats["crees"] += 1
