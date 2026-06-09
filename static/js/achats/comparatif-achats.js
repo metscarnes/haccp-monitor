@@ -32,6 +32,33 @@ function esc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// Marge à la volée (miroir front de _calc_marge backend) — pour simuler, dans le tableau de
+// choix, la marge que donnerait CHAQUE fournisseur avec le prix/unité/poids du produit de vente.
+// Retourne null si incalculable (achat €/kg absent, prix vente ≤ 0, ou pièce sans poids).
+function calcMargeFront(prixVenteTtc, tvaPercent, achatRefKg, uniteVente, poidsPieceKg) {
+  if (achatRefKg == null || prixVenteTtc == null) return null;
+  const ttc = Number(prixVenteTtc), achat = Number(achatRefKg);
+  if (!(ttc > 0)) return null;
+  const tva = tvaPercent != null ? Number(tvaPercent) : 0;
+  const venteHt = ttc / (1 + tva / 100);
+  let cout, base;
+  if (uniteVente === 'piece') {
+    if (!(Number(poidsPieceKg) > 0)) return null;
+    cout = achat * Number(poidsPieceKg);
+    base = '€/pièce';
+  } else {
+    cout = achat;
+    base = '€/kg';
+  }
+  const marge = venteHt - cout;
+  return {
+    base_label: base,
+    marge,
+    taux_marge: venteHt > 0 ? marge / venteHt : null,
+    coef: cout > 0 ? ttc / cout : null,
+  };
+}
+
 // ── Chargement des groupes ────────────────────────────────────
 async function chargerGroupes(selectionner) {
   const r = await fetch(`${API_CMP}/groupes`);
@@ -119,7 +146,7 @@ function rendreVS(data) {
 //   opts.choisirCv  → id du produit de vente : rend les colonnes cliquables (choix de référence).
 //   opts.refId      → id de la ligne actuellement choisie (colonne mise en évidence).
 function construireGrilleVS(lignes, opts = {}) {
-  const { retirer = false, choisirCv = null, refId = null } = opts;
+  const { retirer = false, choisirCv = null, refId = null, pv = null } = opts;
   const cliquable = choisirCv != null;
 
   const criteres = [
@@ -172,6 +199,30 @@ function construireGrilleVS(lignes, opts = {}) {
         <strong>${pk}</strong>${l.meilleur ? ' <span class="cmp-tag">✅ meilleur</span>' : ''}</div>`;
     }
   });
+
+  // En mode choix : marge simulée par fournisseur (avec le prix/unité/poids du produit de vente).
+  // 3 lignes — marge €, taux %, coef — pour arbitrer « lequel rapporte le plus » directement.
+  if (cliquable && pv) {
+    const marges = lignes.map((l) =>
+      calcMargeFront(pv.prix_vente_ttc, pv.tva_percent, l.prix_kg, pv.unite_vente, pv.poids_piece_kg));
+    // meilleure marge (la plus haute) pour la mettre en avant
+    let maxMarge = null;
+    marges.forEach((mm) => { if (mm && (maxMarge == null || mm.marge > maxMarge)) maxMarge = mm.marge; });
+
+    const ligneMarge = (label, fmt, cls) => {
+      html += `<div class="cmp-cell cmp-cell--label cmp-cell--marge">${label}</div>`;
+      lignes.forEach((l, i) => {
+        const mm = marges[i];
+        const attrs = ` data-choix-cv="${choisirCv}" data-choix-ligne="${l.id}"`;
+        const best = mm && cls === 'marge' && maxMarge != null && mm.marge === maxMarge ? ' cmp-marge-best' : '';
+        const refc = (l.id === refId) ? ' cmp-ref' : '';
+        html += `<div class="cmp-cell cmp-cell--marge${best}${refc}"${attrs}>${mm ? fmt(mm) : '—'}</div>`;
+      });
+    };
+    ligneMarge('➤ Marge', (mm) => `<strong>${fmtNb(mm.marge)} ${mm.base_label}</strong>`, 'marge');
+    ligneMarge('Taux', (mm) => mm.taux_marge != null ? (mm.taux_marge * 100).toFixed(1) + ' %' : '—', 'taux');
+    ligneMarge('Coef', (mm) => mm.coef != null ? '×' + mm.coef.toFixed(2) : '—', 'coef');
+  }
 
   html += '</div>';
   return html;
@@ -246,7 +297,7 @@ function rendreMargeCarte(p, lignesAchat) {
 
   // ── Zone d'édition (déplié) ─────────────────────────────────
   // Le choix de la référence se fait en cliquant une colonne du tableau comparatif complet.
-  const grille = construireGrilleVS(lignesAchat, { choisirCv: p.id, refId });
+  const grille = construireGrilleVS(lignesAchat, { choisirCv: p.id, refId, pv: p });
 
   // Encart marge : KPI clairs + détail + équivalent €/kg (utile pour la pièce).
   let encart;

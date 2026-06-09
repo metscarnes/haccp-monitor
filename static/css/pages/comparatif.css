@@ -140,6 +140,11 @@
 .cmp-grid--choix .cmp-cell[data-choix-ligne] { cursor: pointer; transition: background .1s; }
 .cmp-grid--choix .cmp-cell[data-choix-ligne]:hover { background: #f3e9da; }
 .cmp-grid--choix .cmp-cell--head[data-choix-ligne]:hover { background: #ead9bf; }
+/* Lignes de marge simulée par fournisseur (mode choix). */
+.cmp-cell--marge { background: #f6faf3; }
+.cmp-cell--label.cmp-cell--marge { color: #1b5e20; font-weight: 700; }
+.cmp-cell--marge strong { color: #1b5e20; }
+.cmp-cell--marge.cmp-marge-best { background: #d8f0d0 !important; box-shadow: inset 0 0 0 1px #9bd08a; }
 .cmp-mc-grille-titre {
   font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
   color: #8a7a68; margin: var(--space-3) 0 var(--space-2);
