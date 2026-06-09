@@ -1951,6 +1951,56 @@ async def set_comparatif_vente(
     return await get_comparatif(groupe_id, _)
 
 
+@router.get("/comparatif/groupes/{groupe_id}/vente-suggestions")
+async def comparatif_vente_suggestions(
+    groupe_id: int,
+    q: Optional[str] = Query(None, description="Recherche libre ; vide = suggestions sémantiques"),
+    _=Depends(require_admin),
+):
+    """Produits du catalogue de VENTE à proposer pour l'association du groupe.
+
+    - `q` fourni → recherche classique (LIKE sur le nom), triée alpha.
+    - `q` vide → suggestions SÉMANTIQUES : on classe TOUS les produits de vente actifs par
+      proximité (Jaccard) avec le NOM DU GROUPE, les plus proches d'abord. Score 0 inclus :
+      la liste complète reste accessible (« être sûr de ne rien rater »), juste mieux ordonnée.
+    Exclut le produit déjà associé à CE groupe (inutile de le reproposer).
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT nom, catalogue_vente_id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1",
+            (groupe_id,),
+        )
+        grp = await cur.fetchone()
+        if not grp:
+            raise HTTPException(404, "Groupe introuvable")
+        nom_groupe = grp["nom"]
+        deja = grp["catalogue_vente_id"]
+
+        q = (q or "").strip()
+        if q:
+            cur_v = await db.execute(
+                """SELECT * FROM catalogue_vente
+                   WHERE boutique_id = 1 AND actif = 1 AND nom LIKE ?
+                   ORDER BY nom LIMIT 30""",
+                (f"%{q}%",),
+            )
+            items = [dict(r) for r in await cur_v.fetchall()]
+            items = [p for p in items if p["id"] != deja]
+            return items
+
+        # Suggestions sémantiques sur le nom du groupe.
+        cur_v = await db.execute(
+            "SELECT * FROM catalogue_vente WHERE boutique_id = 1 AND actif = 1 ORDER BY nom"
+        )
+        produits = [dict(r) for r in await cur_v.fetchall()]
+        for p in produits:
+            p["score"] = _similarite(nom_groupe, p.get("nom") or "")
+        produits = [p for p in produits if p["id"] != deja]
+        # Plus proches d'abord, puis ordre alphabétique pour la longue traîne (score 0).
+        produits.sort(key=lambda p: (-p["score"], (p.get("nom") or "").lower()))
+        return produits[:30]
+
+
 @router.put("/comparatif/groupes/{groupe_id}/reference")
 async def set_comparatif_reference(
     groupe_id: int, body: ComparatifReferenceUpdate, _=Depends(require_admin)

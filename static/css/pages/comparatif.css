@@ -186,6 +186,17 @@
   border-bottom: 1px solid #f0e6d8;
 }
 .cmp-vente-resultat:hover { background: #faf4ea; }
+.cmp-vente-titre {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #8a7a68;
+  background: #faf4ea;
+  position: sticky;
+  top: 0;
+}
 .cmp-vente-resultat-nom { font-weight: 600; color: var(--color-text); }
 .cmp-vente-resultat-meta { display: block; font-size: 0.78rem; color: #8a7a68; margin-top: 2px; }
 

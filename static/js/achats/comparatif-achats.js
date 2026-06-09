@@ -41,10 +41,25 @@ async function chargerGroupes(selectionner) {
 }
 
 function majBoutonsGroupe() {
-  const actif = !!$('select-groupe').value;
+  const sel = $('select-groupe');
+  const actif = !!sel.value;
   $('btn-renommer').style.display        = actif ? '' : 'none';
   $('btn-supprimer-groupe').style.display = actif ? '' : 'none';
   $('btn-ajouter-ligne').style.display    = actif ? '' : 'none';
+  // « Suivant » visible dès qu'il existe au moins 2 groupes (pour enchaîner).
+  const nbGroupes = [...sel.options].filter((o) => o.value).length;
+  $('btn-groupe-suivant').style.display = nbGroupes > 1 ? '' : 'none';
+}
+
+// Passe au groupe suivant dans le sélecteur (boucle au début après le dernier).
+function groupeSuivant() {
+  const sel = $('select-groupe');
+  const valeurs = [...sel.options].map((o) => o.value).filter((v) => v);
+  if (valeurs.length < 2) return;
+  const i = valeurs.indexOf(sel.value);
+  const prochain = valeurs[(i + 1) % valeurs.length];   // i = -1 (aucun) → premier
+  sel.value = prochain;
+  sel.dispatchEvent(new Event('change'));
 }
 
 // ── Affichage du VS ───────────────────────────────────────────
@@ -214,7 +229,8 @@ function rendreMarge(data) {
 }
 
 function cablerMarge() {
-  // Recherche produit de vente (réutilise l'API catalogue vente).
+  const cv = dernierVS?.catalogue_vente;
+  // Recherche / suggestions de produit de vente.
   const search = $('cmp-vente-search');
   if (search) {
     let tv;
@@ -222,9 +238,10 @@ function cablerMarge() {
       clearTimeout(tv);
       tv = setTimeout(() => rechercherProduitsVente(search.value.trim()), 250);
     });
-    search.addEventListener('focus', () => {
-      if (search.value.trim()) rechercherProduitsVente(search.value.trim());
-    });
+    // Focus champ vide → suggestions sémantiques (mode « rien rater »).
+    search.addEventListener('focus', () => rechercherProduitsVente(search.value.trim()));
+    // Suggestions affichées d'emblée tant qu'aucun produit n'est associé.
+    if (!cv) rechercherProduitsVente('');
   }
   const delier = $('cmp-vente-delier');
   if (delier) delier.addEventListener('click', () => associerVente(null));
@@ -241,24 +258,44 @@ function cablerMarge() {
   }
 }
 
+// Recherche / suggestions de produits de vente.
+// q vide → suggestions sémantiques sur le nom du groupe (les plus proches en haut),
+// la liste complète reste accessible en dessous (« être sûr de ne rien rater »).
 async function rechercherProduitsVente(q) {
+  if (!groupeCourant) return;
   const box = $('cmp-vente-resultats');
-  if (!q) { box.style.display = 'none'; return; }
-  const r = await fetch(`/api/vente/catalogue?q=${encodeURIComponent(q)}`);
+  const semantique = !q;   // pas de saisie = mode suggestions
+  const url = `${API_CMP}/groupes/${groupeCourant}/vente-suggestions` +
+    (q ? `?q=${encodeURIComponent(q)}` : '');
+  const r = await fetch(url);
   const items = r.ok ? await r.json() : [];
   if (!items.length) {
-    box.innerHTML = '<div class="cmp-empty cmp-empty--sm">Aucun produit de vente trouvé.</div>';
+    box.innerHTML = '<div class="cmp-empty cmp-empty--sm">Aucun produit de vente disponible.</div>';
     box.style.display = '';
     return;
   }
-  box.innerHTML = items.slice(0, 20).map((p) => {
+  // En mode sémantique, on titre les vraies suggestions (score > 0) puis le reste.
+  const aSugg = semantique && items.some((p) => (p.score || 0) > 0);
+  let html = '';
+  let titreReste = false;
+  items.slice(0, 30).forEach((p) => {
+    if (semantique && aSugg && !titreReste && (p.score || 0) === 0) {
+      html += '<div class="cmp-vente-titre">Tous les produits de vente</div>';
+      titreReste = true;
+    }
     const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
     const sf = p.sous_famille ? esc(p.sous_famille) : 'sans sous-famille';
-    return `<div class="cmp-vente-resultat" data-id="${p.id}">
-      <span class="cmp-vente-resultat-nom">${esc(p.nom)}</span>
+    const score = (p.score != null && p.score > 0)
+      ? `<span class="cmp-score">${Math.round(p.score * 100)}%</span>` : '';
+    html += `<div class="cmp-vente-resultat" data-id="${p.id}">
+      <span class="cmp-vente-resultat-nom">${esc(p.nom)} ${score}</span>
       <span class="cmp-vente-resultat-meta">${sf} · ${prix}</span>
     </div>`;
-  }).join('');
+  });
+  if (aSugg) {
+    html = '<div class="cmp-vente-titre">Suggestions (proches du nom du groupe)</div>' + html;
+  }
+  box.innerHTML = html;
   box.style.display = '';
   box.querySelectorAll('.cmp-vente-resultat').forEach((el) => {
     el.addEventListener('click', () => associerVente(Number(el.dataset.id)));
@@ -577,8 +614,17 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-fermer-proposer').addEventListener('click', fermerProposer);
   $('btn-renommer').addEventListener('click', renommerGroupe);
   $('btn-supprimer-groupe').addEventListener('click', supprimerGroupe);
+  $('btn-groupe-suivant').addEventListener('click', groupeSuivant);
   $('btn-ajouter-ligne').addEventListener('click', ouvrirPanneau);
   $('btn-fermer-panneau').addEventListener('click', fermerPanneau);
+
+  // Fermer la liste de suggestions produit-vente au clic en dehors (attaché 1 seule fois).
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.cmp-marge-assoc')) {
+      const box = $('cmp-vente-resultats');
+      if (box) box.style.display = 'none';
+    }
+  });
 
   let t;
   $('cmp-search').addEventListener('input', () => {
