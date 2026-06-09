@@ -84,6 +84,9 @@ function bindEvents() {
     );
   });
 
+  // Unité de vente : le champ « poids d'une pièce » n'apparaît qu'en mode pièce.
+  document.getElementById('v-unite').addEventListener('change', majAffichagePoids);
+
   // Checkbox "tout sélectionner"
   document.getElementById('chk-tout').addEventListener('change', e => {
     document.querySelectorAll('.chk-produit').forEach(c => c.checked = e.target.checked);
@@ -420,6 +423,12 @@ function ouvrirNouveau() {
   document.getElementById('v-nom').focus();
 }
 
+// Affiche/masque le champ « poids d'une pièce » selon l'unité de vente choisie.
+function majAffichagePoids() {
+  const piece = document.getElementById('v-unite').value === 'piece';
+  document.getElementById('v-poids-champ').style.display = piece ? '' : 'none';
+}
+
 function ouvrirEdition(id) {
   const p = produits.find(x => x.id === id);
   if (!p) return;
@@ -428,6 +437,9 @@ function ouvrirEdition(id) {
   document.getElementById('v-id').value = p.id;
   document.getElementById('v-nom').value = p.nom || '';
   document.getElementById('v-prix').value = p.prix_vente_ttc ?? '';
+  document.getElementById('v-unite').value = p.unite_vente || 'kg';
+  document.getElementById('v-poids').value = p.poids_piece_kg ?? '';
+  majAffichagePoids();
   document.getElementById('v-tva').value = p.tva_percent ?? 5.5;
   document.getElementById('v-dlc').value = p.dlc_jours ?? 3;
   document.getElementById('v-temp').value = p.temperature_conservation || '0°C à +4°C';
@@ -448,6 +460,9 @@ function viderForm() {
   document.getElementById('v-id').value = '';
   document.getElementById('v-nom').value = '';
   document.getElementById('v-prix').value = '';
+  document.getElementById('v-unite').value = 'kg';
+  document.getElementById('v-poids').value = '';
+  majAffichagePoids();
   document.getElementById('v-tva').value = '5.5';
   document.getElementById('v-dlc').value = '3';
   document.getElementById('v-temp').value = '0°C à +4°C';
@@ -461,9 +476,13 @@ async function sauver(e) {
   const btn = document.getElementById('btn-sauver');
   btn.disabled = true; btn.textContent = 'Enregistrement…';
 
+  const unite = document.getElementById('v-unite').value;
   const body = {
     nom:                      document.getElementById('v-nom').value.trim(),
     prix_vente_ttc:           parseFloat(document.getElementById('v-prix').value) || null,
+    unite_vente:              unite,
+    // Poids pertinent seulement à la pièce ; sinon on n'envoie rien d'inventé (null).
+    poids_piece_kg:           unite === 'piece' ? (parseFloat(document.getElementById('v-poids').value) || null) : null,
     tva_percent:              parseFloat(document.getElementById('v-tva').value),
     dlc_jours:                parseInt(document.getElementById('v-dlc').value, 10) || 3,
     temperature_conservation: document.getElementById('v-temp').value,

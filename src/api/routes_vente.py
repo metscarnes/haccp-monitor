@@ -39,6 +39,8 @@ class ProduitVenteCreate(BaseModel):
     nom: str
     code_vente: Optional[str] = None
     prix_vente_ttc: Optional[float] = None
+    unite_vente: Optional[str] = "kg"          # 'kg' | 'piece'
+    poids_piece_kg: Optional[float] = None     # poids d'une pièce (si vente à la pièce)
     tva_percent: Optional[float] = 5.5
     dlc_jours: int = 3
     temperature_conservation: Optional[str] = "0°C à +4°C"
@@ -51,6 +53,8 @@ class ProduitVenteUpdate(BaseModel):
     nom: Optional[str] = None
     code_vente: Optional[str] = None
     prix_vente_ttc: Optional[float] = None
+    unite_vente: Optional[str] = None          # 'kg' | 'piece'
+    poids_piece_kg: Optional[float] = None
     tva_percent: Optional[float] = None
     dlc_jours: Optional[int] = None
     temperature_conservation: Optional[str] = None
@@ -519,14 +523,17 @@ async def detail_produit_vente(produit_id: int):
 @router.post("/catalogue", status_code=201)
 async def creer_produit_vente(body: ProduitVenteCreate, _=Depends(require_admin)):
     async with get_db() as db:
+        unite = body.unite_vente if body.unite_vente in ("kg", "piece") else "kg"
+        poids = body.poids_piece_kg if unite == "piece" else None
         cur = await db.execute(
             """INSERT INTO catalogue_vente
-                   (boutique_id, nom, code_vente, prix_vente_ttc, tva_percent,
-                    dlc_jours, temperature_conservation, format_etiquette, famille, sous_famille)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (body.nom, body.code_vente, body.prix_vente_ttc, body.tva_percent,
-             body.dlc_jours, body.temperature_conservation, body.format_etiquette,
-             body.famille, body.sous_famille),
+                   (boutique_id, nom, code_vente, prix_vente_ttc, unite_vente, poids_piece_kg,
+                    tva_percent, dlc_jours, temperature_conservation, format_etiquette,
+                    famille, sous_famille)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.nom, body.code_vente, body.prix_vente_ttc, unite, poids,
+             body.tva_percent, body.dlc_jours, body.temperature_conservation,
+             body.format_etiquette, body.famille, body.sous_famille),
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (cur.lastrowid,))
@@ -540,7 +547,14 @@ async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, _=De
         if not await cur.fetchone():
             raise HTTPException(404, "Produit de vente introuvable")
 
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        # Champs réellement fournis (un null explicite est conservé, ex. effacer poids_piece_kg
+        # quand on repasse un produit « à la pièce » en « au kg »).
+        fournis = body.model_fields_set
+        data = body.model_dump()
+        fields = {k: data[k] for k in fournis if k != "actif" or data[k] is not None}
+        # actif=None ne veut rien dire → on le retire ; les autres null sont volontaires.
+        if "actif" in fields and fields["actif"] is None:
+            del fields["actif"]
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
 

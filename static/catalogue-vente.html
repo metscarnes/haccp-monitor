@@ -210,6 +210,17 @@
           <input type="number" id="v-prix" min="0" step="0.01" placeholder="0.00">
         </div>
         <div class="ach-champ">
+          <label>Unité de vente</label>
+          <select id="v-unite">
+            <option value="kg">au kilo (€/kg)</option>
+            <option value="piece">à la pièce (€/pièce)</option>
+          </select>
+        </div>
+        <div class="ach-champ" id="v-poids-champ" style="display:none;">
+          <label>Poids d'une pièce (kg)</label>
+          <input type="number" id="v-poids" min="0" step="0.001" placeholder="ex : 0.150">
+        </div>
+        <div class="ach-champ">
           <label>TVA (%)</label>
           <select id="v-tva">
             <option value="5.5">5,5% (alimentaire)</option>
