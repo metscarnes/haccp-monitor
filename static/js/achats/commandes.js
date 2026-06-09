@@ -227,13 +227,7 @@ function unitesAutorisees(a) {
 //  1) que le fournisseur l'autorise (unites_autorisees)
 //  2) que la conversion soit calculable (données qte/poids présentes)
 function peutCommander(a, unite) {
-  if (!unitesAutorisees(a).includes(unite)) return false;
-  switch (unite) {
-    case 'colis': return true;
-    case 'kg':    return prixUnitaire(a, 'kg') !== null;
-    case 'piece': return prixUnitaire(a, 'piece') !== null;
-    default:      return false;
-  }
+  return unitesAutorisees(a).includes(unite);
 }
 function peutCommanderKg(a)    { return peutCommander(a, 'kg'); }
 function peutCommanderPiece(a) { return peutCommander(a, 'piece'); }
@@ -769,6 +763,9 @@ function ouvrirModalLigne() {
   document.getElementById('ligne-search').value = '';
   document.getElementById('ligne-resultats').innerHTML = '';
   document.getElementById('ligne-erreur').hidden = true;
+  // Remettre toutes les unités (saisie manuelle sans article catalogue)
+  document.getElementById('l-unite').innerHTML =
+    '<option value="kg">kg</option><option value="piece">pièce</option><option value="colis">colis</option>';
   document.getElementById('modal-ligne').hidden = false;
   document.getElementById('ligne-search').focus();
 }
@@ -808,6 +805,16 @@ function selectionnerArticleCmd(id) {
   document.getElementById('l-prix').value = a.prix_achat_ht;
   document.getElementById('ligne-search').value = a.designation;
   document.getElementById('ligne-resultats').innerHTML = '';
+
+  // Reconstruire les options d'unité selon ce qu'autorise le catalogue
+  const uniteLabels = { kg: 'kg', piece: 'pièce', colis: 'colis' };
+  const unitesSel = document.getElementById('l-unite');
+  const unitesDispo = ['kg', 'piece', 'colis'].filter(u => peutCommander(a, u));
+  unitesSel.innerHTML = unitesDispo.length
+    ? unitesDispo.map(u => `<option value="${u}">${uniteLabels[u] || u}</option>`).join('')
+    : '<option value="kg">kg</option>';
+  unitesSel.value = uniteParDefaut(a);
+
   document.getElementById('l-quantite').focus();
 }
 
