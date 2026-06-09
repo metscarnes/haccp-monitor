@@ -128,19 +128,22 @@
   border-radius: var(--radius-sm);
 }
 
-/* ── Ligne / colonne de référence (⭐ choisi par l'utilisateur) ── */
+/* ── Colonne de référence choisie (par produit de vente) ── */
 .cmp-cell.cmp-ref { background: #fff4d6 !important; }
 .cmp-cell--head.cmp-ref { box-shadow: inset 0 -3px 0 #d99100; }
-.cmp-ref-choix {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #9e6b00;
+.cmp-ref-check {
+  font-size: 0.72rem; font-weight: 700; color: #9e6b00;
+  background: #ffe9b0; padding: 2px 7px; border-radius: var(--radius-pill); white-space: nowrap;
 }
-.cmp-ref-radio { width: 15px; height: 15px; accent-color: #d99100; cursor: pointer; }
+
+/* Grille en mode CHOIX (dans une carte produit dépliée) : colonnes cliquables. */
+.cmp-grid--choix .cmp-cell[data-choix-ligne] { cursor: pointer; transition: background .1s; }
+.cmp-grid--choix .cmp-cell[data-choix-ligne]:hover { background: #f3e9da; }
+.cmp-grid--choix .cmp-cell--head[data-choix-ligne]:hover { background: #ead9bf; }
+.cmp-mc-grille-titre {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  color: #8a7a68; margin: var(--space-3) 0 var(--space-2);
+}
 
 /* ── Bande marge ───────────────────────────────────────────── */
 .cmp-marge {
@@ -287,9 +290,6 @@
   text-transform: none;
 }
 .cmp-marge-mini input { width: 100px; }
-/* Le menu « achat de référence » prend toute la largeur de la ligne (libellés longs). */
-.cmp-marge-ref { flex: 1 1 100%; }
-.cmp-marge-ref select { width: 100%; font-weight: 600; }
 .cmp-marge-unite { font-size: 0.72rem; color: #8a7a68; white-space: nowrap; font-weight: 400; text-transform: none; }
 
 .cmp-marge-detail { font-size: var(--text-sm); color: #6b5840; margin-top: var(--space-2); }

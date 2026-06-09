@@ -91,7 +91,37 @@ function rendreVS(data) {
     return;
   }
 
-  // Critères en lignes, fournisseurs en colonnes.
+  const produits = data.produits_vente || [];
+
+  // Le tableau VS « global » en haut ne s'affiche QUE s'il n'y a aucun produit de vente associé
+  // (sinon la comparaison vit dans chaque carte dépliée → on évite le doublon).
+  if (produits.length) {
+    $('cmp-vs').innerHTML = '';
+  } else {
+    let html = construireGrilleVS(lignes, { retirer: true });
+    const indispo = lignes.filter((l) => l.prix_kg == null).length;
+    if (indispo) {
+      html += `<div class="cmp-note">⚠ ${indispo} article(s) sans prix au kilo : poids du colis non renseigné par le fournisseur. Complétez le poids dans le catalogue achats pour les inclure dans la comparaison.</div>`;
+    }
+    $('cmp-vs').innerHTML = html;
+    $('cmp-vs').querySelectorAll('.cmp-remove').forEach((b) => {
+      b.addEventListener('click', () => retirerLigne(b.dataset.cat));
+    });
+  }
+
+  // Bande marge (cartes produits de vente + comparatif intégré).
+  rendreMarge(data);
+}
+
+// Construit la grille comparative (fournisseurs en colonnes). Réutilisée pour le VS global
+// ET, en mode cliquable, à l'intérieur d'une carte produit pour choisir sa référence.
+//   opts.retirer    → bouton ✕ « retirer du groupe » dans l'en-tête.
+//   opts.choisirCv  → id du produit de vente : rend les colonnes cliquables (choix de référence).
+//   opts.refId      → id de la ligne actuellement choisie (colonne mise en évidence).
+function construireGrilleVS(lignes, opts = {}) {
+  const { retirer = false, choisirCv = null, refId = null } = opts;
+  const cliquable = choisirCv != null;
+
   const criteres = [
     ['Code article', (l) => esc(l.code_article) || '—'],
     ['Désignation', (l) => esc(l.designation)],
@@ -100,15 +130,24 @@ function rendreVS(data) {
     ['Poids colis', (l) => l.poids_colis_kg != null ? l.poids_colis_kg.toFixed(3) + ' kg' : '—'],
   ];
 
-  let html = '<div class="cmp-grid" style="grid-template-columns: 160px repeat(' + lignes.length + ', minmax(180px, 1fr));">';
+  const colClass = (l) =>
+    (l.meilleur ? ' cmp-best' : '') + (cliquable && l.id === refId ? ' cmp-ref' : '');
 
-  // En-têtes fournisseurs. (La référence d'achat se choisit par produit de vente, dans la
-  // bande marge ci-dessous — plus de ligne ⭐ globale ici.)
+  let html = '<div class="cmp-grid' + (cliquable ? ' cmp-grid--choix' : '') +
+    '" style="grid-template-columns: 160px repeat(' + lignes.length + ', minmax(180px, 1fr));">';
+
+  // En-têtes fournisseurs (cliquables si choix de référence).
   html += '<div class="cmp-cell cmp-cell--head cmp-cell--label"></div>';
   lignes.forEach((l) => {
-    html += `<div class="cmp-cell cmp-cell--head${l.meilleur ? ' cmp-best' : ''}">
+    const attrs = cliquable
+      ? ` data-choix-cv="${choisirCv}" data-choix-ligne="${l.id}" role="button" title="Choisir cet achat comme référence"`
+      : '';
+    const btn = retirer
+      ? `<button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>`
+      : (cliquable && l.id === refId ? '<span class="cmp-ref-check">✓ réf</span>' : '');
+    html += `<div class="cmp-cell cmp-cell--head${colClass(l)}"${attrs}>
       <div class="cmp-fourn">${esc(l.fournisseur_nom)}</div>
-      <button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>
+      ${btn}
     </div>`;
   });
 
@@ -116,39 +155,26 @@ function rendreVS(data) {
   criteres.forEach(([label, fn]) => {
     html += `<div class="cmp-cell cmp-cell--label">${label}</div>`;
     lignes.forEach((l) => {
-      html += `<div class="cmp-cell${l.meilleur ? ' cmp-best' : ''}">${fn(l)}</div>`;
+      const attrs = cliquable ? ` data-choix-cv="${choisirCv}" data-choix-ligne="${l.id}"` : '';
+      html += `<div class="cmp-cell${colClass(l)}"${attrs}>${fn(l)}</div>`;
     });
   });
 
   // Ligne clé : prix au kilo normalisé
   html += '<div class="cmp-cell cmp-cell--label cmp-cell--key">➤ Prix au kilo</div>';
   lignes.forEach((l) => {
+    const attrs = cliquable ? ` data-choix-cv="${choisirCv}" data-choix-ligne="${l.id}"` : '';
     const pk = fmtPrixKg(l.prix_kg);
     if (pk == null) {
-      html += `<div class="cmp-cell cmp-cell--key"><span class="cmp-indispo">€/kg indisponible</span></div>`;
+      html += `<div class="cmp-cell cmp-cell--key${cliquable && l.id === refId ? ' cmp-ref' : ''}"${attrs}><span class="cmp-indispo">€/kg indisponible</span></div>`;
     } else {
-      html += `<div class="cmp-cell cmp-cell--key${l.meilleur ? ' cmp-best' : ''}">
+      html += `<div class="cmp-cell cmp-cell--key${colClass(l)}"${attrs}>
         <strong>${pk}</strong>${l.meilleur ? ' <span class="cmp-tag">✅ meilleur</span>' : ''}</div>`;
     }
   });
 
   html += '</div>';
-
-  // Note honnêteté quand des prix manquent
-  const indispo = lignes.filter((l) => l.prix_kg == null).length;
-  if (indispo) {
-    html += `<div class="cmp-note">⚠ ${indispo} article(s) sans prix au kilo : poids du colis non renseigné par le fournisseur. Complétez le poids dans le catalogue achats pour les inclure dans la comparaison.</div>`;
-  }
-
-  $('cmp-vs').innerHTML = html;
-
-  // Boutons « retirer »
-  $('cmp-vs').querySelectorAll('.cmp-remove').forEach((b) => {
-    b.addEventListener('click', () => retirerLigne(b.dataset.cat));
-  });
-
-  // Bande marge (produits de vente + marge) au-dessus du VS.
-  rendreMarge(data);
+  return html;
 }
 
 // ── Bande marge : produits de vente associés (1 achat → N ventes) ─────
@@ -219,19 +245,15 @@ function rendreMargeCarte(p, lignesAchat) {
   if (!ouvert) return `<div class="cmp-marge-carte" data-cv="${p.id}">${barre}</div>`;
 
   // ── Zone d'édition (déplié) ─────────────────────────────────
-  const options = ['<option value="">— Choisir l\'achat de référence —</option>']
-    .concat(lignesAchat.map((l) => {
-      const pk = l.prix_kg != null ? fmtPrixKg(l.prix_kg) : '€/kg indispo';
-      const sel = (refId === l.id) ? ' selected' : '';
-      return `<option value="${l.id}"${sel}>${esc(l.fournisseur_nom)} · ${esc(l.designation)} (${pk})</option>`;
-    })).join('');
+  // Le choix de la référence se fait en cliquant une colonne du tableau comparatif complet.
+  const grille = construireGrilleVS(lignesAchat, { choisirCv: p.id, refId });
 
   let detail;
   if (m) {
     detail = `<div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>`;
   } else {
     let msg;
-    if (refId == null) msg = '🎯 Choisissez l\'achat de référence pour calculer la marge.';
+    if (refId == null) msg = '🎯 Cliquez une colonne du tableau ci-dessous pour choisir l\'achat de référence.';
     else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce.';
     else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
     else msg = '€/kg de la référence indisponible (poids du colis manquant).';
@@ -240,9 +262,6 @@ function rendreMargeCarte(p, lignesAchat) {
 
   const edit = `<div class="cmp-mc-body">
     <div class="cmp-marge-ligne-edit">
-      <label class="cmp-marge-mini cmp-marge-ref">🎯 Achat de référence
-        <select class="cmp-vente-ref" data-cv="${p.id}">${options}</select>
-      </label>
       <label class="cmp-marge-mini">Prix vente TTC
         <input type="number" step="0.01" min="0" class="cmp-vente-prix" data-cv="${p.id}"
                value="${p.prix_vente_ttc != null ? p.prix_vente_ttc : ''}" placeholder="0.00">
@@ -260,6 +279,8 @@ function rendreMargeCarte(p, lignesAchat) {
       </label>
     </div>
     ${detail}
+    <div class="cmp-mc-grille-titre">🎯 Achat de référence — cliquez une colonne :</div>
+    ${grille}
   </div>`;
 
   return `<div class="cmp-marge-carte cmp-marge-carte--ouverte" data-cv="${p.id}">${barre}${edit}</div>`;
@@ -332,11 +353,15 @@ function cablerMarge() {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
   });
 
-  // Achat de référence propre à chaque produit de vente (change → enregistre).
-  $('cmp-marge').querySelectorAll('.cmp-vente-ref').forEach((sel) => {
-    sel.addEventListener('change', () => {
-      const v = sel.value;
-      choisirReferenceVente(Number(sel.dataset.cv), v === '' ? null : Number(v));
+  // Choix de la référence : clic sur une colonne du tableau comparatif dans la carte dépliée.
+  // Recliquer la colonne déjà choisie la retire.
+  $('cmp-marge').querySelectorAll('[data-choix-ligne]').forEach((cell) => {
+    cell.addEventListener('click', () => {
+      const cv = Number(cell.dataset.choixCv);
+      const ligne = Number(cell.dataset.choixLigne);
+      const pv = (dernierVS.produits_vente || []).find((x) => x.id === cv);
+      const dejaChoisi = pv && pv.ligne_choisie_id === ligne;
+      choisirReferenceVente(cv, dejaChoisi ? null : ligne);
     });
   });
 }
