@@ -170,9 +170,9 @@ async function supprimerSelection() {
   const erreurs = [];
   for (const id of ids) {
     const r = await fetch(`${API_CMD}/${id}`, { method: 'DELETE' });
-    if (!r.ok && r.status !== 204) {
+    if (!r.ok) {
       const d = await r.json().catch(() => ({}));
-      erreurs.push(`#${id} : ${d.detail || 'Erreur'}`);
+      erreurs.push(`#${id} : ${d.detail || 'HTTP ' + r.status}`);
     }
   }
 
