@@ -220,6 +220,29 @@ async def taches_resume():
         except Exception as exc:
             logger.warning("hub résumé dlc : %s", exc)
 
+        # ── 5. Articles catalogue non groupés dans le comparateur ──
+        try:
+            rows = await db.execute_fetchall(
+                """
+                SELECT COUNT(*) FROM catalogue_fournisseur c
+                JOIN fournisseurs f ON f.id = c.fournisseur_id
+                WHERE f.boutique_id = ? AND c.actif = 1
+                  AND c.id NOT IN (SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne)
+                """,
+                (BOUTIQUE_ID,),
+            )
+            n_non_groupes = rows[0][0] if rows else 0
+            if n_non_groupes > 0:
+                a_venir.append({
+                    "code":    "comparatif_non_groupes",
+                    "libelle": "Comparateur fournisseurs",
+                    "url":     "/comparatif-achats.html",
+                    "icone":   "⚖️",
+                    "detail":  f"{n_non_groupes} article(s) non comparés — voir les propositions",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé comparatif : %s", exc)
+
     return {
         "date":        today.isoformat(),
         "aujourd_hui": aujourd_hui,

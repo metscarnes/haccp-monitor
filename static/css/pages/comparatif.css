@@ -10,6 +10,21 @@
 .cmp-toolbar .ach-filtre { min-width: 240px; }
 .cmp-toolbar-right { margin-left: auto; }
 
+/* ── Badge "articles non groupés" ─────────────────────────── */
+.cmp-badge-non-groupes {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #fff8e8;
+  border: 1px solid #f0d99a;
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+  color: #9e6b00;
+  font-weight: 600;
+}
+
 /* ── Zone VS ───────────────────────────────────────────────── */
 .cmp-vs { padding: 0 var(--space-4) var(--space-4); }
 

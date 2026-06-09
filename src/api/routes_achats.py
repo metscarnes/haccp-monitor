@@ -1602,6 +1602,21 @@ def _similarite(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+@router.get("/comparatif/stats")
+async def comparatif_stats(_=Depends(require_admin)):
+    """Nombre d'articles actifs du catalogue non encore rattachés à un groupe."""
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            """
+            SELECT COUNT(*) FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+              AND c.id NOT IN (SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne)
+            """
+        )
+        return {"articles_non_groupes": rows[0][0] if rows else 0}
+
+
 @router.get("/comparatif/groupes")
 async def list_comparatif_groupes(_=Depends(require_admin)):
     """Liste des groupes de comparaison, avec le nombre d'articles de chacun."""

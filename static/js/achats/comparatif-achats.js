@@ -356,9 +356,28 @@ async function creerDepuisGrappe(idx) {
   afficherVS(groupe.id);
 }
 
+// ── Badge "articles non groupés" ─────────────────────────────
+async function majBadgeNonGroupes() {
+  try {
+    const r = await fetch(`${API_CMP}/stats`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const n = d.articles_non_groupes ?? 0;
+    const badge = $('badge-non-groupes');
+    const texte = $('badge-non-groupes-texte');
+    if (n > 0) {
+      texte.textContent = `${n} article(s) du catalogue non encore comparés`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch { /* silencieux */ }
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
+  majBadgeNonGroupes();
 
   $('select-groupe').addEventListener('change', (e) => {
     majBoutonsGroupe();
