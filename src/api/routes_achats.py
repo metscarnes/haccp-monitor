@@ -1474,7 +1474,17 @@ async def envoyer_commande(commande_id: int):
             </tr>"""
             for l in lignes
         )
-        commentaire_bloc = f"""<tr><td colspan="4" style="padding:10px 12px;font-style:italic;color:#6b7280;font-size:13px;">{commande['commentaire']}</td></tr>""" if commande['commentaire'] else ""
+        # Encart commentaire mis en avant, placé AVANT le tableau de commande.
+        commentaire_bloc = (
+            '<tr><td style="padding:16px 32px 0;">'
+            '<table width="100%" cellpadding="0" cellspacing="0" '
+            'style="background:#fff7ed;border:1px solid #f0c9a0;border-left:4px solid #d97706;border-radius:6px;">'
+            '<tr><td style="padding:12px 16px;">'
+            '<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.5px;">'
+            '&#128221; Instructions particuli&#232;res</p>'
+            f'<p style="margin:0;font-size:14px;color:#2d1f0f;line-height:1.5;">{commande["commentaire"]}</p>'
+            '</td></tr></table></td></tr>'
+        ) if commande['commentaire'] else ""
 
         app_url = os.getenv("APP_URL", "http://localhost:8000").rstrip("/")
         logo_url = f"{app_url}/static/assets/logo.png"
@@ -1502,6 +1512,7 @@ async def envoyer_commande(commande_id: int):
             ' &nbsp;&#183;&nbsp; Heure d\'envoi : <strong style="color:#2d1f0f;">' + datetime.now().strftime('%H:%M') + '</strong>'
             ' &nbsp;&#183;&nbsp; Livraison souhait&#233;e : <strong style="color:#2d1f0f;">' + (_fmt_date_fr(commande['date_livraison_prevue']) or '&#192; d&#233;finir') + '</strong>'
             '</p></td></tr>'
+            + commentaire_bloc +
             '<tr><td style="padding:0 32px;">'
             '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
             '<thead><tr style="background:#f3ebdf;">'
@@ -1510,7 +1521,7 @@ async def envoyer_commande(commande_id: int):
             '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Qt&#233;</th>'
             '<th style="padding:10px 12px;text-align:right;font-size:12px;color:#5a3e28;text-transform:uppercase;border-bottom:2px solid #d4c5af;">Prix HT</th>'
             '</tr></thead>'
-            '<tbody>' + lignes_rows + commentaire_bloc + '</tbody>'
+            '<tbody>' + lignes_rows + '</tbody>'
             '</table></td></tr>'
             '<tr><td style="background:#f9f4ed;padding:16px 32px;border-top:1px solid #e8d9c4;">'
             '<table width="100%" cellpadding="0" cellspacing="0"><tr>'
