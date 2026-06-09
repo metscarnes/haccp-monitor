@@ -1448,6 +1448,15 @@ async def envoyer_commande(commande_id: int):
         from_addr = os.getenv("SMTP_FROM", smtp_user)
 
         # Construire le corps du mail (HTML + fallback texte)
+        def _fmt_date_fr(d):
+            """Date ISO (aaaa-mm-jj) → jj/mm/aa. Renvoie '' si vide/illisible."""
+            if not d:
+                return ''
+            try:
+                return datetime.strptime(d[:10], '%Y-%m-%d').strftime('%d/%m/%y')
+            except (ValueError, TypeError):
+                return d
+
         def _prix_catalogue(l):
             prix = l.get('cat_prix_ht')
             fmt  = l.get('cat_format_prix') or 'kg'
@@ -1489,9 +1498,9 @@ async def envoyer_commande(commande_id: int):
             '</p>'
             '<p style="margin:4px 0 0;font-size:13px;color:#6b7280;">'
             'N&#176; <strong style="color:#2d1f0f;">' + commande['numero_commande'] + '</strong>'
-            ' &nbsp;&#183;&nbsp; Date : <strong style="color:#2d1f0f;">' + commande['date_commande'] + '</strong>'
+            ' &nbsp;&#183;&nbsp; Date : <strong style="color:#2d1f0f;">' + _fmt_date_fr(commande['date_commande']) + '</strong>'
             ' &nbsp;&#183;&nbsp; Heure d\'envoi : <strong style="color:#2d1f0f;">' + datetime.now().strftime('%H:%M') + '</strong>'
-            ' &nbsp;&#183;&nbsp; Livraison souhait&#233;e : <strong style="color:#2d1f0f;">' + (commande['date_livraison_prevue'] or '&#192; d&#233;finir') + '</strong>'
+            ' &nbsp;&#183;&nbsp; Livraison souhait&#233;e : <strong style="color:#2d1f0f;">' + (_fmt_date_fr(commande['date_livraison_prevue']) or '&#192; d&#233;finir') + '</strong>'
             '</p></td></tr>'
             '<tr><td style="padding:0 32px;">'
             '<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;">'
@@ -1520,7 +1529,7 @@ async def envoyer_commande(commande_id: int):
             f"× {l['prix_unitaire_ht']:.2f}€ HT = {l['montant_ht']:.2f}€ HT"
             for l in lignes
         )
-        corps = f"Commande {commande['numero_commande']} du {commande['date_commande']}\nDestinataire : {commande['fournisseur_nom']} <{commande['email_commercial']}>\n\n{corps_txt}"
+        corps = f"Commande {commande['numero_commande']} du {_fmt_date_fr(commande['date_commande'])}\nDestinataire : {commande['fournisseur_nom']} <{commande['email_commercial']}>\n\n{corps_txt}"
 
         # Envoi mail via smtplib (config dans variables d'env)
         if not smtp_host or not smtp_user:

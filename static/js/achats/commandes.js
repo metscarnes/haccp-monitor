@@ -674,7 +674,8 @@ async function sauverCommande() {
   const id = document.getElementById('cmd-id').value;
   const body = {
     date_livraison_prevue: dateLivraison,
-    commentaire:           document.getElementById('cmd-commentaire').value.trim() || null,
+    // chaîne vide (pas null) pour permettre l'effacement : le backend ignore null
+    commentaire:           document.getElementById('cmd-commentaire').value.trim(),
   };
   try {
     await fetch(`${API_CMD}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -712,6 +713,17 @@ async function envoyerCommande() {
   const btn = document.getElementById('btn-envoyer-cmd');
   btn.disabled = true; btn.textContent = 'Envoi…';
   try {
+    // Persister le commentaire et la date saisis avant l'envoi : le mail est
+    // construit à partir de la BDD, pas du formulaire. Sans ça un commentaire
+    // tapé sans cliquer « Enregistrer » serait perdu.
+    await fetch(`${API_CMD}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date_livraison_prevue: document.getElementById('cmd-livraison').value || null,
+        commentaire: document.getElementById('cmd-commentaire').value.trim(),
+      }),
+    });
     const r = await fetch(`${API_CMD}/${id}/envoyer`, { method: 'POST' });
     const result = await r.json();
     if (!r.ok) {
