@@ -164,7 +164,7 @@
 }
 
 /* Association produit de vente */
-.cmp-marge-assoc { position: relative; min-width: 280px; flex: 1 1 280px; }
+.cmp-marge-assoc { position: relative; }
 .cmp-marge-vente-pick { display: flex; gap: var(--space-2); align-items: center; }
 .cmp-vente-search {
   flex: 1;
@@ -280,7 +280,7 @@
 .cmp-marge-detail strong { color: var(--color-text); }
 
 .cmp-marge-attente {
-  flex: 1 1 280px;
+  flex: none;
   font-size: var(--text-sm);
   color: #9e6b00;
   background: #fff8e8;
