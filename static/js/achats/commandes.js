@@ -55,6 +55,8 @@ function bindEvents() {
   document.getElementById('form-ligne').addEventListener('submit', ajouterLigne);
   document.getElementById('filtre-fournisseur').addEventListener('change', filtrer);
   document.getElementById('filtre-statut').addEventListener('change', filtrer);
+  document.getElementById('chk-tout').addEventListener('change', selectionnerTout);
+  document.getElementById('btn-supprimer-selection').addEventListener('click', supprimerSelection);
   document.getElementById('ligne-search').addEventListener('input', rechercherCatalogueCmd);
   document.getElementById('panier-livraison').addEventListener('change', verifierDelaisPanier);
   document.getElementById('cmd-livraison').addEventListener('change', verifierDelaisCommande);
@@ -112,11 +114,19 @@ function filtrer() {
 function afficherTable(liste) {
   const tbody = document.getElementById('tbody-commandes');
   if (!liste.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="ach-vide">Aucune commande</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="ach-vide">Aucune commande</td></tr>';
+    majBoutonSelection();
     return;
   }
-  tbody.innerHTML = liste.map(c => `
+  tbody.innerHTML = liste.map(c => {
+    const supprimable = c.statut === 'brouillon' || c.statut === 'annulee';
+    return `
     <tr>
+      <td style="text-align:center;">
+        ${supprimable
+          ? `<input type="checkbox" class="chk-commande" data-id="${c.id}" onchange="majBoutonSelection()">`
+          : ''}
+      </td>
       <td><code>${escHtml(c.numero_commande)}</code></td>
       <td>${fmtDate(c.date_commande)}</td>
       <td class="ach-cell-nom">${escHtml(c.fournisseur_nom)}</td>
@@ -127,8 +137,51 @@ function afficherTable(liste) {
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirCommande(${c.id})">Ouvrir</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
+  majBoutonSelection();
+}
+
+function majBoutonSelection() {
+  const cases = document.querySelectorAll('.chk-commande:checked');
+  const btn = document.getElementById('btn-supprimer-selection');
+  const badge = document.getElementById('badge-selection');
+  badge.textContent = cases.length;
+  btn.hidden = cases.length === 0;
+  // Synchroniser la case "tout"
+  const toutes = document.querySelectorAll('.chk-commande');
+  const chkTout = document.getElementById('chk-tout');
+  chkTout.checked = toutes.length > 0 && cases.length === toutes.length;
+  chkTout.indeterminate = cases.length > 0 && cases.length < toutes.length;
+}
+
+function selectionnerTout() {
+  const cocher = document.getElementById('chk-tout').checked;
+  document.querySelectorAll('.chk-commande').forEach(c => { c.checked = cocher; });
+  majBoutonSelection();
+}
+
+async function supprimerSelection() {
+  const cases = document.querySelectorAll('.chk-commande:checked');
+  if (!cases.length) return;
+  const ids = Array.from(cases).map(c => parseInt(c.dataset.id));
+  if (!confirm(`Supprimer ${ids.length} commande(s) ? Cette action est irréversible.`)) return;
+
+  const btn = document.getElementById('btn-supprimer-selection');
+  btn.disabled = true; btn.textContent = 'Suppression…';
+
+  const erreurs = [];
+  for (const id of ids) {
+    const r = await fetch(`${API_CMD}/${id}`, { method: 'DELETE' });
+    if (!r.ok && r.status !== 204) {
+      const d = await r.json().catch(() => ({}));
+      erreurs.push(`#${id} : ${d.detail || 'Erreur'}`);
+    }
+  }
+
+  await chargerCommandes();
+  btn.disabled = false; btn.textContent = '🗑 Supprimer';
+  if (erreurs.length) alert('Erreurs :\n' + erreurs.join('\n'));
 }
 
 // ── Panier (localStorage) ────────────────────────────────────

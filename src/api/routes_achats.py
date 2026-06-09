@@ -1239,6 +1239,21 @@ async def delete_ligne(commande_id: int, ligne_id: int):
         await db.commit()
 
 
+@router.delete("/commandes/{commande_id}", status_code=204)
+async def delete_commande(commande_id: int):
+    """Supprime une commande et toutes ses lignes (uniquement brouillon ou annulée)."""
+    async with get_db() as db:
+        row = await db.execute("SELECT statut FROM commandes WHERE id = ?", (commande_id,))
+        rec = await row.fetchone()
+        if not rec:
+            raise HTTPException(status_code=404, detail="Commande introuvable")
+        if rec["statut"] not in ("brouillon", "annulee"):
+            raise HTTPException(status_code=400, detail="Seules les commandes en brouillon ou annulées peuvent être supprimées")
+        await db.execute("DELETE FROM commande_lignes WHERE commande_id = ?", (commande_id,))
+        await db.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))
+        await db.commit()
+
+
 @router.post("/commandes/{commande_id}/dupliquer", status_code=201)
 async def dupliquer_commande(commande_id: int, personnel_id: Optional[int] = None):
     """Duplique une commande existante en brouillon avec les mêmes lignes."""

@@ -18,6 +18,9 @@
     <a href="/achats.html" class="ach-retour">← Achats</a>
     <div class="ach-bar-titre">📝 COMMANDES</div>
     <div class="ach-bar-actions">
+      <button class="ach-btn ach-btn--danger" id="btn-supprimer-selection" hidden>
+        🗑 Supprimer (<span id="badge-selection">0</span>)
+      </button>
       <button class="ach-btn ach-btn--primary" id="btn-panier">
         🛒 Panier <span id="badge-panier" class="ach-badge-count" hidden>0</span>
       </button>
@@ -64,6 +67,7 @@
     <table class="ach-table" id="table-commandes">
       <thead>
         <tr>
+          <th style="width:36px; text-align:center;"><input type="checkbox" id="chk-tout" title="Tout sélectionner"></th>
           <th>N° commande</th>
           <th>Date</th>
           <th>Fournisseur</th>
@@ -75,7 +79,7 @@
         </tr>
       </thead>
       <tbody id="tbody-commandes">
-        <tr><td colspan="8" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="9" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
