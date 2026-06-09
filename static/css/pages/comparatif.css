@@ -164,7 +164,9 @@
 }
 
 /* Association produit de vente */
-.cmp-marge-assoc { position: relative; }
+/* z-index élevé : la liste déroulante (absolute) doit passer AU-DESSUS de la liste
+   des produits associés qui la suit dans le flux flex-column. */
+.cmp-marge-assoc { position: relative; z-index: 30; }
 .cmp-marge-vente-pick { display: flex; gap: var(--space-2); align-items: center; }
 .cmp-vente-search {
   flex: 1;
