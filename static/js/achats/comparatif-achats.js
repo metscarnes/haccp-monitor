@@ -152,10 +152,14 @@ function rendreVS(data) {
 }
 
 // ── Bande marge : produits de vente associés (1 achat → N ventes) ─────
+// Carte repliable : 1 ligne résumée par produit (marge + taux + fournisseur), l'édition
+// (réf, prix, unité, poids) ne s'affiche que pour le produit déplié.
+let margeOuvert = null;   // id du produit de vente actuellement déplié (un seul à la fois)
+
 function rendreMarge(data) {
   const box = $('cmp-marge');
   const produits = data.produits_vente || [];
-  const lignesAchat = data.lignes || [];   // articles du groupe = choix de référence par produit
+  const lignesAchat = data.lignes || [];
 
   // Sélecteur d'AJOUT : la liste ne s'ouvre que sur clic ▾ (ne masque pas le VS).
   let html = `<div class="cmp-marge-assoc">
@@ -168,10 +172,9 @@ function rendreMarge(data) {
     </div>
   </div>`;
 
-  // Liste verticale des produits associés. Chacun choisit SA ligne d'achat de référence.
   if (produits.length) {
     html += '<div class="cmp-marge-liste">' +
-      produits.map((p) => rendreMargeLigne(p, lignesAchat)).join('') + '</div>';
+      produits.map((p) => rendreMargeCarte(p, lignesAchat)).join('') + '</div>';
   } else {
     html += `<div class="cmp-marge-attente">Aucun produit de vente associé. Utilisez « Ajouter » pour relier ce groupe d'achat à un ou plusieurs produits vendus.</div>`;
   }
@@ -181,14 +184,41 @@ function rendreMarge(data) {
   cablerMarge();
 }
 
-// Une ligne = un produit de vente associé : sa réf d'achat + prix/unité/poids éditables + marge.
-function rendreMargeLigne(p, lignesAchat) {
+// Carte d'un produit de vente : barre résumé (toujours visible) + zone d'édition (si déplié).
+function rendreMargeCarte(p, lignesAchat) {
   const m = p.marge;
+  const ouvert = margeOuvert === p.id;
   const estPiece = p.unite_vente === 'piece';
   const uniteLabel = estPiece ? '€/pièce' : '€/kg';
   const refId = p.ligne_choisie_id;
+  const ligneRef = lignesAchat.find((l) => l.id === refId);
 
-  // Menu déroulant : la ligne d'achat de référence PROPRE à ce produit de vente.
+  // ── Barre résumé (toujours visible) ─────────────────────────
+  // marge + taux à droite si calculée, sinon un libellé « à compléter ».
+  let resume;
+  if (m) {
+    resume = `<span class="cmp-mc-marge">${fmtNb(m.marge)} ${m.base_label}</span>
+      <span class="cmp-mc-taux">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(0) + ' %' : '—'}</span>
+      <span class="cmp-mc-coef">${m.coef != null ? '×' + m.coef.toFixed(2) : ''}</span>`;
+  } else {
+    resume = `<span class="cmp-mc-attente">à compléter</span>`;
+  }
+  // Pastille du fournisseur de référence choisi (ou « réf ? »).
+  const pastille = ligneRef
+    ? `<span class="cmp-mc-ref" title="${esc(ligneRef.fournisseur_nom)} · ${esc(ligneRef.designation)}">${esc(ligneRef.fournisseur_nom)}</span>`
+    : `<span class="cmp-mc-ref cmp-mc-ref--vide">réf ?</span>`;
+
+  const barre = `<div class="cmp-mc-head" data-cv="${p.id}">
+    <span class="cmp-mc-chevron">${ouvert ? '▾' : '▸'}</span>
+    <span class="cmp-mc-nom">${esc(p.nom)}</span>
+    ${pastille}
+    <span class="cmp-mc-resume">${resume}</span>
+    <button class="cmp-remove cmp-vente-delier" data-cv="${p.id}" title="Délier ce produit">✕</button>
+  </div>`;
+
+  if (!ouvert) return `<div class="cmp-marge-carte" data-cv="${p.id}">${barre}</div>`;
+
+  // ── Zone d'édition (déplié) ─────────────────────────────────
   const options = ['<option value="">— Choisir l\'achat de référence —</option>']
     .concat(lignesAchat.map((l) => {
       const pk = l.prix_kg != null ? fmtPrixKg(l.prix_kg) : '€/kg indispo';
@@ -196,38 +226,19 @@ function rendreMargeLigne(p, lignesAchat) {
       return `<option value="${l.id}"${sel}>${esc(l.fournisseur_nom)} · ${esc(l.designation)} (${pk})</option>`;
     })).join('');
 
-  // Bloc marge ou message d'attente selon ce qui manque.
-  let bloc;
+  let detail;
   if (m) {
-    bloc = `<div class="cmp-marge-chiffres">
-      <div class="cmp-marge-kpi">
-        <span class="cmp-marge-kpi-val">${fmtNb(m.marge)} ${m.base_label}</span>
-        <span class="cmp-marge-kpi-lbl">marge brute</span>
-      </div>
-      <div class="cmp-marge-kpi">
-        <span class="cmp-marge-kpi-val">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(1) + ' %' : '—'}</span>
-        <span class="cmp-marge-kpi-lbl">taux</span>
-      </div>
-      <div class="cmp-marge-kpi">
-        <span class="cmp-marge-kpi-val">${m.coef != null ? '×' + m.coef.toFixed(2) : '—'}</span>
-        <span class="cmp-marge-kpi-lbl">coef</span>
-      </div>
-      <div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>
-    </div>`;
+    detail = `<div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>`;
   } else {
     let msg;
-    if (refId == null) msg = '🎯 Choisissez l\'achat de référence (menu ci-dessus) pour calculer la marge.';
-    else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce pour calculer la marge.';
+    if (refId == null) msg = '🎯 Choisissez l\'achat de référence pour calculer la marge.';
+    else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce.';
     else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
     else msg = '€/kg de la référence indisponible (poids du colis manquant).';
-    bloc = `<div class="cmp-marge-attente cmp-marge-attente--sm">${msg}</div>`;
+    detail = `<div class="cmp-marge-attente cmp-marge-attente--sm">${msg}</div>`;
   }
 
-  return `<div class="cmp-marge-ligne" data-cv="${p.id}">
-    <div class="cmp-marge-ligne-head">
-      <span class="cmp-marge-ligne-nom">${esc(p.nom)}</span>
-      <button class="cmp-remove cmp-vente-delier" data-cv="${p.id}" title="Délier ce produit">✕</button>
-    </div>
+  const edit = `<div class="cmp-mc-body">
     <div class="cmp-marge-ligne-edit">
       <label class="cmp-marge-mini cmp-marge-ref">🎯 Achat de référence
         <select class="cmp-vente-ref" data-cv="${p.id}">${options}</select>
@@ -248,8 +259,10 @@ function rendreMargeLigne(p, lignesAchat) {
                value="${p.poids_piece_kg != null ? p.poids_piece_kg : ''}" placeholder="0.000">
       </label>
     </div>
-    ${bloc}
+    ${detail}
   </div>`;
+
+  return `<div class="cmp-marge-carte cmp-marge-carte--ouverte" data-cv="${p.id}">${barre}${edit}</div>`;
 }
 
 function cablerMarge() {
@@ -276,9 +289,20 @@ function cablerMarge() {
     });
   }
 
+  // Clic sur la barre résumé → déplie/replie cette carte (une seule ouverte à la fois).
+  // On ignore les clics sur le bouton « délier » (géré à part).
+  $('cmp-marge').querySelectorAll('.cmp-mc-head').forEach((h) => {
+    h.addEventListener('click', (e) => {
+      if (e.target.closest('.cmp-vente-delier')) return;
+      const cv = Number(h.dataset.cv);
+      margeOuvert = (margeOuvert === cv) ? null : cv;
+      rendreMarge(dernierVS);
+    });
+  });
+
   // Boutons « délier » par produit.
   $('cmp-marge').querySelectorAll('.cmp-vente-delier').forEach((b) => {
-    b.addEventListener('click', () => delierVente(Number(b.dataset.cv)));
+    b.addEventListener('click', (e) => { e.stopPropagation(); delierVente(Number(b.dataset.cv)); });
   });
 
   // Prix de vente éditable (blur / Entrée).

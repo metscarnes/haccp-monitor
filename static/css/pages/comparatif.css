@@ -216,27 +216,51 @@
 .cmp-vente-resultat-nom { font-weight: 600; color: var(--color-text); }
 .cmp-vente-resultat-meta { display: block; font-size: 0.78rem; color: #8a7a68; margin-top: 2px; }
 
-/* Liste verticale des produits de vente associés (1 achat → N ventes) */
+/* Cartes repliables des produits de vente associés (1 achat → N ventes) */
 .cmp-marge-liste {
   flex: 1 1 100%;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
-.cmp-marge-ligne {
+.cmp-marge-carte {
   border: 1px solid #e8d9c4;
   border-radius: var(--radius-sm);
   background: #fdfaf4;
-  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
 }
-.cmp-marge-ligne-head {
+.cmp-marge-carte--ouverte { border-color: #d9c7af; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+/* Barre résumé (toujours visible, cliquable pour déplier) */
+.cmp-mc-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
 }
-.cmp-marge-ligne-nom { font-weight: 700; color: var(--color-accent); }
+.cmp-mc-head:hover { background: #faf4ea; }
+.cmp-mc-chevron { color: #8a7a68; font-size: 0.8rem; width: 12px; flex: none; }
+.cmp-mc-nom { font-weight: 700; color: var(--color-accent); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-mc-ref {
+  font-size: 0.72rem; font-weight: 600; color: #6b5840;
+  background: #f3e9da; padding: 2px 8px; border-radius: var(--radius-pill);
+  white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+}
+.cmp-mc-ref--vide { color: #b91c1c; background: #fdecea; }
+.cmp-mc-resume { display: flex; align-items: baseline; gap: var(--space-2); white-space: nowrap; }
+.cmp-mc-marge { font-size: 1.1rem; font-weight: 800; color: #1b5e20; }
+.cmp-mc-taux { font-size: 0.85rem; font-weight: 700; color: #2e7d32; }
+.cmp-mc-coef { font-size: 0.78rem; color: #8a7a68; }
+.cmp-mc-attente { font-size: 0.78rem; font-weight: 600; color: #9e6b00;
+  background: #fff4d6; padding: 2px 8px; border-radius: var(--radius-pill); }
+.cmp-mc-head .cmp-remove { flex: none; }
+
+/* Zone d'édition (visible seulement quand la carte est dépliée) */
+.cmp-mc-body { padding: 0 var(--space-3) var(--space-3); border-top: 1px solid #f0e6d8; }
 .cmp-marge-ligne-edit {
+  padding-top: var(--space-3);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
@@ -268,21 +292,7 @@
 .cmp-marge-ref select { width: 100%; font-weight: 600; }
 .cmp-marge-unite { font-size: 0.72rem; color: #8a7a68; white-space: nowrap; font-weight: 400; text-transform: none; }
 
-.cmp-marge-chiffres {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-}
-.cmp-marge-kpi { display: flex; flex-direction: column; line-height: 1.2; }
-.cmp-marge-kpi-val { font-size: 1.25rem; font-weight: 800; color: #1b5e20; }
-.cmp-marge-kpi-lbl {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #8a7a68;
-}
-.cmp-marge-detail { font-size: var(--text-sm); color: #6b5840; }
+.cmp-marge-detail { font-size: var(--text-sm); color: #6b5840; margin-top: var(--space-2); }
 .cmp-marge-detail strong { color: var(--color-text); }
 
 .cmp-marge-attente {
