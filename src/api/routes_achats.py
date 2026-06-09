@@ -1681,6 +1681,16 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
     marge = prix_vente_ht - cout_matiere
     taux = marge / prix_vente_ht if prix_vente_ht > 0 else None
     coef = ttc / cout_matiere if cout_matiere > 0 else None
+
+    # Pour une vente à la pièce : équivalents au kilo, pour comparer sur la même base
+    # que l'achat (qui est en €/kg). vente €/kg = prix_HT/pièce ÷ poids ; achat €/kg = achat_ref.
+    if unite_vente == "piece":
+        vente_ht_kg = prix_vente_ht / float(poids_piece_kg)
+        cout_kg = achat  # le coût matière ramené au kg, c'est l'achat €/kg lui-même
+    else:
+        vente_ht_kg = prix_vente_ht
+        cout_kg = cout_matiere
+
     return {
         "unite": "piece" if unite_vente == "piece" else "kg",
         "base_label": base_label,
@@ -1690,6 +1700,9 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
         "achat_ref_kg": round(achat, 4),
         "poids_piece_kg": round(float(poids_piece_kg), 4) if poids_piece_kg else None,
         "cout_matiere": round(cout_matiere, 4),
+        # Équivalents au kilo (utiles surtout pour la pièce : comparer vente vs achat en €/kg).
+        "vente_ht_kg": round(vente_ht_kg, 4),
+        "cout_kg": round(cout_kg, 4),
         # 'marge_kg' conservé comme alias générique de la marge dans l'unité (rétrocompat front).
         "marge_kg": round(marge, 4),
         "marge": round(marge, 4),

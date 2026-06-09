@@ -248,20 +248,32 @@ function rendreMargeCarte(p, lignesAchat) {
   // Le choix de la référence se fait en cliquant une colonne du tableau comparatif complet.
   const grille = construireGrilleVS(lignesAchat, { choisirCv: p.id, refId });
 
-  let detail;
+  // Encart marge : KPI clairs + détail + équivalent €/kg (utile pour la pièce).
+  let encart;
   if (m) {
-    detail = `<div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>`;
+    const equiv = estPiece
+      ? `<div class="cmp-mc-equiv">≈ vendu <strong>${fmtNb(m.vente_ht_kg)} €/kg</strong> HT · acheté <strong>${fmtNb(m.cout_kg)} €/kg</strong></div>`
+      : '';
+    encart = `<div class="cmp-mc-resultat">
+      <div class="cmp-mc-kpis">
+        <div class="cmp-mc-kpi"><span class="cmp-mc-kpi-val">${fmtNb(m.marge)} ${m.base_label}</span><span class="cmp-mc-kpi-lbl">marge brute</span></div>
+        <div class="cmp-mc-kpi"><span class="cmp-mc-kpi-val">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(1) + ' %' : '—'}</span><span class="cmp-mc-kpi-lbl">taux</span></div>
+        <div class="cmp-mc-kpi"><span class="cmp-mc-kpi-val">${m.coef != null ? '×' + m.coef.toFixed(2) : '—'}</span><span class="cmp-mc-kpi-lbl">coefficient</span></div>
+      </div>
+      <div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>
+      ${equiv}
+    </div>`;
   } else {
     let msg;
     if (refId == null) msg = '🎯 Cliquez une colonne du tableau ci-dessous pour choisir l\'achat de référence.';
     else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce.';
     else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
     else msg = '€/kg de la référence indisponible (poids du colis manquant).';
-    detail = `<div class="cmp-marge-attente cmp-marge-attente--sm">${msg}</div>`;
+    encart = `<div class="cmp-marge-attente cmp-marge-attente--sm">${msg}</div>`;
   }
 
   const edit = `<div class="cmp-mc-body">
-    <div class="cmp-marge-ligne-edit">
+    <div class="cmp-mc-params">
       <label class="cmp-marge-mini">Prix vente TTC
         <input type="number" step="0.01" min="0" class="cmp-vente-prix" data-cv="${p.id}"
                value="${p.prix_vente_ttc != null ? p.prix_vente_ttc : ''}" placeholder="0.00">
@@ -278,7 +290,7 @@ function rendreMargeCarte(p, lignesAchat) {
                value="${p.poids_piece_kg != null ? p.poids_piece_kg : ''}" placeholder="0.000">
       </label>
     </div>
-    ${detail}
+    ${encart}
     <div class="cmp-mc-grille-titre">🎯 Achat de référence — cliquez une colonne :</div>
     ${grille}
   </div>`;
