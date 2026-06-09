@@ -52,6 +52,7 @@ async function afficherVS(groupeId) {
   groupeCourant = groupeId;
   if (!groupeId) {
     dernierVS = null;
+    $('cmp-marge').style.display = 'none';
     $('cmp-vs').innerHTML = '<div class="cmp-empty" id="cmp-empty">Sélectionnez un groupe, ou créez-en un pour commencer la comparaison.</div>';
     return;
   }
@@ -64,6 +65,7 @@ async function afficherVS(groupeId) {
 function rendreVS(data) {
   const lignes = data.lignes || [];
   if (!lignes.length) {
+    $('cmp-marge').style.display = 'none';
     $('cmp-vs').innerHTML =
       `<div class="cmp-empty">Ce groupe est vide. Cliquez sur « + Ajouter un article » pour comparer des produits.</div>`;
     return;
@@ -83,9 +85,20 @@ function rendreVS(data) {
   // En-têtes fournisseurs
   html += '<div class="cmp-cell cmp-cell--head cmp-cell--label"></div>';
   lignes.forEach((l) => {
-    html += `<div class="cmp-cell cmp-cell--head${l.meilleur ? ' cmp-best' : ''}">
+    html += `<div class="cmp-cell cmp-cell--head${l.meilleur ? ' cmp-best' : ''}${l.reference ? ' cmp-ref' : ''}">
       <div class="cmp-fourn">${esc(l.fournisseur_nom)}</div>
       <button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>
+    </div>`;
+  });
+
+  // Ligne « référence » : radio ⭐ pour désigner le fournisseur choisi (arbitrage manuel).
+  html += '<div class="cmp-cell cmp-cell--label">⭐ Référence</div>';
+  lignes.forEach((l) => {
+    html += `<div class="cmp-cell${l.reference ? ' cmp-ref' : ''}">
+      <label class="cmp-ref-choix" title="Choisir ce fournisseur comme référence pour la marge">
+        <input type="radio" name="cmp-ref" class="cmp-ref-radio" data-cat="${l.id}" ${l.reference ? 'checked' : ''}>
+        <span>${l.reference ? 'Choisi' : 'Choisir'}</span>
+      </label>
     </div>`;
   });
 
@@ -123,6 +136,181 @@ function rendreVS(data) {
   $('cmp-vs').querySelectorAll('.cmp-remove').forEach((b) => {
     b.addEventListener('click', () => retirerLigne(b.dataset.cat));
   });
+
+  // Radios « référence » : cliquer = désigner ce fournisseur comme référence ;
+  // recliquer sur celui déjà choisi = retirer l'étoile.
+  $('cmp-vs').querySelectorAll('.cmp-ref-radio').forEach((rd) => {
+    rd.addEventListener('click', () => {
+      const dejaChoisi = dernierVS?.ligne_choisie_id;
+      const cible = Number(rd.dataset.cat);
+      choisirReference(cible === dejaChoisi ? null : cible);
+    });
+  });
+
+  // Bande marge (produit de vente + marge) au-dessus du VS.
+  rendreMarge(data);
+}
+
+// ── Bande marge : produit de vente associé + marge sur la référence ───
+function rendreMarge(data) {
+  const box = $('cmp-marge');
+  const cv = data.catalogue_vente;
+  const m = data.marge;
+
+  // Sélecteur produit de vente (toujours affiché quand un groupe est ouvert).
+  let html = `<div class="cmp-marge-assoc">
+    <label class="cmp-marge-lbl">🏷️ Produit de vente associé</label>
+    <div class="cmp-marge-vente-pick">
+      <input type="search" id="cmp-vente-search" class="cmp-vente-search"
+             placeholder="${cv ? esc(cv.nom) : 'Rechercher un produit de vente…'}"
+             autocomplete="off">
+      ${cv ? `<button class="ach-btn cmp-vente-delier" id="cmp-vente-delier" title="Délier">✕ Délier</button>` : ''}
+      <div id="cmp-vente-resultats" class="cmp-vente-resultats" style="display:none;"></div>
+    </div>
+  </div>`;
+
+  if (cv) {
+    // Bloc marge : prix vente TTC éditable + indicateurs.
+    const margeBloc = m
+      ? `<div class="cmp-marge-chiffres">
+           <div class="cmp-marge-kpi">
+             <span class="cmp-marge-kpi-val">${fmtPrixKg(m.marge_kg) || '—'}</span>
+             <span class="cmp-marge-kpi-lbl">marge brute</span>
+           </div>
+           <div class="cmp-marge-kpi">
+             <span class="cmp-marge-kpi-val">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(1) + ' %' : '—'}</span>
+             <span class="cmp-marge-kpi-lbl">taux de marge</span>
+           </div>
+           <div class="cmp-marge-kpi">
+             <span class="cmp-marge-kpi-val">${m.coef != null ? '×' + m.coef.toFixed(2) : '—'}</span>
+             <span class="cmp-marge-kpi-lbl">coefficient</span>
+           </div>
+           <div class="cmp-marge-detail">
+             achat réf <strong>${fmtPrixKg(m.achat_ref_kg) || '—'}</strong>
+             · vente HT <strong>${fmtEuro(m.prix_vente_ht)}</strong>
+           </div>
+         </div>`
+      : `<div class="cmp-marge-attente">${data.ligne_choisie_id == null
+            ? '⭐ Choisissez un fournisseur de référence (ligne « Référence » du tableau) pour calculer la marge.'
+            : '€/kg de la référence indisponible : complétez le poids du colis dans le catalogue achats.'}</div>`;
+
+    html += `<div class="cmp-marge-calc">
+      <div class="cmp-marge-prix">
+        <label class="cmp-marge-lbl">Prix de vente TTC</label>
+        <div class="cmp-marge-prix-edit">
+          <input type="number" step="0.01" min="0" id="cmp-vente-prix"
+                 class="cmp-vente-prix" value="${cv.prix_vente_ttc != null ? cv.prix_vente_ttc : ''}"
+                 placeholder="0.00">
+          <span class="cmp-marge-unite">€/kg · TVA ${cv.tva_percent != null ? cv.tva_percent : '—'} %</span>
+        </div>
+      </div>
+      ${margeBloc}
+    </div>`;
+  }
+
+  box.innerHTML = html;
+  box.style.display = '';
+  cablerMarge();
+}
+
+function cablerMarge() {
+  // Recherche produit de vente (réutilise l'API catalogue vente).
+  const search = $('cmp-vente-search');
+  if (search) {
+    let tv;
+    search.addEventListener('input', () => {
+      clearTimeout(tv);
+      tv = setTimeout(() => rechercherProduitsVente(search.value.trim()), 250);
+    });
+    search.addEventListener('focus', () => {
+      if (search.value.trim()) rechercherProduitsVente(search.value.trim());
+    });
+  }
+  const delier = $('cmp-vente-delier');
+  if (delier) delier.addEventListener('click', () => associerVente(null));
+
+  // Prix de vente éditable : on enregistre à la validation (blur ou Entrée).
+  const prix = $('cmp-vente-prix');
+  if (prix) {
+    const valider = () => {
+      const v = prix.value.trim();
+      majPrixVente(v === '' ? null : Number(v));
+    };
+    prix.addEventListener('blur', valider);
+    prix.addEventListener('keydown', (e) => { if (e.key === 'Enter') prix.blur(); });
+  }
+}
+
+async function rechercherProduitsVente(q) {
+  const box = $('cmp-vente-resultats');
+  if (!q) { box.style.display = 'none'; return; }
+  const r = await fetch(`/api/vente/catalogue?q=${encodeURIComponent(q)}`);
+  const items = r.ok ? await r.json() : [];
+  if (!items.length) {
+    box.innerHTML = '<div class="cmp-empty cmp-empty--sm">Aucun produit de vente trouvé.</div>';
+    box.style.display = '';
+    return;
+  }
+  box.innerHTML = items.slice(0, 20).map((p) => {
+    const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
+    const sf = p.sous_famille ? esc(p.sous_famille) : 'sans sous-famille';
+    return `<div class="cmp-vente-resultat" data-id="${p.id}">
+      <span class="cmp-vente-resultat-nom">${esc(p.nom)}</span>
+      <span class="cmp-vente-resultat-meta">${sf} · ${prix}</span>
+    </div>`;
+  }).join('');
+  box.style.display = '';
+  box.querySelectorAll('.cmp-vente-resultat').forEach((el) => {
+    el.addEventListener('click', () => associerVente(Number(el.dataset.id)));
+  });
+}
+
+async function associerVente(catalogueVenteId) {
+  if (!groupeCourant) return;
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/vente`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ catalogue_vente_id: catalogueVenteId }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.detail || 'Association impossible.');
+    return;
+  }
+  dernierVS = await r.json();
+  rendreVS(dernierVS);
+}
+
+async function majPrixVente(prixTtc) {
+  if (!groupeCourant) return;
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/vente`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prix_vente_ttc: prixTtc }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.detail || 'Mise à jour du prix impossible.');
+    return;
+  }
+  dernierVS = await r.json();
+  rendreVS(dernierVS);
+}
+
+async function choisirReference(ligneId) {
+  if (!groupeCourant) return;
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/reference`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ligne_choisie_id: ligneId }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.detail || 'Choix impossible.');
+    return;
+  }
+  dernierVS = await r.json();
+  rendreVS(dernierVS);
 }
 
 // ── Mutations groupe ──────────────────────────────────────────

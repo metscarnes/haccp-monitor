@@ -120,6 +120,123 @@
   border-radius: var(--radius-sm);
 }
 
+/* ── Ligne / colonne de référence (⭐ choisi par l'utilisateur) ── */
+.cmp-cell.cmp-ref { background: #fff4d6 !important; }
+.cmp-cell--head.cmp-ref { box-shadow: inset 0 -3px 0 #d99100; }
+.cmp-ref-choix {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9e6b00;
+}
+.cmp-ref-radio { width: 15px; height: 15px; accent-color: #d99100; cursor: pointer; }
+
+/* ── Bande marge ───────────────────────────────────────────── */
+.cmp-marge {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #fff;
+  border: 1px solid #e8d9c4;
+  border-radius: var(--radius);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+.cmp-marge-lbl {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #8a7a68;
+  margin-bottom: 4px;
+}
+
+/* Association produit de vente */
+.cmp-marge-assoc { position: relative; min-width: 280px; flex: 1 1 280px; }
+.cmp-marge-vente-pick { display: flex; gap: var(--space-2); align-items: center; }
+.cmp-vente-search {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid #d9c7af;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.cmp-vente-delier { white-space: nowrap; }
+.cmp-vente-resultats {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d9c7af;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+.cmp-vente-resultat {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-bottom: 1px solid #f0e6d8;
+}
+.cmp-vente-resultat:hover { background: #faf4ea; }
+.cmp-vente-resultat-nom { font-weight: 600; color: var(--color-text); }
+.cmp-vente-resultat-meta { display: block; font-size: 0.78rem; color: #8a7a68; margin-top: 2px; }
+
+/* Bloc calcul (prix vente éditable + KPI marge) */
+.cmp-marge-calc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  flex: 2 1 420px;
+}
+.cmp-marge-prix { min-width: 160px; }
+.cmp-marge-prix-edit { display: flex; align-items: center; gap: var(--space-2); }
+.cmp-vente-prix {
+  width: 110px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid #d9c7af;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.cmp-marge-unite { font-size: 0.78rem; color: #8a7a68; white-space: nowrap; }
+
+.cmp-marge-chiffres {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+.cmp-marge-kpi { display: flex; flex-direction: column; line-height: 1.2; }
+.cmp-marge-kpi-val { font-size: 1.25rem; font-weight: 800; color: #1b5e20; }
+.cmp-marge-kpi-lbl {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #8a7a68;
+}
+.cmp-marge-detail { font-size: var(--text-sm); color: #6b5840; }
+.cmp-marge-detail strong { color: var(--color-text); }
+
+.cmp-marge-attente {
+  flex: 1 1 280px;
+  font-size: var(--text-sm);
+  color: #9e6b00;
+  background: #fff8e8;
+  border: 1px solid #f0d99a;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+}
+
 /* ── Panneau d'ajout (suggestions + recherche) ─────────────── */
 .cmp-panneau {
   position: fixed;
