@@ -1247,6 +1247,7 @@ async def delete_commande(commande_id: int):
         if not await row.fetchone():
             raise HTTPException(status_code=404, detail="Commande introuvable")
         await db.execute("DELETE FROM commande_lignes WHERE commande_id = ?", (commande_id,))
+        await db.execute("DELETE FROM commande_receptions_mapping WHERE commande_id = ?", (commande_id,))
         await db.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))
         await db.commit()
 
