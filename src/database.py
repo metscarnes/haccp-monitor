@@ -1364,6 +1364,25 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # rien n'est stocké en dur. NULL partout = pas encore associé → pas de marge.
             "ALTER TABLE comparatif_groupe ADD COLUMN catalogue_vente_id INTEGER",  # FK catalogue_vente
             "ALTER TABLE comparatif_groupe ADD COLUMN ligne_choisie_id INTEGER",    # FK catalogue_fournisseur (∈ groupe)
+            # v6.4 — Un même achat sert PLUSIEURS produits de vente (cuisse → steak haché, rôti,
+            # bourguignon…). On casse le 1↔1 (colonne catalogue_vente_id ci-dessus) au profit d'une
+            # table de liaison 1 groupe → N produits de vente. Unicité côté vente garantie par PK :
+            # un produit de vente n'appartient qu'à un seul groupe (sinon marge ambiguë).
+            """CREATE TABLE IF NOT EXISTS comparatif_groupe_vente (
+                groupe_id          INTEGER NOT NULL,
+                catalogue_vente_id INTEGER NOT NULL,
+                PRIMARY KEY (catalogue_vente_id),
+                FOREIGN KEY (groupe_id) REFERENCES comparatif_groupe(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id)
+            )""",
+            # Reprise des associations 1↔1 déjà saisies vers la table de liaison (idempotent).
+            """INSERT OR IGNORE INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id)
+               SELECT id, catalogue_vente_id FROM comparatif_groupe
+               WHERE catalogue_vente_id IS NOT NULL""",
+            # v6.4 — Vente au kg OU à la pièce. Pour une pièce, poids_piece_kg permet de ramener
+            # le prix/pièce en €/kg équivalent (ou l'achat €/kg en coût/pièce) pour la marge.
+            "ALTER TABLE catalogue_vente ADD COLUMN unite_vente TEXT DEFAULT 'kg'",  # 'kg' | 'piece'
+            "ALTER TABLE catalogue_vente ADD COLUMN poids_piece_kg REAL",
         ]
         for sql in migrations:
             try:

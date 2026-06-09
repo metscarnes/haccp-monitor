@@ -131,12 +131,18 @@ class ComparatifFromCluster(BaseModel):
     catalogue_fournisseur_ids: List[int]
 
 
+class ComparatifVenteLink(BaseModel):
+    # Associer un produit de vente au groupe (1 groupe → N ventes).
+    catalogue_vente_id: int
+
+
 class ComparatifVenteUpdate(BaseModel):
-    # Associer / délier le produit de vente, et/ou éditer son prix TTC (simulation marge).
-    # Les deux champs sont optionnels : l'endpoint regarde `model_fields_set` pour savoir
-    # lesquels ont été fournis. catalogue_vente_id explicitement null = délier le produit.
-    catalogue_vente_id: Optional[int] = None
+    # Édition d'un produit de vente associé depuis le comparateur (simulation marge) :
+    # prix TTC, unité de vente (kg|piece), poids d'une pièce. Champs optionnels ;
+    # l'endpoint regarde `model_fields_set` pour ne toucher qu'aux champs fournis.
     prix_vente_ttc: Optional[float] = None
+    unite_vente: Optional[str] = None       # 'kg' | 'piece'
+    poids_piece_kg: Optional[float] = None
 
 
 class ComparatifReferenceUpdate(BaseModel):
@@ -1633,17 +1639,22 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
     return None
 
 
-def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg):
-    """Marge à la volée d'un produit revendu en l'état.
+def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
+                unite_vente="kg", poids_piece_kg=None):
+    """Marge à la volée d'un produit revendu en l'état, au kg OU à la pièce.
 
-    - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE par l'utilisateur (⭐),
-      déjà normalisé par `_calc_prix_kg`. None si poids manquant → marge indisponible.
-    - `prix_vente_ttc` vient de catalogue_vente ; on le ramène en HT via la TVA pour
-      comparer du HT à du HT.
+    - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE (⭐), déjà normalisé par
+      `_calc_prix_kg`. None → marge indisponible.
+    - `prix_vente_ttc` = prix de vente, exprimé dans l'unité de vente (€/kg ou €/pièce).
+    - `unite_vente` : 'kg' (défaut) ou 'piece'.
+    - `poids_piece_kg` : requis si unité 'piece' (poids d'une pièce vendue) pour ramener
+      l'achat €/kg à un coût/pièce. Absent → marge indisponible (jamais inventée).
 
-    Retourne None si on ne peut pas calculer honnêtement (pas de ligne de référence,
-    pas de prix de vente, €/kg indisponible, ou prix de vente ≤ 0) — JAMAIS un chiffre
-    inventé, cohérent avec la discipline du €/kg.
+    Le calcul se fait DANS l'unité de vente :
+      - kg    : coût matière = achat €/kg ; marge = vente HT/kg − coût.
+      - pièce : coût matière = achat €/kg × poids_piece_kg ; marge = vente HT/pièce − coût.
+    Renvoie un dict {unite, base_label, prix_vente_ht, cout_matiere, marge, taux_marge,
+    coef, achat_ref_kg, ...} ou None.
     """
     if achat_ref_kg is None or prix_vente_ttc is None:
         return None
@@ -1654,17 +1665,34 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg):
         return None
     if ttc <= 0:
         return None
+
     tva = float(tva_percent) if tva_percent is not None else 0.0
     prix_vente_ht = ttc / (1.0 + tva / 100.0)
-    marge_kg = prix_vente_ht - achat
-    taux = marge_kg / prix_vente_ht if prix_vente_ht > 0 else None
-    coef = ttc / achat if achat > 0 else None
+
+    if unite_vente == "piece":
+        if not poids_piece_kg or float(poids_piece_kg) <= 0:
+            return None  # poids d'une pièce manquant → marge incalculable
+        cout_matiere = achat * float(poids_piece_kg)
+        base_label = "€/pièce"
+    else:
+        cout_matiere = achat  # achat déjà au kg
+        base_label = "€/kg"
+
+    marge = prix_vente_ht - cout_matiere
+    taux = marge / prix_vente_ht if prix_vente_ht > 0 else None
+    coef = ttc / cout_matiere if cout_matiere > 0 else None
     return {
+        "unite": "piece" if unite_vente == "piece" else "kg",
+        "base_label": base_label,
         "prix_vente_ttc": round(ttc, 2),
         "prix_vente_ht": round(prix_vente_ht, 4),
         "tva_percent": round(tva, 2),
         "achat_ref_kg": round(achat, 4),
-        "marge_kg": round(marge_kg, 4),
+        "poids_piece_kg": round(float(poids_piece_kg), 4) if poids_piece_kg else None,
+        "cout_matiere": round(cout_matiere, 4),
+        # 'marge_kg' conservé comme alias générique de la marge dans l'unité (rétrocompat front).
+        "marge_kg": round(marge, 4),
+        "marge": round(marge, 4),
         "taux_marge": round(taux, 4) if taux is not None else None,
         "coef": round(coef, 4) if coef is not None else None,
     }
@@ -1709,56 +1737,60 @@ async def comparatif_marge_incalculable(_=Depends(require_admin)):
     être calculée parce qu'il manque une info en amont. On ne signale que là où il y
     a une intention de marge (produit de vente relié) — pas tout le catalogue.
 
-    Motif bloquant par groupe (premier rencontré) :
-      - 'reference'  : aucune ligne fournisseur de référence (⭐) choisie.
-      - 'prix_achat' : la référence existe mais son €/kg est indisponible
-                       (prix d'achat absent, ou colis sans poids).
-      - 'prix_vente' : le produit de vente associé n'a pas de prix de vente TTC.
+    Une entrée par PRODUIT DE VENTE associé (1 groupe → N ventes) dont la marge est bloquée.
+    Motif (premier rencontré) :
+      - 'reference'   : aucune ligne fournisseur de référence (⭐) choisie pour le groupe.
+      - 'prix_achat'  : la référence existe mais son €/kg est indisponible (prix absent / colis sans poids).
+      - 'prix_vente'  : le produit de vente n'a pas de prix de vente.
+      - 'poids_piece' : produit vendu à la pièce sans poids unitaire renseigné.
     (0 € d'achat n'est PAS un trou : produit gratuit, marge = 100 %.)
     """
     async with get_db() as db:
         cur = await db.execute(
             """
-            SELECT g.id, g.nom, g.catalogue_vente_id, g.ligne_choisie_id,
-                   v.nom AS vente_nom, v.prix_vente_ttc
-            FROM comparatif_groupe g
-            JOIN catalogue_vente v ON v.id = g.catalogue_vente_id
+            SELECT g.id AS groupe_id, g.nom AS groupe_nom, g.ligne_choisie_id,
+                   v.id AS catalogue_vente_id, v.nom AS vente_nom, v.prix_vente_ttc,
+                   v.unite_vente, v.poids_piece_kg
+            FROM comparatif_groupe_vente gv
+            JOIN comparatif_groupe g ON g.id = gv.groupe_id
+            JOIN catalogue_vente v   ON v.id = gv.catalogue_vente_id
             WHERE g.boutique_id = 1
-            ORDER BY g.nom
+            ORDER BY g.nom, v.nom
             """
         )
-        groupes_assoc = [dict(r) for r in await cur.fetchall()]
+        assoc = [dict(r) for r in await cur.fetchall()]
+
+        # €/kg des références (mémoïsé par ligne_choisie_id).
+        ref_cache = {}
+        async def ref_kg(ligne_id):
+            if ligne_id in ref_cache:
+                return ref_cache[ligne_id]
+            cur_l = await db.execute(
+                "SELECT format_prix, prix_achat_ht, poids_colis_kg FROM catalogue_fournisseur WHERE id = ?",
+                (ligne_id,),
+            )
+            l = await cur_l.fetchone()
+            pk = _calc_prix_kg(l["format_prix"], l["prix_achat_ht"], l["poids_colis_kg"]) if l else None
+            ref_cache[ligne_id] = pk
+            return pk
 
         bloques = []
-        for g in groupes_assoc:
-            motif = None
-            detail = None
-            if g["ligne_choisie_id"] is None:
-                motif = "reference"
-                detail = "Aucun fournisseur de référence choisi"
-            else:
-                # €/kg de la ligne de référence
-                cur_l = await db.execute(
-                    """SELECT format_prix, prix_achat_ht, poids_colis_kg
-                       FROM catalogue_fournisseur WHERE id = ?""",
-                    (g["ligne_choisie_id"],),
-                )
-                lref = await cur_l.fetchone()
-                pk = _calc_prix_kg(
-                    lref["format_prix"], lref["prix_achat_ht"], lref["poids_colis_kg"]
-                ) if lref else None
-                if pk is None:
-                    motif = "prix_achat"
-                    detail = "Prix au kilo de la référence indisponible (prix manquant ou colis sans poids)"
-                elif g["prix_vente_ttc"] is None:
-                    motif = "prix_vente"
-                    detail = "Pas de prix de vente sur le produit associé"
+        for a in assoc:
+            motif = detail = None
+            if a["ligne_choisie_id"] is None:
+                motif, detail = "reference", "Aucun fournisseur de référence choisi"
+            elif await ref_kg(a["ligne_choisie_id"]) is None:
+                motif, detail = "prix_achat", "Prix au kilo de la référence indisponible (prix manquant ou colis sans poids)"
+            elif a["prix_vente_ttc"] is None:
+                motif, detail = "prix_vente", "Pas de prix de vente sur le produit"
+            elif (a.get("unite_vente") == "piece") and not a.get("poids_piece_kg"):
+                motif, detail = "poids_piece", "Vendu à la pièce mais poids d'une pièce non renseigné"
             if motif:
                 bloques.append({
-                    "groupe_id": g["id"],
-                    "groupe_nom": g["nom"],
-                    "catalogue_vente_id": g["catalogue_vente_id"],
-                    "vente_nom": g["vente_nom"],
+                    "groupe_id": a["groupe_id"],
+                    "groupe_nom": a["groupe_nom"],
+                    "catalogue_vente_id": a["catalogue_vente_id"],
+                    "vente_nom": a["vente_nom"],
                     "motif": motif,
                     "detail": detail,
                 })
@@ -1922,97 +1954,130 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
                 if ligne["prix_kg"] == meilleur_prix:
                     ligne["meilleur"] = True
 
-        # Produit de vente associé (1↔1) + marge à la volée sur la ligne de référence.
-        catalogue_vente = None
-        marge = None
-        cv_id = groupe.get("catalogue_vente_id")
-        if cv_id is not None:
-            cur_v = await db.execute(
-                "SELECT * FROM catalogue_vente WHERE id = ? AND boutique_id = 1", (cv_id,)
+        # Produits de vente associés (1 groupe → N ventes) + marge de chacun, calculée
+        # contre le MÊME €/kg d'achat de référence (la ligne ⭐).
+        ligne_ref = next((l for l in lignes if l.get("reference")), None)
+        achat_ref_kg = ligne_ref["prix_kg"] if ligne_ref else None
+
+        cur_v = await db.execute(
+            """
+            SELECT v.* FROM comparatif_groupe_vente gv
+            JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
+            WHERE gv.groupe_id = ? AND v.boutique_id = 1
+            ORDER BY v.nom
+            """,
+            (groupe_id,),
+        )
+        produits_vente = []
+        for r in await cur_v.fetchall():
+            pv = dict(r)
+            pv["marge"] = _calc_marge(
+                pv.get("prix_vente_ttc"),
+                pv.get("tva_percent"),
+                achat_ref_kg,
+                unite_vente=pv.get("unite_vente") or "kg",
+                poids_piece_kg=pv.get("poids_piece_kg"),
             )
-            row_v = await cur_v.fetchone()
-            if row_v:
-                catalogue_vente = dict(row_v)
-                ligne_ref = next((l for l in lignes if l.get("reference")), None)
-                achat_ref_kg = ligne_ref["prix_kg"] if ligne_ref else None
-                marge = _calc_marge(
-                    catalogue_vente.get("prix_vente_ttc"),
-                    catalogue_vente.get("tva_percent"),
-                    achat_ref_kg,
-                )
-            else:
-                # Produit de vente supprimé entre-temps → on délie proprement.
-                catalogue_vente = None
+            produits_vente.append(pv)
 
         return {
             "groupe": groupe,
             "lignes": lignes,
-            "catalogue_vente": catalogue_vente,
             "ligne_choisie_id": ref_id,
-            "marge": marge,
+            "produits_vente": produits_vente,
+            # Compat ascendante : 1er produit + sa marge (front legacy / lecture simple).
+            "catalogue_vente": produits_vente[0] if produits_vente else None,
+            "marge": produits_vente[0]["marge"] if produits_vente else None,
         }
 
 
-@router.put("/comparatif/groupes/{groupe_id}/vente")
-async def set_comparatif_vente(
-    groupe_id: int, body: ComparatifVenteUpdate, _=Depends(require_admin)
-):
-    """Associe / délie le produit de VENTE du groupe (1↔1) et/ou édite son prix TTC.
+async def _ensure_groupe(db, groupe_id):
+    cur = await db.execute(
+        "SELECT id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+    )
+    if not await cur.fetchone():
+        raise HTTPException(404, "Groupe introuvable")
 
-    - `catalogue_vente_id` fourni (non null) → on relie ; on vérifie que le produit existe
-      et qu'aucun AUTRE groupe ne le référence déjà (cardinalité 1↔1).
-    - `catalogue_vente_id` fourni à null → on délie.
-    - `catalogue_vente_id` absent du payload → on n'y touche pas.
-    - `prix_vente_ttc` fourni → écrit dans catalogue_vente (simulation marge) ; nécessite
-      qu'un produit de vente soit associé (sinon 400 : rien à mettre à jour).
+
+@router.post("/comparatif/groupes/{groupe_id}/ventes", status_code=201)
+async def add_comparatif_vente(
+    groupe_id: int, body: ComparatifVenteLink, _=Depends(require_admin)
+):
+    """Associe un produit de VENTE au groupe (1 groupe → N produits de vente).
+
+    Unicité côté vente : un produit de vente n'appartient qu'à UN groupe (sa marge serait
+    sinon ambiguë). Conflit → 409.
     """
+    async with get_db() as db:
+        await _ensure_groupe(db, groupe_id)
+        cur_v = await db.execute(
+            "SELECT id FROM catalogue_vente WHERE id = ? AND boutique_id = 1 AND actif = 1",
+            (body.catalogue_vente_id,),
+        )
+        if not await cur_v.fetchone():
+            raise HTTPException(404, "Produit de vente introuvable")
+        # Déjà rattaché ailleurs ?
+        cur_dup = await db.execute(
+            "SELECT groupe_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+            (body.catalogue_vente_id,),
+        )
+        dup = await cur_dup.fetchone()
+        if dup and dup["groupe_id"] != groupe_id:
+            raise HTTPException(
+                409, "Ce produit de vente est déjà associé à un autre groupe de comparaison"
+            )
+        await db.execute(
+            "INSERT OR IGNORE INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+            (groupe_id, body.catalogue_vente_id),
+        )
+        await db.commit()
+    return await get_comparatif(groupe_id, _)
+
+
+@router.delete("/comparatif/groupes/{groupe_id}/ventes/{cv_id}")
+async def remove_comparatif_vente(groupe_id: int, cv_id: int, _=Depends(require_admin)):
+    """Délie un produit de vente du groupe (le produit lui-même n'est pas supprimé)."""
+    async with get_db() as db:
+        await _ensure_groupe(db, groupe_id)
+        await db.execute(
+            "DELETE FROM comparatif_groupe_vente WHERE groupe_id = ? AND catalogue_vente_id = ?",
+            (groupe_id, cv_id),
+        )
+        await db.commit()
+    return await get_comparatif(groupe_id, _)
+
+
+@router.put("/comparatif/groupes/{groupe_id}/ventes/{cv_id}")
+async def update_comparatif_vente(
+    groupe_id: int, cv_id: int, body: ComparatifVenteUpdate, _=Depends(require_admin)
+):
+    """Édite un produit de vente associé depuis le comparateur (prix TTC, unité, poids pièce)
+    pour simuler la marge. N'agit que sur un produit RÉELLEMENT rattaché à ce groupe."""
     fournis = body.model_fields_set
     async with get_db() as db:
+        await _ensure_groupe(db, groupe_id)
         cur = await db.execute(
-            "SELECT catalogue_vente_id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1",
-            (groupe_id,),
+            "SELECT 1 FROM comparatif_groupe_vente WHERE groupe_id = ? AND catalogue_vente_id = ?",
+            (groupe_id, cv_id),
         )
-        row = await cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Groupe introuvable")
-        cv_actuel = row["catalogue_vente_id"]
+        if not await cur.fetchone():
+            raise HTTPException(404, "Ce produit de vente n'est pas associé à ce groupe")
 
-        # 1) (dé)liaison du produit de vente
-        if "catalogue_vente_id" in fournis:
-            cv_id = body.catalogue_vente_id
-            if cv_id is not None:
-                cur_v = await db.execute(
-                    "SELECT id FROM catalogue_vente WHERE id = ? AND boutique_id = 1 AND actif = 1",
-                    (cv_id,),
-                )
-                if not await cur_v.fetchone():
-                    raise HTTPException(404, "Produit de vente introuvable")
-                # Cardinalité 1↔1 : aucun autre groupe ne doit déjà pointer ce produit.
-                cur_dup = await db.execute(
-                    "SELECT id FROM comparatif_groupe WHERE catalogue_vente_id = ? AND id <> ?",
-                    (cv_id, groupe_id),
-                )
-                if await cur_dup.fetchone():
-                    raise HTTPException(
-                        409, "Ce produit de vente est déjà associé à un autre groupe de comparaison"
-                    )
-            await db.execute(
-                "UPDATE comparatif_groupe SET catalogue_vente_id = ? WHERE id = ?",
-                (cv_id, groupe_id),
-            )
-            cv_actuel = cv_id
-
-        # 2) édition du prix de vente TTC (sur le produit associé)
+        sets, vals = [], []
         if "prix_vente_ttc" in fournis:
-            if cv_actuel is None:
-                raise HTTPException(400, "Associez d'abord un produit de vente avant d'éditer son prix")
+            sets.append("prix_vente_ttc = ?"); vals.append(body.prix_vente_ttc)
+        if "unite_vente" in fournis:
+            unite = body.unite_vente if body.unite_vente in ("kg", "piece") else "kg"
+            sets.append("unite_vente = ?"); vals.append(unite)
+        if "poids_piece_kg" in fournis:
+            sets.append("poids_piece_kg = ?"); vals.append(body.poids_piece_kg)
+        if sets:
+            vals += [cv_id]
             await db.execute(
-                "UPDATE catalogue_vente SET prix_vente_ttc = ? WHERE id = ? AND boutique_id = 1",
-                (body.prix_vente_ttc, cv_actuel),
+                f"UPDATE catalogue_vente SET {', '.join(sets)} WHERE id = ? AND boutique_id = 1",
+                vals,
             )
-
-        await db.commit()
-    # On renvoie le VS complet recalculé (groupe + marge à jour).
+            await db.commit()
     return await get_comparatif(groupe_id, _)
 
 
@@ -2028,39 +2093,41 @@ async def comparatif_vente_suggestions(
     - `q` vide → suggestions SÉMANTIQUES : on classe TOUS les produits de vente actifs par
       proximité (Jaccard) avec le NOM DU GROUPE, les plus proches d'abord. Score 0 inclus :
       la liste complète reste accessible (« être sûr de ne rien rater »), juste mieux ordonnée.
-    Exclut le produit déjà associé à CE groupe (inutile de le reproposer).
+    Exclut les produits DÉJÀ associés à un groupe (la cardinalité vente est unique :
+    un produit déjà rattaché ne doit pas être reproposé ici).
     """
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT nom, catalogue_vente_id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1",
+            "SELECT nom FROM comparatif_groupe WHERE id = ? AND boutique_id = 1",
             (groupe_id,),
         )
         grp = await cur.fetchone()
         if not grp:
             raise HTTPException(404, "Groupe introuvable")
         nom_groupe = grp["nom"]
-        deja = grp["catalogue_vente_id"]
+        # Produits de vente déjà rattachés (à n'importe quel groupe).
+        cur_d = await db.execute("SELECT catalogue_vente_id FROM comparatif_groupe_vente")
+        deja = {r["catalogue_vente_id"] for r in await cur_d.fetchall()}
 
         q = (q or "").strip()
         if q:
             cur_v = await db.execute(
                 """SELECT * FROM catalogue_vente
                    WHERE boutique_id = 1 AND actif = 1 AND nom LIKE ?
-                   ORDER BY nom LIMIT 30""",
+                   ORDER BY nom LIMIT 50""",
                 (f"%{q}%",),
             )
             items = [dict(r) for r in await cur_v.fetchall()]
-            items = [p for p in items if p["id"] != deja]
-            return items
+            return [p for p in items if p["id"] not in deja][:30]
 
         # Suggestions sémantiques sur le nom du groupe.
         cur_v = await db.execute(
             "SELECT * FROM catalogue_vente WHERE boutique_id = 1 AND actif = 1 ORDER BY nom"
         )
         produits = [dict(r) for r in await cur_v.fetchall()]
+        produits = [p for p in produits if p["id"] not in deja]
         for p in produits:
             p["score"] = _similarite(nom_groupe, p.get("nom") or "")
-        produits = [p for p in produits if p["id"] != deja]
         # Plus proches d'abord, puis ordre alphabétique pour la longue traîne (score 0).
         produits.sort(key=lambda p: (-p["score"], (p.get("nom") or "").lower()))
         return produits[:30]

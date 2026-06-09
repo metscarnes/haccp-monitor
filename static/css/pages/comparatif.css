@@ -150,9 +150,8 @@
   border: 1px solid #e8d9c4;
   border-radius: var(--radius);
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-4);
+  flex-direction: column;
+  gap: var(--space-3);
 }
 .cmp-marge-lbl {
   display: block;
@@ -173,6 +172,12 @@
   border: 1px solid #d9c7af;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
+}
+.cmp-vente-toggle {
+  white-space: nowrap;
+  font-size: 1rem;
+  line-height: 1;
+  padding: var(--space-2) var(--space-3);
 }
 .cmp-vente-delier { white-space: nowrap; }
 .cmp-vente-resultats {
@@ -208,26 +213,54 @@
 .cmp-vente-resultat-nom { font-weight: 600; color: var(--color-text); }
 .cmp-vente-resultat-meta { display: block; font-size: 0.78rem; color: #8a7a68; margin-top: 2px; }
 
-/* Bloc calcul (prix vente éditable + KPI marge) */
-.cmp-marge-calc {
+/* Liste verticale des produits de vente associés (1 achat → N ventes) */
+.cmp-marge-liste {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.cmp-marge-ligne {
+  border: 1px solid #e8d9c4;
+  border-radius: var(--radius-sm);
+  background: #fdfaf4;
+  padding: var(--space-2) var(--space-3);
+}
+.cmp-marge-ligne-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.cmp-marge-ligne-nom { font-weight: 700; color: var(--color-accent); }
+.cmp-marge-ligne-edit {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--space-3);
   align-items: flex-end;
-  gap: var(--space-4);
-  flex: 2 1 420px;
+  margin-bottom: var(--space-2);
 }
-.cmp-marge-prix { min-width: 160px; }
-.cmp-marge-prix-edit { display: flex; align-items: center; gap: var(--space-2); }
-.cmp-vente-prix {
-  width: 110px;
+.cmp-marge-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #8a7a68;
+}
+.cmp-marge-mini input, .cmp-marge-mini select {
   padding: var(--space-2) var(--space-3);
   border: 1px solid #d9c7af;
   border-radius: var(--radius-sm);
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--color-accent);
+  text-transform: none;
 }
-.cmp-marge-unite { font-size: 0.78rem; color: #8a7a68; white-space: nowrap; }
+.cmp-marge-mini input { width: 100px; }
+.cmp-marge-unite { font-size: 0.72rem; color: #8a7a68; white-space: nowrap; font-weight: 400; text-transform: none; }
 
 .cmp-marge-chiffres {
   display: flex;
@@ -255,6 +288,7 @@
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
 }
+.cmp-marge-attente--sm { flex: none; font-size: 0.82rem; }
 
 /* ── Panneau d'ajout (suggestions + recherche) ─────────────── */
 .cmp-panneau {

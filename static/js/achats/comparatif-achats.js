@@ -22,6 +22,11 @@ function fmtPrixKg(v) {
   if (v == null) return null;
   return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €/kg';
 }
+// Nombre monétaire sans unité (l'unité — €/kg ou €/pièce — est ajoutée par l'appelant).
+function fmtNb(v) {
+  if (v == null) return '—';
+  return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -166,61 +171,29 @@ function rendreVS(data) {
   rendreMarge(data);
 }
 
-// ── Bande marge : produit de vente associé + marge sur la référence ───
+// ── Bande marge : produits de vente associés (1 achat → N ventes) ─────
 function rendreMarge(data) {
   const box = $('cmp-marge');
-  const cv = data.catalogue_vente;
-  const m = data.marge;
+  const produits = data.produits_vente || [];
+  const refManquante = data.ligne_choisie_id == null;
 
-  // Sélecteur produit de vente (toujours affiché quand un groupe est ouvert).
+  // Sélecteur d'AJOUT : la liste ne s'ouvre que sur clic ▾ (ne masque pas le VS).
   let html = `<div class="cmp-marge-assoc">
-    <label class="cmp-marge-lbl">🏷️ Produit de vente associé</label>
+    <label class="cmp-marge-lbl">🏷️ Produits de vente associés</label>
     <div class="cmp-marge-vente-pick">
       <input type="search" id="cmp-vente-search" class="cmp-vente-search"
-             placeholder="${cv ? esc(cv.nom) : 'Rechercher un produit de vente…'}"
-             autocomplete="off">
-      ${cv ? `<button class="ach-btn cmp-vente-delier" id="cmp-vente-delier" title="Délier">✕ Délier</button>` : ''}
+             placeholder="Ajouter un produit de vente…" autocomplete="off">
+      <button class="ach-btn cmp-vente-toggle" id="cmp-vente-toggle" title="Voir les produits">▾</button>
       <div id="cmp-vente-resultats" class="cmp-vente-resultats" style="display:none;"></div>
     </div>
   </div>`;
 
-  if (cv) {
-    // Bloc marge : prix vente TTC éditable + indicateurs.
-    const margeBloc = m
-      ? `<div class="cmp-marge-chiffres">
-           <div class="cmp-marge-kpi">
-             <span class="cmp-marge-kpi-val">${fmtPrixKg(m.marge_kg) || '—'}</span>
-             <span class="cmp-marge-kpi-lbl">marge brute</span>
-           </div>
-           <div class="cmp-marge-kpi">
-             <span class="cmp-marge-kpi-val">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(1) + ' %' : '—'}</span>
-             <span class="cmp-marge-kpi-lbl">taux de marge</span>
-           </div>
-           <div class="cmp-marge-kpi">
-             <span class="cmp-marge-kpi-val">${m.coef != null ? '×' + m.coef.toFixed(2) : '—'}</span>
-             <span class="cmp-marge-kpi-lbl">coefficient</span>
-           </div>
-           <div class="cmp-marge-detail">
-             achat réf <strong>${fmtPrixKg(m.achat_ref_kg) || '—'}</strong>
-             · vente HT <strong>${fmtEuro(m.prix_vente_ht)}</strong>
-           </div>
-         </div>`
-      : `<div class="cmp-marge-attente">${data.ligne_choisie_id == null
-            ? '⭐ Choisissez un fournisseur de référence (ligne « Référence » du tableau) pour calculer la marge.'
-            : '€/kg de la référence indisponible : complétez le poids du colis dans le catalogue achats.'}</div>`;
-
-    html += `<div class="cmp-marge-calc">
-      <div class="cmp-marge-prix">
-        <label class="cmp-marge-lbl">Prix de vente TTC</label>
-        <div class="cmp-marge-prix-edit">
-          <input type="number" step="0.01" min="0" id="cmp-vente-prix"
-                 class="cmp-vente-prix" value="${cv.prix_vente_ttc != null ? cv.prix_vente_ttc : ''}"
-                 placeholder="0.00">
-          <span class="cmp-marge-unite">€/kg · TVA ${cv.tva_percent != null ? cv.tva_percent : '—'} %</span>
-        </div>
-      </div>
-      ${margeBloc}
-    </div>`;
+  // Liste verticale des produits associés.
+  if (produits.length) {
+    html += '<div class="cmp-marge-liste">' +
+      produits.map((p) => rendreMargeLigne(p, refManquante)).join('') + '</div>';
+  } else {
+    html += `<div class="cmp-marge-attente">Aucun produit de vente associé. Utilisez « Ajouter » pour relier ce groupe d'achat à un ou plusieurs produits vendus.</div>`;
   }
 
   box.innerHTML = html;
@@ -228,34 +201,120 @@ function rendreMarge(data) {
   cablerMarge();
 }
 
+// Une ligne = un produit de vente associé, avec prix/unité/poids éditables + marge.
+function rendreMargeLigne(p, refManquante) {
+  const m = p.marge;
+  const estPiece = p.unite_vente === 'piece';
+  const uniteLabel = estPiece ? '€/pièce' : '€/kg';
+
+  // Bloc marge ou message d'attente selon ce qui manque.
+  let bloc;
+  if (m) {
+    bloc = `<div class="cmp-marge-chiffres">
+      <div class="cmp-marge-kpi">
+        <span class="cmp-marge-kpi-val">${fmtNb(m.marge)} ${m.base_label}</span>
+        <span class="cmp-marge-kpi-lbl">marge brute</span>
+      </div>
+      <div class="cmp-marge-kpi">
+        <span class="cmp-marge-kpi-val">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(1) + ' %' : '—'}</span>
+        <span class="cmp-marge-kpi-lbl">taux</span>
+      </div>
+      <div class="cmp-marge-kpi">
+        <span class="cmp-marge-kpi-val">${m.coef != null ? '×' + m.coef.toFixed(2) : '—'}</span>
+        <span class="cmp-marge-kpi-lbl">coef</span>
+      </div>
+      <div class="cmp-marge-detail">coût matière <strong>${fmtNb(m.cout_matiere)} ${m.base_label}</strong> · vente HT <strong>${fmtNb(m.prix_vente_ht)} ${m.base_label}</strong></div>
+    </div>`;
+  } else {
+    let msg;
+    if (refManquante) msg = '⭐ Choisissez un fournisseur de référence pour calculer la marge.';
+    else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce pour calculer la marge.';
+    else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
+    else msg = '€/kg de la référence indisponible (poids du colis manquant).';
+    bloc = `<div class="cmp-marge-attente cmp-marge-attente--sm">${msg}</div>`;
+  }
+
+  return `<div class="cmp-marge-ligne" data-cv="${p.id}">
+    <div class="cmp-marge-ligne-head">
+      <span class="cmp-marge-ligne-nom">${esc(p.nom)}</span>
+      <button class="cmp-remove cmp-vente-delier" data-cv="${p.id}" title="Délier ce produit">✕</button>
+    </div>
+    <div class="cmp-marge-ligne-edit">
+      <label class="cmp-marge-mini">Prix vente TTC
+        <input type="number" step="0.01" min="0" class="cmp-vente-prix" data-cv="${p.id}"
+               value="${p.prix_vente_ttc != null ? p.prix_vente_ttc : ''}" placeholder="0.00">
+        <span class="cmp-marge-unite">${uniteLabel} · TVA ${p.tva_percent != null ? p.tva_percent : '—'} %</span>
+      </label>
+      <label class="cmp-marge-mini">Unité
+        <select class="cmp-vente-unite" data-cv="${p.id}">
+          <option value="kg"${estPiece ? '' : ' selected'}>au kg</option>
+          <option value="piece"${estPiece ? ' selected' : ''}>à la pièce</option>
+        </select>
+      </label>
+      <label class="cmp-marge-mini cmp-marge-poids" style="${estPiece ? '' : 'display:none;'}">Poids/pièce (kg)
+        <input type="number" step="0.001" min="0" class="cmp-vente-poids" data-cv="${p.id}"
+               value="${p.poids_piece_kg != null ? p.poids_piece_kg : ''}" placeholder="0.000">
+      </label>
+    </div>
+    ${bloc}
+  </div>`;
+}
+
 function cablerMarge() {
-  const cv = dernierVS?.catalogue_vente;
-  // Recherche / suggestions de produit de vente.
   const search = $('cmp-vente-search');
+  const box = $('cmp-vente-resultats');
   if (search) {
     let tv;
     search.addEventListener('input', () => {
       clearTimeout(tv);
+      if (box.style.display === 'none') return;
       tv = setTimeout(() => rechercherProduitsVente(search.value.trim()), 250);
     });
-    // Focus champ vide → suggestions sémantiques (mode « rien rater »).
-    search.addEventListener('focus', () => rechercherProduitsVente(search.value.trim()));
-    // Suggestions affichées d'emblée tant qu'aucun produit n'est associé.
-    if (!cv) rechercherProduitsVente('');
   }
-  const delier = $('cmp-vente-delier');
-  if (delier) delier.addEventListener('click', () => associerVente(null));
+  // Flèche ▾ : ouvre / ferme la liste de suggestions explicitement.
+  const toggle = $('cmp-vente-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', () => {
+      if (box.style.display === 'none') {
+        rechercherProduitsVente(search.value.trim());
+        search.focus();
+      } else {
+        box.style.display = 'none';
+      }
+    });
+  }
 
-  // Prix de vente éditable : on enregistre à la validation (blur ou Entrée).
-  const prix = $('cmp-vente-prix');
-  if (prix) {
+  // Boutons « délier » par produit.
+  $('cmp-marge').querySelectorAll('.cmp-vente-delier').forEach((b) => {
+    b.addEventListener('click', () => delierVente(Number(b.dataset.cv)));
+  });
+
+  // Prix de vente éditable (blur / Entrée).
+  $('cmp-marge').querySelectorAll('.cmp-vente-prix').forEach((inp) => {
     const valider = () => {
-      const v = prix.value.trim();
-      majPrixVente(v === '' ? null : Number(v));
+      const v = inp.value.trim();
+      majVente(Number(inp.dataset.cv), { prix_vente_ttc: v === '' ? null : Number(v) });
     };
-    prix.addEventListener('blur', valider);
-    prix.addEventListener('keydown', (e) => { if (e.key === 'Enter') prix.blur(); });
-  }
+    inp.addEventListener('blur', valider);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+  });
+
+  // Unité de vente (change → enregistre).
+  $('cmp-marge').querySelectorAll('.cmp-vente-unite').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      majVente(Number(sel.dataset.cv), { unite_vente: sel.value });
+    });
+  });
+
+  // Poids d'une pièce (blur / Entrée).
+  $('cmp-marge').querySelectorAll('.cmp-vente-poids').forEach((inp) => {
+    const valider = () => {
+      const v = inp.value.trim();
+      majVente(Number(inp.dataset.cv), { poids_piece_kg: v === '' ? null : Number(v) });
+    };
+    inp.addEventListener('blur', valider);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+  });
 }
 
 // Recherche / suggestions de produits de vente.
@@ -302,10 +361,11 @@ async function rechercherProduitsVente(q) {
   });
 }
 
+// Ajoute un produit de vente au groupe (1 groupe → N ventes).
 async function associerVente(catalogueVenteId) {
   if (!groupeCourant) return;
-  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/vente`, {
-    method: 'PUT',
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ catalogue_vente_id: catalogueVenteId }),
   });
@@ -319,16 +379,27 @@ async function associerVente(catalogueVenteId) {
   majBadgeMargeKo();
 }
 
-async function majPrixVente(prixTtc) {
+// Délie un produit de vente du groupe.
+async function delierVente(cvId) {
   if (!groupeCourant) return;
-  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/vente`, {
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes/${cvId}`, { method: 'DELETE' });
+  if (!r.ok) { alert('Retrait impossible.'); return; }
+  dernierVS = await r.json();
+  rendreVS(dernierVS);
+  majBadgeMargeKo();
+}
+
+// Édite un champ d'un produit de vente associé (prix, unité, poids pièce).
+async function majVente(cvId, patch) {
+  if (!groupeCourant) return;
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes/${cvId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prix_vente_ttc: prixTtc }),
+    body: JSON.stringify(patch),
   });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    alert(d.detail || 'Mise à jour du prix impossible.');
+    alert(d.detail || 'Mise à jour impossible.');
     return;
   }
   dernierVS = await r.json();
@@ -606,12 +677,6 @@ async function majBadgeNonGroupes() {
 // Groupes DÉJÀ associés à un produit de vente mais dont la marge est bloquée par
 // une info manquante (référence non choisie, €/kg indispo, ou pas de prix de vente).
 let margeKoCache = [];
-
-const MARGE_KO_LABEL = {
-  reference:  'choisir un fournisseur de référence',
-  prix_achat: 'compléter le prix / poids de la référence',
-  prix_vente: 'saisir le prix de vente',
-};
 
 async function majBadgeMargeKo() {
   try {
