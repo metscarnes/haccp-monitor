@@ -71,8 +71,8 @@ function rendreVS(data) {
 
   // Critères en lignes, fournisseurs en colonnes.
   const criteres = [
+    ['Code article', (l) => esc(l.code_article) || '—'],
     ['Désignation', (l) => esc(l.designation)],
-    ['Conditionnement', (l) => esc(l.conditionnement) || '—'],
     ['Format prix', (l) => l.format_prix === 'kg' ? '€/kg' : '€/colis'],
     ['Prix d\'achat', (l) => fmtEuro(l.prix_achat_ht)],
     ['Poids colis', (l) => l.poids_colis_kg != null ? l.poids_colis_kg.toFixed(3) + ' kg' : '—'],
