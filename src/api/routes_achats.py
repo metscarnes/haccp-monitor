@@ -335,6 +335,13 @@ async def get_catalogue(
         cur = await db.execute(sql, params)
         articles = [dict(r) for r in await cur.fetchall()]
 
+        # Prix au kilo normalisé (None si incalculable) — attendu par le comparateur et
+        # tout consommateur de ce catalogue ; les écrans qui l'ignorent ne sont pas affectés.
+        for a in articles:
+            a["prix_kg"] = _calc_prix_kg(
+                a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg")
+            )
+
         if avec_stock and articles:
             stocks = await _compter_stock_par_article(db)
             for a in articles:
