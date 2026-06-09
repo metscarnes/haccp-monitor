@@ -131,6 +131,19 @@ class ComparatifFromCluster(BaseModel):
     catalogue_fournisseur_ids: List[int]
 
 
+class ComparatifVenteUpdate(BaseModel):
+    # Associer / délier le produit de vente, et/ou éditer son prix TTC (simulation marge).
+    # Les deux champs sont optionnels : l'endpoint regarde `model_fields_set` pour savoir
+    # lesquels ont été fournis. catalogue_vente_id explicitement null = délier le produit.
+    catalogue_vente_id: Optional[int] = None
+    prix_vente_ttc: Optional[float] = None
+
+
+class ComparatifReferenceUpdate(BaseModel):
+    # La ligne fournisseur de référence (⭐). null = retirer l'étoile.
+    ligne_choisie_id: Optional[int] = None
+
+
 class CommandeLigneCreate(BaseModel):
     catalogue_fournisseur_id: Optional[int] = None
     code_article: str
@@ -1617,6 +1630,43 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
     return None
 
 
+def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg):
+    """Marge à la volée d'un produit revendu en l'état.
+
+    - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE par l'utilisateur (⭐),
+      déjà normalisé par `_calc_prix_kg`. None si poids manquant → marge indisponible.
+    - `prix_vente_ttc` vient de catalogue_vente ; on le ramène en HT via la TVA pour
+      comparer du HT à du HT.
+
+    Retourne None si on ne peut pas calculer honnêtement (pas de ligne de référence,
+    pas de prix de vente, €/kg indisponible, ou prix de vente ≤ 0) — JAMAIS un chiffre
+    inventé, cohérent avec la discipline du €/kg.
+    """
+    if achat_ref_kg is None or prix_vente_ttc is None:
+        return None
+    try:
+        ttc = float(prix_vente_ttc)
+        achat = float(achat_ref_kg)
+    except (TypeError, ValueError):
+        return None
+    if ttc <= 0:
+        return None
+    tva = float(tva_percent) if tva_percent is not None else 0.0
+    prix_vente_ht = ttc / (1.0 + tva / 100.0)
+    marge_kg = prix_vente_ht - achat
+    taux = marge_kg / prix_vente_ht if prix_vente_ht > 0 else None
+    coef = ttc / achat if achat > 0 else None
+    return {
+        "prix_vente_ttc": round(ttc, 2),
+        "prix_vente_ht": round(prix_vente_ht, 4),
+        "tva_percent": round(tva, 2),
+        "achat_ref_kg": round(achat, 4),
+        "marge_kg": round(marge_kg, 4),
+        "taux_marge": round(taux, 4) if taux is not None else None,
+        "coef": round(coef, 4) if coef is not None else None,
+    }
+
+
 def _normaliser_texte(s: str) -> set:
     """Tokens normalisés (minuscule, sans accents, mots de 2+ lettres) d'un libellé,
     pour mesurer la proximité sémantique entre désignations fournisseurs."""
@@ -1753,6 +1803,12 @@ async def remove_comparatif_ligne(groupe_id: int, cat_id: int, _=Depends(require
             "DELETE FROM comparatif_groupe_ligne WHERE groupe_id = ? AND catalogue_fournisseur_id = ?",
             (groupe_id, cat_id),
         )
+        # Si la ligne retirée était la référence (⭐), on retire l'étoile pour ne pas
+        # laisser un FK orphelin (la marge retomberait sur une ligne absente).
+        await db.execute(
+            "UPDATE comparatif_groupe SET ligne_choisie_id = NULL WHERE id = ? AND ligne_choisie_id = ?",
+            (groupe_id, cat_id),
+        )
         await db.commit()
         return {"retire": True}
 
@@ -1782,11 +1838,17 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         )
         lignes = [dict(r) for r in await cur_l.fetchall()]
 
+        groupe = dict(groupe)
+        ref_id = groupe.get("ligne_choisie_id")
+
         for ligne in lignes:
             ligne["prix_kg"] = _calc_prix_kg(
                 ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg")
             )
             ligne["meilleur"] = False
+            # ⭐ La ligne de référence est CELLE que l'utilisateur a choisie (arbitrage manuel),
+            # indépendante du « meilleur prix » purement calculé.
+            ligne["reference"] = (ref_id is not None and ligne["id"] == ref_id)
 
         prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None]
         if prix_valides:
@@ -1795,7 +1857,129 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
                 if ligne["prix_kg"] == meilleur_prix:
                     ligne["meilleur"] = True
 
-        return {"groupe": dict(groupe), "lignes": lignes}
+        # Produit de vente associé (1↔1) + marge à la volée sur la ligne de référence.
+        catalogue_vente = None
+        marge = None
+        cv_id = groupe.get("catalogue_vente_id")
+        if cv_id is not None:
+            cur_v = await db.execute(
+                "SELECT * FROM catalogue_vente WHERE id = ? AND boutique_id = 1", (cv_id,)
+            )
+            row_v = await cur_v.fetchone()
+            if row_v:
+                catalogue_vente = dict(row_v)
+                ligne_ref = next((l for l in lignes if l.get("reference")), None)
+                achat_ref_kg = ligne_ref["prix_kg"] if ligne_ref else None
+                marge = _calc_marge(
+                    catalogue_vente.get("prix_vente_ttc"),
+                    catalogue_vente.get("tva_percent"),
+                    achat_ref_kg,
+                )
+            else:
+                # Produit de vente supprimé entre-temps → on délie proprement.
+                catalogue_vente = None
+
+        return {
+            "groupe": groupe,
+            "lignes": lignes,
+            "catalogue_vente": catalogue_vente,
+            "ligne_choisie_id": ref_id,
+            "marge": marge,
+        }
+
+
+@router.put("/comparatif/groupes/{groupe_id}/vente")
+async def set_comparatif_vente(
+    groupe_id: int, body: ComparatifVenteUpdate, _=Depends(require_admin)
+):
+    """Associe / délie le produit de VENTE du groupe (1↔1) et/ou édite son prix TTC.
+
+    - `catalogue_vente_id` fourni (non null) → on relie ; on vérifie que le produit existe
+      et qu'aucun AUTRE groupe ne le référence déjà (cardinalité 1↔1).
+    - `catalogue_vente_id` fourni à null → on délie.
+    - `catalogue_vente_id` absent du payload → on n'y touche pas.
+    - `prix_vente_ttc` fourni → écrit dans catalogue_vente (simulation marge) ; nécessite
+      qu'un produit de vente soit associé (sinon 400 : rien à mettre à jour).
+    """
+    fournis = body.model_fields_set
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT catalogue_vente_id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1",
+            (groupe_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Groupe introuvable")
+        cv_actuel = row["catalogue_vente_id"]
+
+        # 1) (dé)liaison du produit de vente
+        if "catalogue_vente_id" in fournis:
+            cv_id = body.catalogue_vente_id
+            if cv_id is not None:
+                cur_v = await db.execute(
+                    "SELECT id FROM catalogue_vente WHERE id = ? AND boutique_id = 1 AND actif = 1",
+                    (cv_id,),
+                )
+                if not await cur_v.fetchone():
+                    raise HTTPException(404, "Produit de vente introuvable")
+                # Cardinalité 1↔1 : aucun autre groupe ne doit déjà pointer ce produit.
+                cur_dup = await db.execute(
+                    "SELECT id FROM comparatif_groupe WHERE catalogue_vente_id = ? AND id <> ?",
+                    (cv_id, groupe_id),
+                )
+                if await cur_dup.fetchone():
+                    raise HTTPException(
+                        409, "Ce produit de vente est déjà associé à un autre groupe de comparaison"
+                    )
+            await db.execute(
+                "UPDATE comparatif_groupe SET catalogue_vente_id = ? WHERE id = ?",
+                (cv_id, groupe_id),
+            )
+            cv_actuel = cv_id
+
+        # 2) édition du prix de vente TTC (sur le produit associé)
+        if "prix_vente_ttc" in fournis:
+            if cv_actuel is None:
+                raise HTTPException(400, "Associez d'abord un produit de vente avant d'éditer son prix")
+            await db.execute(
+                "UPDATE catalogue_vente SET prix_vente_ttc = ? WHERE id = ? AND boutique_id = 1",
+                (body.prix_vente_ttc, cv_actuel),
+            )
+
+        await db.commit()
+    # On renvoie le VS complet recalculé (groupe + marge à jour).
+    return await get_comparatif(groupe_id, _)
+
+
+@router.put("/comparatif/groupes/{groupe_id}/reference")
+async def set_comparatif_reference(
+    groupe_id: int, body: ComparatifReferenceUpdate, _=Depends(require_admin)
+):
+    """Désigne (ou retire) la ligne fournisseur de RÉFÉRENCE du groupe — l'arbitrage manuel
+    de l'utilisateur (⭐). La ligne doit appartenir au groupe. null = retirer l'étoile."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Groupe introuvable")
+
+        ref_id = body.ligne_choisie_id
+        if ref_id is not None:
+            cur_m = await db.execute(
+                """SELECT 1 FROM comparatif_groupe_ligne
+                   WHERE groupe_id = ? AND catalogue_fournisseur_id = ?""",
+                (groupe_id, ref_id),
+            )
+            if not await cur_m.fetchone():
+                raise HTTPException(400, "Cette ligne n'appartient pas au groupe")
+
+        await db.execute(
+            "UPDATE comparatif_groupe SET ligne_choisie_id = ? WHERE id = ?",
+            (ref_id, groupe_id),
+        )
+        await db.commit()
+    return await get_comparatif(groupe_id, _)
 
 
 @router.get("/comparatif/suggestions")

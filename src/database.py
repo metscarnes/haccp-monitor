@@ -1357,6 +1357,13 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (groupe_id) REFERENCES comparatif_groupe(id) ON DELETE CASCADE,
                 FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
             )""",
+            # v6.3 — Pilotage marge / sous-rayon : un groupe de comparaison peut être relié à
+            # un produit du catalogue de VENTE (1↔1) et désigner UNE ligne fournisseur de
+            # référence (l'arbitrage manuel de l'utilisateur, pas un « moins cher » auto).
+            # La marge se calcule à la volée (prix_vente_HT − €/kg de la ligne choisie) ;
+            # rien n'est stocké en dur. NULL partout = pas encore associé → pas de marge.
+            "ALTER TABLE comparatif_groupe ADD COLUMN catalogue_vente_id INTEGER",  # FK catalogue_vente
+            "ALTER TABLE comparatif_groupe ADD COLUMN ligne_choisie_id INTEGER",    # FK catalogue_fournisseur (∈ groupe)
         ]
         for sql in migrations:
             try:
