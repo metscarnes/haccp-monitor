@@ -1383,6 +1383,17 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # le prix/pièce en €/kg équivalent (ou l'achat €/kg en coût/pièce) pour la marge.
             "ALTER TABLE catalogue_vente ADD COLUMN unite_vente TEXT DEFAULT 'kg'",  # 'kg' | 'piece'
             "ALTER TABLE catalogue_vente ADD COLUMN poids_piece_kg REAL",
+            # v6.5 — La ligne d'achat de RÉFÉRENCE est désormais propre à CHAQUE produit de vente
+            # (3 variétés de cordon bleu vendues = 3 achats différents). On la porte sur la liaison,
+            # plus sur le groupe. NULL = pas encore choisie → marge indisponible pour ce produit.
+            # La colonne globale comparatif_groupe.ligne_choisie_id (v6.3) devient inutilisée.
+            "ALTER TABLE comparatif_groupe_vente ADD COLUMN ligne_choisie_id INTEGER",  # FK catalogue_fournisseur ∈ groupe
+            # Reprise : les produits déjà associés héritent une fois de l'ancienne réf globale du groupe.
+            """UPDATE comparatif_groupe_vente
+               SET ligne_choisie_id = (
+                   SELECT g.ligne_choisie_id FROM comparatif_groupe g WHERE g.id = comparatif_groupe_vente.groupe_id
+               )
+               WHERE ligne_choisie_id IS NULL""",
         ]
         for sql in migrations:
             try:

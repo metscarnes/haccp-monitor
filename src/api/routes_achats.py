@@ -1748,7 +1748,7 @@ async def comparatif_marge_incalculable(_=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute(
             """
-            SELECT g.id AS groupe_id, g.nom AS groupe_nom, g.ligne_choisie_id,
+            SELECT g.id AS groupe_id, g.nom AS groupe_nom, gv.ligne_choisie_id,
                    v.id AS catalogue_vente_id, v.nom AS vente_nom, v.prix_vente_ttc,
                    v.unite_vente, v.poids_piece_kg
             FROM comparatif_groupe_vente gv
@@ -1900,8 +1900,13 @@ async def remove_comparatif_ligne(groupe_id: int, cat_id: int, _=Depends(require
             "DELETE FROM comparatif_groupe_ligne WHERE groupe_id = ? AND catalogue_fournisseur_id = ?",
             (groupe_id, cat_id),
         )
-        # Si la ligne retirée était la référence (⭐), on retire l'étoile pour ne pas
-        # laisser un FK orphelin (la marge retomberait sur une ligne absente).
+        # Nettoyer les références orphelines : tout produit de vente qui pointait cette ligne
+        # d'achat perd sa référence (sa marge retombera « indisponible » proprement).
+        await db.execute(
+            "UPDATE comparatif_groupe_vente SET ligne_choisie_id = NULL WHERE groupe_id = ? AND ligne_choisie_id = ?",
+            (groupe_id, cat_id),
+        )
+        # (Legacy) ancienne référence globale du groupe, si encore renseignée.
         await db.execute(
             "UPDATE comparatif_groupe SET ligne_choisie_id = NULL WHERE id = ? AND ligne_choisie_id = ?",
             (groupe_id, cat_id),
@@ -1936,16 +1941,16 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         lignes = [dict(r) for r in await cur_l.fetchall()]
 
         groupe = dict(groupe)
-        ref_id = groupe.get("ligne_choisie_id")
 
+        # €/kg de chaque ligne d'achat (indexé pour la marge par produit de vente).
+        prix_kg_par_ligne = {}
         for ligne in lignes:
-            ligne["prix_kg"] = _calc_prix_kg(
+            pk = _calc_prix_kg(
                 ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg")
             )
+            ligne["prix_kg"] = pk
             ligne["meilleur"] = False
-            # ⭐ La ligne de référence est CELLE que l'utilisateur a choisie (arbitrage manuel),
-            # indépendante du « meilleur prix » purement calculé.
-            ligne["reference"] = (ref_id is not None and ligne["id"] == ref_id)
+            prix_kg_par_ligne[ligne["id"]] = pk
 
         prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None]
         if prix_valides:
@@ -1954,14 +1959,13 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
                 if ligne["prix_kg"] == meilleur_prix:
                     ligne["meilleur"] = True
 
-        # Produits de vente associés (1 groupe → N ventes) + marge de chacun, calculée
-        # contre le MÊME €/kg d'achat de référence (la ligne ⭐).
-        ligne_ref = next((l for l in lignes if l.get("reference")), None)
-        achat_ref_kg = ligne_ref["prix_kg"] if ligne_ref else None
-
+        # Produits de vente associés (1 groupe → N ventes). CHAQUE produit choisit SA propre
+        # ligne d'achat de référence (gv.ligne_choisie_id) — 3 cordons bleus vendus = 3 achats
+        # différents. Pas de référence choisie → marge indisponible pour ce produit (pas d'héritage).
         cur_v = await db.execute(
             """
-            SELECT v.* FROM comparatif_groupe_vente gv
+            SELECT v.*, gv.ligne_choisie_id AS ligne_choisie_id
+            FROM comparatif_groupe_vente gv
             JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
             WHERE gv.groupe_id = ? AND v.boutique_id = 1
             ORDER BY v.nom
@@ -1971,6 +1975,9 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         produits_vente = []
         for r in await cur_v.fetchall():
             pv = dict(r)
+            ref = pv.get("ligne_choisie_id")
+            # La ligne de référence doit appartenir au groupe (sinon ignorée).
+            achat_ref_kg = prix_kg_par_ligne.get(ref) if ref in prix_kg_par_ligne else None
             pv["marge"] = _calc_marge(
                 pv.get("prix_vente_ttc"),
                 pv.get("tva_percent"),
@@ -1983,7 +1990,6 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         return {
             "groupe": groupe,
             "lignes": lignes,
-            "ligne_choisie_id": ref_id,
             "produits_vente": produits_vente,
             # Compat ascendante : 1er produit + sa marge (front legacy / lecture simple).
             "catalogue_vente": produits_vente[0] if produits_vente else None,
@@ -2078,6 +2084,39 @@ async def update_comparatif_vente(
                 vals,
             )
             await db.commit()
+    return await get_comparatif(groupe_id, _)
+
+
+@router.put("/comparatif/groupes/{groupe_id}/ventes/{cv_id}/reference")
+async def set_comparatif_vente_reference(
+    groupe_id: int, cv_id: int, body: ComparatifReferenceUpdate, _=Depends(require_admin)
+):
+    """Désigne la ligne d'achat de RÉFÉRENCE propre à CE produit de vente (sa marge se calcule
+    dessus). null = retirer la référence. La ligne doit appartenir au groupe."""
+    async with get_db() as db:
+        await _ensure_groupe(db, groupe_id)
+        cur = await db.execute(
+            "SELECT 1 FROM comparatif_groupe_vente WHERE groupe_id = ? AND catalogue_vente_id = ?",
+            (groupe_id, cv_id),
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Ce produit de vente n'est pas associé à ce groupe")
+
+        ref_id = body.ligne_choisie_id
+        if ref_id is not None:
+            cur_m = await db.execute(
+                """SELECT 1 FROM comparatif_groupe_ligne
+                   WHERE groupe_id = ? AND catalogue_fournisseur_id = ?""",
+                (groupe_id, ref_id),
+            )
+            if not await cur_m.fetchone():
+                raise HTTPException(400, "Cette ligne d'achat n'appartient pas au groupe")
+
+        await db.execute(
+            "UPDATE comparatif_groupe_vente SET ligne_choisie_id = ? WHERE groupe_id = ? AND catalogue_vente_id = ?",
+            (ref_id, groupe_id, cv_id),
+        )
+        await db.commit()
     return await get_comparatif(groupe_id, _)
 
 

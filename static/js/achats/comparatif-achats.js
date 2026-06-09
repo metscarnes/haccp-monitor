@@ -102,23 +102,13 @@ function rendreVS(data) {
 
   let html = '<div class="cmp-grid" style="grid-template-columns: 160px repeat(' + lignes.length + ', minmax(180px, 1fr));">';
 
-  // En-têtes fournisseurs
+  // En-têtes fournisseurs. (La référence d'achat se choisit par produit de vente, dans la
+  // bande marge ci-dessous — plus de ligne ⭐ globale ici.)
   html += '<div class="cmp-cell cmp-cell--head cmp-cell--label"></div>';
   lignes.forEach((l) => {
-    html += `<div class="cmp-cell cmp-cell--head${l.meilleur ? ' cmp-best' : ''}${l.reference ? ' cmp-ref' : ''}">
+    html += `<div class="cmp-cell cmp-cell--head${l.meilleur ? ' cmp-best' : ''}">
       <div class="cmp-fourn">${esc(l.fournisseur_nom)}</div>
       <button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>
-    </div>`;
-  });
-
-  // Ligne « référence » : radio ⭐ pour désigner le fournisseur choisi (arbitrage manuel).
-  html += '<div class="cmp-cell cmp-cell--label">⭐ Référence</div>';
-  lignes.forEach((l) => {
-    html += `<div class="cmp-cell${l.reference ? ' cmp-ref' : ''}">
-      <label class="cmp-ref-choix" title="Choisir ce fournisseur comme référence pour la marge">
-        <input type="radio" name="cmp-ref" class="cmp-ref-radio" data-cat="${l.id}" ${l.reference ? 'checked' : ''}>
-        <span>${l.reference ? 'Choisi' : 'Choisir'}</span>
-      </label>
     </div>`;
   });
 
@@ -157,17 +147,7 @@ function rendreVS(data) {
     b.addEventListener('click', () => retirerLigne(b.dataset.cat));
   });
 
-  // Radios « référence » : cliquer = désigner ce fournisseur comme référence ;
-  // recliquer sur celui déjà choisi = retirer l'étoile.
-  $('cmp-vs').querySelectorAll('.cmp-ref-radio').forEach((rd) => {
-    rd.addEventListener('click', () => {
-      const dejaChoisi = dernierVS?.ligne_choisie_id;
-      const cible = Number(rd.dataset.cat);
-      choisirReference(cible === dejaChoisi ? null : cible);
-    });
-  });
-
-  // Bande marge (produit de vente + marge) au-dessus du VS.
+  // Bande marge (produits de vente + marge) au-dessus du VS.
   rendreMarge(data);
 }
 
@@ -175,7 +155,7 @@ function rendreVS(data) {
 function rendreMarge(data) {
   const box = $('cmp-marge');
   const produits = data.produits_vente || [];
-  const refManquante = data.ligne_choisie_id == null;
+  const lignesAchat = data.lignes || [];   // articles du groupe = choix de référence par produit
 
   // Sélecteur d'AJOUT : la liste ne s'ouvre que sur clic ▾ (ne masque pas le VS).
   let html = `<div class="cmp-marge-assoc">
@@ -188,10 +168,10 @@ function rendreMarge(data) {
     </div>
   </div>`;
 
-  // Liste verticale des produits associés.
+  // Liste verticale des produits associés. Chacun choisit SA ligne d'achat de référence.
   if (produits.length) {
     html += '<div class="cmp-marge-liste">' +
-      produits.map((p) => rendreMargeLigne(p, refManquante)).join('') + '</div>';
+      produits.map((p) => rendreMargeLigne(p, lignesAchat)).join('') + '</div>';
   } else {
     html += `<div class="cmp-marge-attente">Aucun produit de vente associé. Utilisez « Ajouter » pour relier ce groupe d'achat à un ou plusieurs produits vendus.</div>`;
   }
@@ -201,11 +181,20 @@ function rendreMarge(data) {
   cablerMarge();
 }
 
-// Une ligne = un produit de vente associé, avec prix/unité/poids éditables + marge.
-function rendreMargeLigne(p, refManquante) {
+// Une ligne = un produit de vente associé : sa réf d'achat + prix/unité/poids éditables + marge.
+function rendreMargeLigne(p, lignesAchat) {
   const m = p.marge;
   const estPiece = p.unite_vente === 'piece';
   const uniteLabel = estPiece ? '€/pièce' : '€/kg';
+  const refId = p.ligne_choisie_id;
+
+  // Menu déroulant : la ligne d'achat de référence PROPRE à ce produit de vente.
+  const options = ['<option value="">— Choisir l\'achat de référence —</option>']
+    .concat(lignesAchat.map((l) => {
+      const pk = l.prix_kg != null ? fmtPrixKg(l.prix_kg) : '€/kg indispo';
+      const sel = (refId === l.id) ? ' selected' : '';
+      return `<option value="${l.id}"${sel}>${esc(l.fournisseur_nom)} · ${esc(l.designation)} (${pk})</option>`;
+    })).join('');
 
   // Bloc marge ou message d'attente selon ce qui manque.
   let bloc;
@@ -227,7 +216,7 @@ function rendreMargeLigne(p, refManquante) {
     </div>`;
   } else {
     let msg;
-    if (refManquante) msg = '⭐ Choisissez un fournisseur de référence pour calculer la marge.';
+    if (refId == null) msg = '🎯 Choisissez l\'achat de référence (menu ci-dessus) pour calculer la marge.';
     else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce pour calculer la marge.';
     else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
     else msg = '€/kg de la référence indisponible (poids du colis manquant).';
@@ -240,6 +229,9 @@ function rendreMargeLigne(p, refManquante) {
       <button class="cmp-remove cmp-vente-delier" data-cv="${p.id}" title="Délier ce produit">✕</button>
     </div>
     <div class="cmp-marge-ligne-edit">
+      <label class="cmp-marge-mini cmp-marge-ref">🎯 Achat de référence
+        <select class="cmp-vente-ref" data-cv="${p.id}">${options}</select>
+      </label>
       <label class="cmp-marge-mini">Prix vente TTC
         <input type="number" step="0.01" min="0" class="cmp-vente-prix" data-cv="${p.id}"
                value="${p.prix_vente_ttc != null ? p.prix_vente_ttc : ''}" placeholder="0.00">
@@ -314,6 +306,14 @@ function cablerMarge() {
     };
     inp.addEventListener('blur', valider);
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+  });
+
+  // Achat de référence propre à chaque produit de vente (change → enregistre).
+  $('cmp-marge').querySelectorAll('.cmp-vente-ref').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      choisirReferenceVente(Number(sel.dataset.cv), v === '' ? null : Number(v));
+    });
   });
 }
 
@@ -407,9 +407,10 @@ async function majVente(cvId, patch) {
   majBadgeMargeKo();
 }
 
-async function choisirReference(ligneId) {
+// Choisit la ligne d'achat de référence PROPRE à un produit de vente (sa marge se calcule dessus).
+async function choisirReferenceVente(cvId, ligneId) {
   if (!groupeCourant) return;
-  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/reference`, {
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes/${cvId}/reference`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ligne_choisie_id: ligneId }),

@@ -263,6 +263,9 @@
   text-transform: none;
 }
 .cmp-marge-mini input { width: 100px; }
+/* Le menu « achat de référence » prend toute la largeur de la ligne (libellés longs). */
+.cmp-marge-ref { flex: 1 1 100%; }
+.cmp-marge-ref select { width: 100%; font-weight: 600; }
 .cmp-marge-unite { font-size: 0.72rem; color: #8a7a68; white-space: nowrap; font-weight: 400; text-transform: none; }
 
 .cmp-marge-chiffres {
