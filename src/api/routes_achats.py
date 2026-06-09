@@ -1979,6 +1979,11 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
                 if ligne["prix_kg"] == meilleur_prix:
                     ligne["meilleur"] = True
 
+        # Tri des colonnes du moins cher au plus cher (par €/kg normalisé). Les articles
+        # sans €/kg calculable (poids colis manquant) passent EN TÊTE pour qu'on pense à
+        # les compléter. Tri stable secondaire = ordre SQL (fournisseur, désignation).
+        lignes.sort(key=lambda l: (l["prix_kg"] is not None, l["prix_kg"] if l["prix_kg"] is not None else 0.0))
+
         # Produits de vente associés (1 groupe → N ventes). CHAQUE produit choisit SA propre
         # ligne d'achat de référence (gv.ligne_choisie_id) — 3 cordons bleus vendus = 3 achats
         # différents. Pas de référence choisie → marge indisponible pour ce produit (pas d'héritage).
