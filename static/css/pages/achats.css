@@ -330,6 +330,28 @@
   accent-color: var(--color-accent);
   cursor: pointer;
 }
+/* Boutons toggle unités (modal édition en masse) */
+.ach-unite-toggle {
+  padding: 8px 18px;
+  border: 2px solid #d4c5af;
+  border-radius: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: #f9f5f0;
+  color: #6b7280;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  min-height: 44px;
+}
+.ach-unite-toggle--on {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.ach-unite-toggle:hover:not(.ach-unite-toggle--on) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
 .ach-stepper-hint {
   font-size: var(--text-xs);
   color: #6b7280;

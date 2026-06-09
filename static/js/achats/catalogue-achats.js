@@ -407,10 +407,10 @@ function majZoneValeurMasse() {
     },
     unites_autorisees: {
       label: 'Unités de commande autorisées',
-      html: () => `<div class="ach-unites-check" id="masse-unites">
-        <label><input type="checkbox" value="kg" checked> kg</label>
-        <label><input type="checkbox" value="piece" checked> pièce</label>
-        <label><input type="checkbox" value="colis" checked> colis</label>
+      html: () => `<div id="masse-unites" style="display:flex;gap:10px;flex-wrap:wrap;padding:6px 0;">
+        <button type="button" class="ach-unite-toggle ach-unite-toggle--on" data-val="kg">kg</button>
+        <button type="button" class="ach-unite-toggle ach-unite-toggle--on" data-val="piece">pièce</button>
+        <button type="button" class="ach-unite-toggle ach-unite-toggle--on" data-val="colis">colis</button>
       </div>`,
     },
     famille: {
@@ -447,6 +447,15 @@ function majZoneValeurMasse() {
     </div>`;
   zone.hidden = false;
 
+  // Boutons toggle unités de commande
+  if (champ === 'unites_autorisees') {
+    document.getElementById('masse-unites').addEventListener('click', e => {
+      const btn = e.target.closest('.ach-unite-toggle');
+      if (!btn) return;
+      btn.classList.toggle('ach-unite-toggle--on');
+    });
+  }
+
   // Famille → sous-famille dépendante dans la modale d'édition en masse
   if (champ === 'famille') {
     const selFam = document.getElementById('masse-val');
@@ -470,13 +479,13 @@ async function appliquerMasse() {
   const champ = document.getElementById('masse-champ').value;
   if (!ids.length || !champ) return;
 
-  // Cas spécial : unités autorisées = checkboxes → chaîne CSV
+  // Cas spécial : unités autorisées = boutons toggle → chaîne CSV
   if (champ === 'unites_autorisees') {
     const zone = document.getElementById('masse-unites');
-    const sel = [...zone.querySelectorAll('input:checked')].map(c => c.value);
+    const sel = [...zone.querySelectorAll('.ach-unite-toggle--on')].map(b => b.dataset.val);
     if (!sel.length) {
       const z = document.getElementById('masse-erreur');
-      z.textContent = 'Cochez au moins une unité'; z.hidden = false;
+      z.textContent = 'Sélectionnez au moins une unité'; z.hidden = false;
       return;
     }
     await appliquerMassePayload(ids, { unites_autorisees: sel.join(',') });
