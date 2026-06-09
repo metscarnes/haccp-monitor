@@ -62,6 +62,14 @@
     <button class="ach-btn ach-btn--primary" onclick="ouvrirProposer()">🔍 Proposer des groupes</button>
   </div>
 
+  <!-- Badge articles sans €/kg calculable (prix ou poids manquant) -->
+  <div id="badge-sans-prixkg" class="cmp-badge-non-groupes cmp-badge-alerte" style="display:none;"
+       title="Voir les articles à compléter">
+    <span>🚫</span>
+    <span id="badge-sans-prixkg-texte"></span>
+    <button class="ach-btn" id="btn-voir-sans-prixkg">Voir la liste</button>
+  </div>
+
   <!-- Bande marge : association produit de vente + marge sur la ligne de référence -->
   <div id="cmp-marge" class="cmp-marge" style="display:none;"></div>
 
@@ -98,6 +106,18 @@
       </div>
       <div class="cmp-proposer-info" id="cmp-proposer-info"></div>
       <div id="cmp-grappes" class="cmp-grappes"></div>
+    </div>
+  </div>
+
+  <!-- Modale « Articles sans €/kg » : liste à compléter, lien vers le catalogue -->
+  <div id="cmp-sans-prixkg" class="cmp-panneau" style="display:none;">
+    <div class="cmp-panneau-box cmp-panneau-box--large">
+      <div class="cmp-panneau-head">
+        <strong>🚫 Articles sans prix au kilo calculable</strong>
+        <button class="ach-btn" id="btn-fermer-sans-prixkg">✕</button>
+      </div>
+      <div class="cmp-proposer-info" id="cmp-sans-prixkg-info"></div>
+      <div id="cmp-sans-prixkg-liste" class="cmp-resultats"></div>
     </div>
   </div>
 

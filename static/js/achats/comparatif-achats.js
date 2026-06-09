@@ -599,10 +599,68 @@ async function majBadgeNonGroupes() {
   } catch { /* silencieux */ }
 }
 
+// ── Badge + modale "articles sans €/kg calculable" ───────────
+let sansPrixKgCache = [];
+
+async function majBadgeSansPrixKg() {
+  try {
+    const r = await fetch(`${API_CMP}/sans-prix-kg`);
+    if (!r.ok) return;
+    const d = await r.json();
+    sansPrixKgCache = d.articles || [];
+    const n = d.total ?? 0;
+    const badge = $('badge-sans-prixkg');
+    if (n > 0) {
+      $('badge-sans-prixkg-texte').textContent =
+        `${n} article(s) sans prix au kilo calculable (à compléter)`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch { /* silencieux */ }
+}
+
+function ouvrirSansPrixKg() {
+  $('cmp-sans-prixkg').style.display = '';
+  const liste = $('cmp-sans-prixkg-liste');
+  if (!sansPrixKgCache.length) {
+    $('cmp-sans-prixkg-info').textContent = 'Tous les articles ont un prix au kilo calculable. 👍';
+    liste.innerHTML = '';
+    return;
+  }
+  const nbPrix  = sansPrixKgCache.filter((a) => a.motif === 'prix').length;
+  const nbPoids = sansPrixKgCache.filter((a) => a.motif === 'poids').length;
+  $('cmp-sans-prixkg-info').innerHTML =
+    `${sansPrixKgCache.length} article(s) à compléter : ` +
+    `<strong>${nbPrix}</strong> sans prix d'achat · <strong>${nbPoids}</strong> au colis sans poids. ` +
+    `Cliquez un article pour le compléter dans le catalogue achats.`;
+  liste.innerHTML = sansPrixKgCache.map((a) => {
+    const motif = a.motif === 'prix'
+      ? '<span class="cmp-indispo">pas de prix</span>'
+      : '<span class="cmp-indispo">poids colis manquant</span>';
+    return `<div class="cmp-resultat cmp-sans-item" data-id="${a.id}" data-fourn="${a.fournisseur_id}">
+      <div class="cmp-resultat-info">
+        <div class="cmp-resultat-nom">${esc(a.designation)}</div>
+        <div class="cmp-resultat-meta">${esc(a.fournisseur_nom)} · ${esc(a.code_article)} · ${motif}</div>
+      </div>
+      <button class="ach-btn ach-btn--primary cmp-sans-go" data-id="${a.id}" data-fourn="${a.fournisseur_id}">Compléter →</button>
+    </div>`;
+  }).join('');
+  liste.querySelectorAll('.cmp-sans-go').forEach((b) => {
+    b.addEventListener('click', () => {
+      // Ouvre le catalogue achats filtré sur le fournisseur, fiche de l'article ouverte.
+      window.location.href =
+        `/catalogue-achats.html?fournisseur=${b.dataset.fourn}&edit=${b.dataset.id}`;
+    });
+  });
+}
+function fermerSansPrixKg() { $('cmp-sans-prixkg').style.display = 'none'; }
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
   majBadgeNonGroupes();
+  majBadgeSansPrixKg();
 
   $('select-groupe').addEventListener('change', (e) => {
     majBoutonsGroupe();
@@ -617,6 +675,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-groupe-suivant').addEventListener('click', groupeSuivant);
   $('btn-ajouter-ligne').addEventListener('click', ouvrirPanneau);
   $('btn-fermer-panneau').addEventListener('click', fermerPanneau);
+  $('btn-voir-sans-prixkg').addEventListener('click', ouvrirSansPrixKg);
+  $('btn-fermer-sans-prixkg').addEventListener('click', fermerSansPrixKg);
 
   // Fermer la liste de suggestions produit-vente au clic en dehors (attaché 1 seule fois).
   document.addEventListener('click', (e) => {

@@ -25,6 +25,14 @@
   font-weight: 600;
 }
 
+/* Variante alerte (articles sans €/kg calculable à compléter) */
+.cmp-badge-alerte {
+  background: #fdecea;
+  border-color: #f0b8b0;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
 /* ── Zone VS ───────────────────────────────────────────────── */
 .cmp-vs { padding: 0 var(--space-4) var(--space-4); }
 

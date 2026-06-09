@@ -1621,7 +1621,9 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
     Retourne None si on ne peut pas le calculer honnêtement (prix absent, ou
     colis sans poids renseigné) → l'UI affiche « €/kg indisponible ».
     """
-    if prix_achat_ht is None:
+    # Prix absent ou ≤ 0 → pas de €/kg honnête (un prix à 0 n'est pas un « gratuit »,
+    # c'est une donnée manquante) → « indisponible » partout (VS, marge, suggestions).
+    if prix_achat_ht is None or float(prix_achat_ht) <= 0:
         return None
     if format_prix == "kg":
         return round(float(prix_achat_ht), 4)
@@ -1698,6 +1700,44 @@ async def comparatif_stats(_=Depends(require_admin)):
             """
         )
         return {"articles_non_groupes": rows[0][0] if rows else 0}
+
+
+@router.get("/comparatif/sans-prix-kg")
+async def comparatif_sans_prix_kg(_=Depends(require_admin)):
+    """Articles actifs du catalogue dont le €/kg est INCALCULABLE — donc inutilisables
+    pour la comparaison et la marge tant qu'ils ne sont pas complétés.
+
+    Deux motifs (cf. `_calc_prix_kg`) :
+      - 'prix' : prix d'achat absent ou à 0.
+      - 'poids' : prix au colis présent mais poids du colis non renseigné.
+    Renvoie aussi le total, pour le badge du comparateur.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT c.id, c.code_article, c.designation, c.prix_achat_ht, c.format_prix,
+                   c.poids_colis_kg, c.fournisseur_id, f.nom AS fournisseur_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+            ORDER BY f.nom, c.designation
+            """
+        )
+        articles = []
+        for r in await cur.fetchall():
+            a = dict(r)
+            prix = a.get("prix_achat_ht")
+            # Pas de prix exploitable (absent ou ≤ 0) → motif 'prix', priorité sur tout le reste.
+            # (Un prix à 0 passerait `_calc_prix_kg` comme un faux €/kg de 0 € : on le rattrape ici.)
+            if not prix or prix <= 0:
+                a["motif"] = "prix"
+                articles.append(a)
+                continue
+            # Prix présent mais €/kg incalculable → colis sans poids.
+            if _calc_prix_kg(a.get("format_prix"), prix, a.get("poids_colis_kg")) is None:
+                a["motif"] = "poids"
+                articles.append(a)
+        return {"total": len(articles), "articles": articles}
 
 
 @router.get("/comparatif/groupes")

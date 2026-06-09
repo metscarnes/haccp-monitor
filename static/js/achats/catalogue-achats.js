@@ -50,6 +50,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('filtre-fournisseur').value = params.get('fournisseur');
     filtrer();
   }
+  // Deep-link depuis le comparateur : ?edit=<id> ouvre directement la fiche article
+  // (pour compléter un prix / poids manquant).
+  const editId = params.get('edit');
+  if (editId) {
+    ouvrirEditionModal(Number(editId));
+  }
 });
 
 function bindEvents() {
