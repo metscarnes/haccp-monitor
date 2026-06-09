@@ -185,6 +185,7 @@
 .cmp-grappes { overflow-y: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
 
 .cmp-grappe {
+  flex: none;          /* ne pas écraser les cartes dans le conteneur scrollable */
   border: 1px solid #e8d9c4;
   border-radius: var(--radius);
   overflow: hidden;
