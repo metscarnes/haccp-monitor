@@ -171,3 +171,76 @@
   border-radius: var(--radius-pill);
 }
 .cmp-add { white-space: nowrap; }
+
+/* ── Modale « Proposer des groupes » ───────────────────────── */
+.cmp-panneau-box--large { width: min(820px, 100%); max-height: 86vh; }
+.cmp-proposer-info {
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+  color: #6b5840;
+  background: #faf4ea;
+  border-bottom: 1px solid #efe2cf;
+}
+.cmp-mono { color: #8a7a68; font-style: italic; }
+.cmp-grappes { overflow-y: auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3); }
+
+.cmp-grappe {
+  border: 1px solid #e8d9c4;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.cmp-grappe-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #f3e9da;
+}
+.cmp-grappe-nom {
+  flex: 1;
+  font-weight: 700;
+  color: var(--color-accent);
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.95rem;
+}
+.cmp-grappe-nom:hover, .cmp-grappe-nom:focus {
+  background: #fff;
+  border-color: #d9c7af;
+  outline: none;
+}
+.cmp-grappe-sf { font-size: 0.75rem; color: #8a7a68; white-space: nowrap; }
+.cmp-badge-fiable {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #9e6b00;
+  background: #fff4d6;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.cmp-grappe-arts { padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; gap: 2px; }
+.cmp-grappe-art {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.cmp-grappe-art:hover { background: #faf4ea; }
+.cmp-grappe-art input { width: 16px; height: 16px; accent-color: var(--color-accent); flex: none; }
+.cmp-grappe-art-nom { flex: 1; color: var(--color-text); }
+.cmp-grappe-art-meta { font-size: 0.78rem; color: #8a7a68; white-space: nowrap; }
+
+.cmp-grappe-actions {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid #f0e6d8;
+  background: #fdfaf4;
+}

@@ -126,6 +126,11 @@ class ComparatifLigneAdd(BaseModel):
     catalogue_fournisseur_id: int
 
 
+class ComparatifFromCluster(BaseModel):
+    nom: str
+    catalogue_fournisseur_ids: List[int]
+
+
 class CommandeLigneCreate(BaseModel):
     catalogue_fournisseur_id: Optional[int] = None
     code_article: str
@@ -1802,3 +1807,191 @@ async def comparatif_suggestions(
 
         suggestions.sort(key=lambda x: x["score"], reverse=True)
         return suggestions[:20]
+
+
+# ---------------------------------------------------------------------------
+# Auto-proposition de groupes (clustering assisté)
+#
+# Réglages calibrés sur un export réel (725 articles, 5 fournisseurs, juin 2026).
+# La désignation est réduite à son « cœur sémantique » (on retire chiffres, unités
+# et mots de conditionnement/marque/label) ; deux articles sont rapprochés s'ils
+# partagent ≥ 2 mots-cœur ET au moins un mot PIVOT (le morceau/type de produit :
+# cuisse, filet, quiche…), avec un indice de Jaccard ≥ SEUIL. Le pivot évite la
+# grappe fourre-tout « tout le poulet ». Ces constantes sont volontairement en clair
+# pour être ajustées si les libellés fournisseurs évoluent.
+# ---------------------------------------------------------------------------
+
+CLUSTER_SEUIL = 0.30          # indice de Jaccard minimal entre deux cœurs sémantiques
+CLUSTER_MIN_TOKENS = 2        # nb minimal de mots-cœur communs
+CLUSTER_MIN_FOURNISSEURS = 2  # une grappe n'a d'intérêt qu'avec ≥ 2 fournisseurs
+
+# Unités de mesure (retirées du cœur).
+_CLUSTER_UNITES = {"kg", "g", "gr", "l", "cl", "ml", "mg"}
+
+# Conditionnement, marques, labels, prépositions : du bruit pour le rapprochement.
+_CLUSTER_PACK = {
+    "colis", "carton", "barquette", "bqt", "sachet", "scht", "sous", "vide", "satm",
+    "atm", "pac", "pce", "piece", "pieces", "tranche", "tranches", "pc", "pcs", "tp",
+    "plat", "col", "pv", "ofr", "sda", "vf", "aop", "hve", "bbc", "gde", "igp", "vpf",
+    "bn", "pp", "sv", "vrac", "format", "demi", "lune", "entiere", "entier", "plaque",
+    "poche", "seau", "bidon", "pot", "boite", "unite", "unites", "sup", "superieure",
+    "superieur", "pur", "pure", "av", "peau", "pch", "bio", "certifie", "fermier",
+    "fermiere", "frais", "nature", "nu",
+    "de", "des", "la", "le", "les", "du", "au", "aux", "et", "en", "a",
+}
+
+# Mots « pivot » = morceau ou type de produit. Au moins un doit être commun.
+_CLUSTER_PIVOTS = {
+    "cuisse", "haut", "filet", "escalope", "aiguillette", "magret", "roti", "tournedos",
+    "pave", "supreme", "manchon", "pilon", "aile", "gesier", "foie", "saute", "emince",
+    "paupiette", "ballotine", "coffre", "grignette", "chorizo", "saucisson", "saucisse",
+    "chipolata", "boudin", "andouillette", "merguez", "quiche", "pizza", "panini",
+    "croissant", "parmentier", "gratin", "lasagne", "brandade", "puree", "taboule",
+    "mousse", "terrine", "pate", "rillette", "cordon", "nugget", "donuts", "coquelet",
+    "dinde", "canard", "poulet", "lapin", "caille", "pintade", "morue", "saumon",
+    "jambon", "bacon", "boeuf", "veau", "agneau", "porc",
+}
+
+
+def _coeur_tokens(designation: str) -> set:
+    """Cœur sémantique : tokens normalisés d'une désignation, débarrassés des
+    nombres, unités et mots de conditionnement/marque/label."""
+    s = unicodedata.normalize("NFKD", str(designation or "").lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    toks = "".join(c if c.isalnum() else " " for c in s).split()
+    out = set()
+    for t in toks:
+        if any(ch.isdigit() for ch in t):
+            continue
+        if t in _CLUSTER_UNITES or t in _CLUSTER_PACK or len(t) < 2:
+            continue
+        out.add(t)
+    return out
+
+
+def _coeurs_proches(a: set, b: set) -> bool:
+    """Deux cœurs sont rapprochés s'ils partagent ≥ CLUSTER_MIN_TOKENS mots dont
+    au moins un PIVOT, avec un Jaccard ≥ CLUSTER_SEUIL."""
+    inter = a & b
+    if len(inter) < CLUSTER_MIN_TOKENS:
+        return False
+    if not (inter & _CLUSTER_PIVOTS):
+        return False
+    union = a | b
+    return bool(union) and len(inter) / len(union) >= CLUSTER_SEUIL
+
+
+def _nom_suggere(coeurs: list, designations: list) -> str:
+    """Nom proposé pour une grappe : les pivots communs à tous les articles, sinon
+    les mots communs, sinon la 1re désignation tronquée."""
+    if not coeurs:
+        return (designations[0] if designations else "Groupe").strip()
+    communs = set(coeurs[0])
+    for c in coeurs[1:]:
+        communs &= c
+    pivots = [t for t in communs if t in _CLUSTER_PIVOTS]
+    mots = pivots or list(communs)
+    if not mots:
+        return designations[0].strip()[:60]
+    # Ordre d'apparition dans la 1re désignation, pour un libellé naturel.
+    ordre = [t for t in _coeur_ordre(designations[0]) if t in mots]
+    ordre += [t for t in mots if t not in ordre]
+    return " ".join(ordre).capitalize()
+
+
+def _coeur_ordre(designation: str) -> list:
+    """Comme _coeur_tokens mais en conservant l'ordre (pour nommer joliment)."""
+    s = unicodedata.normalize("NFKD", str(designation or "").lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    toks = "".join(c if c.isalnum() else " " for c in s).split()
+    return [t for t in toks
+            if not any(ch.isdigit() for ch in t)
+            and t not in _CLUSTER_UNITES and t not in _CLUSTER_PACK and len(t) >= 2]
+
+
+@router.get("/comparatif/proposer")
+async def proposer_groupes(_=Depends(require_admin)):
+    """Balaie le catalogue et propose des grappes d'articles équivalents (même
+    sous-famille, désignations proches, ≥ 2 fournisseurs) à valider d'un clic.
+    Exclut les articles déjà rattachés à un groupe pour ne pas reproposer en boucle."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT c.*, f.nom AS fournisseur_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+              AND c.id NOT IN (SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne)
+            ORDER BY c.sous_famille, c.designation
+            """
+        )
+        articles = [dict(r) for r in await cur.fetchall()]
+
+    # Regroupement par sous-famille (les sans-sous-famille = bucket « moins fiable »).
+    par_sf = {}
+    for a in articles:
+        a["_coeur"] = _coeur_tokens(a["designation"])
+        sf = (a.get("sous_famille") or "").strip()
+        par_sf.setdefault(sf, []).append(a)
+
+    grappes = []
+    mono_fournisseur = 0
+    for sf, items in par_sf.items():
+        pool = list(items)
+        while pool:
+            graine = pool.pop(0)
+            grappe = [graine]
+            reste = []
+            for x in pool:
+                if _coeurs_proches(graine["_coeur"], x["_coeur"]):
+                    grappe.append(x)
+                else:
+                    reste.append(x)
+            pool = reste
+            fournisseurs = {g["fournisseur_id"] for g in grappe}
+            if len(fournisseurs) < CLUSTER_MIN_FOURNISSEURS:
+                if len(grappe) >= 1:
+                    mono_fournisseur += 1
+                continue
+            lignes = []
+            for g in grappe:
+                lignes.append({
+                    "id": g["id"],
+                    "designation": g["designation"],
+                    "fournisseur_nom": g["fournisseur_nom"],
+                    "code_article": g["code_article"],
+                    "prix_kg": _calc_prix_kg(g.get("format_prix"), g.get("prix_achat_ht"), g.get("poids_colis_kg")),
+                })
+            grappes.append({
+                "nom_suggere": _nom_suggere([g["_coeur"] for g in grappe], [g["designation"] for g in grappe]),
+                "sous_famille": sf,
+                "fiable": bool(sf),  # sans sous-famille → moins fiable
+                "nb_fournisseurs": len(fournisseurs),
+                "lignes": lignes,
+            })
+
+    grappes.sort(key=lambda g: len(g["lignes"]), reverse=True)
+    return {"grappes": grappes, "mono_fournisseur": mono_fournisseur}
+
+
+@router.post("/comparatif/groupes/from-cluster", status_code=201)
+async def create_groupe_from_cluster(body: ComparatifFromCluster, _=Depends(require_admin)):
+    """Crée un groupe et y rattache les articles d'une grappe validée, en un appel."""
+    nom = (body.nom or "").strip()
+    if not nom:
+        raise HTTPException(400, "Le nom du groupe est obligatoire")
+    if not body.catalogue_fournisseur_ids:
+        raise HTTPException(400, "Aucun article à rattacher")
+    async with get_db() as db:
+        cur = await db.execute(
+            "INSERT INTO comparatif_groupe (boutique_id, nom) VALUES (1, ?)", (nom,)
+        )
+        groupe_id = cur.lastrowid
+        for cat_id in body.catalogue_fournisseur_ids:
+            await db.execute(
+                "INSERT OR IGNORE INTO comparatif_groupe_ligne (groupe_id, catalogue_fournisseur_id) VALUES (?, ?)",
+                (groupe_id, cat_id),
+            )
+        await db.commit()
+        cur2 = await db.execute("SELECT * FROM comparatif_groupe WHERE id = ?", (groupe_id,))
+        return dict(await cur2.fetchone())

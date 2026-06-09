@@ -263,6 +263,99 @@ function rendreResultats(items, avecScore) {
   });
 }
 
+// ── « Proposer des groupes » : grappes candidates à valider ───
+let grappesProposees = [];   // état local des grappes (avec articles décochables)
+
+async function ouvrirProposer() {
+  $('cmp-proposer').style.display = '';
+  $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Analyse du catalogue…</div>';
+  $('cmp-proposer-info').textContent = '';
+  const r = await fetch(`${API_CMP}/proposer`);
+  if (!r.ok) { $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Erreur d\'analyse.</div>'; return; }
+  const d = await r.json();
+  // Chaque grappe : nom éditable + articles avec une case "inclure" (cochée par défaut).
+  grappesProposees = d.grappes.map((g, i) => ({
+    idx: i,
+    nom: g.nom_suggere,
+    fiable: g.fiable,
+    sous_famille: g.sous_famille,
+    lignes: g.lignes.map((l) => ({ ...l, inclus: true })),
+  }));
+  $('cmp-proposer-info').innerHTML = grappesProposees.length
+    ? `${grappesProposees.length} groupe(s) proposé(s). Décochez les intrus, ajustez le nom, puis validez. <span class="cmp-mono">${d.mono_fournisseur} produit(s) mono-fournisseur (rien à comparer).</span>`
+    : `Aucun groupe à proposer pour l'instant. <span class="cmp-mono">${d.mono_fournisseur} produit(s) mono-fournisseur.</span>`;
+  rendreGrappes();
+}
+function fermerProposer() { $('cmp-proposer').style.display = 'none'; }
+
+function rendreGrappes() {
+  if (!grappesProposees.length) {
+    $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Rien à proposer.</div>';
+    return;
+  }
+  $('cmp-grappes').innerHTML = grappesProposees.map((g) => {
+    if (g.lignes === null) return '';   // grappe déjà créée ou ignorée
+    const arts = g.lignes.map((l) => {
+      const pk = l.prix_kg != null ? fmtPrixKg(l.prix_kg) : '<span class="cmp-indispo">€/kg indispo</span>';
+      return `<label class="cmp-grappe-art">
+        <input type="checkbox" data-g="${g.idx}" data-l="${l.id}" ${l.inclus ? 'checked' : ''}>
+        <span class="cmp-grappe-art-nom">${esc(l.designation)}</span>
+        <span class="cmp-grappe-art-meta">${esc(l.fournisseur_nom)} · ${pk}</span>
+      </label>`;
+    }).join('');
+    const badge = g.fiable ? '' : '<span class="cmp-badge-fiable">moins fiable</span>';
+    return `<div class="cmp-grappe" data-g="${g.idx}">
+      <div class="cmp-grappe-head">
+        <input type="text" class="cmp-grappe-nom" data-g="${g.idx}" value="${esc(g.nom)}">
+        ${badge}
+        <span class="cmp-grappe-sf">${esc(g.sous_famille) || 'sans sous-famille'}</span>
+      </div>
+      <div class="cmp-grappe-arts">${arts}</div>
+      <div class="cmp-grappe-actions">
+        <button class="ach-btn ach-btn--primary cmp-grappe-creer" data-g="${g.idx}">✓ Créer le groupe</button>
+        <button class="ach-btn cmp-grappe-ignorer" data-g="${g.idx}">Ignorer</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Câblage
+  $('cmp-grappes').querySelectorAll('.cmp-grappe-nom').forEach((inp) => {
+    inp.addEventListener('input', () => { grappesProposees[+inp.dataset.g].nom = inp.value; });
+  });
+  $('cmp-grappes').querySelectorAll('.cmp-grappe-art input').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const g = grappesProposees[+cb.dataset.g];
+      const l = g.lignes.find((x) => x.id === +cb.dataset.l);
+      if (l) l.inclus = cb.checked;
+    });
+  });
+  $('cmp-grappes').querySelectorAll('.cmp-grappe-creer').forEach((b) => {
+    b.addEventListener('click', () => creerDepuisGrappe(+b.dataset.g));
+  });
+  $('cmp-grappes').querySelectorAll('.cmp-grappe-ignorer').forEach((b) => {
+    b.addEventListener('click', () => { grappesProposees[+b.dataset.g].lignes = null; rendreGrappes(); });
+  });
+}
+
+async function creerDepuisGrappe(idx) {
+  const g = grappesProposees[idx];
+  if (!g || g.lignes === null) return;
+  const ids = g.lignes.filter((l) => l.inclus).map((l) => l.id);
+  if (ids.length < 2) { alert('Sélectionnez au moins 2 articles à comparer.'); return; }
+  if (!g.nom.trim()) { alert('Donnez un nom au groupe.'); return; }
+  const r = await fetch(`${API_CMP}/groupes/from-cluster`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: g.nom.trim(), catalogue_fournisseur_ids: ids }),
+  });
+  if (!r.ok) { alert('Création impossible.'); return; }
+  const groupe = await r.json();
+  g.lignes = null;                 // retirer la grappe traitée de la liste
+  rendreGrappes();
+  await chargerGroupes(groupe.id); // rafraîchir le sélecteur principal
+  afficherVS(groupe.id);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
@@ -273,6 +366,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fermerPanneau();
   });
   $('btn-nouveau-groupe').addEventListener('click', creerGroupe);
+  $('btn-proposer').addEventListener('click', ouvrirProposer);
+  $('btn-fermer-proposer').addEventListener('click', fermerProposer);
   $('btn-renommer').addEventListener('click', renommerGroupe);
   $('btn-supprimer-groupe').addEventListener('click', supprimerGroupe);
   $('btn-ajouter-ligne').addEventListener('click', ouvrirPanneau);
