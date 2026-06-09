@@ -119,13 +119,10 @@ function afficherTable(liste) {
     return;
   }
   tbody.innerHTML = liste.map(c => {
-    const supprimable = c.statut === 'brouillon' || c.statut === 'annulee';
     return `
     <tr>
       <td style="text-align:center;">
-        ${supprimable
-          ? `<input type="checkbox" class="chk-commande" data-id="${c.id}" onchange="majBoutonSelection()">`
-          : ''}
+        <input type="checkbox" class="chk-commande" data-id="${c.id}" onchange="majBoutonSelection()">
       </td>
       <td><code>${escHtml(c.numero_commande)}</code></td>
       <td>${fmtDate(c.date_commande)}</td>
@@ -143,14 +140,14 @@ function afficherTable(liste) {
 }
 
 function majBoutonSelection() {
-  const cases = document.querySelectorAll('.chk-commande:checked');
-  const btn = document.getElementById('btn-supprimer-selection');
-  const badge = document.getElementById('badge-selection');
+  const cases  = document.querySelectorAll('.chk-commande:checked');
+  const toutes = document.querySelectorAll('.chk-commande');
+  const btn    = document.getElementById('btn-supprimer-selection');
+  const badge  = document.getElementById('badge-selection');
+  const chkTout = document.getElementById('chk-tout');
+  if (!btn || !badge || !chkTout) return;
   badge.textContent = cases.length;
   btn.hidden = cases.length === 0;
-  // Synchroniser la case "tout"
-  const toutes = document.querySelectorAll('.chk-commande');
-  const chkTout = document.getElementById('chk-tout');
   chkTout.checked = toutes.length > 0 && cases.length === toutes.length;
   chkTout.indeterminate = cases.length > 0 && cases.length < toutes.length;
 }

@@ -1241,14 +1241,11 @@ async def delete_ligne(commande_id: int, ligne_id: int):
 
 @router.delete("/commandes/{commande_id}", status_code=204)
 async def delete_commande(commande_id: int):
-    """Supprime une commande et toutes ses lignes (uniquement brouillon ou annulée)."""
+    """Supprime une commande et toutes ses lignes."""
     async with get_db() as db:
-        row = await db.execute("SELECT statut FROM commandes WHERE id = ?", (commande_id,))
-        rec = await row.fetchone()
-        if not rec:
+        row = await db.execute("SELECT id FROM commandes WHERE id = ?", (commande_id,))
+        if not await row.fetchone():
             raise HTTPException(status_code=404, detail="Commande introuvable")
-        if rec["statut"] not in ("brouillon", "annulee"):
-            raise HTTPException(status_code=400, detail="Seules les commandes en brouillon ou annulées peuvent être supprimées")
         await db.execute("DELETE FROM commande_lignes WHERE commande_id = ?", (commande_id,))
         await db.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))
         await db.commit()
