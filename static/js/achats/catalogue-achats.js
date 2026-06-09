@@ -518,13 +518,19 @@ async function appliquerMassePayload(ids, payload) {
   const btn = document.getElementById('masse-appliquer');
   btn.disabled = true; btn.textContent = 'Application…';
   try {
-    await Promise.all(ids.map(id =>
+    const resultats = await Promise.all(ids.map(id =>
       fetch(`${API_CAT}/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      })
+      }).then(r => ({ id, ok: r.ok, status: r.status }))
     ));
+    const echecs = resultats.filter(r => !r.ok);
+    if (echecs.length) {
+      const z = document.getElementById('masse-erreur');
+      z.textContent = `${echecs.length} article(s) non mis à jour (IDs : ${echecs.map(r => r.id).join(', ')})`;
+      z.hidden = false;
+    }
     fermerModalMasse();
     await chargerCatalogue();
   } catch(e) {

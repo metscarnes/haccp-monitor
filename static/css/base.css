@@ -25,9 +25,15 @@ input, select, textarea, button {
   color: inherit;
 }
 
-input, select, textarea {
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   -webkit-appearance: none;
   appearance: none;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  -webkit-appearance: auto;
+  appearance: auto;
 }
 
 :focus-visible {
