@@ -1621,9 +1621,10 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
     Retourne None si on ne peut pas le calculer honnêtement (prix absent, ou
     colis sans poids renseigné) → l'UI affiche « €/kg indisponible ».
     """
-    # Prix absent ou ≤ 0 → pas de €/kg honnête (un prix à 0 n'est pas un « gratuit »,
-    # c'est une donnée manquante) → « indisponible » partout (VS, marge, suggestions).
-    if prix_achat_ht is None or float(prix_achat_ht) <= 0:
+    # 0 € est un PRIX RÉEL (produit gratuit / offert / échantillon), pas une donnée
+    # manquante → €/kg = 0, comparable, marge calculable (100 %). Seul un prix absent
+    # (None) ou un colis sans poids reste « indisponible ».
+    if prix_achat_ht is None:
         return None
     if format_prix == "kg":
         return round(float(prix_achat_ht), 4)
@@ -1702,42 +1703,66 @@ async def comparatif_stats(_=Depends(require_admin)):
         return {"articles_non_groupes": rows[0][0] if rows else 0}
 
 
-@router.get("/comparatif/sans-prix-kg")
-async def comparatif_sans_prix_kg(_=Depends(require_admin)):
-    """Articles actifs du catalogue dont le €/kg est INCALCULABLE — donc inutilisables
-    pour la comparaison et la marge tant qu'ils ne sont pas complétés.
+@router.get("/comparatif/marge-incalculable")
+async def comparatif_marge_incalculable(_=Depends(require_admin)):
+    """Groupes DÉJÀ associés à un produit de vente, mais dont la marge ne peut pas
+    être calculée parce qu'il manque une info en amont. On ne signale que là où il y
+    a une intention de marge (produit de vente relié) — pas tout le catalogue.
 
-    Deux motifs (cf. `_calc_prix_kg`) :
-      - 'prix' : prix d'achat absent ou à 0.
-      - 'poids' : prix au colis présent mais poids du colis non renseigné.
-    Renvoie aussi le total, pour le badge du comparateur.
+    Motif bloquant par groupe (premier rencontré) :
+      - 'reference'  : aucune ligne fournisseur de référence (⭐) choisie.
+      - 'prix_achat' : la référence existe mais son €/kg est indisponible
+                       (prix d'achat absent, ou colis sans poids).
+      - 'prix_vente' : le produit de vente associé n'a pas de prix de vente TTC.
+    (0 € d'achat n'est PAS un trou : produit gratuit, marge = 100 %.)
     """
     async with get_db() as db:
         cur = await db.execute(
             """
-            SELECT c.id, c.code_article, c.designation, c.prix_achat_ht, c.format_prix,
-                   c.poids_colis_kg, c.fournisseur_id, f.nom AS fournisseur_nom
-            FROM catalogue_fournisseur c
-            JOIN fournisseurs f ON f.id = c.fournisseur_id
-            WHERE f.boutique_id = 1 AND c.actif = 1
-            ORDER BY f.nom, c.designation
+            SELECT g.id, g.nom, g.catalogue_vente_id, g.ligne_choisie_id,
+                   v.nom AS vente_nom, v.prix_vente_ttc
+            FROM comparatif_groupe g
+            JOIN catalogue_vente v ON v.id = g.catalogue_vente_id
+            WHERE g.boutique_id = 1
+            ORDER BY g.nom
             """
         )
-        articles = []
-        for r in await cur.fetchall():
-            a = dict(r)
-            prix = a.get("prix_achat_ht")
-            # Pas de prix exploitable (absent ou ≤ 0) → motif 'prix', priorité sur tout le reste.
-            # (Un prix à 0 passerait `_calc_prix_kg` comme un faux €/kg de 0 € : on le rattrape ici.)
-            if not prix or prix <= 0:
-                a["motif"] = "prix"
-                articles.append(a)
-                continue
-            # Prix présent mais €/kg incalculable → colis sans poids.
-            if _calc_prix_kg(a.get("format_prix"), prix, a.get("poids_colis_kg")) is None:
-                a["motif"] = "poids"
-                articles.append(a)
-        return {"total": len(articles), "articles": articles}
+        groupes_assoc = [dict(r) for r in await cur.fetchall()]
+
+        bloques = []
+        for g in groupes_assoc:
+            motif = None
+            detail = None
+            if g["ligne_choisie_id"] is None:
+                motif = "reference"
+                detail = "Aucun fournisseur de référence choisi"
+            else:
+                # €/kg de la ligne de référence
+                cur_l = await db.execute(
+                    """SELECT format_prix, prix_achat_ht, poids_colis_kg
+                       FROM catalogue_fournisseur WHERE id = ?""",
+                    (g["ligne_choisie_id"],),
+                )
+                lref = await cur_l.fetchone()
+                pk = _calc_prix_kg(
+                    lref["format_prix"], lref["prix_achat_ht"], lref["poids_colis_kg"]
+                ) if lref else None
+                if pk is None:
+                    motif = "prix_achat"
+                    detail = "Prix au kilo de la référence indisponible (prix manquant ou colis sans poids)"
+                elif g["prix_vente_ttc"] is None:
+                    motif = "prix_vente"
+                    detail = "Pas de prix de vente sur le produit associé"
+            if motif:
+                bloques.append({
+                    "groupe_id": g["id"],
+                    "groupe_nom": g["nom"],
+                    "catalogue_vente_id": g["catalogue_vente_id"],
+                    "vente_nom": g["vente_nom"],
+                    "motif": motif,
+                    "detail": detail,
+                })
+        return {"total": len(bloques), "groupes": bloques}
 
 
 @router.get("/comparatif/groupes")

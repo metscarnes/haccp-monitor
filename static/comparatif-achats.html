@@ -62,12 +62,12 @@
     <button class="ach-btn ach-btn--primary" onclick="ouvrirProposer()">🔍 Proposer des groupes</button>
   </div>
 
-  <!-- Badge articles sans €/kg calculable (prix ou poids manquant) -->
-  <div id="badge-sans-prixkg" class="cmp-badge-non-groupes cmp-badge-alerte" style="display:none;"
-       title="Voir les articles à compléter">
-    <span>🚫</span>
-    <span id="badge-sans-prixkg-texte"></span>
-    <button class="ach-btn" id="btn-voir-sans-prixkg">Voir la liste</button>
+  <!-- Badge : produits de vente associés dont la marge est incalculable (info manquante) -->
+  <div id="badge-marge-ko" class="cmp-badge-non-groupes cmp-badge-alerte" style="display:none;"
+       title="Voir les marges bloquées">
+    <span>📊</span>
+    <span id="badge-marge-ko-texte"></span>
+    <button class="ach-btn" id="btn-voir-marge-ko">Voir la liste</button>
   </div>
 
   <!-- Bande marge : association produit de vente + marge sur la ligne de référence -->
@@ -109,15 +109,15 @@
     </div>
   </div>
 
-  <!-- Modale « Articles sans €/kg » : liste à compléter, lien vers le catalogue -->
-  <div id="cmp-sans-prixkg" class="cmp-panneau" style="display:none;">
+  <!-- Modale « Marges incalculables » : groupes associés à un produit de vente où il manque une info -->
+  <div id="cmp-marge-ko" class="cmp-panneau" style="display:none;">
     <div class="cmp-panneau-box cmp-panneau-box--large">
       <div class="cmp-panneau-head">
-        <strong>🚫 Articles sans prix au kilo calculable</strong>
-        <button class="ach-btn" id="btn-fermer-sans-prixkg">✕</button>
+        <strong>📊 Marges en attente d'une information</strong>
+        <button class="ach-btn" id="btn-fermer-marge-ko">✕</button>
       </div>
-      <div class="cmp-proposer-info" id="cmp-sans-prixkg-info"></div>
-      <div id="cmp-sans-prixkg-liste" class="cmp-resultats"></div>
+      <div class="cmp-proposer-info" id="cmp-marge-ko-info"></div>
+      <div id="cmp-marge-ko-liste" class="cmp-resultats"></div>
     </div>
   </div>
 
