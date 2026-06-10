@@ -675,30 +675,79 @@ function afficherLignes(lignes) {
     calculerTotal([]);
     return;
   }
+  const editable = cmdCourante?.statut === 'brouillon';
   zone.innerHTML = `
     <table class="ach-table" style="margin-top:var(--space-2);">
       <thead><tr>
-        <th>Code</th><th>Désignation</th>
-        <th class="ach-col-num">Qté</th><th>Unité</th>
-        <th class="ach-col-num">Prix HT</th><th class="ach-col-num">Montant HT</th>
-        <th class="ach-col-actions">Actions</th>
+        <th>Code</th>
+        <th>Désignation</th>
+        <th class="ach-col-num">Prix HT</th>
+        <th>Format</th>
+        <th class="ach-col-num">TVA</th>
+        <th>Unités cmd</th>
+        <th class="ach-col-num">Stock</th>
+        <th style="text-align:center; min-width:200px;">Quantité</th>
+        <th class="ach-col-num">Total estimé HT</th>
+        ${editable ? '<th class="ach-col-actions"></th>' : ''}
       </tr></thead>
       <tbody>
-        ${lignes.map(l => `
+        ${lignes.map(l => {
+          const a = catalogueCourant.find(x => x.id === l.catalogue_fournisseur_id);
+          const qte = l.quantite_commandee;
+          const unite = l.unite;
+          const prixHT = l.prix_unitaire_ht;
+          const montantHT = l.montant_ht;
+          const tva = a?.tva_percent ?? l.tva_percent ?? null;
+          const stock = a?.stock ?? null;
+          const formatLbl = a ? (a.format_prix === 'kg' ? '€/kg' : '€/colis') : '—';
+
+          // Unités autorisées (depuis catalogue si dispo, sinon seulement celle commandée)
+          const unitesDisp = a ? ['kg', 'piece', 'colis'].filter(u => peutCommander(a, u)) : [unite];
+          const unitesBadges = unitesDisp.length
+            ? unitesDisp.map(u => `<span class="ach-badge ach-badge--dlc" style="margin:1px;">${uniteLabel(u)}</span>`).join(' ')
+            : `<span style="color:#9ca3af">—</span>`;
+
+          // Boutons unité (lecture seule si pas brouillon)
+          const kgOk    = a ? peutCommanderKg(a)    : unite === 'kg';
+          const pieceOk = a ? peutCommanderPiece(a) : unite === 'piece';
+          const colisOk = a ? peutCommanderColis(a) : unite === 'colis';
+          const btnsUnite = `
+            <div class="ach-unite-btns" role="group">
+              <button type="button" class="ach-unite-btn ${unite === 'kg'    ? 'is-active' : ''}" disabled>${uniteLabel('kg')}</button>
+              <button type="button" class="ach-unite-btn ${unite === 'piece' ? 'is-active' : ''}" disabled>${uniteLabel('piece')}</button>
+              <button type="button" class="ach-unite-btn ${unite === 'colis' ? 'is-active' : ''}" disabled>${uniteLabel('colis')}</button>
+            </div>`;
+
+          // Prix affiché à l'unité commandée
+          const puAffiche = a ? prixUnitaire(a, unite) : prixHT;
+          const hintPrix = puAffiche !== null
+            ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${uniteLabel(unite)}</div>`
+            : '';
+          const detail = a && qte > 0 ? detailReception(a, qte, unite) : '';
+
+          return `
           <tr>
             <td><code>${escHtml(l.code_article)}</code></td>
             <td class="ach-cell-nom">${escHtml(l.designation)}</td>
-            <td class="ach-col-num">${l.quantite_commandee}</td>
-            <td>${escHtml(l.unite)}</td>
-            <td class="ach-col-num">${fmtPrix(l.prix_unitaire_ht)} €</td>
-            <td class="ach-col-num"><strong>${fmtPrix(l.montant_ht)} €</strong></td>
-            <td class="ach-col-actions">
-              ${cmdCourante?.statut === 'brouillon'
-                ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="supprimerLigne(${l.id})">✕</button>`
-                : ''}
+            <td class="ach-col-num">${fmtPrix(prixHT)} ${formatLbl}</td>
+            <td>${a ? (a.format_prix === 'kg' ? 'kg' : 'colis') : '—'}</td>
+            <td class="ach-col-num">${tva !== null ? tva + '%' : '—'}</td>
+            <td>${unitesBadges}</td>
+            <td class="ach-col-num">${stock !== null
+              ? (stock > 0 ? `<strong>${stock}</strong>` : '<span style="color:#9ca3af">0</span>')
+              : '<span style="color:#9ca3af">—</span>'}</td>
+            <td>
+              <div class="ach-qte-cell">
+                <input type="number" min="0" step="any" value="${qte}" class="ach-qte-input" readonly style="background:#f9f5ef; cursor:default;">
+                ${btnsUnite}
+              </div>
+              ${hintPrix}
+              ${detail ? `<div class="ach-recep-detail">${detail}</div>` : ''}
             </td>
-          </tr>
-        `).join('')}
+            <td class="ach-col-num"><strong>${fmtPrix(montantHT)} €</strong></td>
+            ${editable ? `<td class="ach-col-actions"><button class="ach-btn ach-btn--small ach-btn--danger" onclick="supprimerLigne(${l.id})">✕</button></td>` : ''}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>`;
   calculerTotal(lignes);
