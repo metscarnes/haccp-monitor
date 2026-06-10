@@ -170,18 +170,19 @@ function construireGrilleVS(lignes, opts = {}) {
   let html = '<div class="cmp-grid' + (cliquable ? ' cmp-grid--choix' : '') +
     '" style="grid-template-columns: 160px repeat(' + lignes.length + ', minmax(180px, 1fr));">';
 
-  // En-têtes fournisseurs (cliquables si choix de référence).
+  // En-têtes fournisseurs (cliquables si choix de référence). Le ✕ « retirer du groupe »
+  // est présent dans les deux modes ; en mode choix s'ajoute le badge « ✓ réf » si choisi.
   html += '<div class="cmp-cell cmp-cell--head cmp-cell--label"></div>';
   lignes.forEach((l) => {
     const attrs = cliquable
       ? ` data-choix-cv="${choisirCv}" data-choix-ligne="${l.id}" role="button" title="Choisir cet achat comme référence"`
       : '';
-    const btn = retirer
-      ? `<button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>`
-      : (cliquable && l.id === refId ? '<span class="cmp-ref-check">✓ réf</span>' : '');
+    const croix = (retirer || cliquable)
+      ? `<button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>` : '';
+    const refBadge = (cliquable && l.id === refId) ? '<span class="cmp-ref-check">✓ réf</span>' : '';
     html += `<div class="cmp-cell cmp-cell--head${colClass(l)}"${attrs}>
       <div class="cmp-fourn">${esc(l.fournisseur_nom)}</div>
-      ${btn}
+      ${refBadge}${croix}
     </div>`;
   });
 
@@ -423,10 +424,16 @@ function cablerMarge() {
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
   });
 
+  // ✕ « retirer du groupe » dans le tableau d'une carte (sort l'article de TOUT le groupe).
+  $('cmp-marge').querySelectorAll('.cmp-remove').forEach((b) => {
+    b.addEventListener('click', (e) => { e.stopPropagation(); retirerLigne(b.dataset.cat); });
+  });
+
   // Choix de la référence : clic sur une colonne du tableau comparatif dans la carte dépliée.
-  // Recliquer la colonne déjà choisie la retire.
+  // Recliquer la colonne déjà choisie la retire. Le clic sur le ✕ est ignoré (géré ci-dessus).
   $('cmp-marge').querySelectorAll('[data-choix-ligne]').forEach((cell) => {
-    cell.addEventListener('click', () => {
+    cell.addEventListener('click', (e) => {
+      if (e.target.closest('.cmp-remove')) return;
       const cv = Number(cell.dataset.choixCv);
       const ligne = Number(cell.dataset.choixLigne);
       const pv = (dernierVS.produits_vente || []).find((x) => x.id === cv);
