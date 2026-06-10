@@ -48,6 +48,7 @@ function bindEvents() {
   document.getElementById('btn-sauver-cmd').addEventListener('click', sauverCommande);
   document.getElementById('btn-envoyer-cmd').addEventListener('click', envoyerCommande);
   document.getElementById('btn-dupliquer').addEventListener('click', dupliquerCommande);
+  document.getElementById('btn-facturer').addEventListener('click', saisirFacture);
   document.getElementById('btn-annuler-cmd').addEventListener('click', annulerCommande);
   document.getElementById('btn-ajouter-ligne').addEventListener('click', ouvrirModalLigne);
   document.getElementById('modal-ligne-fermer').addEventListener('click', fermerModalLigne);
@@ -647,6 +648,8 @@ async function ouvrirCommande(id) {
     document.getElementById('btn-ajouter-ligne').disabled = !editable;
     document.getElementById('btn-envoyer-cmd').hidden = !editable;
     document.getElementById('btn-dupliquer').hidden = false;
+    // "Saisir la facture" : seulement si une réception est rapprochée à cette commande.
+    document.getElementById('btn-facturer').hidden = !cmdCourante.reception_id;
     document.getElementById('btn-annuler-cmd').hidden = cmdCourante.statut === 'annulee' || cmdCourante.statut === 'livree';
     document.getElementById('btn-sauver-cmd').hidden = !editable;
     document.getElementById('cmd-form-erreur').hidden = true;
@@ -853,6 +856,22 @@ async function dupliquerCommande() {
   await chargerCommandes();
   fermerModalCmd();
   ouvrirCommande(nova.id);
+}
+
+// Crée la facture pré-remplie depuis la réception rapprochée (ou rouvre celle existante),
+// puis bascule sur la page Factures pour la saisie du rapprochement.
+async function saisirFacture() {
+  if (!cmdCourante || !cmdCourante.reception_id) return;
+  if (!cmdCourante.facture_id) {
+    const r = await fetch(`/api/achats/factures/depuis-reception/${cmdCourante.reception_id}`, { method: 'POST' });
+    if (!r.ok && r.status !== 409) {
+      const err = await r.json().catch(() => ({}));
+      afficherErreur(err.detail || 'Impossible de créer la facture.');
+      return;
+    }
+  }
+  // La page Factures liste/ouvre la facture ; le rapprochement s'y fait.
+  window.location.href = '/factures-achats.html';
 }
 
 async function annulerCommande() {

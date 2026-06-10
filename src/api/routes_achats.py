@@ -23,6 +23,15 @@ GET    /api/achats/commandes/{id}/lignes                 → lignes de commande
 POST   /api/achats/commandes/{id}/lignes                 → ajouter ligne
 PUT    /api/achats/commandes/{id}/lignes/{ligne_id}      → modifier ligne
 DELETE /api/achats/commandes/{id}/lignes/{ligne_id}      → supprimer ligne
+
+GET    /api/achats/factures                              → liste factures (filtres)
+GET    /api/achats/factures/{id}                         → détail facture + lignes + écarts
+POST   /api/achats/factures/depuis-reception/{rid}       → facture pré-remplie (réception + commande)
+POST   /api/achats/factures                              → créer facture manuelle
+PUT    /api/achats/factures/{id}                         → modifier entête (n°, date, statut)
+PUT    /api/achats/factures/{id}/lignes/{ligne_id}       → saisir poids/prix facturé → recalcul écarts
+DELETE /api/achats/factures/{id}/lignes/{ligne_id}       → supprimer ligne
+DELETE /api/achats/factures/{id}                         → supprimer facture
 """
 
 import io
@@ -183,6 +192,51 @@ class CommandeUpdate(BaseModel):
     date_livraison_prevue: Optional[str] = None
     statut: Optional[str] = None
     commentaire: Optional[str] = None
+
+
+# --- Factures (sous-module rapprochement commande ↔ réception ↔ facture) ---
+
+class FactureUpdate(BaseModel):
+    numero_facture: Optional[str] = None
+    date_facture: Optional[str] = None
+    statut: Optional[str] = None          # brouillon|validee|litige
+    commentaire: Optional[str] = None
+
+
+class FactureLigneUpdate(BaseModel):
+    poids_facture_kg: Optional[float] = None
+    prix_facture_ht: Optional[float] = None
+    statut_ligne: Optional[str] = None    # ok|litige
+    commentaire_litige: Optional[str] = None
+
+
+class FactureLigneCreate(BaseModel):
+    catalogue_fournisseur_id: Optional[int] = None
+    reception_ligne_id: Optional[int] = None
+    code_article: Optional[str] = None
+    designation: str
+    unite: Optional[str] = "kg"
+    poids_recu_kg: Optional[float] = None
+    prix_commande_ht: Optional[float] = None
+    quantite_commandee: Optional[float] = None
+    poids_facture_kg: Optional[float] = None
+    prix_facture_ht: Optional[float] = None
+
+
+class FactureCreate(BaseModel):
+    """Création manuelle d'une facture (ligne par ligne) — usage libre.
+
+    Pour le cas standard, utiliser POST /factures/depuis-reception/{reception_id}
+    qui pré-remplit les lignes à partir de la réception et de la commande mappée.
+    """
+    fournisseur_id: int
+    reception_id: Optional[int] = None
+    commande_id: Optional[int] = None
+    numero_facture: Optional[str] = None
+    date_facture: Optional[str] = None
+    personnel_id: Optional[int] = None
+    commentaire: Optional[str] = None
+    lignes: Optional[List[FactureLigneCreate]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -1145,6 +1199,23 @@ async def get_commande(commande_id: int):
             (commande_id,)
         )
         result["lignes"] = [dict(r) for r in await cur2.fetchall()]
+
+        # Réception rapprochée (mapping) + facture éventuelle — pour le bouton "Saisir la facture".
+        cur3 = await db.execute(
+            """SELECT reception_id FROM commande_receptions_mapping
+               WHERE commande_id = ? ORDER BY date_liaison DESC LIMIT 1""",
+            (commande_id,),
+        )
+        map_row = await cur3.fetchone()
+        result["reception_id"] = map_row["reception_id"] if map_row else None
+
+        cur4 = await db.execute(
+            "SELECT id FROM factures WHERE commande_id = ? OR reception_id = ? LIMIT 1",
+            (commande_id, result["reception_id"]),
+        )
+        fac_row = await cur4.fetchone()
+        result["facture_id"] = fac_row["id"] if fac_row else None
+
         return result
 
 
@@ -2782,3 +2853,374 @@ async def create_groupe_from_cluster(body: ComparatifFromCluster, _=Depends(requ
         await db.commit()
         cur2 = await db.execute("SELECT * FROM comparatif_groupe WHERE id = ?", (groupe_id,))
         return dict(await cur2.fetchone())
+
+
+# ===========================================================================
+# FACTURES — rapprochement commande ↔ réception ↔ facture fournisseur
+# ===========================================================================
+#
+# Principe : la facture ne modifie JAMAIS la réception (poids HACCP pesé à quai).
+# Elle copie le poids reçu (figé), saisit le poids/prix FACTURÉ par le fournisseur,
+# et croise la COMMANDE (prix négocié) pour révéler les écarts. Tout écart est
+# calculé : facturé − reçu (poids), facturé − commande (prix), et sur le montant.
+
+
+def _calc_ecarts_ligne(poids_recu, prix_commande, poids_facture, prix_facture):
+    """Calcule (montant_facture, ecart_poids, ecart_prix, ecart_montant) pour une ligne.
+
+    - montant facturé = poids facturé × prix facturé
+    - écart poids     = poids facturé − poids reçu (positif = facturé en trop)
+    - écart prix      = prix facturé − prix commande (positif = plus cher que négocié)
+    - écart montant   = montant facturé − montant attendu (poids reçu × prix commande)
+    Les valeurs manquantes sont traitées comme 0 pour ne pas casser le calcul.
+    """
+    pr = poids_recu or 0.0
+    pc = prix_commande or 0.0
+    pf = poids_facture or 0.0
+    prix_f = prix_facture or 0.0
+
+    montant_facture = pf * prix_f
+    montant_attendu = pr * pc
+    ecart_poids = pf - pr
+    ecart_prix = prix_f - pc
+    ecart_montant = montant_facture - montant_attendu
+    return montant_facture, ecart_poids, ecart_prix, ecart_montant
+
+
+async def _recalculer_ecarts_ligne(db, ligne_id: int):
+    """Relit une ligne, recalcule montant + écarts, persiste."""
+    cur = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
+    ligne = await cur.fetchone()
+    if not ligne:
+        return
+    montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
+        ligne["poids_recu_kg"], ligne["prix_commande_ht"],
+        ligne["poids_facture_kg"], ligne["prix_facture_ht"],
+    )
+    await db.execute(
+        """UPDATE facture_lignes
+           SET montant_facture_ht = ?, ecart_poids_kg = ?, ecart_prix_ht = ?, ecart_montant_ht = ?
+           WHERE id = ?""",
+        (montant, e_poids, e_prix, e_montant, ligne_id),
+    )
+
+
+async def _recalculer_totaux_facture(db, facture_id: int):
+    """Recalcule les totaux d'entête (facturé, attendu, écart) depuis les lignes."""
+    cur = await db.execute(
+        """SELECT
+               COALESCE(SUM(montant_facture_ht), 0) AS total_facture,
+               COALESCE(SUM(COALESCE(poids_recu_kg, 0) * COALESCE(prix_commande_ht, 0)), 0) AS total_attendu
+           FROM facture_lignes WHERE facture_id = ?""",
+        (facture_id,),
+    )
+    row = await cur.fetchone()
+    total_facture = row["total_facture"]
+    total_attendu = row["total_attendu"]
+    await db.execute(
+        """UPDATE factures
+           SET montant_total_ht_facture = ?, montant_total_ht_attendu = ?, ecart_total_ht = ?
+           WHERE id = ?""",
+        (total_facture, total_attendu, total_facture - total_attendu, facture_id),
+    )
+
+
+@router.get("/factures")
+async def get_factures(
+    fournisseur_id: Optional[int] = Query(None),
+    statut: Optional[str] = Query(None),
+    limit: int = Query(50),
+):
+    async with get_db() as db:
+        sql = """
+            SELECT fac.*, f.nom AS fournisseur_nom,
+                   c.numero_commande AS numero_commande,
+                   p.prenom AS personnel_prenom
+            FROM factures fac
+            JOIN fournisseurs f ON f.id = fac.fournisseur_id
+            LEFT JOIN commandes c ON c.id = fac.commande_id
+            LEFT JOIN personnel p ON p.id = fac.personnel_id
+            WHERE fac.boutique_id = 1
+        """
+        params: list = []
+        if fournisseur_id:
+            sql += " AND fac.fournisseur_id = ?"
+            params.append(fournisseur_id)
+        if statut:
+            sql += " AND fac.statut = ?"
+            params.append(statut)
+        sql += " ORDER BY fac.date_facture DESC, fac.id DESC LIMIT ?"
+        params.append(limit)
+        cur = await db.execute(sql, params)
+        factures = [dict(r) for r in await cur.fetchall()]
+
+        for fac in factures:
+            cur2 = await db.execute(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(statut_ligne = 'litige'), 0) AS litiges "
+                "FROM facture_lignes WHERE facture_id = ?",
+                (fac["id"],),
+            )
+            r2 = await cur2.fetchone()
+            fac["nb_lignes"] = r2["n"]
+            fac["nb_litiges"] = r2["litiges"]
+
+        return factures
+
+
+@router.get("/factures/{facture_id}")
+async def get_facture(facture_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            """SELECT fac.*, f.nom AS fournisseur_nom, f.email_commercial, f.telephone, f.adresse,
+                      c.numero_commande AS numero_commande, c.date_commande AS date_commande,
+                      p.prenom AS personnel_prenom
+               FROM factures fac
+               JOIN fournisseurs f ON f.id = fac.fournisseur_id
+               LEFT JOIN commandes c ON c.id = fac.commande_id
+               LEFT JOIN personnel p ON p.id = fac.personnel_id
+               WHERE fac.id = ?""",
+            (facture_id,),
+        )
+        facture = await cur.fetchone()
+        if not facture:
+            raise HTTPException(404, "Facture introuvable")
+        result = dict(facture)
+
+        cur2 = await db.execute(
+            "SELECT * FROM facture_lignes WHERE facture_id = ? ORDER BY id", (facture_id,)
+        )
+        result["lignes"] = [dict(r) for r in await cur2.fetchall()]
+        return result
+
+
+@router.post("/factures/depuis-reception/{reception_id}", status_code=201)
+async def creer_facture_depuis_reception(reception_id: int, personnel_id: Optional[int] = None):
+    """Crée une facture pré-remplie à partir d'une réception.
+
+    Pour chaque ligne de réception : copie le poids reçu (figé) + la désignation,
+    puis va chercher dans la commande mappée le prix négocié et la quantité commandée
+    (match sur catalogue_fournisseur_id, sinon sur la désignation). Le gérant n'a plus
+    qu'à saisir les poids/prix réellement facturés ; les écarts se calculent ensuite.
+    """
+    async with get_db() as db:
+        cur = await db.execute("SELECT * FROM receptions WHERE id = ?", (reception_id,))
+        reception = await cur.fetchone()
+        if not reception:
+            raise HTTPException(404, "Réception introuvable")
+
+        # Empêcher les doublons : une réception = une facture
+        cur_dup = await db.execute(
+            "SELECT id FROM factures WHERE reception_id = ?", (reception_id,)
+        )
+        existante = await cur_dup.fetchone()
+        if existante:
+            raise HTTPException(
+                409, f"Une facture existe déjà pour cette réception (id={existante['id']})"
+            )
+
+        # Commande mappée (s'il y en a une)
+        cur_map = await db.execute(
+            """SELECT commande_id FROM commande_receptions_mapping
+               WHERE reception_id = ? ORDER BY date_liaison DESC LIMIT 1""",
+            (reception_id,),
+        )
+        map_row = await cur_map.fetchone()
+        commande_id = map_row["commande_id"] if map_row else None
+
+        # Fournisseur : priorité au fournisseur de la commande, sinon réception
+        fournisseur_id = reception["fournisseur_principal_id"]
+        if commande_id:
+            cur_c = await db.execute(
+                "SELECT fournisseur_id FROM commandes WHERE id = ?", (commande_id,)
+            )
+            c_row = await cur_c.fetchone()
+            if c_row:
+                fournisseur_id = c_row["fournisseur_id"]
+        if not fournisseur_id:
+            raise HTTPException(
+                400,
+                "Aucun fournisseur identifié pour cette réception (commande ou fournisseur principal requis)",
+            )
+
+        # Lignes de réception (poids HACCP) + désignation via COALESCE
+        cur_rl = await db.execute(
+            """SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
+                      rl.poids_kg AS poids_recu_kg,
+                      COALESCE(p.nom, cf.designation, rl.designation_libre) AS designation,
+                      cf.code_article AS code_article
+               FROM reception_lignes rl
+               LEFT JOIN produits p ON p.id = rl.produit_id
+               LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+               WHERE rl.reception_id = ?
+               ORDER BY rl.id""",
+            (reception_id,),
+        )
+        lignes_reception = [dict(r) for r in await cur_rl.fetchall()]
+
+        # Lignes de commande (prix négocié) pour le matching
+        lignes_commande = []
+        if commande_id:
+            cur_cl = await db.execute(
+                "SELECT * FROM commande_lignes WHERE commande_id = ?", (commande_id,)
+            )
+            lignes_commande = [dict(r) for r in await cur_cl.fetchall()]
+
+        def _trouver_commande(rl):
+            """Retrouve la ligne de commande (catalogue d'abord, puis désignation)."""
+            if rl.get("catalogue_fournisseur_id"):
+                for cl in lignes_commande:
+                    if cl["catalogue_fournisseur_id"] == rl["catalogue_fournisseur_id"]:
+                        return cl
+            desig = (rl.get("designation") or "").strip().lower()
+            for cl in lignes_commande:
+                if (cl["designation"] or "").strip().lower() == desig:
+                    return cl
+            return None
+
+        # Création de l'entête
+        date_fac = date.today().isoformat()
+        cur_ins = await db.execute(
+            """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
+                                     date_facture, statut, personnel_id)
+               VALUES (1, ?, ?, ?, ?, 'brouillon', ?)""",
+            (fournisseur_id, reception_id, commande_id, date_fac, personnel_id),
+        )
+        facture_id = cur_ins.lastrowid
+
+        # Lignes pré-remplies
+        for rl in lignes_reception:
+            cl = _trouver_commande(rl)
+            prix_commande = cl["prix_unitaire_ht"] if cl else None
+            quantite_commandee = cl["quantite_commandee"] if cl else None
+            unite = (cl["unite"] if cl else None) or "kg"
+            # Pré-remplissage du facturé = poids reçu + prix commande (le gérant ajuste).
+            poids_facture = rl["poids_recu_kg"]
+            prix_facture = prix_commande
+            montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
+                rl["poids_recu_kg"], prix_commande, poids_facture, prix_facture
+            )
+            await db.execute(
+                """INSERT INTO facture_lignes
+                   (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
+                    designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
+                    poids_facture_kg, prix_facture_ht, montant_facture_ht,
+                    ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (facture_id, rl["catalogue_fournisseur_id"], rl["reception_ligne_id"],
+                 rl["code_article"], rl["designation"] or "Article", unite,
+                 rl["poids_recu_kg"], prix_commande, quantite_commandee,
+                 poids_facture, prix_facture, montant, e_poids, e_prix, e_montant),
+            )
+
+        await _recalculer_totaux_facture(db, facture_id)
+        await db.commit()
+
+        return await get_facture(facture_id)
+
+
+@router.post("/factures", status_code=201)
+async def create_facture(body: FactureCreate):
+    """Création manuelle d'une facture (entête + lignes optionnelles)."""
+    async with get_db() as db:
+        cur_f = await db.execute(
+            "SELECT id FROM fournisseurs WHERE id = ? AND boutique_id = 1", (body.fournisseur_id,)
+        )
+        if not await cur_f.fetchone():
+            raise HTTPException(404, "Fournisseur introuvable")
+
+        date_fac = body.date_facture or date.today().isoformat()
+        cur = await db.execute(
+            """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
+                                     numero_facture, date_facture, statut, personnel_id, commentaire)
+               VALUES (1, ?, ?, ?, ?, ?, 'brouillon', ?, ?)""",
+            (body.fournisseur_id, body.reception_id, body.commande_id, body.numero_facture,
+             date_fac, body.personnel_id, body.commentaire),
+        )
+        facture_id = cur.lastrowid
+
+        for ligne in (body.lignes or []):
+            montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
+                ligne.poids_recu_kg, ligne.prix_commande_ht,
+                ligne.poids_facture_kg, ligne.prix_facture_ht,
+            )
+            await db.execute(
+                """INSERT INTO facture_lignes
+                   (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
+                    designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
+                    poids_facture_kg, prix_facture_ht, montant_facture_ht,
+                    ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (facture_id, ligne.catalogue_fournisseur_id, ligne.reception_ligne_id,
+                 ligne.code_article, ligne.designation, ligne.unite or "kg",
+                 ligne.poids_recu_kg, ligne.prix_commande_ht, ligne.quantite_commandee,
+                 ligne.poids_facture_kg, ligne.prix_facture_ht, montant,
+                 e_poids, e_prix, e_montant),
+            )
+
+        await _recalculer_totaux_facture(db, facture_id)
+        await db.commit()
+        return await get_facture(facture_id)
+
+
+@router.put("/factures/{facture_id}")
+async def update_facture(facture_id: int, body: FactureUpdate):
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Facture introuvable")
+
+        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        if not fields:
+            raise HTTPException(400, "Aucun champ à modifier")
+
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [facture_id]
+        await db.execute(f"UPDATE factures SET {set_clause} WHERE id = ?", values)
+        await db.commit()
+        return await get_facture(facture_id)
+
+
+@router.put("/factures/{facture_id}/lignes/{ligne_id}")
+async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLigneUpdate):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM facture_lignes WHERE id = ? AND facture_id = ?", (ligne_id, facture_id)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Ligne introuvable")
+
+        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        if not fields:
+            raise HTTPException(400, "Aucun champ à modifier")
+
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [ligne_id]
+        await db.execute(f"UPDATE facture_lignes SET {set_clause} WHERE id = ?", values)
+        # Recalcule écarts de la ligne + totaux d'entête
+        await _recalculer_ecarts_ligne(db, ligne_id)
+        await _recalculer_totaux_facture(db, facture_id)
+        await db.commit()
+
+        cur2 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
+        return dict(await cur2.fetchone())
+
+
+@router.delete("/factures/{facture_id}/lignes/{ligne_id}", status_code=204)
+async def delete_facture_ligne(facture_id: int, ligne_id: int):
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM facture_lignes WHERE id = ? AND facture_id = ?", (ligne_id, facture_id)
+        )
+        await _recalculer_totaux_facture(db, facture_id)
+        await db.commit()
+
+
+@router.delete("/factures/{facture_id}", status_code=204)
+async def delete_facture(facture_id: int):
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Facture introuvable")
+        await db.execute("DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,))
+        await db.execute("DELETE FROM factures WHERE id = ?", (facture_id,))
+        await db.commit()

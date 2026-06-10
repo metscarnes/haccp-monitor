@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Factures — Au Comptoir des Lilas</title>
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/achats.css">
+  <link rel="stylesheet" href="/static/css/pages/factures.css">
+</head>
+<body class="ach-body">
+<script src="/static/js/core/guard.js"></script>
+
+  <header class="ach-bar">
+    <a href="/achats.html" class="ach-retour">← Achats</a>
+    <div class="ach-bar-titre">🧾 FACTURES</div>
+    <div class="ach-bar-actions">
+      <button class="ach-btn ach-btn--primary" id="btn-nouvelle-facture">
+        + Nouvelle facture
+      </button>
+    </div>
+  </header>
+
+  <div class="ach-stats">
+    <div class="ach-stat ach-stat--warn">
+      <div class="ach-stat-num" id="stat-brouillon">—</div>
+      <div class="ach-stat-lbl">Brouillons</div>
+    </div>
+    <div class="ach-stat ach-stat--ok">
+      <div class="ach-stat-num" id="stat-validee">—</div>
+      <div class="ach-stat-lbl">Validées</div>
+    </div>
+    <div class="ach-stat ach-stat--danger">
+      <div class="ach-stat-num" id="stat-litige">—</div>
+      <div class="ach-stat-lbl">En litige</div>
+    </div>
+  </div>
+
+  <div class="ach-filtres">
+    <div class="ach-filtre">
+      <label>Fournisseur</label>
+      <select id="filtre-fournisseur">
+        <option value="">Tous</option>
+      </select>
+    </div>
+    <div class="ach-filtre">
+      <label>Statut</label>
+      <select id="filtre-statut">
+        <option value="">Tous</option>
+        <option value="brouillon">Brouillon</option>
+        <option value="validee">Validée</option>
+        <option value="litige">En litige</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="zone-erreur" class="ach-erreur" hidden></div>
+
+  <div class="ach-table-wrap">
+    <table class="ach-table" id="table-factures">
+      <thead>
+        <tr>
+          <th>N° facture</th>
+          <th>Date</th>
+          <th>Fournisseur</th>
+          <th>Commande</th>
+          <th class="ach-col-num">Articles</th>
+          <th class="ach-col-num">Facturé HT</th>
+          <th class="ach-col-num">Écart HT</th>
+          <th>Statut</th>
+          <th class="ach-col-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-factures">
+        <tr><td colspan="9" class="ach-vide">Chargement…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Modal : choisir la réception à facturer ── -->
+  <div class="ach-modal" id="modal-choix-reception" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Nouvelle facture — choisir la livraison</h2>
+        <button class="ach-modal-fermer" id="modal-choix-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <p style="font-size:var(--text-sm); color:#6b7280; margin-bottom:var(--space-3);">
+          Sélectionnez la réception à rapprocher. La facture est pré-remplie avec les
+          poids pesés et les prix de la commande ; vous corrigez ensuite ce qui est facturé.
+        </p>
+        <div class="ach-champ" style="margin-bottom:var(--space-3);">
+          <label>Recherche</label>
+          <input type="search" id="choix-search" placeholder="Fournisseur ou date…" autocomplete="off">
+        </div>
+        <div id="choix-resultats" style="max-height:50vh; overflow-y:auto; border:1px solid #e8d9c4; border-radius:var(--radius-sm);"></div>
+      </div>
+      <div class="ach-modal-footer">
+        <button type="button" class="ach-btn" id="btn-choix-annuler">Fermer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal détail / rapprochement facture ── -->
+  <div class="ach-modal" id="modal-facture" hidden>
+    <div class="ach-modal-card ach-modal-card--xl">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre" id="modal-fac-titre">Facture</h2>
+        <button class="ach-modal-fermer" id="modal-fac-fermer">✕</button>
+      </header>
+
+      <form class="ach-form" id="form-facture-header" style="border-bottom:2px solid #e8d9c4;">
+        <input type="hidden" id="fac-id">
+        <div class="ach-champ">
+          <label>Fournisseur</label>
+          <input type="text" id="fac-fournisseur-nom" disabled style="background:#f9f5ef;">
+        </div>
+        <div class="ach-champ">
+          <label>N° de facture fournisseur</label>
+          <input type="text" id="fac-numero" placeholder="Ex : FA-2026-0142">
+        </div>
+        <div class="ach-champ">
+          <label>Date facture</label>
+          <input type="date" id="fac-date">
+        </div>
+        <div class="ach-champ">
+          <label>Commande rapprochée</label>
+          <input type="text" id="fac-commande" disabled style="background:#f9f5ef;">
+        </div>
+        <div class="ach-champ ach-champ--full">
+          <label>Commentaire</label>
+          <textarea id="fac-commentaire" placeholder="Note interne…"></textarea>
+        </div>
+        <div id="fac-form-erreur" class="ach-form-erreur" hidden></div>
+      </form>
+
+      <div class="ach-lignes">
+        <div class="ach-lignes-titre">Rapprochement — reçu vs facturé</div>
+        <div class="fac-table-wrap">
+          <table class="ach-table fac-table" id="table-lignes-facture">
+            <thead>
+              <tr>
+                <th>Article</th>
+                <th class="ach-col-num">Reçu (kg)</th>
+                <th class="ach-col-num">Facturé (kg)</th>
+                <th class="ach-col-num">Prix cmd HT</th>
+                <th class="ach-col-num">Prix fact. HT</th>
+                <th class="ach-col-num">Montant HT</th>
+                <th class="ach-col-num">Écart HT</th>
+                <th style="text-align:center;">Litige</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-lignes-facture"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="ach-total-bar">
+        <span style="display:flex; gap:var(--space-4); align-items:center; flex-wrap:wrap;">
+          <span style="font-size:var(--text-sm); color:#6b7280;">Attendu (cmd × reçu) : <strong id="fac-total-attendu">0,00 €</strong></span>
+          <span style="font-size:var(--text-sm); color:#6b7280;">Facturé : <strong id="fac-total-facture">0,00 €</strong></span>
+          <span style="font-size:var(--text-base);">Écart total : <strong id="fac-total-ecart">0,00 €</strong></span>
+        </span>
+      </div>
+
+      <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-fac">🗑 Supprimer</button>
+        </div>
+        <div style="display:flex; gap:var(--space-2);">
+          <button type="button" class="ach-btn" id="btn-fermer-fac">Fermer</button>
+          <button type="button" class="ach-btn ach-btn--primary" id="btn-sauver-fac">💾 Enregistrer</button>
+          <button type="button" class="ach-btn ach-btn--ok" id="btn-valider-fac">✅ Valider la facture</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal commentaire litige ── -->
+  <div class="ach-modal" id="modal-litige" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Marquer un litige</h2>
+        <button class="ach-modal-fermer" id="modal-litige-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <input type="hidden" id="litige-ligne-id">
+        <div class="ach-champ">
+          <label>Motif du litige</label>
+          <textarea id="litige-commentaire" placeholder="Ex : poids facturé supérieur au pesé, prix au-dessus du tarif négocié…"></textarea>
+        </div>
+      </div>
+      <div class="ach-modal-footer">
+        <button type="button" class="ach-btn" id="btn-litige-annuler">Annuler</button>
+        <button type="button" class="ach-btn ach-btn--danger" id="btn-litige-confirmer">Marquer en litige</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/achats/factures-achats.js?v=1"></script>
+</body>
+</html>

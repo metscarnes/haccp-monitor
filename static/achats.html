@@ -75,6 +75,13 @@
       <div class="hub-tuile-statut" id="stat-commandes">Chargement…</div>
     </a>
 
+    <!-- Factures -->
+    <a class="hub-tuile" href="/factures-achats.html" aria-label="Factures fournisseurs">
+      <div class="hub-tuile-icone" aria-hidden="true">🧾</div>
+      <div class="hub-tuile-titre">FACTURES</div>
+      <div class="hub-tuile-statut" id="stat-factures">Rapprocher les écarts</div>
+    </a>
+
     <!-- Comparateur fournisseurs -->
     <a class="hub-tuile" href="/comparatif-achats.html" aria-label="Comparateur fournisseurs">
       <div class="hub-tuile-icone" aria-hidden="true">⚖️</div>
@@ -87,10 +94,19 @@
   <script>
     async function chargerStats() {
       try {
-        const [fournisseurs, commandes] = await Promise.all([
+        const [fournisseurs, commandes, factures] = await Promise.all([
           fetch('/api/achats/fournisseurs').then(r => r.json()),
           fetch('/api/achats/commandes?limit=100').then(r => r.json()),
+          fetch('/api/achats/factures?limit=100').then(r => r.json()),
         ]);
+
+        const enLitige = factures.filter(f => f.statut === 'litige').length;
+        const statFac = document.getElementById('stat-factures');
+        if (statFac) {
+          statFac.textContent = enLitige > 0
+            ? `${enLitige} en litige`
+            : (factures.length > 0 ? `${factures.length} facture${factures.length > 1 ? 's' : ''}` : 'Rapprocher les écarts');
+        }
         document.getElementById('stat-fournisseurs').textContent =
           `${fournisseurs.length} fournisseur${fournisseurs.length > 1 ? 's' : ''} actif${fournisseurs.length > 1 ? 's' : ''}`;
 

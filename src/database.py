@@ -843,6 +843,63 @@ CREATE TABLE IF NOT EXISTS panier_lignes (
 CREATE INDEX IF NOT EXISTS idx_mapping_reception
     ON commande_receptions_mapping(reception_id);
 
+-- Sous-module FACTURE : rapprochement commande ↔ réception ↔ facture fournisseur.
+-- Voir le bloc de migration v6.6 pour le détail des règles (poids HACCP figé, écarts).
+CREATE TABLE IF NOT EXISTS factures (
+    id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id               INTEGER NOT NULL DEFAULT 1,
+    fournisseur_id            INTEGER NOT NULL,
+    reception_id              INTEGER,
+    commande_id               INTEGER,
+    numero_facture            TEXT,
+    date_facture              DATE    NOT NULL DEFAULT CURRENT_DATE,
+    statut                    TEXT    NOT NULL DEFAULT 'brouillon',  -- brouillon|validee|litige
+    montant_total_ht_facture  REAL    DEFAULT 0.0,
+    montant_total_ht_attendu  REAL    DEFAULT 0.0,
+    ecart_total_ht            REAL    DEFAULT 0.0,
+    commentaire               TEXT,
+    personnel_id              INTEGER,
+    created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)    REFERENCES boutiques(id),
+    FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+    FOREIGN KEY (reception_id)   REFERENCES receptions(id),
+    FOREIGN KEY (commande_id)    REFERENCES commandes(id),
+    FOREIGN KEY (personnel_id)   REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_factures_fournisseur
+    ON factures(fournisseur_id, date_facture DESC);
+CREATE INDEX IF NOT EXISTS idx_factures_reception
+    ON factures(reception_id);
+
+CREATE TABLE IF NOT EXISTS facture_lignes (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    facture_id               INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,
+    reception_ligne_id       INTEGER,
+    code_article             TEXT,
+    designation              TEXT    NOT NULL,
+    unite                    TEXT    NOT NULL DEFAULT 'kg',
+    poids_recu_kg            REAL,
+    prix_commande_ht         REAL,
+    quantite_commandee       REAL,
+    poids_facture_kg         REAL,
+    prix_facture_ht          REAL,
+    montant_facture_ht       REAL    DEFAULT 0.0,
+    ecart_poids_kg           REAL    DEFAULT 0.0,
+    ecart_prix_ht            REAL    DEFAULT 0.0,
+    ecart_montant_ht         REAL    DEFAULT 0.0,
+    statut_ligne             TEXT    DEFAULT 'ok',   -- ok|litige
+    commentaire_litige       TEXT,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (facture_id)               REFERENCES factures(id) ON DELETE CASCADE,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture
+    ON facture_lignes(facture_id);
+
 CREATE TABLE IF NOT EXISTS maturation_carcasses (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_ligne_id     INTEGER NOT NULL,
@@ -1394,6 +1451,65 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                    SELECT g.ligne_choisie_id FROM comparatif_groupe g WHERE g.id = comparatif_groupe_vente.groupe_id
                )
                WHERE ligne_choisie_id IS NULL""",
+            # v6.6 — Sous-module FACTURE (module Achat). Une facture fournisseur rapproche
+            # la COMMANDE (prix négocié, quantité demandée) et la RÉCEPTION (poids HACCP
+            # réellement pesé à quai) avec ce que le fournisseur FACTURE. La facture ne
+            # modifie JAMAIS la réception : poids_recu_kg est une copie figée au moment de
+            # la création, reception_ligne_id garde le lien de traçabilité. Les écarts
+            # (poids/prix/montant) sont calculés et stockés pour l'affichage + le suivi litige.
+            """CREATE TABLE IF NOT EXISTS factures (
+                id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id               INTEGER NOT NULL DEFAULT 1,
+                fournisseur_id            INTEGER NOT NULL,
+                reception_id              INTEGER,            -- livraison rapprochée
+                commande_id               INTEGER,            -- déduite du mapping (référence)
+                numero_facture            TEXT,               -- n° de la facture fournisseur (saisi)
+                date_facture              DATE    NOT NULL DEFAULT CURRENT_DATE,
+                statut                    TEXT    NOT NULL DEFAULT 'brouillon',  -- brouillon|validee|litige
+                montant_total_ht_facture  REAL    DEFAULT 0.0,   -- somme facturée
+                montant_total_ht_attendu  REAL    DEFAULT 0.0,   -- somme commande (théorique)
+                ecart_total_ht            REAL    DEFAULT 0.0,    -- facturé - attendu
+                commentaire               TEXT,
+                personnel_id              INTEGER,
+                created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (boutique_id)    REFERENCES boutiques(id),
+                FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
+                FOREIGN KEY (reception_id)   REFERENCES receptions(id),
+                FOREIGN KEY (commande_id)    REFERENCES commandes(id),
+                FOREIGN KEY (personnel_id)   REFERENCES personnel(id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS facture_lignes (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                facture_id               INTEGER NOT NULL,
+                catalogue_fournisseur_id INTEGER,
+                reception_ligne_id       INTEGER,        -- lien vers le poids HACCP (jamais modifié)
+                code_article             TEXT,
+                designation              TEXT    NOT NULL,
+                unite                    TEXT    NOT NULL DEFAULT 'kg',
+                -- REÇU (copie figée de la réception, lecture seule) :
+                poids_recu_kg            REAL,
+                -- COMMANDÉ (référence prix négocié) :
+                prix_commande_ht         REAL,
+                quantite_commandee       REAL,
+                -- FACTURÉ (saisi par le gérant) :
+                poids_facture_kg         REAL,
+                prix_facture_ht          REAL,
+                montant_facture_ht       REAL    DEFAULT 0.0,
+                -- ÉCARTS (calculés) :
+                ecart_poids_kg           REAL    DEFAULT 0.0,
+                ecart_prix_ht            REAL    DEFAULT 0.0,
+                ecart_montant_ht         REAL    DEFAULT 0.0,
+                -- LITIGE :
+                statut_ligne             TEXT    DEFAULT 'ok',   -- ok|litige
+                commentaire_litige       TEXT,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (facture_id)               REFERENCES factures(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+                FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_factures_fournisseur ON factures(fournisseur_id, date_facture DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_factures_reception ON factures(reception_id)",
+            "CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture ON facture_lignes(facture_id)",
         ]
         for sql in migrations:
             try:

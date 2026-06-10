@@ -74,6 +74,14 @@ async def db():
         # Vider toutes les tables pour isolation totale entre tests
         phase2_tables = (
             # Enfants en premier (respecter les FK)
+            # Module Achat — Factures & Commandes (FK vers receptions/reception_lignes/fournisseurs)
+            "facture_lignes",                      # → factures, reception_lignes, catalogue_fournisseur
+            "factures",                            # → fournisseurs, receptions, commandes, personnel
+            "commande_receptions_mapping",         # → commandes, receptions, personnel
+            "commande_lignes",                     # → commandes, catalogue_fournisseur
+            "commandes",                           # → fournisseurs, personnel
+            "panier_lignes",                       # → fournisseurs, catalogue_fournisseur
+            "catalogue_fournisseur",               # → fournisseurs
             # Phase 3 — Fabrication
             "fabrication_lots",                    # → fabrications, recette_ingredients, reception_lignes
             "fabrications",                        # → recettes, personnel
@@ -111,8 +119,13 @@ async def db():
             "produits",
         )
         phase1_tables = ("releves", "alertes", "rapports", "destinataires", "enceintes", "boutiques")
+        # FK désactivées le temps du nettoyage : on vide en masse sans avoir à trier
+        # parfaitement l'ordre parent/enfant (le tri ci-dessus reste une intention,
+        # mais certaines tables du module Achat se croisent — OFF évite les faux conflits).
+        await conn.execute("PRAGMA foreign_keys = OFF")
         for table in phase2_tables + phase1_tables:
             await conn.execute(f"DELETE FROM {table}")
+        await conn.execute("PRAGMA foreign_keys = ON")
         await conn.executescript(SEED_SQL)
         await conn.executescript(SEED_SQL_PHASE2)
         await conn.commit()
