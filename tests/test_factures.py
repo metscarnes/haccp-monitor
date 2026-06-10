@@ -195,3 +195,39 @@ async def test_doublon_facture_refuse(app_client, db):
     assert r1.status_code == 201
     r2 = await app_client.post(f"/api/achats/factures/depuis-reception/{ids['reception_id']}")
     assert r2.status_code == 409, r2.text
+
+
+@pytest.mark.asyncio
+async def test_export_xlsx(app_client, db):
+    """L'export Excel renvoie un classeur valide avec l'entête et les lignes."""
+    import io, openpyxl
+    ids = await _setup_base(app_client, db)
+    fac = (await app_client.post(f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    r = await app_client.get(f"/api/achats/factures/{fac['id']}/export.xlsx")
+    assert r.status_code == 200, r.text
+    assert "spreadsheetml" in r.headers["content-type"]
+    assert "attachment" in r.headers["content-disposition"]
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    ws = wb.active
+    assert ws["A1"].value == "Fournisseur"
+    assert ws["B1"].value == "Bourdicaud"
+
+
+@pytest.mark.asyncio
+async def test_export_pdf_imprimable(app_client, db):
+    """La vue imprimable renvoie du HTML contenant le rapprochement + le bouton d'impression."""
+    ids = await _setup_base(app_client, db)
+    fac = (await app_client.post(f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+    lid = fac["lignes"][0]["id"]
+    await app_client.put(
+        f"/api/achats/factures/{fac['id']}/lignes/{lid}",
+        json={"poids_facture_kg": 10.0, "statut_ligne": "litige", "commentaire_litige": "Surfacturé"},
+    )
+
+    r = await app_client.get(f"/api/achats/factures/{fac['id']}/imprimer")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "Faux-filet boeuf" in r.text       # ligne présente
+    assert "Surfacturé" in r.text             # litige reporté
+    assert "window.print" in r.text           # impression → PDF navigateur

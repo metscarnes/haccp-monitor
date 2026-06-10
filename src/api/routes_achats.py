@@ -41,7 +41,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 from src.api.routes_auth import require_admin
@@ -3265,3 +3265,244 @@ async def delete_facture(facture_id: int):
         await db.execute("DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,))
         await db.execute("DELETE FROM factures WHERE id = ?", (facture_id,))
         await db.commit()
+
+
+# ── Exports facture (PDF imprimable + Excel) ─────────────────────────────────
+# Le récap contient TOUTES les lignes du rapprochement (pas seulement les litiges),
+# avec les écarts mis en évidence. Sert de document de contrôle / demande d'avoir.
+
+async def _charger_facture_complete(facture_id: int) -> dict:
+    """Entête enrichie + lignes d'une facture (factorisé pour les exports)."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """SELECT fac.*, f.nom AS fournisseur_nom, f.email_commercial, f.telephone, f.adresse,
+                      c.numero_commande AS numero_commande, c.date_commande AS date_commande
+               FROM factures fac
+               JOIN fournisseurs f ON f.id = fac.fournisseur_id
+               LEFT JOIN commandes c ON c.id = fac.commande_id
+               WHERE fac.id = ?""",
+            (facture_id,),
+        )
+        facture = await cur.fetchone()
+        if not facture:
+            raise HTTPException(404, "Facture introuvable")
+        result = dict(facture)
+        cur2 = await db.execute(
+            "SELECT * FROM facture_lignes WHERE facture_id = ? ORDER BY id", (facture_id,)
+        )
+        result["lignes"] = [dict(r) for r in await cur2.fetchall()]
+        return result
+
+
+def _fmt_eur(v) -> str:
+    return f"{(v or 0):.2f} €".replace(".", ",")
+
+
+def _fmt_kg(v) -> str:
+    return "—" if v is None else f"{v:.3f}".replace(".", ",")
+
+
+def _fmt_signe(v) -> str:
+    """Écart signé avec le tiret typographique pour le négatif (cohérent avec le front)."""
+    v = v or 0
+    if v > 0.0001:
+        return "+" + _fmt_eur(v)
+    if v < -0.0001:
+        return "−" + _fmt_eur(abs(v))
+    return _fmt_eur(0)
+
+
+@router.get("/factures/{facture_id}/export.xlsx")
+async def export_facture_xlsx(facture_id: int):
+    """Export Excel du rapprochement complet d'une facture."""
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        raise HTTPException(500, "openpyxl requis")
+
+    fac = await _charger_facture_complete(facture_id)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Rapprochement facture"
+
+    # Bandeau entête (méta facture)
+    meta = [
+        ("Fournisseur", fac.get("fournisseur_nom") or ""),
+        ("N° facture", fac.get("numero_facture") or "(non saisi)"),
+        ("Date facture", fac.get("date_facture") or ""),
+        ("Commande", fac.get("numero_commande") or "—"),
+        ("Statut", fac.get("statut") or ""),
+    ]
+    for i, (label, val) in enumerate(meta, 1):
+        ws.cell(row=i, column=1, value=label).font = Font(bold=True)
+        ws.cell(row=i, column=2, value=val)
+
+    start = len(meta) + 2  # ligne d'en-tête du tableau
+
+    cols = [
+        ("Article", 34),
+        ("Reçu (kg)", 14),
+        ("Facturé (kg)", 14),
+        ("Écart poids (kg)", 16),
+        ("Prix cmd HT", 14),
+        ("Prix fact. HT", 14),
+        ("Montant facturé HT", 18),
+        ("Écart HT", 14),
+        ("Litige", 10),
+        ("Motif litige", 30),
+    ]
+    header_fill = PatternFill("solid", fgColor="6B2D0F")
+    thin = Side(style="thin", color="D4C5AF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for ci, (label, width) in enumerate(cols, 1):
+        cell = ws.cell(row=start, column=ci, value=label)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = width
+
+    rouge = Font(color="B91C1C", bold=True)
+    vert = Font(color="166534", bold=True)
+    for ri, l in enumerate(fac["lignes"], start + 1):
+        ecart_montant = l.get("ecart_montant_ht") or 0
+        ecart_poids = l.get("ecart_poids_kg") or 0
+        litige = l.get("statut_ligne") == "litige"
+        valeurs = [
+            l.get("designation") or "",
+            _fmt_kg(l.get("poids_recu_kg")),
+            _fmt_kg(l.get("poids_facture_kg")),
+            _fmt_kg(ecart_poids) if abs(ecart_poids) > 1e-9 else "0",
+            _fmt_eur(l.get("prix_commande_ht")) if l.get("prix_commande_ht") is not None else "—",
+            _fmt_eur(l.get("prix_facture_ht")) if l.get("prix_facture_ht") is not None else "—",
+            _fmt_eur(l.get("montant_facture_ht")),
+            _fmt_signe(ecart_montant),
+            "OUI" if litige else "",
+            l.get("commentaire_litige") or "",
+        ]
+        for ci, val in enumerate(valeurs, 1):
+            cell = ws.cell(row=ri, column=ci, value=val)
+            cell.border = border
+            if ci in (2, 3, 4, 5, 6, 7, 8):
+                cell.alignment = Alignment(horizontal="right")
+        # Couleur de l'écart HT (col 8)
+        if abs(ecart_montant) > 1e-9:
+            ws.cell(row=ri, column=8).font = rouge if ecart_montant > 0 else vert
+
+    # Ligne de totaux
+    tot = start + 1 + len(fac["lignes"])
+    ws.cell(row=tot, column=1, value="TOTAUX").font = Font(bold=True)
+    ws.cell(row=tot, column=7, value=_fmt_eur(fac.get("montant_total_ht_facture"))).font = Font(bold=True)
+    cell_ecart = ws.cell(row=tot, column=8, value=_fmt_signe(fac.get("ecart_total_ht")))
+    et = fac.get("ecart_total_ht") or 0
+    cell_ecart.font = rouge if et > 1e-9 else (vert if et < -1e-9 else Font(bold=True))
+    ws.cell(row=tot + 1, column=1, value="Attendu (cmd × reçu) HT")
+    ws.cell(row=tot + 1, column=7, value=_fmt_eur(fac.get("montant_total_ht_attendu")))
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    num = (fac.get("numero_facture") or f"facture-{facture_id}").replace("/", "-").replace(" ", "_")
+    fname = f"rapprochement_{num}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+@router.get("/factures/{facture_id}/imprimer", response_class=HTMLResponse)
+async def imprimer_facture(facture_id: int):
+    """Page HTML imprimable du rapprochement (le navigateur fait « Enregistrer en PDF »).
+
+    Choisi plutôt qu'un PDF serveur : WeasyPrint nécessite des libs natives absentes
+    en dev Windows et fragiles sur le Pi ; l'impression navigateur donne un PDF parfait
+    sans dépendance serveur.
+    """
+    import html as _html
+
+    fac = await _charger_facture_complete(facture_id)
+    esc = _html.escape
+
+    def cell_ecart(v):
+        v = v or 0
+        if v > 0.0001:
+            return f'<td class="num ecart-haut">{_html.escape(_fmt_signe(v))}</td>'
+        if v < -0.0001:
+            return f'<td class="num ecart-bas">{_html.escape(_fmt_signe(v))}</td>'
+        return f'<td class="num ecart-nul">{_html.escape(_fmt_eur(0))}</td>'
+
+    lignes_html = ""
+    for l in fac["lignes"]:
+        litige = l.get("statut_ligne") == "litige"
+        ecart_poids = l.get("ecart_poids_kg") or 0
+        lignes_html += f"""
+        <tr class="{'litige' if litige else ''}">
+          <td>{esc(l.get('designation') or '')}{f'<div class="sub">{esc(l.get("code_article"))}</div>' if l.get('code_article') else ''}</td>
+          <td class="num">{esc(_fmt_kg(l.get('poids_recu_kg')))}</td>
+          <td class="num">{esc(_fmt_kg(l.get('poids_facture_kg')))}</td>
+          <td class="num">{esc(_fmt_kg(ecart_poids) if abs(ecart_poids) > 1e-9 else '0')}</td>
+          <td class="num">{esc(_fmt_eur(l.get('prix_commande_ht')) if l.get('prix_commande_ht') is not None else '—')}</td>
+          <td class="num">{esc(_fmt_eur(l.get('prix_facture_ht')) if l.get('prix_facture_ht') is not None else '—')}</td>
+          <td class="num">{esc(_fmt_eur(l.get('montant_facture_ht')))}</td>
+          {cell_ecart(l.get('ecart_montant_ht'))}
+          <td>{'⚠ ' + esc(l.get('commentaire_litige') or 'Litige') if litige else ''}</td>
+        </tr>"""
+
+    et = fac.get("ecart_total_ht") or 0
+    classe_tot = "ecart-haut" if et > 1e-9 else ("ecart-bas" if et < -1e-9 else "ecart-nul")
+
+    html = f"""<!DOCTYPE html>
+<html lang="fr"><head><meta charset="UTF-8">
+<title>Rapprochement facture {esc(fac.get('numero_facture') or '')}</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #1f2937; margin: 24px; font-size: 13px; }}
+  h1 {{ font-size: 20px; margin: 0 0 4px; color: #6b2d0f; }}
+  .meta {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 24px; margin: 12px 0 18px;
+           padding: 12px 16px; background: #f9f5ef; border: 1px solid #e8d9c4; border-radius: 6px; max-width: 640px; }}
+  .meta b {{ color: #6b7280; font-weight: 600; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th, td {{ border: 1px solid #d4c5af; padding: 6px 8px; text-align: left; }}
+  th {{ background: #6b2d0f; color: #fff; font-size: 12px; }}
+  td.num, th.num {{ text-align: right; white-space: nowrap; }}
+  tr.litige {{ background: #fef2f2; }}
+  .sub {{ font-size: 11px; color: #9ca3af; }}
+  .ecart-haut {{ color: #b91c1c; font-weight: 700; }}
+  .ecart-bas  {{ color: #166534; font-weight: 700; }}
+  .ecart-nul  {{ color: #6b7280; }}
+  tfoot td {{ font-weight: 700; background: #f3ebdf; }}
+  .imprimer {{ margin: 18px 0; }}
+  .imprimer button {{ padding: 8px 18px; font-size: 14px; cursor: pointer; border: none;
+                      background: #6b2d0f; color: #fff; border-radius: 6px; }}
+  @media print {{ .imprimer {{ display: none; }} body {{ margin: 0; }} }}
+</style></head><body>
+  <h1>🧾 Rapprochement de facture</h1>
+  <div class="meta">
+    <div><b>Fournisseur :</b> {esc(fac.get('fournisseur_nom') or '')}</div>
+    <div><b>N° facture :</b> {esc(fac.get('numero_facture') or '(non saisi)')}</div>
+    <div><b>Date facture :</b> {esc(fac.get('date_facture') or '')}</div>
+    <div><b>Commande :</b> {esc(fac.get('numero_commande') or '—')}</div>
+    <div><b>Statut :</b> {esc(fac.get('statut') or '')}</div>
+  </div>
+  <div class="imprimer"><button onclick="window.print()">🖨 Imprimer / Enregistrer en PDF</button></div>
+  <table>
+    <thead><tr>
+      <th>Article</th><th class="num">Reçu (kg)</th><th class="num">Facturé (kg)</th>
+      <th class="num">Écart poids</th><th class="num">Prix cmd HT</th><th class="num">Prix fact. HT</th>
+      <th class="num">Montant HT</th><th class="num">Écart HT</th><th>Litige</th>
+    </tr></thead>
+    <tbody>{lignes_html}</tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">Attendu (cmd × reçu) : {esc(_fmt_eur(fac.get('montant_total_ht_attendu')))}</td>
+        <td class="num">{esc(_fmt_eur(fac.get('montant_total_ht_facture')))}</td>
+        <td class="num {classe_tot}">{esc(_fmt_signe(et))}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</body></html>"""
+    return HTMLResponse(content=html)

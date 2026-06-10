@@ -36,6 +36,8 @@ function bindEvents() {
   document.getElementById('btn-sauver-fac').addEventListener('click', () => sauverFacture(false));
   document.getElementById('btn-valider-fac').addEventListener('click', () => sauverFacture(true));
   document.getElementById('btn-supprimer-fac').addEventListener('click', supprimerFacture);
+  document.getElementById('btn-export-pdf').addEventListener('click', exporterPdf);
+  document.getElementById('btn-export-xlsx').addEventListener('click', exporterXlsx);
 
   // Modale litige
   document.getElementById('modal-litige-fermer').addEventListener('click', fermerModalLitige);
@@ -326,6 +328,19 @@ async function supprimerFacture() {
 function fermerModalFacture() {
   document.getElementById('modal-facture').hidden = true;
   facCourante = null;
+}
+
+// ── Exports ──────────────────────────────────────────────────
+// PDF : ouvre la page imprimable dans un onglet ; le navigateur fait « Enregistrer en PDF ».
+function exporterPdf() {
+  if (!facCourante) return;
+  window.open(`${API_FAC}/${facCourante.id}/imprimer`, '_blank');
+}
+
+// Excel : déclenche le téléchargement du vrai fichier .xlsx.
+function exporterXlsx() {
+  if (!facCourante) return;
+  window.location.href = `${API_FAC}/${facCourante.id}/export.xlsx`;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
