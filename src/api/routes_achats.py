@@ -2925,6 +2925,47 @@ async def _recalculer_totaux_facture(db, facture_id: int):
     )
 
 
+@router.get("/factures/receptions-disponibles")
+async def receptions_a_facturer(limit: int = Query(100)):
+    """Réceptions clôturées pour la modale « Nouvelle facture ».
+
+    Le nom du fournisseur est résolu en cascade : entête (FK ou texte libre), sinon
+    le premier fournisseur trouvé sur les lignes (FK ou texte libre). Évite les
+    « Fournisseur ? » quand l'info n'est portée que par les lignes. Chaque réception
+    indique si elle est déjà facturée (pour griser le choix côté front).
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT
+                r.id,
+                r.date_reception,
+                COALESCE(
+                    fh.nom,
+                    r.fournisseur_nom,
+                    (SELECT COALESCE(fl.nom, rl.fournisseur_nom)
+                       FROM reception_lignes rl
+                       LEFT JOIN fournisseurs fl ON fl.id = rl.fournisseur_id
+                      WHERE rl.reception_id = r.id
+                        AND COALESCE(fl.nom, rl.fournisseur_nom) IS NOT NULL
+                      ORDER BY rl.id LIMIT 1)
+                ) AS fournisseur_nom,
+                (SELECT COUNT(*) FROM reception_lignes rl2 WHERE rl2.reception_id = r.id) AS nb_lignes,
+                (SELECT fac.id FROM factures fac WHERE fac.reception_id = r.id LIMIT 1) AS facture_id
+            FROM receptions r
+            LEFT JOIN fournisseurs fh ON fh.id = r.fournisseur_principal_id
+            WHERE r.statut = 'cloturee'
+            ORDER BY r.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        for row in rows:
+            row["deja_facturee"] = row["facture_id"] is not None
+        return rows
+
+
 @router.get("/factures")
 async def get_factures(
     fournisseur_id: Optional[int] = Query(None),

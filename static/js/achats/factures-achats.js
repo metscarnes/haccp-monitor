@@ -106,11 +106,10 @@ function rendreFactures() {
 // ── Nouvelle facture : choisir la réception ──────────────────
 async function ouvrirChoixReception() {
   document.getElementById('choix-search').value = '';
-  const r = await fetch(`${API_RECEPTIONS}?limit=100`);
+  // Endpoint dédié : nom du fournisseur résolu (entête OU lignes) + flag déjà facturée.
+  const r = await fetch(`${API_FAC}/receptions-disponibles?limit=100`);
   receptions = await r.json();
-  // Réceptions déjà facturées (pour griser)
-  const dejaFacturees = new Set(factures.map(f => f.reception_id).filter(Boolean));
-  receptions.forEach(rec => { rec._deja = dejaFacturees.has(rec.id); });
+  receptions.forEach(rec => { rec._deja = rec.deja_facturee; });
   afficherChoixReceptions();
   document.getElementById('modal-choix-reception').hidden = false;
 }
