@@ -929,6 +929,34 @@ async function creerTousGroupes() {
   alert(`${d.crees} groupe(s) créé(s). Ouvrez-en un : les achats correspondants sont proposés automatiquement.`);
 }
 
+// Réorganise la viande par sous-famille : supprime les groupes viande vraiment vides
+// (sans réf ni achat) et regroupe les produits viande par sous-famille (Bœuf, Veau…).
+async function reorganiserViande() {
+  if (!confirm(
+    'Réorganiser la VIANDE par sous-famille ?\n\n' +
+    '• Les groupes viande SANS référence ni article d\'achat seront supprimés (rien d\'utile perdu).\n' +
+    '• Les produits viande seront regroupés par sous-famille (Bœuf, Veau, Agneau…).\n' +
+    '• Les groupes viande où vous avez déjà mis des achats sont conservés.'
+  )) return;
+  const r = await fetch(`${API_CMP}/viande/reorganiser`, { method: 'POST' });
+  if (!r.ok) { alert('Réorganisation impossible.'); return; }
+  const d = await r.json();
+  await chargerGroupes();
+  await majBadgeVentesNonReliees();
+  await majBadgeMargeKo();
+  let msg = `${d.groupes_supprimes} groupe(s) supprimé(s), ${d.groupes_crees} groupe(s) créé(s) ` +
+    `(${d.sous_familles.join(', ') || 'aucune sous-famille'}).`;
+  if (d.produits_sans_sous_famille) {
+    msg += `\n\n⚠ ${d.produits_sans_sous_famille} produit(s) viande sans sous-famille n'ont pas pu être ` +
+      `regroupés : classez-les (carte produit) puis relancez.`;
+  }
+  if (d.groupes_epargnes.length) {
+    msg += `\n\n${d.groupes_epargnes.length} groupe(s) conservé(s) car ils contiennent déjà des achats : ` +
+      d.groupes_epargnes.map((e) => e.vente_nom).join(', ') + '.';
+  }
+  alert(msg);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
@@ -941,6 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fermerPanneau();
   });
   $('btn-nouveau-groupe').addEventListener('click', creerGroupe);
+  $('btn-reorg-viande').addEventListener('click', reorganiserViande);
   $('btn-renommer').addEventListener('click', renommerGroupe);
   $('btn-supprimer-groupe').addEventListener('click', supprimerGroupe);
   $('btn-groupe-suivant').addEventListener('click', groupeSuivant);

@@ -1841,6 +1841,123 @@ async def create_groupes_from_ventes_bulk(_=Depends(require_admin)):
     return {"crees": cree}
 
 
+@router.post("/comparatif/viande/reorganiser", status_code=200)
+async def reorganiser_viande(_=Depends(require_admin)):
+    """Réorganise la VIANDE par sous-famille (Bœuf, Veau…) au lieu d'un groupe par produit.
+
+    1) Supprime les groupes dont le produit de vente associé est de famille « Viande », SANS
+       référence d'achat choisie ET SANS aucun article d'achat (vraiment vides → 0 travail perdu).
+       Les groupes viande qui ont déjà des achats sont ÉPARGNÉS et listés (epargnes).
+    2) Crée un groupe par SOUS-FAMILLE viande ayant ≥ 1 produit de vente, et y associe tous les
+       produits de vente viande de cette sous-famille (libérés en 1 ou pas encore reliés).
+    Idempotent : relancer ne duplique pas (réutilise un groupe existant de même sous-famille viande).
+    """
+    async with get_db() as db:
+        # — Étape 1 : supprimer les groupes viande vides (sans réf + sans article d'achat) —
+        cur = await db.execute(
+            """
+            SELECT g.id AS groupe_id, gv.catalogue_vente_id, gv.ligne_choisie_id,
+                   v.nom AS vente_nom, v.sous_famille,
+                   (SELECT COUNT(*) FROM comparatif_groupe_ligne gl WHERE gl.groupe_id = g.id) AS nb_achats
+            FROM comparatif_groupe g
+            JOIN comparatif_groupe_vente gv ON gv.groupe_id = g.id
+            JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
+            WHERE g.boutique_id = 1 AND LOWER(TRIM(COALESCE(v.famille,''))) = 'viande'
+            """
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        # Sous-familles viande de référence (un groupe nommé ainsi = groupe-cible, à ne PAS supprimer).
+        SF_VIANDE = {"boeuf", "bœuf", "veau", "agneau", "porc", "cheval", "volaille"}
+
+        supprimes = 0
+        epargnes = []          # groupes viande gardés car ils ont déjà des achats
+        produits_a_replacer = []  # (catalogue_vente_id, sous_famille) à regrouper par sous-famille
+        for r in rows:
+            vide = (r["ligne_choisie_id"] is None) and (r["nb_achats"] == 0)
+            # Ne JAMAIS supprimer un groupe-cible (nom = sous-famille viande) : c'est la destination.
+            cur_nom = await db.execute("SELECT nom FROM comparatif_groupe WHERE id = ?", (r["groupe_id"],))
+            nom_g = (await cur_nom.fetchone())["nom"]
+            est_cible = (nom_g or "").strip().lower() in SF_VIANDE
+            if est_cible:
+                continue  # groupe-cible (destination) : on n'y touche pas, ni suppr ni épargne
+            if vide:
+                # Supprime le groupe (la liaison vente part en CASCADE) → produit libéré.
+                await db.execute("DELETE FROM comparatif_groupe_ligne WHERE groupe_id = ?", (r["groupe_id"],))
+                await db.execute("DELETE FROM comparatif_groupe_vente WHERE groupe_id = ?", (r["groupe_id"],))
+                await db.execute("DELETE FROM comparatif_groupe WHERE id = ?", (r["groupe_id"],))
+                supprimes += 1
+                produits_a_replacer.append((r["catalogue_vente_id"], r["sous_famille"]))
+            else:
+                # Groupe « 1 par produit » avec déjà des achats → on l'épargne (travail réel).
+                epargnes.append({"groupe_id": r["groupe_id"], "vente_nom": r["vente_nom"],
+                                 "nb_achats": r["nb_achats"]})
+
+        # Ajouter aussi les produits de vente viande NON ENCORE RELIÉS (à regrouper).
+        cur_libres = await db.execute(
+            """
+            SELECT v.id, v.sous_famille FROM catalogue_vente v
+            WHERE v.boutique_id = 1 AND v.actif = 1
+              AND LOWER(TRIM(COALESCE(v.famille,''))) = 'viande'
+              AND v.id NOT IN (SELECT catalogue_vente_id FROM comparatif_groupe_vente)
+            """
+        )
+        for r in await cur_libres.fetchall():
+            produits_a_replacer.append((r["id"], r["sous_famille"]))
+
+        # — Étape 2 : (re)grouper par sous-famille —
+        # Regrouper les produits à replacer par sous-famille (ignorer ceux sans sous-famille :
+        # impossible de les ranger automatiquement → on les laisse non reliés, signalés à part).
+        par_sf = {}
+        sans_sf = 0
+        vus = set()
+        for cv_id, sf in produits_a_replacer:
+            if cv_id in vus:        # un produit supprimé puis re-capté comme « libre » : 1 seule fois
+                continue
+            vus.add(cv_id)
+            sf_norm = (sf or "").strip()
+            if not sf_norm:
+                sans_sf += 1
+                continue
+            par_sf.setdefault(sf_norm, []).append(cv_id)
+
+        groupes_crees = 0
+        for sf, cv_ids in par_sf.items():
+            # Réutiliser un groupe viande existant de cette sous-famille s'il y en a un
+            # (épargné à l'étape 1), sinon en créer un nommé d'après la sous-famille.
+            cur_ex = await db.execute(
+                """
+                SELECT g.id FROM comparatif_groupe g
+                WHERE g.boutique_id = 1 AND g.nom = ? AND g.sous_famille = ? LIMIT 1
+                """,
+                (sf, sf),
+            )
+            ex = await cur_ex.fetchone()
+            if ex:
+                groupe_id = ex["id"]
+            else:
+                cur_g = await db.execute(
+                    "INSERT INTO comparatif_groupe (boutique_id, nom, sous_famille) VALUES (1, ?, ?)",
+                    (sf, sf),
+                )
+                groupe_id = cur_g.lastrowid
+                groupes_crees += 1
+            for cv_id in cv_ids:
+                await db.execute(
+                    "INSERT OR IGNORE INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+                    (groupe_id, cv_id),
+                )
+
+        await db.commit()
+    return {
+        "groupes_supprimes": supprimes,
+        "groupes_crees": groupes_crees,
+        "sous_familles": sorted(par_sf.keys()),
+        "produits_sans_sous_famille": sans_sf,
+        "groupes_epargnes": epargnes,
+    }
+
+
 @router.get("/comparatif/groupes/{groupe_id}/achats-suggestions")
 async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)):
     """Articles d'ACHAT du catalogue à proposer pour CE groupe, par proximité sémantique
