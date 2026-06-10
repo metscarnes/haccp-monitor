@@ -70,6 +70,14 @@
     <button class="ach-btn" id="btn-voir-marge-ko">Voir la liste</button>
   </div>
 
+  <!-- Badge : produits de vente jamais reliés à un groupe (couverture catalogue) -->
+  <div id="badge-ventes-non-reliees" class="cmp-badge-non-groupes" style="display:none;"
+       title="Voir les produits de vente sans suivi de marge">
+    <span>🏷️</span>
+    <span id="badge-ventes-non-reliees-texte"></span>
+    <button class="ach-btn" id="btn-voir-ventes-non-reliees">Voir la liste</button>
+  </div>
+
   <!-- Bande marge : association produit de vente + marge sur la ligne de référence -->
   <div id="cmp-marge" class="cmp-marge" style="display:none;"></div>
 
@@ -118,6 +126,18 @@
       </div>
       <div class="cmp-proposer-info" id="cmp-marge-ko-info"></div>
       <div id="cmp-marge-ko-liste" class="cmp-resultats"></div>
+    </div>
+  </div>
+
+  <!-- Modale « Produits de vente non reliés » : couverture catalogue -->
+  <div id="cmp-non-reliees" class="cmp-panneau" style="display:none;">
+    <div class="cmp-panneau-box cmp-panneau-box--large">
+      <div class="cmp-panneau-head">
+        <strong>🏷️ Produits de vente sans suivi de marge</strong>
+        <button class="ach-btn" id="btn-fermer-non-reliees">✕</button>
+      </div>
+      <div class="cmp-proposer-info" id="cmp-non-reliees-info"></div>
+      <div id="cmp-non-reliees-liste" class="cmp-resultats"></div>
     </div>
   </div>
 

@@ -1751,6 +1751,58 @@ async def comparatif_stats(_=Depends(require_admin)):
         return {"articles_non_groupes": rows[0][0] if rows else 0}
 
 
+@router.get("/comparatif/ventes-non-reliees")
+async def comparatif_ventes_non_reliees(_=Depends(require_admin)):
+    """Produits du catalogue de VENTE actifs qui ne sont reliés à AUCUN groupe de comparaison
+    → aucun suivi de marge. Vue « couverture du catalogue »."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT v.id, v.nom, v.prix_vente_ttc, v.unite_vente, v.famille, v.sous_famille
+            FROM catalogue_vente v
+            WHERE v.boutique_id = 1 AND v.actif = 1
+              AND v.id NOT IN (SELECT catalogue_vente_id FROM comparatif_groupe_vente)
+            ORDER BY v.famille, v.sous_famille, v.nom
+            """
+        )
+        produits = [dict(r) for r in await cur.fetchall()]
+        return {"total": len(produits), "produits": produits}
+
+
+@router.post("/comparatif/groupes/from-vente", status_code=201)
+async def create_groupe_from_vente(body: ComparatifVenteLink, _=Depends(require_admin)):
+    """Crée un groupe de comparaison nommé d'après un produit de vente et lui associe ce produit,
+    en un seul appel. Sert à démarrer le suivi de marge d'un produit vendu non encore relié."""
+    async with get_db() as db:
+        cur_v = await db.execute(
+            "SELECT nom, sous_famille FROM catalogue_vente WHERE id = ? AND boutique_id = 1 AND actif = 1",
+            (body.catalogue_vente_id,),
+        )
+        v = await cur_v.fetchone()
+        if not v:
+            raise HTTPException(404, "Produit de vente introuvable")
+        # Refus si déjà relié (cardinalité vente unique).
+        cur_d = await db.execute(
+            "SELECT 1 FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+            (body.catalogue_vente_id,),
+        )
+        if await cur_d.fetchone():
+            raise HTTPException(409, "Ce produit de vente est déjà associé à un groupe")
+
+        cur_g = await db.execute(
+            "INSERT INTO comparatif_groupe (boutique_id, nom, sous_famille) VALUES (1, ?, ?)",
+            (v["nom"], v["sous_famille"]),
+        )
+        groupe_id = cur_g.lastrowid
+        await db.execute(
+            "INSERT INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+            (groupe_id, body.catalogue_vente_id),
+        )
+        await db.commit()
+        cur2 = await db.execute("SELECT * FROM comparatif_groupe WHERE id = ?", (groupe_id,))
+        return dict(await cur2.fetchone())
+
+
 @router.get("/comparatif/marge-incalculable")
 async def comparatif_marge_incalculable(_=Depends(require_admin)):
     """Groupes DÉJÀ associés à un produit de vente, mais dont la marge ne peut pas

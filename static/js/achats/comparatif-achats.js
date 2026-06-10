@@ -503,6 +503,7 @@ async function associerVente(catalogueVenteId) {
   dernierVS = await r.json();
   rendreVS(dernierVS);
   majBadgeMargeKo();
+  majBadgeVentesNonReliees();   // un produit de plus est relié
 }
 
 // Délie un produit de vente du groupe.
@@ -513,6 +514,7 @@ async function delierVente(cvId) {
   dernierVS = await r.json();
   rendreVS(dernierVS);
   majBadgeMargeKo();
+  majBadgeVentesNonReliees();   // un produit redevient non relié
 }
 
 // Édite un champ d'un produit de vente associé (prix, unité, poids pièce).
@@ -856,11 +858,81 @@ function ouvrirMargeKo() {
 }
 function fermerMargeKo() { $('cmp-marge-ko').style.display = 'none'; }
 
+// ── Badge + modale "produits de vente non reliés" (couverture catalogue) ─────
+let ventesNonReliees = [];
+
+async function majBadgeVentesNonReliees() {
+  try {
+    const r = await fetch(`${API_CMP}/ventes-non-reliees`);
+    if (!r.ok) return;
+    const d = await r.json();
+    ventesNonReliees = d.produits || [];
+    const n = d.total ?? 0;
+    const badge = $('badge-ventes-non-reliees');
+    if (n > 0) {
+      $('badge-ventes-non-reliees-texte').textContent =
+        `${n} produit(s) de vente sans suivi de marge`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch { /* silencieux */ }
+}
+
+function ouvrirVentesNonReliees() {
+  $('cmp-non-reliees').style.display = '';
+  const liste = $('cmp-non-reliees-liste');
+  if (!ventesNonReliees.length) {
+    $('cmp-non-reliees-info').textContent =
+      'Tous les produits de vente sont reliés à un groupe de comparaison. 👍';
+    liste.innerHTML = '';
+    return;
+  }
+  $('cmp-non-reliees-info').innerHTML =
+    `${ventesNonReliees.length} produit(s) de vente ne sont reliés à aucun groupe d'achat ` +
+    `(donc aucun suivi de marge). « Créer un groupe » démarre le suivi pour ce produit.`;
+  liste.innerHTML = ventesNonReliees.map((p) => {
+    const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
+    const sf = p.sous_famille ? esc(p.sous_famille) : 'sans sous-famille';
+    return `<div class="cmp-resultat">
+      <div class="cmp-resultat-info">
+        <div class="cmp-resultat-nom">${esc(p.nom)}</div>
+        <div class="cmp-resultat-meta">${sf} · ${prix}</div>
+      </div>
+      <button class="ach-btn ach-btn--primary cmp-nr-creer" data-id="${p.id}">+ Créer un groupe</button>
+    </div>`;
+  }).join('');
+  liste.querySelectorAll('.cmp-nr-creer').forEach((b) => {
+    b.addEventListener('click', () => creerGroupeDepuisVente(Number(b.dataset.id)));
+  });
+}
+function fermerVentesNonReliees() { $('cmp-non-reliees').style.display = 'none'; }
+
+// Crée un groupe nommé d'après le produit + l'associe, puis ouvre ce groupe.
+async function creerGroupeDepuisVente(cvId) {
+  const r = await fetch(`${API_CMP}/groupes/from-vente`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ catalogue_vente_id: cvId }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    alert(d.detail || 'Création impossible.');
+    return;
+  }
+  const groupe = await r.json();
+  fermerVentesNonReliees();
+  await majBadgeVentesNonReliees();
+  await chargerGroupes(groupe.id);
+  afficherVS(groupe.id);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
   majBadgeNonGroupes();
   majBadgeMargeKo();
+  majBadgeVentesNonReliees();
 
   $('select-groupe').addEventListener('change', (e) => {
     majBoutonsGroupe();
@@ -877,6 +949,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-fermer-panneau').addEventListener('click', fermerPanneau);
   $('btn-voir-marge-ko').addEventListener('click', ouvrirMargeKo);
   $('btn-fermer-marge-ko').addEventListener('click', fermerMargeKo);
+  $('btn-voir-ventes-non-reliees').addEventListener('click', ouvrirVentesNonReliees);
+  $('btn-fermer-non-reliees').addEventListener('click', fermerVentesNonReliees);
 
   // Fermer la liste de suggestions produit-vente au clic en dehors (attaché 1 seule fois).
   document.addEventListener('click', (e) => {
