@@ -149,6 +149,13 @@ function construireGrilleVS(lignes, opts = {}) {
   const { retirer = false, choisirCv = null, refId = null, pv = null } = opts;
   const cliquable = choisirCv != null;
 
+  // La colonne choisie comme référence (arbitrage utilisateur) passe tout à gauche, devant
+  // le tri par prix. Copie locale pour ne pas muter le tableau partagé (dernierVS.lignes).
+  if (cliquable && refId != null) {
+    const ref = lignes.find((l) => l.id === refId);
+    if (ref) lignes = [ref, ...lignes.filter((l) => l.id !== refId)];
+  }
+
   const criteres = [
     ['Code article', (l) => esc(l.code_article) || '—'],
     ['Désignation', (l) => esc(l.designation)],
