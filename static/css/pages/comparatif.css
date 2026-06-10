@@ -45,6 +45,7 @@
   font-size: var(--text-sm); font-weight: 700; color: #6b5840; margin-bottom: var(--space-2);
 }
 .cmp-auto-actions { margin-top: var(--space-3); }
+.cmp-auto-tout { border-bottom: 1px solid #e8d9c4; padding-bottom: var(--space-2); margin-bottom: var(--space-2); }
 
 /* ── Zone VS ───────────────────────────────────────────────── */
 .cmp-vs { padding: 0 var(--space-4) var(--space-4); }

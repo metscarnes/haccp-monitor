@@ -171,12 +171,29 @@ async function proposerAchatsAuto() {
   }).join('');
   cible.innerHTML = `<div class="cmp-auto">
     <div class="cmp-auto-titre">🔎 Achats correspondant à « ${esc(dernierVS.groupe.nom)} » — décochez les intrus, puis ajoutez :</div>
+    <label class="cmp-grappe-art cmp-auto-tout">
+      <input type="checkbox" id="cmp-auto-tout" checked>
+      <span class="cmp-grappe-art-nom"><strong>Tout sélectionner / désélectionner</strong></span>
+    </label>
     <div class="cmp-grappe-arts">${lignes}</div>
     <div class="cmp-auto-actions">
       <button class="ach-btn ach-btn--primary" id="cmp-auto-ajouter">✓ Ajouter les articles cochés</button>
     </div>
   </div>`;
   $('cmp-auto-ajouter').addEventListener('click', ajouterAchatsCoches);
+  // Case maîtresse : bascule toutes les cases d'un coup.
+  const tout = $('cmp-auto-tout');
+  const cases = [...cible.querySelectorAll('.cmp-auto-cb')];
+  tout.addEventListener('change', () => {
+    cases.forEach((cb) => { cb.checked = tout.checked; });
+  });
+  // Reflet inverse : la case maîtresse suit l'état réel (cochée / décochée / indéterminée).
+  const majTout = () => {
+    const n = cases.filter((cb) => cb.checked).length;
+    tout.checked = n === cases.length;
+    tout.indeterminate = n > 0 && n < cases.length;
+  };
+  cases.forEach((cb) => cb.addEventListener('change', majTout));
 }
 
 async function ajouterAchatsCoches() {
