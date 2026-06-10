@@ -697,24 +697,16 @@ async function retirerLigne(catId) {
   await chargerGroupes(groupeCourant);
 }
 
-async function ajouterLigne(catId) {
-  if (!groupeCourant) return;
-  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/lignes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ catalogue_fournisseur_id: Number(catId) }),
-  });
-  if (!r.ok) { alert('Ajout impossible.'); return; }
-  await afficherVS(groupeCourant);
-  await chargerGroupes(groupeCourant);
-  rafraichirPanneau();
-}
-
-// ── Panneau d'ajout : suggestions + recherche ─────────────────
+// ── Panneau d'ajout : recherche + filtres famille/sous-famille, sélection multiple ───
 function ouvrirPanneau() {
   if (!groupeCourant) return;
   $('cmp-panneau').style.display = '';
   $('cmp-search').value = '';
+  // Peupler les filtres (référentiel partagé familles.js), une fois à l'ouverture.
+  const selFam = $('cmp-filtre-famille');
+  const selSf = $('cmp-filtre-sous-famille');
+  peuplerSelectFamille(selFam, null, '');
+  majSousFamille('', selSf, '');
   rafraichirPanneau();
   $('cmp-search').focus();
 }
@@ -724,8 +716,11 @@ function fermerPanneau() {
 
 async function rafraichirPanneau() {
   const q = $('cmp-search').value.trim();
-  if (q) {
-    await afficherRecherche(q);
+  const fam = $('cmp-filtre-famille').value;
+  const sf = $('cmp-filtre-sous-famille').value;
+  // Recherche dès qu'il y a un texte OU un filtre actif ; sinon, suggestions sémantiques.
+  if (q || fam || sf) {
+    await afficherRecherche(q, fam, sf);
   } else {
     await afficherSuggestions();
   }
@@ -737,8 +732,9 @@ async function afficherSuggestions() {
   const titre = $('cmp-suggestions-titre');
   if (!lignes.length) {
     titre.style.display = 'none';
+    majPanneauSelection([]);
     $('cmp-resultats').innerHTML =
-      '<div class="cmp-empty cmp-empty--sm">Recherchez un premier article ci-dessus pour démarrer le groupe.</div>';
+      '<div class="cmp-empty cmp-empty--sm">Recherchez un article (ou filtrez par famille) pour démarrer le groupe.</div>';
     return;
   }
   const refId = lignes[0].id;
@@ -746,22 +742,28 @@ async function afficherSuggestions() {
   const sugg = r.ok ? await r.json() : [];
   titre.style.display = sugg.length ? '' : 'none';
   if (!sugg.length) {
+    majPanneauSelection([]);
     $('cmp-resultats').innerHTML =
-      '<div class="cmp-empty cmp-empty--sm">Aucune suggestion. Utilisez la recherche pour ajouter un article.</div>';
+      '<div class="cmp-empty cmp-empty--sm">Aucune suggestion. Utilisez la recherche ou les filtres.</div>';
     return;
   }
   rendreResultats(sugg, true);
 }
 
-// Recherche libre dans le catalogue.
-async function afficherRecherche(q) {
+// Recherche dans le catalogue, combinée aux filtres famille/sous-famille.
+async function afficherRecherche(q, fam, sf) {
   $('cmp-suggestions-titre').style.display = 'none';
-  const r = await fetch(`${API_CAT}?q=${encodeURIComponent(q)}`);
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (fam) params.set('famille', fam);
+  if (sf) params.set('sous_famille', sf);
+  const r = await fetch(`${API_CAT}?${params.toString()}`);
   let articles = r.ok ? await r.json() : [];
   // Exclure ceux déjà dans le groupe.
   const dans = new Set((dernierVS?.lignes || []).map((l) => l.id));
-  articles = articles.filter((a) => !dans.has(a.id)).slice(0, 30);
+  articles = articles.filter((a) => !dans.has(a.id)).slice(0, 100);
   if (!articles.length) {
+    majPanneauSelection([]);
     $('cmp-resultats').innerHTML = '<div class="cmp-empty cmp-empty--sm">Aucun article trouvé.</div>';
     return;
   }
@@ -775,17 +777,49 @@ function rendreResultats(items, avecScore) {
       : '<span class="cmp-indispo">€/kg indisponible</span>';
     const score = (avecScore && a.score != null)
       ? `<span class="cmp-score">${Math.round(a.score * 100)}%</span>` : '';
-    return `<div class="cmp-resultat">
+    return `<label class="cmp-resultat cmp-resultat--cb">
+      <input type="checkbox" class="cmp-add-cb" data-cat="${a.id}">
       <div class="cmp-resultat-info">
         <div class="cmp-resultat-nom">${esc(a.designation)} ${score}</div>
         <div class="cmp-resultat-meta">${esc(a.fournisseur_nom)} · ${esc(a.code_article)} · ${pk}</div>
       </div>
-      <button class="ach-btn ach-btn--primary cmp-add" data-cat="${a.id}">+ Ajouter</button>
-    </div>`;
+    </label>`;
   }).join('');
-  $('cmp-resultats').querySelectorAll('.cmp-add').forEach((b) => {
-    b.addEventListener('click', () => ajouterLigne(b.dataset.cat));
-  });
+  majPanneauSelection([...$('cmp-resultats').querySelectorAll('.cmp-add-cb')]);
+}
+
+// Gère l'affichage « tout sélectionner » + pied + reflet de la case maîtresse.
+function majPanneauSelection(cases) {
+  const aDesResultats = cases.length > 0;
+  $('cmp-add-tout-label').style.display = aDesResultats ? '' : 'none';
+  $('cmp-add-pied').style.display = aDesResultats ? '' : 'none';
+  if (!aDesResultats) return;
+  const tout = $('cmp-add-tout');
+  tout.checked = false;
+  tout.indeterminate = false;
+  tout.onchange = () => cases.forEach((cb) => { cb.checked = tout.checked; });
+  const majTout = () => {
+    const n = cases.filter((cb) => cb.checked).length;
+    tout.checked = n === cases.length;
+    tout.indeterminate = n > 0 && n < cases.length;
+  };
+  cases.forEach((cb) => cb.addEventListener('change', majTout));
+}
+
+// Ajoute tous les articles cochés du panneau.
+async function ajouterSelectionPanneau() {
+  const ids = [...$('cmp-resultats').querySelectorAll('.cmp-add-cb:checked')].map((cb) => Number(cb.dataset.cat));
+  if (!ids.length) { alert('Cochez au moins un article.'); return; }
+  for (const id of ids) {
+    await fetch(`${API_CMP}/groupes/${groupeCourant}/lignes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogue_fournisseur_id: id }),
+    });
+  }
+  await afficherVS(groupeCourant);
+  await chargerGroupes(groupeCourant);
+  rafraichirPanneau();
 }
 
 // ── Badge + modale "marges en attente d'une information" ─────
@@ -994,4 +1028,12 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(t);
     t = setTimeout(rafraichirPanneau, 250);
   });
+
+  // Filtres famille / sous-famille du panneau d'ajout (listes dépendantes).
+  $('cmp-filtre-famille').addEventListener('change', () => {
+    majSousFamille($('cmp-filtre-famille').value, $('cmp-filtre-sous-famille'), '');
+    rafraichirPanneau();
+  });
+  $('cmp-filtre-sous-famille').addEventListener('change', rafraichirPanneau);
+  $('cmp-add-selection').addEventListener('click', ajouterSelectionPanneau);
 });

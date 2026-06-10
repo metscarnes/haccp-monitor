@@ -90,11 +90,22 @@
       </div>
       <div class="cmp-panneau-search">
         <input type="search" id="cmp-search" placeholder="Rechercher un article (code ou désignation)…">
+        <div class="cmp-panneau-filtres">
+          <select id="cmp-filtre-famille"><option value="">— Famille —</option></select>
+          <select id="cmp-filtre-sous-famille"><option value="">— Sous-famille —</option></select>
+        </div>
+        <label class="cmp-grappe-art cmp-auto-tout" id="cmp-add-tout-label" style="display:none;">
+          <input type="checkbox" id="cmp-add-tout">
+          <span class="cmp-grappe-art-nom"><strong>Tout sélectionner / désélectionner</strong></span>
+        </label>
       </div>
       <div class="cmp-suggestions-titre" id="cmp-suggestions-titre" style="display:none;">
         Suggestions (même sous-famille, par proximité)
       </div>
       <div id="cmp-resultats" class="cmp-resultats"></div>
+      <div class="cmp-panneau-pied" id="cmp-add-pied" style="display:none;">
+        <button class="ach-btn ach-btn--primary" id="cmp-add-selection">✓ Ajouter la sélection</button>
+      </div>
     </div>
   </div>
 

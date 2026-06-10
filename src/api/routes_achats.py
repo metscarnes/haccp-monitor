@@ -315,6 +315,8 @@ async def delete_fournisseur(fid: int, _=Depends(require_admin)):
 async def get_catalogue(
     fournisseur_id: Optional[int] = Query(None),
     q: Optional[str] = Query(None),
+    famille: Optional[str] = Query(None),
+    sous_famille: Optional[str] = Query(None),
     actif_only: bool = Query(True),
     avec_stock: bool = Query(False),
 ):
@@ -334,6 +336,12 @@ async def get_catalogue(
         if q:
             sql += " AND (c.designation LIKE ? OR c.code_article LIKE ?)"
             params += [f"%{q}%", f"%{q}%"]
+        if famille:
+            sql += " AND c.famille = ?"
+            params.append(famille)
+        if sous_famille:
+            sql += " AND c.sous_famille = ?"
+            params.append(sous_famille)
         sql += " ORDER BY f.nom, c.famille, c.sous_famille, c.designation"
         cur = await db.execute(sql, params)
         articles = [dict(r) for r in await cur.fetchall()]
