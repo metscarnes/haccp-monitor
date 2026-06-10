@@ -35,7 +35,6 @@
     <a href="/achats.html" class="ach-retour">← Achats</a>
     <div class="ach-bar-titre">⚖️ COMPARATEUR FOURNISSEURS</div>
     <div class="ach-bar-actions">
-      <button class="ach-btn" id="btn-proposer">🔍 Proposer des groupes</button>
       <button class="ach-btn ach-btn--primary" id="btn-nouveau-groupe">+ Nouveau groupe</button>
     </div>
   </header>
@@ -53,13 +52,6 @@
     <div class="cmp-toolbar-right">
       <button class="ach-btn ach-btn--primary" id="btn-ajouter-ligne" style="display:none;">+ Ajouter un article</button>
     </div>
-  </div>
-
-  <!-- Badge articles non groupés -->
-  <div id="badge-non-groupes" class="cmp-badge-non-groupes" style="display:none;">
-    <span>⚖️</span>
-    <span id="badge-non-groupes-texte"></span>
-    <button class="ach-btn ach-btn--primary" onclick="ouvrirProposer()">🔍 Proposer des groupes</button>
   </div>
 
   <!-- Badge : produits de vente associés dont la marge est incalculable (info manquante) -->
@@ -105,18 +97,6 @@
     </div>
   </div>
 
-  <!-- Modale « Proposer des groupes » : grappes candidates à valider -->
-  <div id="cmp-proposer" class="cmp-panneau" style="display:none;">
-    <div class="cmp-panneau-box cmp-panneau-box--large">
-      <div class="cmp-panneau-head">
-        <strong>🔍 Groupes proposés automatiquement</strong>
-        <button class="ach-btn" id="btn-fermer-proposer">✕</button>
-      </div>
-      <div class="cmp-proposer-info" id="cmp-proposer-info"></div>
-      <div id="cmp-grappes" class="cmp-grappes"></div>
-    </div>
-  </div>
-
   <!-- Modale « Marges incalculables » : groupes associés à un produit de vente où il manque une info -->
   <div id="cmp-marge-ko" class="cmp-panneau" style="display:none;">
     <div class="cmp-panneau-box cmp-panneau-box--large">
@@ -134,7 +114,10 @@
     <div class="cmp-panneau-box cmp-panneau-box--large">
       <div class="cmp-panneau-head">
         <strong>🏷️ Produits de vente sans suivi de marge</strong>
-        <button class="ach-btn" id="btn-fermer-non-reliees">✕</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="ach-btn ach-btn--primary" id="btn-creer-tous-groupes">⚡ Créer tous les groupes</button>
+          <button class="ach-btn" id="btn-fermer-non-reliees">✕</button>
+        </div>
       </div>
       <div class="cmp-proposer-info" id="cmp-non-reliees-info"></div>
       <div id="cmp-non-reliees-liste" class="cmp-resultats"></div>

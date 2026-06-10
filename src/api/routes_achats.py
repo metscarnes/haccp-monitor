@@ -1803,6 +1803,88 @@ async def create_groupe_from_vente(body: ComparatifVenteLink, _=Depends(require_
         return dict(await cur2.fetchone())
 
 
+@router.post("/comparatif/groupes/from-ventes-bulk", status_code=201)
+async def create_groupes_from_ventes_bulk(_=Depends(require_admin)):
+    """Crée d'un coup un groupe par produit de vente NON ENCORE RELIÉ (nommé d'après le produit,
+    associé). Démarre le suivi de marge sur tout le reste du catalogue vente en une fois.
+    Idempotent vis-à-vis du re-clic : ne touche pas aux produits déjà reliés."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT id, nom, sous_famille FROM catalogue_vente
+            WHERE boutique_id = 1 AND actif = 1
+              AND id NOT IN (SELECT catalogue_vente_id FROM comparatif_groupe_vente)
+            ORDER BY nom
+            """
+        )
+        produits = [dict(r) for r in await cur.fetchall()]
+        cree = 0
+        for p in produits:
+            cur_g = await db.execute(
+                "INSERT INTO comparatif_groupe (boutique_id, nom, sous_famille) VALUES (1, ?, ?)",
+                (p["nom"], p["sous_famille"]),
+            )
+            await db.execute(
+                "INSERT INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+                (cur_g.lastrowid, p["id"]),
+            )
+            cree += 1
+        await db.commit()
+    return {"crees": cree}
+
+
+@router.get("/comparatif/groupes/{groupe_id}/achats-suggestions")
+async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)):
+    """Articles d'ACHAT du catalogue à proposer pour CE groupe, par proximité sémantique
+    avec le nom du groupe (= le produit de vente). Sert à remplir un groupe créé depuis un
+    produit de vente. Exclut les articles déjà dans le groupe. Trié par similarité décroissante
+    puis €/kg croissant. Seuls les articles avec un minimum de proximité (> 0) sont renvoyés."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT nom FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
+        )
+        grp = await cur.fetchone()
+        if not grp:
+            raise HTTPException(404, "Groupe introuvable")
+        nom = grp["nom"]
+
+        cur_d = await db.execute(
+            "SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne WHERE groupe_id = ?",
+            (groupe_id,),
+        )
+        deja = {r[0] for r in await cur_d.fetchall()}
+
+        cur_c = await db.execute(
+            """
+            SELECT c.*, f.nom AS fournisseur_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+            """
+        )
+        # Cœur sémantique du nom de groupe (mêmes règles que le clustering : sans packaging/unités).
+        coeur_nom = _coeur_tokens(nom)
+        suggestions = []
+        for r in await cur_c.fetchall():
+            a = dict(r)
+            if a["id"] in deja:
+                continue
+            score = _similarite(nom, a["designation"])
+            # Exiger au moins un mot-cœur commun pour éviter le bruit (ex. juste « de »).
+            if score <= 0 or not (coeur_nom & _coeur_tokens(a["designation"])):
+                continue
+            a["score"] = round(score, 3)
+            a["prix_kg"] = _calc_prix_kg(a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"))
+            suggestions.append(a)
+
+        suggestions.sort(key=lambda x: (
+            -x["score"],
+            x["prix_kg"] is None,
+            x["prix_kg"] if x["prix_kg"] is not None else 0.0,
+        ))
+        return suggestions[:40]
+
+
 @router.get("/comparatif/marge-incalculable")
 async def comparatif_marge_incalculable(_=Depends(require_admin)):
     """Groupes DÉJÀ associés à un produit de vente, mais dont la marge ne peut pas

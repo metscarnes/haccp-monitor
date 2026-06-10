@@ -111,14 +111,21 @@ async function afficherVS(groupeId) {
 
 function rendreVS(data) {
   const lignes = data.lignes || [];
+  const produits = data.produits_vente || [];
+
   if (!lignes.length) {
-    $('cmp-marge').style.display = 'none';
-    $('cmp-vs').innerHTML =
-      `<div class="cmp-empty">Ce groupe est vide. Cliquez sur « + Ajouter un article » pour comparer des produits.</div>`;
+    // Groupe sans article d'achat. S'il a un produit de vente associé, on propose
+    // automatiquement les achats correspondants (matching sur le nom du groupe).
+    if (produits.length) {
+      rendreMarge(data);                 // affiche la/les carte(s) produit de vente
+      proposerAchatsAuto();              // remplit #cmp-vs avec les suggestions d'achat
+    } else {
+      $('cmp-marge').style.display = 'none';
+      $('cmp-vs').innerHTML =
+        `<div class="cmp-empty">Ce groupe est vide. Cliquez sur « + Ajouter un article » pour comparer des produits.</div>`;
+    }
     return;
   }
-
-  const produits = data.produits_vente || [];
 
   // Le tableau VS « global » en haut ne s'affiche QUE s'il n'y a aucun produit de vente associé
   // (sinon la comparaison vit dans chaque carte dépliée → on évite le doublon).
@@ -138,6 +145,51 @@ function rendreVS(data) {
 
   // Bande marge (cartes produits de vente + comparatif intégré).
   rendreMarge(data);
+}
+
+// Propose automatiquement, dans #cmp-vs, les articles d'achat proches du nom du groupe
+// (= produit de vente), à cocher pour les ajouter. Utilisé quand le groupe n'a pas encore
+// d'article d'achat à comparer.
+async function proposerAchatsAuto() {
+  if (!groupeCourant) return;
+  const cible = $('cmp-vs');
+  cible.innerHTML = '<div class="cmp-empty cmp-empty--sm">Recherche des achats correspondants…</div>';
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/achats-suggestions`);
+  const items = r.ok ? await r.json() : [];
+  if (!items.length) {
+    cible.innerHTML = `<div class="cmp-empty">Aucun achat correspondant trouvé automatiquement.
+      Utilisez « + Ajouter un article » pour chercher manuellement.</div>`;
+    return;
+  }
+  const lignes = items.map((a) => {
+    const pk = a.prix_kg != null ? fmtPrixKg(a.prix_kg) : '<span class="cmp-indispo">€/kg indispo</span>';
+    return `<label class="cmp-grappe-art">
+      <input type="checkbox" class="cmp-auto-cb" data-id="${a.id}" checked>
+      <span class="cmp-grappe-art-nom">${esc(a.designation)} <span class="cmp-score">${Math.round(a.score * 100)}%</span></span>
+      <span class="cmp-grappe-art-meta">${esc(a.fournisseur_nom)} · ${esc(a.code_article)} · ${pk}</span>
+    </label>`;
+  }).join('');
+  cible.innerHTML = `<div class="cmp-auto">
+    <div class="cmp-auto-titre">🔎 Achats correspondant à « ${esc(dernierVS.groupe.nom)} » — décochez les intrus, puis ajoutez :</div>
+    <div class="cmp-grappe-arts">${lignes}</div>
+    <div class="cmp-auto-actions">
+      <button class="ach-btn ach-btn--primary" id="cmp-auto-ajouter">✓ Ajouter les articles cochés</button>
+    </div>
+  </div>`;
+  $('cmp-auto-ajouter').addEventListener('click', ajouterAchatsCoches);
+}
+
+async function ajouterAchatsCoches() {
+  const ids = [...document.querySelectorAll('.cmp-auto-cb:checked')].map((cb) => Number(cb.dataset.id));
+  if (!ids.length) { alert('Cochez au moins un article.'); return; }
+  for (const id of ids) {
+    await fetch(`${API_CMP}/groupes/${groupeCourant}/lignes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogue_fournisseur_id: id }),
+    });
+  }
+  await afficherVS(groupeCourant);   // recharge : le VS / les cartes affichent les articles ajoutés
 }
 
 // Construit la grille comparative (fournisseurs en colonnes). Réutilisée pour le VS global
@@ -691,117 +743,6 @@ function rendreResultats(items, avecScore) {
   });
 }
 
-// ── « Proposer des groupes » : grappes candidates à valider ───
-let grappesProposees = [];   // état local des grappes (avec articles décochables)
-
-async function ouvrirProposer() {
-  $('cmp-proposer').style.display = '';
-  $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Analyse du catalogue…</div>';
-  $('cmp-proposer-info').textContent = '';
-  const r = await fetch(`${API_CMP}/proposer`);
-  if (!r.ok) { $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Erreur d\'analyse.</div>'; return; }
-  const d = await r.json();
-  // Chaque grappe : nom éditable + articles avec une case "inclure" (cochée par défaut).
-  grappesProposees = d.grappes.map((g, i) => ({
-    idx: i,
-    nom: g.nom_suggere,
-    fiable: g.fiable,
-    sous_famille: g.sous_famille,
-    lignes: g.lignes.map((l) => ({ ...l, inclus: true })),
-  }));
-  $('cmp-proposer-info').innerHTML = grappesProposees.length
-    ? `${grappesProposees.length} groupe(s) proposé(s). Décochez les intrus, ajustez le nom, puis validez. <span class="cmp-mono">${d.mono_fournisseur} produit(s) mono-fournisseur (rien à comparer).</span>`
-    : `Aucun groupe à proposer pour l'instant. <span class="cmp-mono">${d.mono_fournisseur} produit(s) mono-fournisseur.</span>`;
-  rendreGrappes();
-}
-function fermerProposer() { $('cmp-proposer').style.display = 'none'; }
-
-function rendreGrappes() {
-  if (!grappesProposees.length) {
-    $('cmp-grappes').innerHTML = '<div class="cmp-empty cmp-empty--sm">Rien à proposer.</div>';
-    return;
-  }
-  $('cmp-grappes').innerHTML = grappesProposees.map((g) => {
-    if (g.lignes === null) return '';   // grappe déjà créée ou ignorée
-    const arts = g.lignes.map((l) => {
-      const pk = l.prix_kg != null ? fmtPrixKg(l.prix_kg) : '<span class="cmp-indispo">€/kg indispo</span>';
-      return `<label class="cmp-grappe-art">
-        <input type="checkbox" data-g="${g.idx}" data-l="${l.id}" ${l.inclus ? 'checked' : ''}>
-        <span class="cmp-grappe-art-nom">${esc(l.designation)}</span>
-        <span class="cmp-grappe-art-meta">${esc(l.fournisseur_nom)} · ${pk}</span>
-      </label>`;
-    }).join('');
-    const badge = g.fiable ? '' : '<span class="cmp-badge-fiable">moins fiable</span>';
-    return `<div class="cmp-grappe" data-g="${g.idx}">
-      <div class="cmp-grappe-head">
-        <input type="text" class="cmp-grappe-nom" data-g="${g.idx}" value="${esc(g.nom)}">
-        ${badge}
-        <span class="cmp-grappe-sf">${esc(g.sous_famille) || 'sans sous-famille'}</span>
-      </div>
-      <div class="cmp-grappe-arts">${arts}</div>
-      <div class="cmp-grappe-actions">
-        <button class="ach-btn ach-btn--primary cmp-grappe-creer" data-g="${g.idx}">✓ Créer le groupe</button>
-        <button class="ach-btn cmp-grappe-ignorer" data-g="${g.idx}">Ignorer</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  // Câblage
-  $('cmp-grappes').querySelectorAll('.cmp-grappe-nom').forEach((inp) => {
-    inp.addEventListener('input', () => { grappesProposees[+inp.dataset.g].nom = inp.value; });
-  });
-  $('cmp-grappes').querySelectorAll('.cmp-grappe-art input').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const g = grappesProposees[+cb.dataset.g];
-      const l = g.lignes.find((x) => x.id === +cb.dataset.l);
-      if (l) l.inclus = cb.checked;
-    });
-  });
-  $('cmp-grappes').querySelectorAll('.cmp-grappe-creer').forEach((b) => {
-    b.addEventListener('click', () => creerDepuisGrappe(+b.dataset.g));
-  });
-  $('cmp-grappes').querySelectorAll('.cmp-grappe-ignorer').forEach((b) => {
-    b.addEventListener('click', () => { grappesProposees[+b.dataset.g].lignes = null; rendreGrappes(); });
-  });
-}
-
-async function creerDepuisGrappe(idx) {
-  const g = grappesProposees[idx];
-  if (!g || g.lignes === null) return;
-  const ids = g.lignes.filter((l) => l.inclus).map((l) => l.id);
-  if (ids.length < 2) { alert('Sélectionnez au moins 2 articles à comparer.'); return; }
-  if (!g.nom.trim()) { alert('Donnez un nom au groupe.'); return; }
-  const r = await fetch(`${API_CMP}/groupes/from-cluster`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nom: g.nom.trim(), catalogue_fournisseur_ids: ids }),
-  });
-  if (!r.ok) { alert('Création impossible.'); return; }
-  const groupe = await r.json();
-  g.lignes = null;                 // retirer la grappe traitée de la liste
-  rendreGrappes();
-  await chargerGroupes(groupe.id); // rafraîchir le sélecteur principal
-  afficherVS(groupe.id);
-}
-
-// ── Badge "articles non groupés" ─────────────────────────────
-async function majBadgeNonGroupes() {
-  try {
-    const r = await fetch(`${API_CMP}/stats`);
-    if (!r.ok) return;
-    const d = await r.json();
-    const n = d.articles_non_groupes ?? 0;
-    const badge = $('badge-non-groupes');
-    const texte = $('badge-non-groupes-texte');
-    if (n > 0) {
-      texte.textContent = `${n} article(s) du catalogue non encore comparés`;
-      badge.style.display = '';
-    } else {
-      badge.style.display = 'none';
-    }
-  } catch { /* silencieux */ }
-}
-
 // ── Badge + modale "marges en attente d'une information" ─────
 // Groupes DÉJÀ associés à un produit de vente mais dont la marge est bloquée par
 // une info manquante (référence non choisie, €/kg indispo, ou pas de prix de vente).
@@ -927,10 +868,23 @@ async function creerGroupeDepuisVente(cvId) {
   afficherVS(groupe.id);
 }
 
+// Crée d'un coup un groupe par produit de vente non relié.
+async function creerTousGroupes() {
+  const n = ventesNonReliees.length;
+  if (!n) return;
+  if (!confirm(`Créer ${n} groupe(s) de comparaison, un par produit de vente sans suivi ?`)) return;
+  const r = await fetch(`${API_CMP}/groupes/from-ventes-bulk`, { method: 'POST' });
+  if (!r.ok) { alert('Création impossible.'); return; }
+  const d = await r.json();
+  fermerVentesNonReliees();
+  await majBadgeVentesNonReliees();
+  await chargerGroupes();
+  alert(`${d.crees} groupe(s) créé(s). Ouvrez-en un : les achats correspondants sont proposés automatiquement.`);
+}
+
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   chargerGroupes();
-  majBadgeNonGroupes();
   majBadgeMargeKo();
   majBadgeVentesNonReliees();
 
@@ -940,8 +894,6 @@ document.addEventListener('DOMContentLoaded', () => {
     fermerPanneau();
   });
   $('btn-nouveau-groupe').addEventListener('click', creerGroupe);
-  $('btn-proposer').addEventListener('click', ouvrirProposer);
-  $('btn-fermer-proposer').addEventListener('click', fermerProposer);
   $('btn-renommer').addEventListener('click', renommerGroupe);
   $('btn-supprimer-groupe').addEventListener('click', supprimerGroupe);
   $('btn-groupe-suivant').addEventListener('click', groupeSuivant);
@@ -951,6 +903,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-fermer-marge-ko').addEventListener('click', fermerMargeKo);
   $('btn-voir-ventes-non-reliees').addEventListener('click', ouvrirVentesNonReliees);
   $('btn-fermer-non-reliees').addEventListener('click', fermerVentesNonReliees);
+  $('btn-creer-tous-groupes').addEventListener('click', creerTousGroupes);
 
   // Fermer la liste de suggestions produit-vente au clic en dehors (attaché 1 seule fois).
   document.addEventListener('click', (e) => {
