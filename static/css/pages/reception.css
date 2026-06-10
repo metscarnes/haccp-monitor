@@ -1172,6 +1172,19 @@ body.rec-body {
   cursor: pointer;
   font-family: inherit;
 }
+.rec-btn-add-lot {
+  margin-top: .5rem;
+  padding: .45rem .75rem;
+  border-radius: 8px;
+  border: 1px dashed var(--color-secondary);
+  background: none;
+  color: var(--color-accent);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-btn-add-lot:active { background: var(--color-secondary); }
 .rec-lot-genere {
   margin-top: .35rem;
   font-size: .85rem;

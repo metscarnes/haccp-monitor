@@ -178,6 +178,9 @@ const elLot               = document.getElementById('rec-lot');
 const elBtnPasLot         = document.getElementById('rec-btn-pas-lot');
 const elBtnAnnulerLot     = document.getElementById('rec-btn-annuler-lot');
 const elLotGenere         = document.getElementById('rec-lot-genere');
+const elLotsSupp          = document.getElementById('rec-lots-supp');
+const elBtnAddLot         = document.getElementById('rec-btn-add-lot');
+const elLotsSuppHint      = document.getElementById('rec-lots-supp-hint');
 const elOrigine           = document.getElementById('rec-origine');
 const elOrigineToggle     = document.getElementById('rec-origine-toggle');
 const elOrigineList       = document.getElementById('rec-origine-suggestions-list');
@@ -2024,6 +2027,7 @@ if (elLotChoixInterne) {
       elBtnAnnulerLot.hidden = false;
       if (elLotChoix) elLotChoix.hidden = true;
       lotInterneGenere = true;
+      setLotsSuppVisible(false);
       majBtnAjouter();
     } catch (e) {
       alert(`Erreur génération lot : ${e.message}`);
@@ -2043,6 +2047,7 @@ if (elLotChoixAttente) {
     elLotGenere.textContent = '⛔ En attente — N° de lot à compléter plus tard';
     elLotGenere.hidden = false;
     if (elLotChoix) elLotChoix.hidden = true;
+    setLotsSuppVisible(false);
     majBtnAjouter();
   });
 }
@@ -2055,10 +2060,78 @@ elBtnAnnulerLot.addEventListener('click', () => {
   elBtnPasLot.hidden = false;
   elBtnAnnulerLot.hidden = true;
   lotInterneGenere = false;
+  setLotsSuppVisible(true);
   majBtnAjouter();
 });
 
 elLot.addEventListener('input', majBtnAjouter);
+
+// ── N° de lot supplémentaires ──────────────────────────────
+// Permet de saisir plusieurs n° de lot pour un même produit. À l'ajout, une
+// ligne de réception distincte est créée par lot (mêmes critères/DLC/origine).
+// Désactivé quand le lot est interne ou « en attente » (pas de lot fournisseur).
+function ajouterChampLotSupp(valeur = '') {
+  if (!elLotsSupp) return;
+  const row = document.createElement('div');
+  row.className = 'rec-lot-supp-row';
+  row.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-top:.5rem;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rec-input rec-lot-input rec-lot-supp-input';
+  input.placeholder = 'ex : LOT-2026-002';
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', 'Numéro de lot fournisseur supplémentaire');
+  input.value = valeur;
+  input.addEventListener('input', majBtnAjouter);
+
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'rec-fourn-clear';
+  rm.setAttribute('aria-label', 'Retirer ce n° de lot');
+  rm.textContent = '✕';
+  rm.style.flexShrink = '0';
+  rm.addEventListener('click', () => {
+    row.remove();
+    majLotsSuppHint();
+    majBtnAjouter();
+  });
+
+  row.appendChild(input);
+  row.appendChild(rm);
+  elLotsSupp.appendChild(row);
+  majLotsSuppHint();
+  input.focus();
+}
+
+// Lots supplémentaires saisis (valeurs non vides, dédupliquées avec le lot principal)
+function lotsSuppValeurs() {
+  if (!elLotsSupp) return [];
+  return [...elLotsSupp.querySelectorAll('.rec-lot-supp-input')]
+    .map(i => i.value.trim())
+    .filter(Boolean);
+}
+
+function viderLotsSupp() {
+  if (elLotsSupp) elLotsSupp.innerHTML = '';
+  majLotsSuppHint();
+}
+
+function majLotsSuppHint() {
+  if (elLotsSuppHint) {
+    elLotsSuppHint.hidden = !(elLotsSupp && elLotsSupp.children.length > 0);
+  }
+}
+
+// Masque l'ajout de lots multiples quand le lot n'est pas un lot fournisseur saisi
+function setLotsSuppVisible(visible) {
+  if (elBtnAddLot) elBtnAddLot.hidden = !visible;
+  if (!visible) viderLotsSupp();
+}
+
+if (elBtnAddLot) {
+  elBtnAddLot.addEventListener('click', () => ajouterChampLotSupp());
+}
 
 // ── DLC / DLUO toggle ──────────────────────────────────────
 elDlcBtn.addEventListener('click', () => {
@@ -2149,6 +2222,8 @@ function reinitFormProduit() {
   elBtnPasLot.hidden = false;
   elBtnAnnulerLot.hidden = true;
   if (typeof elLotChoix !== 'undefined' && elLotChoix) elLotChoix.hidden = true;
+  // Lots supplémentaires : on repart d'un formulaire propre, ajout réactivé
+  if (typeof setLotsSuppVisible === 'function') setLotsSuppVisible(true);
 
   // Origine : défaut France à chaque nouveau produit
   if (elOrigine) elOrigine.value = 'France';
@@ -2254,7 +2329,8 @@ function chargerLigneEnEdition(l, idx) {
     }
   }
 
-  // Restaurer lot
+  // Restaurer lot — en édition, on modifie une seule ligne : pas de multi-lot
+  setLotsSuppVisible(false);
   elLot.readOnly = false;
   elLot.style.background = '';
   elLot.value = l.numero_lot || '';
@@ -2414,15 +2490,37 @@ function libelleMotifAttente(motif) {
 async function ajouterLigne() {
   if (!produitSelectionne || !receptionId) return;
 
+  // Plusieurs n° de lot → 1 ligne de réception par lot (mêmes critères/DLC/origine).
+  // Le payload de base porte le lot principal ; on l'écrase par chaque lot.
+  const payloadBase = _buildPayload();
+  const lotPrincipal = (elLot.value || '').trim();
+  const lotsSupp = lotsSuppValeurs();
+  // Liste finale des lots, dédupliquée en préservant l'ordre.
+  let lots = [lotPrincipal, ...lotsSupp].filter(Boolean);
+  lots = [...new Set(lots)];
+  // Si aucun lot saisi (produit en attente), on crée tout de même 1 ligne.
+  if (lots.length === 0) lots = [null];
+
   elBtnAjouter.disabled = true;
-  elBtnAjouter.textContent = 'Ajout…';
+  elBtnAjouter.textContent = lots.length > 1 ? `Ajout (0/${lots.length})…` : 'Ajout…';
 
   try {
-    const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_buildPayload()),
-    });
+    for (let i = 0; i < lots.length; i++) {
+      const lot = lots[i];
+      const payload = { ...payloadBase };
+      if (lot) payload.numero_lot = lot;
+      else     delete payload.numero_lot;
+
+      const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
+      if (lots.length > 1) {
+        elBtnAjouter.textContent = `Ajout (${i + 1}/${lots.length})…`;
+      }
+    }
 
     // Sauvegarder le fournisseur avant le reinit (objet {id, nom})
     if (fournisseurProduitSelected) {
@@ -2436,7 +2534,6 @@ async function ajouterLigne() {
       dernierFournisseurProduit = null;
     }
 
-    lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
     majListeLignes();
     reinitFormProduit();
     document.querySelector('.rec-produits-liste-ajoutee').scrollTop = 9999;
@@ -2446,6 +2543,7 @@ async function ajouterLigne() {
 
   } catch (err) {
     alert(`Erreur lors de l'ajout : ${err.message}`);
+    majListeLignes(); // refléter les lignes éventuellement déjà créées
   } finally {
     elBtnAjouter.disabled = !produitSelectionne;
     elBtnAjouter.textContent = '+ Ajouter';
