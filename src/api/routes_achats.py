@@ -2438,16 +2438,16 @@ async def set_comparatif_vente_reference(
 async def comparatif_vente_suggestions(
     groupe_id: int,
     q: Optional[str] = Query(None, description="Recherche libre ; vide = suggestions sémantiques"),
+    famille: Optional[str] = Query(None),
+    sous_famille: Optional[str] = Query(None),
     _=Depends(require_admin),
 ):
     """Produits du catalogue de VENTE à proposer pour l'association du groupe.
 
-    - `q` fourni → recherche classique (LIKE sur le nom), triée alpha.
-    - `q` vide → suggestions SÉMANTIQUES : on classe TOUS les produits de vente actifs par
-      proximité (Jaccard) avec le NOM DU GROUPE, les plus proches d'abord. Score 0 inclus :
-      la liste complète reste accessible (« être sûr de ne rien rater »), juste mieux ordonnée.
-    Exclut les produits DÉJÀ associés à un groupe (la cardinalité vente est unique :
-    un produit déjà rattaché ne doit pas être reproposé ici).
+    - q et/ou filtre famille/sous-famille fourni → recherche filtrée (LIKE + égalité), triée alpha.
+    - rien fourni → suggestions SÉMANTIQUES : classe TOUS les produits actifs par proximité (Jaccard)
+      avec le NOM DU GROUPE, les plus proches d'abord (longue traîne conservée).
+    Exclut les produits DÉJÀ associés à un groupe (cardinalité vente unique).
     """
     async with get_db() as db:
         cur = await db.execute(
@@ -2463,15 +2463,19 @@ async def comparatif_vente_suggestions(
         deja = {r["catalogue_vente_id"] for r in await cur_d.fetchall()}
 
         q = (q or "").strip()
-        if q:
-            cur_v = await db.execute(
-                """SELECT * FROM catalogue_vente
-                   WHERE boutique_id = 1 AND actif = 1 AND nom LIKE ?
-                   ORDER BY nom LIMIT 50""",
-                (f"%{q}%",),
-            )
+        if q or famille or sous_famille:
+            sql = "SELECT * FROM catalogue_vente WHERE boutique_id = 1 AND actif = 1"
+            params = []
+            if q:
+                sql += " AND nom LIKE ?"; params.append(f"%{q}%")
+            if famille:
+                sql += " AND famille = ?"; params.append(famille)
+            if sous_famille:
+                sql += " AND sous_famille = ?"; params.append(sous_famille)
+            sql += " ORDER BY nom LIMIT 100"
+            cur_v = await db.execute(sql, params)
             items = [dict(r) for r in await cur_v.fetchall()]
-            return [p for p in items if p["id"] not in deja][:30]
+            return [p for p in items if p["id"] not in deja][:100]
 
         # Suggestions sémantiques sur le nom du groupe.
         cur_v = await db.execute(

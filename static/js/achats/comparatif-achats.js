@@ -315,15 +315,10 @@ function rendreMarge(data) {
   const produits = data.produits_vente || [];
   const lignesAchat = data.lignes || [];
 
-  // Sélecteur d'AJOUT : la liste ne s'ouvre que sur clic ▾ (ne masque pas le VS).
+  // Bouton d'AJOUT : ouvre le panneau d'association (recherche + filtres + sélection multiple).
   let html = `<div class="cmp-marge-assoc">
     <label class="cmp-marge-lbl">🏷️ Produits de vente associés</label>
-    <div class="cmp-marge-vente-pick">
-      <input type="search" id="cmp-vente-search" class="cmp-vente-search"
-             placeholder="Ajouter un produit de vente…" autocomplete="off">
-      <button class="ach-btn cmp-vente-toggle" id="cmp-vente-toggle" title="Voir les produits">▾</button>
-      <div id="cmp-vente-resultats" class="cmp-vente-resultats" style="display:none;"></div>
-    </div>
+    <button class="ach-btn ach-btn--primary" id="cmp-vente-ajouter">+ Associer des produits de vente</button>
   </div>`;
 
   if (produits.length) {
@@ -439,28 +434,9 @@ function rendreMargeCarte(p, lignesAchat) {
 }
 
 function cablerMarge() {
-  const search = $('cmp-vente-search');
-  const box = $('cmp-vente-resultats');
-  if (search) {
-    let tv;
-    search.addEventListener('input', () => {
-      clearTimeout(tv);
-      if (box.style.display === 'none') return;
-      tv = setTimeout(() => rechercherProduitsVente(search.value.trim()), 250);
-    });
-  }
-  // Flèche ▾ : ouvre / ferme la liste de suggestions explicitement.
-  const toggle = $('cmp-vente-toggle');
-  if (toggle) {
-    toggle.addEventListener('click', () => {
-      if (box.style.display === 'none') {
-        rechercherProduitsVente(search.value.trim());
-        search.focus();
-      } else {
-        box.style.display = 'none';
-      }
-    });
-  }
+  // Bouton « + Associer des produits de vente » → ouvre le panneau dédié.
+  const btnAj = $('cmp-vente-ajouter');
+  if (btnAj) btnAj.addEventListener('click', ouvrirVentePanneau);
 
   // Clic sur la barre résumé → déplie/replie cette carte (une seule ouverte à la fois).
   // On ignore les clics sur le bouton « délier » (géré à part).
@@ -540,67 +516,97 @@ function cablerMarge() {
   });
 }
 
-// Recherche / suggestions de produits de vente.
-// q vide → suggestions sémantiques sur le nom du groupe (les plus proches en haut),
-// la liste complète reste accessible en dessous (« être sûr de ne rien rater »).
-async function rechercherProduitsVente(q) {
+// ── Panneau d'association de produits de vente (recherche + filtres + multi) ──
+function ouvrirVentePanneau() {
   if (!groupeCourant) return;
-  const box = $('cmp-vente-resultats');
-  const semantique = !q;   // pas de saisie = mode suggestions
-  const url = `${API_CMP}/groupes/${groupeCourant}/vente-suggestions` +
-    (q ? `?q=${encodeURIComponent(q)}` : '');
-  const r = await fetch(url);
+  $('cmp-vente-panneau').style.display = '';
+  $('cmpv-search').value = '';
+  peuplerSelectFamille($('cmpv-filtre-famille'), null, '');
+  majSousFamille('', $('cmpv-filtre-sous-famille'), '');
+  rafraichirVentePanneau();
+  $('cmpv-search').focus();
+}
+function fermerVentePanneau() { $('cmp-vente-panneau').style.display = 'none'; }
+
+async function rafraichirVentePanneau() {
+  const q = $('cmpv-search').value.trim();
+  const fam = $('cmpv-filtre-famille').value;
+  const sf = $('cmpv-filtre-sous-famille').value;
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  if (fam) params.set('famille', fam);
+  if (sf) params.set('sous_famille', sf);
+  const qs = params.toString();
+  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/vente-suggestions${qs ? '?' + qs : ''}`);
   const items = r.ok ? await r.json() : [];
+  const box = $('cmpv-resultats');
+  const semantique = !(q || fam || sf);
   if (!items.length) {
+    majVentePanneauSelection([]);
     box.innerHTML = '<div class="cmp-empty cmp-empty--sm">Aucun produit de vente disponible.</div>';
-    box.style.display = '';
     return;
   }
-  // En mode sémantique, on titre les vraies suggestions (score > 0) puis le reste.
+  // En mode sémantique : titrer les vraies suggestions (score>0) puis le reste.
   const aSugg = semantique && items.some((p) => (p.score || 0) > 0);
   let html = '';
   let titreReste = false;
-  items.slice(0, 30).forEach((p) => {
+  items.forEach((p) => {
     if (semantique && aSugg && !titreReste && (p.score || 0) === 0) {
       html += '<div class="cmp-vente-titre">Tous les produits de vente</div>';
       titreReste = true;
     }
     const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
-    const sf = p.sous_famille ? esc(p.sous_famille) : 'sans sous-famille';
+    const clf = (p.famille || p.sous_famille)
+      ? esc([p.famille, p.sous_famille].filter(Boolean).join(' · ')) : 'non classé';
     const score = (p.score != null && p.score > 0)
       ? `<span class="cmp-score">${Math.round(p.score * 100)}%</span>` : '';
-    html += `<div class="cmp-vente-resultat" data-id="${p.id}">
-      <span class="cmp-vente-resultat-nom">${esc(p.nom)} ${score}</span>
-      <span class="cmp-vente-resultat-meta">${sf} · ${prix}</span>
-    </div>`;
+    html += `<label class="cmp-resultat cmp-resultat--cb">
+      <input type="checkbox" class="cmpv-cb" data-id="${p.id}">
+      <div class="cmp-resultat-info">
+        <div class="cmp-resultat-nom">${esc(p.nom)} ${score}</div>
+        <div class="cmp-resultat-meta">${clf} · ${prix}</div>
+      </div>
+    </label>`;
   });
-  if (aSugg) {
-    html = '<div class="cmp-vente-titre">Suggestions (proches du nom du groupe)</div>' + html;
-  }
+  if (aSugg) html = '<div class="cmp-vente-titre">Suggestions (proches du nom du groupe)</div>' + html;
   box.innerHTML = html;
-  box.style.display = '';
-  box.querySelectorAll('.cmp-vente-resultat').forEach((el) => {
-    el.addEventListener('click', () => associerVente(Number(el.dataset.id)));
-  });
+  majVentePanneauSelection([...box.querySelectorAll('.cmpv-cb')]);
 }
 
-// Ajoute un produit de vente au groupe (1 groupe → N ventes).
-async function associerVente(catalogueVenteId) {
-  if (!groupeCourant) return;
-  const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ catalogue_vente_id: catalogueVenteId }),
-  });
-  if (!r.ok) {
-    const d = await r.json().catch(() => ({}));
-    alert(d.detail || 'Association impossible.');
-    return;
+function majVentePanneauSelection(cases) {
+  const has = cases.length > 0;
+  $('cmpv-tout-label').style.display = has ? '' : 'none';
+  $('cmpv-pied').style.display = has ? '' : 'none';
+  if (!has) return;
+  const tout = $('cmpv-tout');
+  tout.checked = false; tout.indeterminate = false;
+  tout.onchange = () => cases.forEach((cb) => { cb.checked = tout.checked; });
+  const majTout = () => {
+    const n = cases.filter((cb) => cb.checked).length;
+    tout.checked = n === cases.length;
+    tout.indeterminate = n > 0 && n < cases.length;
+  };
+  cases.forEach((cb) => cb.addEventListener('change', majTout));
+}
+
+async function associerSelectionVente() {
+  const ids = [...$('cmpv-resultats').querySelectorAll('.cmpv-cb:checked')].map((cb) => Number(cb.dataset.id));
+  if (!ids.length) { alert('Cochez au moins un produit.'); return; }
+  let conflit = 0;
+  for (const id of ids) {
+    const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogue_vente_id: id }),
+    });
+    if (r.status === 409) conflit++;
+    if (r.ok) dernierVS = await r.json();
   }
-  dernierVS = await r.json();
   rendreVS(dernierVS);
   majBadgeMargeKo();
-  majBadgeVentesNonReliees();   // un produit de plus est relié
+  majBadgeVentesNonReliees();
+  if (conflit) alert(`${conflit} produit(s) déjà associé(s) ailleurs ont été ignorés.`);
+  await rafraichirVentePanneau();   // retire les nouveaux associés de la liste
 }
 
 // Délie un produit de vente du groupe.
@@ -1015,25 +1021,30 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-fermer-non-reliees').addEventListener('click', fermerVentesNonReliees);
   $('btn-creer-tous-groupes').addEventListener('click', creerTousGroupes);
 
-  // Fermer la liste de suggestions produit-vente au clic en dehors (attaché 1 seule fois).
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('.cmp-marge-assoc')) {
-      const box = $('cmp-vente-resultats');
-      if (box) box.style.display = 'none';
-    }
-  });
-
+  // Panneau d'ajout d'ARTICLES D'ACHAT : recherche + filtres + sélection.
   let t;
   $('cmp-search').addEventListener('input', () => {
     clearTimeout(t);
     t = setTimeout(rafraichirPanneau, 250);
   });
-
-  // Filtres famille / sous-famille du panneau d'ajout (listes dépendantes).
   $('cmp-filtre-famille').addEventListener('change', () => {
     majSousFamille($('cmp-filtre-famille').value, $('cmp-filtre-sous-famille'), '');
     rafraichirPanneau();
   });
   $('cmp-filtre-sous-famille').addEventListener('change', rafraichirPanneau);
   $('cmp-add-selection').addEventListener('click', ajouterSelectionPanneau);
+
+  // Panneau d'association de PRODUITS DE VENTE : recherche + filtres + sélection.
+  $('btn-fermer-vente-panneau').addEventListener('click', fermerVentePanneau);
+  let tv;
+  $('cmpv-search').addEventListener('input', () => {
+    clearTimeout(tv);
+    tv = setTimeout(rafraichirVentePanneau, 250);
+  });
+  $('cmpv-filtre-famille').addEventListener('change', () => {
+    majSousFamille($('cmpv-filtre-famille').value, $('cmpv-filtre-sous-famille'), '');
+    rafraichirVentePanneau();
+  });
+  $('cmpv-filtre-sous-famille').addEventListener('change', rafraichirVentePanneau);
+  $('cmpv-selection').addEventListener('click', associerSelectionVente);
 });

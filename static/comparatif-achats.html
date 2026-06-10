@@ -109,6 +109,31 @@
     </div>
   </div>
 
+  <!-- Panneau : associer des produits de VENTE (recherche + filtres + sélection multiple) -->
+  <div id="cmp-vente-panneau" class="cmp-panneau" style="display:none;">
+    <div class="cmp-panneau-box">
+      <div class="cmp-panneau-head">
+        <strong>Associer des produits de vente</strong>
+        <button class="ach-btn" id="btn-fermer-vente-panneau">✕</button>
+      </div>
+      <div class="cmp-panneau-search">
+        <input type="search" id="cmpv-search" placeholder="Rechercher un produit de vente…">
+        <div class="cmp-panneau-filtres">
+          <select id="cmpv-filtre-famille"><option value="">— Famille —</option></select>
+          <select id="cmpv-filtre-sous-famille"><option value="">— Sous-famille —</option></select>
+        </div>
+        <label class="cmp-grappe-art cmp-auto-tout" id="cmpv-tout-label" style="display:none;">
+          <input type="checkbox" id="cmpv-tout">
+          <span class="cmp-grappe-art-nom"><strong>Tout sélectionner / désélectionner</strong></span>
+        </label>
+      </div>
+      <div id="cmpv-resultats" class="cmp-resultats"></div>
+      <div class="cmp-panneau-pied" id="cmpv-pied" style="display:none;">
+        <button class="ach-btn ach-btn--primary" id="cmpv-selection">✓ Associer la sélection</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modale « Marges incalculables » : groupes associés à un produit de vente où il manque une info -->
   <div id="cmp-marge-ko" class="cmp-panneau" style="display:none;">
     <div class="cmp-panneau-box cmp-panneau-box--large">
