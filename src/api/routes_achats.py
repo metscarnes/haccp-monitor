@@ -2321,8 +2321,8 @@ async def add_comparatif_vente(
 ):
     """Associe un produit de VENTE au groupe (1 groupe → N produits de vente).
 
-    Unicité côté vente : un produit de vente n'appartient qu'à UN groupe (sa marge serait
-    sinon ambiguë). Conflit → 409.
+    Unicité côté vente : un produit n'appartient qu'à UN groupe. S'il est déjà ailleurs, on le
+    DÉPLACE vers ce groupe (retire l'ancienne liaison + sa référence d'achat, devenue caduque).
     """
     async with get_db() as db:
         await _ensure_groupe(db, groupe_id)
@@ -2332,18 +2332,20 @@ async def add_comparatif_vente(
         )
         if not await cur_v.fetchone():
             raise HTTPException(404, "Produit de vente introuvable")
-        # Déjà rattaché ailleurs ?
+        # Déjà rattaché ailleurs ? → on déplace (supprime l'ancienne liaison).
         cur_dup = await db.execute(
             "SELECT groupe_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
             (body.catalogue_vente_id,),
         )
         dup = await cur_dup.fetchone()
         if dup and dup["groupe_id"] != groupe_id:
-            raise HTTPException(
-                409, "Ce produit de vente est déjà associé à un autre groupe de comparaison"
+            await db.execute(
+                "DELETE FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+                (body.catalogue_vente_id,),
             )
         await db.execute(
-            "INSERT OR IGNORE INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+            # ligne_choisie_id NULL : la réf d'achat de l'ancien groupe ne vaut plus ici.
+            "INSERT OR REPLACE INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id, ligne_choisie_id) VALUES (?, ?, NULL)",
             (groupe_id, body.catalogue_vente_id),
         )
         await db.commit()
@@ -2458,9 +2460,24 @@ async def comparatif_vente_suggestions(
         if not grp:
             raise HTTPException(404, "Groupe introuvable")
         nom_groupe = grp["nom"]
-        # Produits de vente déjà rattachés (à n'importe quel groupe).
-        cur_d = await db.execute("SELECT catalogue_vente_id FROM comparatif_groupe_vente")
-        deja = {r["catalogue_vente_id"] for r in await cur_d.fetchall()}
+
+        # Groupe actuel de chaque produit déjà associé (pour proposer un DÉPLACEMENT).
+        # On exclut seulement ceux déjà dans CE groupe ; les autres sont proposés avec mention.
+        cur_d = await db.execute(
+            """SELECT gv.catalogue_vente_id, gv.groupe_id, g.nom AS groupe_nom
+               FROM comparatif_groupe_vente gv JOIN comparatif_groupe g ON g.id = gv.groupe_id"""
+        )
+        assoc = {r["catalogue_vente_id"]: (r["groupe_id"], r["groupe_nom"]) for r in await cur_d.fetchall()}
+
+        def enrichir(p):
+            ga = assoc.get(p["id"])
+            p["groupe_actuel_id"] = ga[0] if ga else None
+            p["groupe_actuel_nom"] = ga[1] if ga else None
+            return p
+
+        def garder(p):
+            ga = assoc.get(p["id"])
+            return not (ga and ga[0] == groupe_id)  # exclure uniquement ceux déjà dans CE groupe
 
         q = (q or "").strip()
         if q or famille or sous_famille:
@@ -2474,20 +2491,19 @@ async def comparatif_vente_suggestions(
                 sql += " AND sous_famille = ?"; params.append(sous_famille)
             sql += " ORDER BY nom LIMIT 100"
             cur_v = await db.execute(sql, params)
-            items = [dict(r) for r in await cur_v.fetchall()]
-            return [p for p in items if p["id"] not in deja][:100]
+            items = [enrichir(dict(r)) for r in await cur_v.fetchall() if garder(dict(r))]
+            return items[:100]
 
         # Suggestions sémantiques sur le nom du groupe.
         cur_v = await db.execute(
             "SELECT * FROM catalogue_vente WHERE boutique_id = 1 AND actif = 1 ORDER BY nom"
         )
-        produits = [dict(r) for r in await cur_v.fetchall()]
-        produits = [p for p in produits if p["id"] not in deja]
+        produits = [enrichir(dict(r)) for r in await cur_v.fetchall() if garder(dict(r))]
         for p in produits:
             p["score"] = _similarite(nom_groupe, p.get("nom") or "")
-        # Plus proches d'abord, puis ordre alphabétique pour la longue traîne (score 0).
-        produits.sort(key=lambda p: (-p["score"], (p.get("nom") or "").lower()))
-        return produits[:30]
+        # Plus proches d'abord ; à score égal, les LIBRES avant ceux à déplacer.
+        produits.sort(key=lambda p: (-p["score"], p["groupe_actuel_id"] is not None, (p.get("nom") or "").lower()))
+        return produits[:60]
 
 
 @router.put("/comparatif/groupes/{groupe_id}/reference")

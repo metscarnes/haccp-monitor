@@ -560,10 +560,14 @@ async function rafraichirVentePanneau() {
       ? esc([p.famille, p.sous_famille].filter(Boolean).join(' · ')) : 'non classé';
     const score = (p.score != null && p.score > 0)
       ? `<span class="cmp-score">${Math.round(p.score * 100)}%</span>` : '';
+    // Produit déjà dans un autre groupe → mention « déplacer depuis X ».
+    const deplace = p.groupe_actuel_id
+      ? `<span class="cmp-deplace" title="L'associer ici le déplacera">↪ déjà dans « ${esc(p.groupe_actuel_nom)} »</span>`
+      : '';
     html += `<label class="cmp-resultat cmp-resultat--cb">
       <input type="checkbox" class="cmpv-cb" data-id="${p.id}">
       <div class="cmp-resultat-info">
-        <div class="cmp-resultat-nom">${esc(p.nom)} ${score}</div>
+        <div class="cmp-resultat-nom">${esc(p.nom)} ${score} ${deplace}</div>
         <div class="cmp-resultat-meta">${clf} · ${prix}</div>
       </div>
     </label>`;
@@ -592,21 +596,18 @@ function majVentePanneauSelection(cases) {
 async function associerSelectionVente() {
   const ids = [...$('cmpv-resultats').querySelectorAll('.cmpv-cb:checked')].map((cb) => Number(cb.dataset.id));
   if (!ids.length) { alert('Cochez au moins un produit.'); return; }
-  let conflit = 0;
   for (const id of ids) {
     const r = await fetch(`${API_CMP}/groupes/${groupeCourant}/ventes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ catalogue_vente_id: id }),
     });
-    if (r.status === 409) conflit++;
-    if (r.ok) dernierVS = await r.json();
+    if (r.ok) dernierVS = await r.json();   // déplacement géré côté serveur
   }
   rendreVS(dernierVS);
   majBadgeMargeKo();
   majBadgeVentesNonReliees();
-  if (conflit) alert(`${conflit} produit(s) déjà associé(s) ailleurs ont été ignorés.`);
-  await rafraichirVentePanneau();   // retire les nouveaux associés de la liste
+  await rafraichirVentePanneau();   // retire les produits désormais dans ce groupe
 }
 
 // Délie un produit de vente du groupe.
