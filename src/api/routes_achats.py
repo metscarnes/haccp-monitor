@@ -1459,6 +1459,86 @@ async def delete_panier():
         await db.commit()
 
 
+# Code de l'article de prestation désossage veau (cf. règle métier ci-dessous).
+CODE_PREST_DESOSSAGE = "99864-1"
+
+
+async def _appliquer_regle_desossage(db, lignes: list) -> list:
+    """Règle métier : quand une commande contient du veau (famille=Viande,
+    sous-famille=Veau), le fournisseur dont le catalogue contient l'article
+    99864-1 reçoit une ligne de prestation désossage dont la quantité (kg) =
+    poids total de veau commandé chez CE fournisseur.
+
+    Recalcule à partir du catalogue (source de vérité : famille/sous_famille et
+    poids ne sont pas stockés dans panier_lignes). Remplace toute ligne 99864-1
+    déjà présente pour rester idempotent. Retourne la liste des lignes augmentée.
+    """
+    # Charger les infos catalogue nécessaires pour toutes les lignes du panier
+    cat_ids = [l["catalogue_fournisseur_id"] for l in lignes if l.get("catalogue_fournisseur_id")]
+    cat = {}
+    if cat_ids:
+        placeholders = ",".join("?" * len(cat_ids))
+        cur = await db.execute(
+            f"""SELECT id, fournisseur_id, code_article, designation, famille, sous_famille,
+                       format_prix, prix_achat_ht, poids_colis_kg, poids_unitaire_kg, qte_par_colis
+                FROM catalogue_fournisseur WHERE id IN ({placeholders})""",
+            cat_ids,
+        )
+        cat = {r["id"]: dict(r) for r in await cur.fetchall()}
+
+    def poids_kg(a, qte, unite):
+        if not qte:
+            return 0.0
+        if unite == "kg":
+            return qte
+        if unite == "piece":
+            p = a.get("poids_unitaire_kg")
+            return qte * p if p else None
+        if unite == "colis":
+            p = a.get("poids_colis_kg")
+            return qte * p if p else None
+        return None
+
+    # Cumuler le poids de veau par fournisseur (hors article prestation lui-même)
+    veau_kg = {}
+    for l in lignes:
+        a = cat.get(l.get("catalogue_fournisseur_id"))
+        if not a or a["code_article"] == CODE_PREST_DESOSSAGE:
+            continue
+        if a.get("famille") == "Viande" and a.get("sous_famille") == "Veau":
+            kg = poids_kg(a, l["quantite"], l.get("unite") or "kg")
+            if kg:
+                veau_kg[a["fournisseur_id"]] = veau_kg.get(a["fournisseur_id"], 0.0) + kg
+
+    # Retirer toute ligne désossage existante (on la régénère proprement)
+    lignes = [l for l in lignes if l["code_article"] != CODE_PREST_DESOSSAGE]
+
+    # Ajouter une ligne désossage par fournisseur ayant du veau ET l'article 99864-1
+    for fid, kg in veau_kg.items():
+        cur = await db.execute(
+            """SELECT id, fournisseur_id, code_article, designation, prix_achat_ht
+               FROM catalogue_fournisseur
+               WHERE fournisseur_id = ? AND code_article = ? AND actif = 1
+               LIMIT 1""",
+            (fid, CODE_PREST_DESOSSAGE),
+        )
+        prest = await cur.fetchone()
+        if not prest:
+            continue  # veau sans prestation au catalogue : ignoré (signalé côté front)
+        prest = dict(prest)
+        lignes.append({
+            "catalogue_fournisseur_id": prest["id"],
+            "fournisseur_id": fid,
+            "fournisseur_nom": next((l["fournisseur_nom"] for l in lignes if l["fournisseur_id"] == fid), ""),
+            "code_article": prest["code_article"],
+            "designation": prest["designation"],
+            "quantite": round(kg, 3),
+            "unite": "kg",
+            "prix_ht": prest.get("prix_achat_ht") or 0,
+        })
+    return lignes
+
+
 @router.post("/panier/generer", status_code=201)
 async def generer_commandes_depuis_panier(body: PanierGenerer):
     """Regroupe le panier par fournisseur et crée une commande brouillon par fournisseur."""
@@ -1468,8 +1548,11 @@ async def generer_commandes_depuis_panier(body: PanierGenerer):
         )
         lignes = [dict(r) for r in await cur.fetchall()]
 
-    if not lignes:
-        raise HTTPException(400, "Le panier est vide")
+        if not lignes:
+            raise HTTPException(400, "Le panier est vide")
+
+        # Garantir la prestation désossage veau (source de vérité serveur)
+        lignes = await _appliquer_regle_desossage(db, lignes)
 
     # Regrouper par fournisseur
     from collections import defaultdict

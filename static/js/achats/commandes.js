@@ -22,6 +22,13 @@ let uniteChoisies = {};
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
+// ── Règle métier : prestation désossage veau ─────────────────
+// Quand une commande contient du veau (famille=Viande, sous-famille=Veau), le
+// fournisseur dont le catalogue contient l'article ci-dessous reçoit une ligne
+// de prestation désossage dont le poids commandé (en kg) = poids total de veau
+// commandé chez CE fournisseur. Règle appliquée fournisseur par fournisseur.
+const CODE_PREST_DESOSSAGE = '99864-1';
+
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([chargerFournisseurs(), chargerCommandes(), chargerCatalogueTous()]);
@@ -266,6 +273,19 @@ function qteParColis(a) {
   return (!isNaN(n) && n > 0) ? n : null;
 }
 
+// Poids en kg d'une ligne quelle que soit son unité de commande.
+// Renvoie null si la conversion est impossible (donnée poids manquante).
+function poidsLigneKg(a, qte, unite) {
+  if (!qte) return 0;
+  if (unite === 'kg')    return qte;
+  if (unite === 'piece') { const p = poidsUnitKg(a);  return p !== null ? qte * p : null; }
+  if (unite === 'colis') { const p = poidsColisKg(a); return p !== null ? qte * p : null; }
+  return null;
+}
+
+// Un article catalogue est-il du veau ? (famille Viande + sous-famille Veau)
+function estVeau(a) { return a?.famille === 'Viande' && a?.sous_famille === 'Veau'; }
+
 // Liste des unités autorisées par le fournisseur (CSV en BDD).
 // Vide/absent → tout autorisé (rétrocompat articles sans la colonne).
 function unitesAutorisees(a) {
@@ -411,6 +431,7 @@ async function panierRestaurerBDD() {
       const unite = l.unite || (a ? uniteParDefaut(a) : 'kg');
       panier[l.catalogue_fournisseur_id] = { quantite: l.quantite, unite };
     });
+    synchroniserDesossage();   // recalcule la prestation à partir du panier restauré
     panierSauver();
   } catch(e) { /* silencieux */ }
 }
@@ -431,7 +452,10 @@ async function ouvrirPanier() {
   document.getElementById('panier-search').value = '';
   document.getElementById('panier-filtre-fournisseur').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
+  const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
+  panierSauver();
   afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
   document.getElementById('modal-panier').hidden = false;
 }
 
@@ -471,11 +495,12 @@ function afficherCataloguePanier() {
     const totalLigne = qte > 0 ? totalLignePanier(a, qte, unite) : null;
     // Indice de conversion : prix équivalent dans l'autre unité
     const puAffiche = prixUnitaire(a, unite);
+    const desossageAuto = estDesossageAuto(a);   // ligne pilotée automatiquement (lecture seule)
     return `
-      <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}">
+      <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}${desossageAuto ? ' ach-row--auto' : ''}">
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
         <td><code>${escHtml(a.code_article)}</code></td>
-        <td class="ach-cell-nom">${escHtml(a.designation)}</td>
+        <td class="ach-cell-nom">${escHtml(a.designation)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
         <td>${a.format_prix === 'kg' ? 'kg' : 'colis'}</td>
         <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
@@ -484,6 +509,15 @@ function afficherCataloguePanier() {
             ? `<strong>${stock}</strong>`
             : '<span style="color:#9ca3af">0</span>'}</td>
         <td>
+          ${desossageAuto ? `
+          <div class="ach-qte-cell">
+            <input type="number" value="${qte ? fmtKg(qte) : ''}" class="ach-qte-input" readonly
+                   title="Poids total de veau commandé (calculé automatiquement)"
+                   style="background:#f9f5ef; cursor:default;">
+            <div class="ach-unite-btns" role="group">
+              <button type="button" class="ach-unite-btn is-active" disabled>kg</button>
+            </div>
+          </div>` : `
           <div class="ach-qte-cell">
             <input type="number" min="0" step="any" value="${qte || ''}" placeholder="0"
                    class="ach-qte-input" onchange="panierSetQte(${a.id}, this.value)">
@@ -495,7 +529,7 @@ function afficherCataloguePanier() {
               <button type="button" class="ach-unite-btn ${unite === 'colis' ? 'is-active' : ''}"
                       ${colisOk ? '' : 'disabled'} onclick="panierSetUnite(${a.id}, 'colis')">colis</button>
             </div>
-          </div>
+          </div>`}
           ${puAffiche !== null
             ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${uniteLabel(unite)}</div>`
             : `<div class="ach-stepper-hint" style="color:#b45309">conversion impossible</div>`}
@@ -530,8 +564,80 @@ function majTotalPanier() {
   document.getElementById('panier-nb-articles').textContent = panierNbArticles();
 }
 
+// ── Synchronisation prestation désossage veau ────────────────
+// Pour chaque fournisseur dont le catalogue contient l'article 99864-1, met la
+// quantité de cette ligne au poids total de veau commandé chez lui (en kg).
+// Si pas de veau → la ligne est retirée. Les articles 99864-1 sont gérés
+// automatiquement : ils ne sont jamais comptés comme du veau ni saisis à la main.
+// Renvoie un objet { nonConvertible: [...], veauSansPrest: [...] } pour l'affichage
+// d'alertes (poids de veau non calculable, ou veau chez un fournisseur sans 99864-1).
+function synchroniserDesossage() {
+  const alertes = { nonConvertible: [], veauSansPrest: [] };
+
+  // 1) Cumuler le poids de veau commandé, par fournisseur
+  const veauKgParFourn = {};   // { fournisseur_id: kg }
+  for (const catId of Object.keys(panier)) {
+    const a = catalogueTous.find(x => x.id === parseInt(catId));
+    if (!a || a.code_article === CODE_PREST_DESOSSAGE || !estVeau(a)) continue;
+    const qte = panierQte(catId);
+    if (!qte) continue;
+    const kg = poidsLigneKg(a, qte, panierUnite(catId));
+    if (kg === null) {
+      alertes.nonConvertible.push(a.designation);   // colis/pièce veau sans poids renseigné
+      continue;
+    }
+    veauKgParFourn[a.fournisseur_id] = (veauKgParFourn[a.fournisseur_id] || 0) + kg;
+  }
+
+  // 2) Pour chaque fournisseur ayant du veau, trouver SON article 99864-1
+  for (const [fid, kg] of Object.entries(veauKgParFourn)) {
+    const prest = catalogueTous.find(
+      x => x.fournisseur_id === parseInt(fid) && x.code_article === CODE_PREST_DESOSSAGE
+    );
+    if (!prest) {
+      const f = fournisseurs.find(x => x.id === parseInt(fid));
+      alertes.veauSansPrest.push(f ? f.nom : `fournisseur #${fid}`);
+      continue;
+    }
+    // Poids total veau (kg) → quantité de la prestation, en kg, lecture seule
+    panier[String(prest.id)] = { quantite: parseFloat(kg.toFixed(3)), unite: 'kg', auto: true };
+    uniteChoisies[String(prest.id)] = 'kg';
+  }
+
+  // 3) Retirer les lignes désossage auto des fournisseurs qui n'ont plus de veau
+  for (const catId of Object.keys(panier)) {
+    const a = catalogueTous.find(x => x.id === parseInt(catId));
+    if (a && a.code_article === CODE_PREST_DESOSSAGE && !veauKgParFourn[a.fournisseur_id]) {
+      delete panier[catId];
+    }
+  }
+
+  return alertes;
+}
+
+// Une ligne du panier est-elle une prestation désossage gérée automatiquement ?
+function estDesossageAuto(a) { return a?.code_article === CODE_PREST_DESOSSAGE; }
+
+// Affiche/masque le bandeau d'alerte désossage selon le résultat de la sync.
+function afficherAlertesDesossage(alertes) {
+  const el = document.getElementById('panier-alerte-desossage');
+  if (!el) return;
+  const msgs = [];
+  if (alertes.nonConvertible.length) {
+    msgs.push(`⚠️ Veau non convertible en kg (poids colis/pièce manquant), désossage incomplet : ${alertes.nonConvertible.join(', ')}`);
+  }
+  if (alertes.veauSansPrest.length) {
+    msgs.push(`⚠️ Veau commandé chez ${alertes.veauSansPrest.join(', ')} mais aucun article ${CODE_PREST_DESOSSAGE} dans leur catalogue : désossage non ajouté.`);
+  }
+  if (msgs.length) { el.innerHTML = msgs.join('<br>'); el.hidden = false; }
+  else { el.hidden = true; }
+}
+
 // Saisie directe de la quantité (saisie libre)
 function panierSetQte(catId, valeur) {
+  // La prestation désossage est pilotée automatiquement : pas de saisie manuelle.
+  const art = catalogueTous.find(x => x.id === parseInt(catId));
+  if (estDesossageAuto(art)) { afficherCataloguePanier(); return; }
   let qte = parseFloat(valeur);
   if (isNaN(qte) || qte < 0) qte = 0;
   if (qte > 0) {
@@ -539,18 +645,23 @@ function panierSetQte(catId, valeur) {
   } else {
     delete panier[catId];   // l'unité reste mémorisée dans uniteChoisies
   }
+  const alertes = synchroniserDesossage();
   panierSauver();
   afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
 }
 
 // Changement de l'unité de commande (kg / pièce / colis) pour une ligne
 function panierSetUnite(catId, unite) {
   const a = catalogueTous.find(x => x.id === parseInt(catId));
+  if (estDesossageAuto(a)) { afficherCataloguePanier(); return; }  // désossage toujours en kg
   if (a && !peutCommander(a, unite)) unite = uniteParDefaut(a); // garde-fou : unité commandable
   uniteChoisies[catId] = unite;                       // mémorise le choix (même sans qté)
   if (panier[catId]) panier[catId].unite = unite;
+  const alertes = synchroniserDesossage();
   panierSauver();
   afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
 }
 
 // Bouton de test : ajoute 1 à la quantité de tous les articles visibles
@@ -559,12 +670,16 @@ function testPlus1() {
   const inputs = tbody.querySelectorAll('input[type="number"]');
   inputs.forEach(input => {
     const catId = parseInt(input.getAttribute('onchange').match(/\d+/)[0]);
+    const art = catalogueTous.find(x => x.id === catId);
+    if (estDesossageAuto(art)) return;   // ligne désossage pilotée automatiquement
     const qteActuelle = panierQte(String(catId));
     const nouvelleQte = qteActuelle + 1;
     panier[catId] = { quantite: nouvelleQte, unite: panierUnite(String(catId)) };
   });
+  const alertes = synchroniserDesossage();
   panierSauver();
   afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
 }
 
 // ── Génération des commandes ──────────────────────────────────
