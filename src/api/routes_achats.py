@@ -342,7 +342,7 @@ async def get_catalogue(
         # tout consommateur de ce catalogue ; les écrans qui l'ignorent ne sont pas affectés.
         for a in articles:
             a["prix_kg"] = _calc_prix_kg(
-                a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg")
+                a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"), a.get("famille")
             )
 
         if avec_stock and articles:
@@ -1629,9 +1629,11 @@ async def envoyer_commande(commande_id: int):
 # ===========================================================================
 
 
-def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
+def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg, famille=None):
     """Prix au kilo normalisé d'un article catalogue.
 
+    - famille 'Viande' : le prix d'achat EST déjà le €/kg (la viande se vend au kilo) ;
+      le poids_colis_kg ne sert qu'à la commande, JAMAIS au calcul → pas de division.
     - format 'kg'    : le prix est déjà au kilo → tel quel.
     - format 'colis' : prix du colis / poids total du colis (qté × poids unitaire).
     Retourne None si on ne peut pas le calculer honnêtement (prix absent, ou
@@ -1642,6 +1644,9 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg):
     # (None) ou un colis sans poids reste « indisponible ».
     if prix_achat_ht is None:
         return None
+    # Viande : prix d'achat = €/kg direct, quel que soit le format (poids = commande only).
+    if (famille or "").strip().lower() == "viande":
+        return round(float(prix_achat_ht), 4)
     if format_prix == "kg":
         return round(float(prix_achat_ht), 4)
     if format_prix == "colis" and poids_colis_kg:
@@ -1893,7 +1898,7 @@ async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)
             meme_sf = bool(sf_vente) and (a.get("sous_famille") or "").strip().lower() == sf_vente
             a["meme_sous_famille"] = meme_sf
             a["score"] = round(score, 3)
-            a["prix_kg"] = _calc_prix_kg(a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"))
+            a["prix_kg"] = _calc_prix_kg(a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"), a.get("famille"))
             suggestions.append(a)
 
         # Tri : même sous-famille d'abord, puis score, puis €/kg croissant (None en dernier).
@@ -1941,11 +1946,11 @@ async def comparatif_marge_incalculable(_=Depends(require_admin)):
             if ligne_id in ref_cache:
                 return ref_cache[ligne_id]
             cur_l = await db.execute(
-                "SELECT format_prix, prix_achat_ht, poids_colis_kg FROM catalogue_fournisseur WHERE id = ?",
+                "SELECT format_prix, prix_achat_ht, poids_colis_kg, famille FROM catalogue_fournisseur WHERE id = ?",
                 (ligne_id,),
             )
             l = await cur_l.fetchone()
-            pk = _calc_prix_kg(l["format_prix"], l["prix_achat_ht"], l["poids_colis_kg"]) if l else None
+            pk = _calc_prix_kg(l["format_prix"], l["prix_achat_ht"], l["poids_colis_kg"], l["famille"]) if l else None
             ref_cache[ligne_id] = pk
             return pk
 
@@ -2121,7 +2126,7 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         prix_kg_par_ligne = {}
         for ligne in lignes:
             pk = _calc_prix_kg(
-                ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg")
+                ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg"), ligne.get("famille")
             )
             ligne["prix_kg"] = pk
             ligne["meilleur"] = False
@@ -2438,7 +2443,7 @@ async def comparatif_suggestions(
             if score > 0:
                 c["score"] = round(score, 3)
                 c["prix_kg"] = _calc_prix_kg(
-                    c.get("format_prix"), c.get("prix_achat_ht"), c.get("poids_colis_kg")
+                    c.get("format_prix"), c.get("prix_achat_ht"), c.get("poids_colis_kg"), c.get("famille")
                 )
                 suggestions.append(c)
 
@@ -2597,7 +2602,7 @@ async def proposer_groupes(_=Depends(require_admin)):
                     "designation": g["designation"],
                     "fournisseur_nom": g["fournisseur_nom"],
                     "code_article": g["code_article"],
-                    "prix_kg": _calc_prix_kg(g.get("format_prix"), g.get("prix_achat_ht"), g.get("poids_colis_kg")),
+                    "prix_kg": _calc_prix_kg(g.get("format_prix"), g.get("prix_achat_ht"), g.get("poids_colis_kg"), g.get("famille")),
                 })
             grappes.append({
                 "nom_suggere": _nom_suggere([g["_coeur"] for g in grappe], [g["designation"] for g in grappe]),
