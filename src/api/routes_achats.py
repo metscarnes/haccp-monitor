@@ -138,11 +138,14 @@ class ComparatifVenteLink(BaseModel):
 
 class ComparatifVenteUpdate(BaseModel):
     # Édition d'un produit de vente associé depuis le comparateur (simulation marge) :
-    # prix TTC, unité de vente (kg|piece), poids d'une pièce. Champs optionnels ;
-    # l'endpoint regarde `model_fields_set` pour ne toucher qu'aux champs fournis.
+    # prix TTC, unité de vente (kg|piece), poids d'une pièce, et classification
+    # famille/sous-famille (utile pour les viandes type « Collier » non classées).
+    # Champs optionnels ; l'endpoint regarde `model_fields_set` pour ne toucher qu'aux fournis.
     prix_vente_ttc: Optional[float] = None
     unite_vente: Optional[str] = None       # 'kg' | 'piece'
     poids_piece_kg: Optional[float] = None
+    famille: Optional[str] = None
+    sous_famille: Optional[str] = None
 
 
 class ComparatifReferenceUpdate(BaseModel):
@@ -1838,7 +1841,10 @@ async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)
     """Articles d'ACHAT du catalogue à proposer pour CE groupe, par proximité sémantique
     avec le nom du groupe (= le produit de vente). Sert à remplir un groupe créé depuis un
     produit de vente. Exclut les articles déjà dans le groupe. Trié par similarité décroissante
-    puis €/kg croissant. Seuls les articles avec un minimum de proximité (> 0) sont renvoyés."""
+    puis €/kg croissant. Seuls les articles avec un minimum de proximité (> 0) sont renvoyés.
+
+    Si le produit de vente associé a une sous-famille, les achats de la MÊME sous-famille sont
+    BOOSTÉS (remontent en tête) — préférence, pas exclusion : tout reste visible."""
     async with get_db() as db:
         cur = await db.execute(
             "SELECT nom FROM comparatif_groupe WHERE id = ? AND boutique_id = 1", (groupe_id,)
@@ -1847,6 +1853,16 @@ async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)
         if not grp:
             raise HTTPException(404, "Groupe introuvable")
         nom = grp["nom"]
+
+        # Sous-famille du produit de vente associé (pour le boost de pertinence).
+        cur_sf = await db.execute(
+            """SELECT v.sous_famille FROM comparatif_groupe_vente gv
+               JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
+               WHERE gv.groupe_id = ? LIMIT 1""",
+            (groupe_id,),
+        )
+        row_sf = await cur_sf.fetchone()
+        sf_vente = (row_sf["sous_famille"] or "").strip().lower() if row_sf else ""
 
         cur_d = await db.execute(
             "SELECT catalogue_fournisseur_id FROM comparatif_groupe_ligne WHERE groupe_id = ?",
@@ -1873,11 +1889,16 @@ async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)
             # Exiger au moins un mot-cœur commun pour éviter le bruit (ex. juste « de »).
             if score <= 0 or not (coeur_nom & _coeur_tokens(a["designation"])):
                 continue
+            # Boost si même sous-famille que le produit de vente (préférence).
+            meme_sf = bool(sf_vente) and (a.get("sous_famille") or "").strip().lower() == sf_vente
+            a["meme_sous_famille"] = meme_sf
             a["score"] = round(score, 3)
             a["prix_kg"] = _calc_prix_kg(a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"))
             suggestions.append(a)
 
+        # Tri : même sous-famille d'abord, puis score, puis €/kg croissant (None en dernier).
         suggestions.sort(key=lambda x: (
+            not x["meme_sous_famille"],
             -x["score"],
             x["prix_kg"] is None,
             x["prix_kg"] if x["prix_kg"] is not None else 0.0,
@@ -2236,6 +2257,10 @@ async def update_comparatif_vente(
             sets.append("unite_vente = ?"); vals.append(unite)
         if "poids_piece_kg" in fournis:
             sets.append("poids_piece_kg = ?"); vals.append(body.poids_piece_kg)
+        if "famille" in fournis:
+            sets.append("famille = ?"); vals.append(body.famille or None)
+        if "sous_famille" in fournis:
+            sets.append("sous_famille = ?"); vals.append(body.sous_famille or None)
         if sets:
             vals += [cv_id]
             await db.execute(

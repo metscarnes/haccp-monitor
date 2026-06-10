@@ -362,9 +362,15 @@ function rendreMargeCarte(p, lignesAchat) {
     ? `<span class="cmp-mc-ref" title="${esc(ligneRef.fournisseur_nom)} · ${esc(ligneRef.designation)}">${esc(ligneRef.fournisseur_nom)}</span>`
     : `<span class="cmp-mc-ref cmp-mc-ref--vide">réf ?</span>`;
 
+  // Classification : utile pour les viandes (« Collier de quoi ? »). Pastille rouge si absente.
+  const sfLabel = p.sous_famille
+    ? `<span class="cmp-mc-sf" title="${esc(p.famille || '')}">${esc(p.sous_famille)}</span>`
+    : `<span class="cmp-mc-sf cmp-mc-sf--vide" title="Classez ce produit (déplier)">famille ?</span>`;
+
   const barre = `<div class="cmp-mc-head" data-cv="${p.id}">
     <span class="cmp-mc-chevron">${ouvert ? '▾' : '▸'}</span>
     <span class="cmp-mc-nom">${esc(p.nom)}</span>
+    ${sfLabel}
     ${pastille}
     <span class="cmp-mc-resume">${resume}</span>
     <button class="cmp-remove cmp-vente-delier" data-cv="${p.id}" title="Délier ce produit">✕</button>
@@ -416,6 +422,12 @@ function rendreMargeCarte(p, lignesAchat) {
       <label class="cmp-marge-mini cmp-marge-poids" style="${estPiece ? '' : 'display:none;'}">Poids/pièce (kg)
         <input type="number" step="0.001" min="0" class="cmp-vente-poids" data-cv="${p.id}"
                value="${p.poids_piece_kg != null ? p.poids_piece_kg : ''}" placeholder="0.000">
+      </label>
+      <label class="cmp-marge-mini">Famille
+        <select class="cmp-vente-famille" id="cmp-fam-${p.id}" data-cv="${p.id}"></select>
+      </label>
+      <label class="cmp-marge-mini">Sous-famille
+        <select class="cmp-vente-sf" id="cmp-sf-${p.id}" data-cv="${p.id}"></select>
       </label>
     </div>
     ${encart}
@@ -491,6 +503,22 @@ function cablerMarge() {
     };
     inp.addEventListener('blur', valider);
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+  });
+
+  // Famille / sous-famille (listes dépendantes, référentiel partagé familles.js).
+  $('cmp-marge').querySelectorAll('.cmp-vente-famille').forEach((selFam) => {
+    const cv = Number(selFam.dataset.cv);
+    const p = (dernierVS.produits_vente || []).find((x) => x.id === cv) || {};
+    const selSf = $(`cmp-sf-${cv}`);
+    peuplerSelectFamille(selFam, null, p.famille || '');
+    majSousFamille(p.famille || '', selSf, p.sous_famille || '');
+    selFam.addEventListener('change', () => {
+      majSousFamille(selFam.value, selSf, '');   // reset sous-famille au changement de famille
+      majVente(cv, { famille: selFam.value || null, sous_famille: null });
+    });
+    selSf.addEventListener('change', () => {
+      majVente(cv, { sous_famille: selSf.value || null });
+    });
   });
 
   // ✕ « retirer du groupe » dans le tableau d'une carte (sort l'article de TOUT le groupe).
@@ -851,11 +879,13 @@ function ouvrirVentesNonReliees() {
     `(donc aucun suivi de marge). « Créer un groupe » démarre le suivi pour ce produit.`;
   liste.innerHTML = ventesNonReliees.map((p) => {
     const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
-    const sf = p.sous_famille ? esc(p.sous_famille) : 'sans sous-famille';
+    const clf = (p.famille || p.sous_famille)
+      ? esc([p.famille, p.sous_famille].filter(Boolean).join(' · '))
+      : '<span class="cmp-indispo">non classé</span>';
     return `<div class="cmp-resultat">
       <div class="cmp-resultat-info">
         <div class="cmp-resultat-nom">${esc(p.nom)}</div>
-        <div class="cmp-resultat-meta">${sf} · ${prix}</div>
+        <div class="cmp-resultat-meta">${clf} · ${prix}</div>
       </div>
       <button class="ach-btn ach-btn--primary cmp-nr-creer" data-id="${p.id}">+ Créer un groupe</button>
     </div>`;

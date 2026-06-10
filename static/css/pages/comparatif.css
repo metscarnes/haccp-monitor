@@ -271,6 +271,12 @@
   white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis;
 }
 .cmp-mc-ref--vide { color: #b91c1c; background: #fdecea; }
+.cmp-mc-sf {
+  font-size: 0.72rem; font-weight: 600; color: #6b5840;
+  background: #efe6d6; padding: 2px 8px; border-radius: var(--radius-pill);
+  white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+}
+.cmp-mc-sf--vide { color: #b91c1c; background: #fdecea; }
 .cmp-mc-resume { display: flex; align-items: baseline; gap: var(--space-2); white-space: nowrap; }
 .cmp-mc-marge { font-size: 1.1rem; font-weight: 800; color: #1b5e20; }
 .cmp-mc-taux { font-size: 0.85rem; font-weight: 700; color: #2e7d32; }
