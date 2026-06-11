@@ -1478,13 +1478,17 @@ async def delete_panier():
 #      commandes passées, avec un score de prédominance par article.
 
 # Pondérations du score de prédominance (somme = 1). Centralisées ici pour
-# pouvoir ajuster le moteur sans toucher au calcul.
-SUGGESTION_POIDS_FREQUENCE = 0.50   # part des commandes contenant l'article
-SUGGESTION_POIDS_ECHEANCE  = 0.35   # proximité de la prochaine commande attendue
-SUGGESTION_POIDS_RECENCE   = 0.15   # fraîcheur de la dernière commande
-# Un article est « à échéance » quand le temps écoulé depuis sa dernière
-# commande atteint cette fraction de son intervalle moyen de réapprovisionnement.
-SUGGESTION_SEUIL_ECHEANCE = 0.9
+# pouvoir ajuster le moteur sans toucher au calcul. L'activité étant
+# irrégulière (commandes du jour au lendemain), le moteur ne prédit PAS quand
+# commander : il estime le BESOIN au moment où l'utilisateur ouvre le panier,
+# via la consommation induite (quantités commandées ÷ durée d'activité).
+SUGGESTION_POIDS_FREQUENCE = 0.60   # part des commandes contenant l'article
+SUGGESTION_POIDS_BESOIN    = 0.40   # besoin estimé vs commande type
+# Un article est « à commander » quand le besoin estimé atteint cette fraction
+# de sa quantité moyenne de commande.
+SUGGESTION_SEUIL_BESOIN = 0.5
+# Durée minimale d'historique (jours) pour estimer une consommation fiable.
+SUGGESTION_MIN_JOURS_CONSO = 7
 
 
 @router.get("/panier/references")
@@ -1513,7 +1517,8 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
     """Métriques de récurrence + score de prédominance par article catalogue.
 
     Partagé entre /panier/suggestions et /panier/cadencier. Ne considère que
-    les commandes non annulées depuis date_debut, les articles actifs, et
+    les commandes réellement passées (confirmées ou livrées — les brouillons
+    et annulées sont du bruit) depuis date_debut, les articles actifs, et
     exclut la prestation désossage (gérée automatiquement).
 
     Retourne (suggestions triées par score décroissant, nb_commandes_total,
@@ -1531,7 +1536,7 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
         JOIN commandes c ON c.id = cl.commande_id
         JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
         WHERE c.boutique_id = 1
-          AND c.statut != 'annulee'
+          AND c.statut IN ('confirmee', 'livree')
           AND c.date_commande >= ?
           AND cl.catalogue_fournisseur_id IS NOT NULL
           AND cf.actif = 1
@@ -1542,11 +1547,12 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
     )
     lignes = [dict(r) for r in await cur.fetchall()]
 
-    # Nombre total de commandes (non annulées) de la fenêtre, pour normaliser
-    # la fréquence : un article présent dans toutes les commandes → 1.0.
+    # Nombre total de commandes passées de la fenêtre, pour normaliser la
+    # fréquence : un article présent dans toutes les commandes → 1.0.
     cur_n = await db.execute(
         """SELECT COUNT(*) AS n FROM commandes
-           WHERE boutique_id = 1 AND statut != 'annulee' AND date_commande >= ?""",
+           WHERE boutique_id = 1 AND statut IN ('confirmee', 'livree')
+             AND date_commande >= ?""",
         (date_debut.isoformat(),),
     )
     nb_commandes_total = (await cur_n.fetchone())["n"]
@@ -1601,33 +1607,54 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
             ecarts = [(d2 - d1).days for d1, d2 in zip(dates, dates[1:])]
             intervalle_moyen = round(sum(ecarts) / len(ecarts), 1)
 
-        # Quantité suggérée : moyenne des quantités dans l'unité la plus fréquente.
+        # Quantités dans l'unité la plus fréquente (pas de conversion hasardeuse).
         unites = defaultdict(list)
         for o in occ:
             unites[o["unite"] or "kg"].append(o["quantite_commandee"] or 0)
         unite_dominante = max(unites, key=lambda u: len(unites[u]))
         qtes = unites[unite_dominante]
-        quantite_suggeree = round(sum(qtes) / len(qtes), 3)
+        quantite_moyenne = round(sum(qtes) / len(qtes), 3)
+        qte_max = max(qtes)
+
+        # ── Consommation induite ────────────────────────────────────
+        # Le commerce est irrégulier : on ne prédit pas QUAND commander, on
+        # estime le besoin MAINTENANT. Tout ce qui a été commandé entre la
+        # première commande et aujourd'hui est supposé consommé →
+        # conso/jour = total commandé ÷ jours d'activité. Le besoin estimé =
+        # conso/jour × jours depuis la dernière commande, plafonné à la plus
+        # grosse commande passée (jamais suggérer plus qu'un maximum connu :
+        # un long trou — congés, saison — ne doit pas gonfler la suggestion).
+        premiere = dates[0]
+        jours_activite = (aujourd_hui - premiere).days
+        conso_jour = None
+        if len(dates) >= 2 and jours_activite >= SUGGESTION_MIN_JOURS_CONSO:
+            conso_jour = sum(qtes) / jours_activite
+        besoin_estime = None
+        if conso_jour:
+            besoin_estime = round(min(conso_jour * jours_depuis, qte_max), 3)
+
+        # Quantité suggérée : le besoin estimé si calculable, sinon la
+        # commande type (moyenne) — répond à « combien je commande, là ».
+        quantite_suggeree = besoin_estime if besoin_estime else quantite_moyenne
 
         # ── Score de prédominance (0-100) ───────────────────────────
-        # fréquence : part des commandes de la fenêtre contenant l'article.
+        # fréquence : part des commandes de la fenêtre contenant l'article —
+        # « on commande toujours la même chose », c'est elle qui domine.
         frequence = min(1.0, nb_cmd / nb_commandes_total) if nb_commandes_total else 0.0
-        # échéance : 0 → vient d'être commandé, 1 → cycle atteint/dépassé.
-        # Sans récurrence connue (1 seule commande), valeur neutre 0.5.
-        if intervalle_moyen and intervalle_moyen > 0:
-            echeance = min(1.0, jours_depuis / intervalle_moyen)
+        # besoin : besoin estimé rapporté à la commande type. Neutre (0.5)
+        # quand la consommation n'est pas encore calculable.
+        if besoin_estime is not None and quantite_moyenne > 0:
+            besoin = min(1.0, besoin_estime / quantite_moyenne)
         else:
-            echeance = 0.5
-        # récence : 1 → commandé aujourd'hui, 0 → en limite de fenêtre.
-        recence = max(0.0, 1.0 - jours_depuis / fenetre_jours)
+            besoin = 0.5
         score = round(100 * (
             SUGGESTION_POIDS_FREQUENCE * frequence
-            + SUGGESTION_POIDS_ECHEANCE * echeance
-            + SUGGESTION_POIDS_RECENCE * recence
+            + SUGGESTION_POIDS_BESOIN * besoin
         ))
 
-        a_echeance = bool(
-            intervalle_moyen and jours_depuis >= SUGGESTION_SEUIL_ECHEANCE * intervalle_moyen
+        a_commander = bool(
+            besoin_estime is not None and quantite_moyenne > 0
+            and besoin_estime >= SUGGESTION_SEUIL_BESOIN * quantite_moyenne
         )
 
         suggestions.append({
@@ -1643,15 +1670,17 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
             "derniere_commande": derniere.isoformat(),
             "jours_depuis": jours_depuis,
             "intervalle_moyen_jours": intervalle_moyen,
+            "quantite_moyenne": quantite_moyenne,
+            "conso_hebdo": round(conso_jour * 7, 3) if conso_jour else None,
+            "besoin_estime": besoin_estime,
             "quantite_suggeree": quantite_suggeree,
             "unite_suggeree": unite_dominante,
             "score": score,
             "composantes": {
                 "frequence": round(frequence, 3),
-                "echeance": round(echeance, 3),
-                "recence": round(recence, 3),
+                "besoin": round(besoin, 3),
             },
-            "a_echeance": a_echeance,
+            "a_commander": a_commander,
         })
 
     suggestions.sort(key=lambda s: s["score"], reverse=True)
@@ -1660,15 +1689,16 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
 
 @router.get("/panier/suggestions")
 async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
-    """Suggestions de commande basées sur la récurrence des commandes passées.
+    """Suggestions « quoi commander et combien », basées sur la consommation
+    induite par les commandes passées (confirmées/livrées).
 
-    Pour chaque article catalogue commandé dans la fenêtre (commandes non
-    annulées), calcule :
-      - nb_commandes / derniere_commande / jours_depuis ;
-      - intervalle_moyen_jours entre deux commandes (récurrence, si ≥ 2) ;
-      - quantite_suggeree = moyenne des quantités dans l'unité la plus fréquente ;
-      - score (0-100) de prédominance = pondération fréquence + échéance + récence ;
-      - a_echeance : l'article a atteint son cycle de réapprovisionnement.
+    Pour chaque article commandé dans la fenêtre :
+      - conso_hebdo : quantité commandée ÷ durée d'activité (consommation) ;
+      - besoin_estime : conso/jour × jours depuis la dernière commande,
+        plafonné à la plus grosse commande passée ;
+      - quantite_suggeree : le besoin estimé, sinon la commande type (moyenne) ;
+      - score (0-100) de prédominance = fréquence (0.6) + besoin (0.4) ;
+      - a_commander : besoin estimé ≥ moitié d'une commande type.
     """
     async with get_db() as db:
         suggestions, nb_total, _ = await _calculer_suggestions(

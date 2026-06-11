@@ -105,6 +105,13 @@
           <input type="search" id="panier-search" placeholder="Code article ou désignation…" autocomplete="off">
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;"
+                 title="Articles déjà commandés ou produits de référence du comparatif">
+            <input type="checkbox" id="panier-filtre-habituels" checked style="width:18px; height:18px; accent-color:var(--color-accent);">
+            Mes produits habituels
+          </label>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
             <input type="checkbox" id="panier-filtre-selection" style="width:18px; height:18px; accent-color:var(--color-accent);">
             Articles du panier seulement
@@ -132,14 +139,14 @@
           </span>
           <span style="display:flex; gap:var(--space-2); align-items:center;">
             <button type="button" class="ach-btn ach-btn--ok" id="btn-suggestions-tout"
-                    style="font-size:var(--text-xs);" hidden>➕ Ajouter les articles à échéance</button>
+                    style="font-size:var(--text-xs);" hidden>➕ Ajouter les besoins estimés</button>
             <span class="ach-suggestions-chevron" id="panier-suggestions-chevron">▾</span>
           </span>
         </div>
         <div id="panier-suggestions-corps">
           <div class="ach-suggestions-hint">
-            Basées sur la récurrence de vos commandes précédentes — score de prédominance
-            (fréquence, échéance de réapprovisionnement, récence).
+            Quoi commander et combien : besoin estimé d'après la consommation induite par vos
+            commandes passées — score de prédominance (fréquence + besoin).
           </div>
           <div class="ach-suggestions-liste" id="panier-suggestions-liste"></div>
         </div>
@@ -238,7 +245,7 @@
           <select id="cad-tri">
             <option value="score">Score de prédominance</option>
             <option value="total">Total commandé</option>
-            <option value="echeance">À commander d'abord</option>
+            <option value="echeance">Besoin estimé d'abord</option>
             <option value="designation">Désignation</option>
             <option value="fournisseur">Fournisseur</option>
           </select>
@@ -386,6 +393,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/commandes.js?v=5"></script>
+  <script src="/static/js/achats/commandes.js?v=6"></script>
 </body>
 </html>

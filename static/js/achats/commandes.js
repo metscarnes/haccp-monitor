@@ -59,6 +59,7 @@ function bindEvents() {
   document.getElementById('panier-filtre-fournisseur').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-reference').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-habituels').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
   document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
   document.getElementById('btn-test-plus1').addEventListener('click', testPlus1);
@@ -478,6 +479,7 @@ async function ouvrirPanier() {
   document.getElementById('panier-filtre-fournisseur').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
   document.getElementById('panier-filtre-reference').checked = false;
+  document.getElementById('panier-filtre-habituels').checked = true;   // « on commande toujours la même chose »
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
   panierSauver();
   afficherCataloguePanier();
@@ -506,6 +508,19 @@ async function chargerReferencesEtSuggestions() {
 
 function estReference(catId) { return !!referencesAchat[catId]; }
 
+// Suggestion connue pour un article (besoin estimé / quantité type), ou null.
+function suggestionPour(catId) {
+  return suggestionsCmd.find(s => s.catalogue_fournisseur_id === catId) || null;
+}
+
+// « Mes produits habituels » = déjà commandés (suggestions) ou référence ⭐.
+// Tant que rien n'est chargé (1ʳᵉ utilisation, historique vide), pas de filtre :
+// on ne masque jamais tout le catalogue sans alternative.
+function estProduitHabituel(catId) {
+  if (!suggestionsCmd.length && !Object.keys(referencesAchat).length) return true;
+  return estReference(catId) || !!suggestionPour(catId);
+}
+
 function badgeReference(a) {
   const ref = referencesAchat[a.id];
   if (!ref) return '';
@@ -528,8 +543,9 @@ function classeScore(score) {
 
 function libelleRecurrence(s) {
   const parts = [`${s.nb_commandes} cmd`];
-  if (s.intervalle_moyen_jours) parts.push(`tous les ~${Math.round(s.intervalle_moyen_jours)} j`);
+  if (s.conso_hebdo) parts.push(`~${fmtKg(s.conso_hebdo)} ${uniteLabel(s.unite_suggeree)}/sem`);
   parts.push(s.jours_depuis === 0 ? 'commandé aujourd’hui' : `dernière il y a ${s.jours_depuis} j`);
+  if (s.besoin_estime) parts.push(`besoin estimé ${fmtKg(s.besoin_estime)} ${uniteLabel(s.unite_suggeree)}`);
   return parts.join(' · ');
 }
 
@@ -544,18 +560,18 @@ function afficherSuggestions() {
   if (!visibles.length) { panneau.hidden = true; return; }
   panneau.hidden = false;
 
-  const aEcheance = visibles.filter(s => s.a_echeance);
-  badge.textContent = aEcheance.length;
-  badge.hidden = !aEcheance.length;
-  btnTout.hidden = !aEcheance.filter(s => !panierQte(String(s.catalogue_fournisseur_id))).length;
+  const aCommander = visibles.filter(s => s.a_commander);
+  badge.textContent = aCommander.length;
+  badge.hidden = !aCommander.length;
+  btnTout.hidden = !aCommander.filter(s => !panierQte(String(s.catalogue_fournisseur_id))).length;
 
   liste.innerHTML = visibles.map(s => {
     const dejaAuPanier = panierQte(String(s.catalogue_fournisseur_id)) > 0;
     return `
-      <div class="ach-suggestion ${s.a_echeance ? 'ach-suggestion--echeance' : ''}">
-        <span class="ach-score ${classeScore(s.score)}" title="Score de prédominance — fréquence ${Math.round(s.composantes.frequence*100)}%, échéance ${Math.round(s.composantes.echeance*100)}%, récence ${Math.round(s.composantes.recence*100)}%">${s.score}</span>
+      <div class="ach-suggestion ${s.a_commander ? 'ach-suggestion--echeance' : ''}">
+        <span class="ach-score ${classeScore(s.score)}" title="Score de prédominance — fréquence ${Math.round(s.composantes.frequence*100)}%, besoin ${Math.round(s.composantes.besoin*100)}%">${s.score}</span>
         <div class="ach-suggestion-infos">
-          <div class="ach-suggestion-nom">${escHtml(s.designation)}${s.est_reference ? ' <span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}${s.a_echeance ? ' <span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
+          <div class="ach-suggestion-nom">${escHtml(s.designation)}${s.est_reference ? ' <span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}${s.a_commander ? ' <span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
           <div class="ach-suggestion-detail">${escHtml(s.fournisseur_nom)} · ${libelleRecurrence(s)}</div>
         </div>
         <div class="ach-suggestion-qte">${fmtKg(s.quantite_suggeree)} ${uniteLabel(s.unite_suggeree)}</div>
@@ -595,11 +611,11 @@ function suggestionAjouter(catId) {
   rafraichirApresAjout();
 }
 
-// Ajoute d'un coup toutes les suggestions « à échéance » absentes du panier.
+// Ajoute d'un coup tous les besoins estimés (« à commander ») absents du panier.
 function suggestionsAjouterEcheance(ev) {
   ev.stopPropagation();   // le bouton vit dans l'entête repliable
   suggestionsCmd
-    .filter(s => s.a_echeance && !panierQte(String(s.catalogue_fournisseur_id)))
+    .filter(s => s.a_commander && !panierQte(String(s.catalogue_fournisseur_id)))
     .forEach(ajouterArticleSuggere);
   rafraichirApresAjout();
 }
@@ -672,7 +688,8 @@ function afficherCadencier() {
         <th class="cad-cell ${i === cadencier.periodes.length - 1 ? 'cad-col-actuel' : ''}"
             title="${p.debut} → ${p.fin}">${escHtml(p.label)}</th>`).join('')}
       <th class="ach-col-num">Total</th>
-      <th>Récurrence</th>
+      <th class="ach-col-num">Moy/sem</th>
+      <th>Historique</th>
       <th style="text-align:center;">Score</th>
       <th style="text-align:center;">Suggestion</th>
     </tr>`;
@@ -688,13 +705,13 @@ function afficherCadencier() {
   const TRIS = {
     score:       (a, b) => b.score - a.score,
     total:       (a, b) => b.total - a.total,
-    echeance:    (a, b) => (b.a_echeance - a.a_echeance) || (b.score - a.score),
+    echeance:    (a, b) => (b.a_commander - a.a_commander) || ((b.besoin_estime || 0) - (a.besoin_estime || 0)) || (b.score - a.score),
     designation: (a, b) => a.designation.localeCompare(b.designation),
     fournisseur: (a, b) => a.fournisseur_nom.localeCompare(b.fournisseur_nom) || (b.score - a.score),
   };
   lignes.sort(TRIS[tri] || TRIS.score);
 
-  const nbCols = cadencier.periodes.length + 5;
+  const nbCols = cadencier.periodes.length + 6;
   if (!lignes.length) {
     tbody.innerHTML = `<tr><td colspan="${nbCols}" class="ach-vide">Aucun article commandé sur la période</td></tr>`;
     return;
@@ -710,19 +727,20 @@ function afficherCadencier() {
     }).join('');
     const dejaAuPanier = panierQte(String(l.catalogue_fournisseur_id)) > 0;
     return `
-      <tr class="${l.a_echeance ? 'cad-row--echeance' : ''}">
+      <tr class="${l.a_commander ? 'cad-row--echeance' : ''}">
         <td class="cad-col-art">
           <div class="cad-art-nom">${escHtml(l.designation)}
             ${l.est_reference ? '<span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}
-            ${l.a_echeance ? '<span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
+            ${l.a_commander ? '<span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
           <div class="cad-art-detail">${escHtml(l.fournisseur_nom)} · ${escHtml(l.famille || '—')}${l.sous_famille ? ' / ' + escHtml(l.sous_famille) : ''}</div>
         </td>
         ${cellules}
         <td class="ach-col-num"><strong>${fmtKg(l.total)}</strong> ${uniteLabel(l.unite_suggeree)}${l.unites_mixtes ? ' <span title="L’historique contient d’autres unités, non sommées">≈</span>' : ''}</td>
-        <td style="white-space:nowrap;">${l.intervalle_moyen_jours ? `~${Math.round(l.intervalle_moyen_jours)} j` : '—'}
+        <td class="ach-col-num">${l.conso_hebdo ? `${fmtKg(l.conso_hebdo)} ${uniteLabel(l.unite_suggeree)}` : '—'}</td>
+        <td style="white-space:nowrap;">${l.nb_commandes} cmd
           <div class="cad-art-detail">il y a ${l.jours_depuis} j</div></td>
         <td style="text-align:center;">
-          <span class="ach-score ${classeScore(l.score)}" title="Fréquence ${Math.round(l.composantes.frequence*100)}% · échéance ${Math.round(l.composantes.echeance*100)}% · récence ${Math.round(l.composantes.recence*100)}%">${l.score}</span></td>
+          <span class="ach-score ${classeScore(l.score)}" title="Fréquence ${Math.round(l.composantes.frequence*100)}% · besoin ${Math.round(l.composantes.besoin*100)}%">${l.score}</span></td>
         <td style="text-align:center; white-space:nowrap;">
           ${dejaAuPanier
             ? '<span class="ach-suggestion-ok">✓ au panier</span>'
@@ -751,12 +769,14 @@ function afficherCataloguePanier() {
   const fourn  = document.getElementById('panier-filtre-fournisseur').value;
   const selOnly = document.getElementById('panier-filtre-selection').checked;
   const refOnly = document.getElementById('panier-filtre-reference').checked;
+  const habituels = document.getElementById('panier-filtre-habituels').checked;
   const tbody  = document.getElementById('tbody-panier-catalogue');
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
     if (refOnly && !estReference(a.id)) return false;
+    if (habituels && !panierQte(String(a.id)) && !estProduitHabituel(a.id)) return false;
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
@@ -817,6 +837,11 @@ function afficherCataloguePanier() {
           ${puAffiche !== null
             ? `<div class="ach-stepper-hint">${fmtPrix(puAffiche)} €/${uniteLabel(unite)}</div>`
             : `<div class="ach-stepper-hint" style="color:#b45309">conversion impossible</div>`}
+          ${(() => {
+            const s = (!qte && !desossageAuto) ? suggestionPour(a.id) : null;
+            return s ? `<button type="button" class="ach-sugg-qte" onclick="suggestionAjouter(${a.id})"
+                                title="Appliquer la suggestion (${s.besoin_estime ? 'besoin estimé' : 'commande type'})">💡 ${fmtKg(s.quantite_suggeree)} ${uniteLabel(s.unite_suggeree)}</button>` : '';
+          })()}
           ${qte > 0 && detailReception(a, qte, unite)
             ? `<div class="ach-recep-detail">${detailReception(a, qte, unite)}</div>`
             : ''}

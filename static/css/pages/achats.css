@@ -260,6 +260,21 @@
 .ach-score--moyen { background: #fef9c3; color: #854d0e; }
 .ach-score--bas   { background: #f3f4f6; color: #6b7280; }
 
+/* Hint quantité suggérée dans la colonne quantité du panier */
+.ach-sugg-qte {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 8px;
+  border: 1px dashed #d97706;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ach-sugg-qte:hover { background: #fef3c7; }
+
 /* ── Cadencier (panier intelligent) ───────────────────────── */
 .ach-cadencier-wrap { max-height: 58vh; overflow: auto; }
 .ach-cadencier th, .ach-cadencier td { padding: 6px 8px; font-size: var(--text-xs); }
