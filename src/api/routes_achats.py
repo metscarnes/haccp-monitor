@@ -32,6 +32,13 @@ PUT    /api/achats/factures/{id}                         → modifier entête (n
 PUT    /api/achats/factures/{id}/lignes/{ligne_id}       → saisir poids/prix facturé → recalcul écarts
 DELETE /api/achats/factures/{id}/lignes/{ligne_id}       → supprimer ligne
 DELETE /api/achats/factures/{id}                         → supprimer facture
+
+GET    /api/achats/panier                                → lignes du panier sauvegardé
+PUT    /api/achats/panier                                → sauvegarder le panier
+DELETE /api/achats/panier                                → vider le panier
+POST   /api/achats/panier/generer                        → générer les commandes (1/fournisseur)
+GET    /api/achats/panier/references                     → lignes d'achat ⭐ du comparatif
+GET    /api/achats/panier/suggestions                    → suggestions (récurrence + score)
 """
 
 import io
@@ -1457,6 +1464,205 @@ async def delete_panier():
     async with get_db() as db:
         await db.execute("DELETE FROM panier_lignes WHERE boutique_id = 1")
         await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Commande semi-automatique : produits de référence + suggestions
+# ---------------------------------------------------------------------------
+# Squelette du système de commande semi-automatique :
+#   1. /panier/references  → les lignes d'achat « de référence » (⭐) arbitrées
+#      dans le comparatif fournisseurs (comparatif_groupe_vente.ligne_choisie_id),
+#      pour les mettre en avant dans le panier.
+#   2. /panier/suggestions → moteur de suggestions basé sur la RÉCURRENCE des
+#      commandes passées, avec un score de prédominance par article.
+
+# Pondérations du score de prédominance (somme = 1). Centralisées ici pour
+# pouvoir ajuster le moteur sans toucher au calcul.
+SUGGESTION_POIDS_FREQUENCE = 0.50   # part des commandes contenant l'article
+SUGGESTION_POIDS_ECHEANCE  = 0.35   # proximité de la prochaine commande attendue
+SUGGESTION_POIDS_RECENCE   = 0.15   # fraîcheur de la dernière commande
+# Un article est « à échéance » quand le temps écoulé depuis sa dernière
+# commande atteint cette fraction de son intervalle moyen de réapprovisionnement.
+SUGGESTION_SEUIL_ECHEANCE = 0.9
+
+
+@router.get("/panier/references")
+async def get_panier_references():
+    """Lignes d'achat de référence (⭐) choisies dans le comparatif fournisseurs.
+
+    Une ligne catalogue peut servir de référence à plusieurs produits de vente
+    (et plusieurs groupes) : on agrège par ligne d'achat.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT gv.ligne_choisie_id                  AS catalogue_fournisseur_id,
+                   GROUP_CONCAT(DISTINCT g.nom)         AS groupes,
+                   COUNT(gv.catalogue_vente_id)         AS nb_produits_vente
+            FROM comparatif_groupe_vente gv
+            JOIN comparatif_groupe g ON g.id = gv.groupe_id
+            WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1
+            GROUP BY gv.ligne_choisie_id
+            """
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+@router.get("/panier/suggestions")
+async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
+    """Suggestions de commande basées sur la récurrence des commandes passées.
+
+    Pour chaque article catalogue commandé dans la fenêtre (commandes non
+    annulées), calcule :
+      - nb_commandes / derniere_commande / jours_depuis ;
+      - intervalle_moyen_jours entre deux commandes (récurrence, si ≥ 2) ;
+      - quantite_suggeree = moyenne des quantités dans l'unité la plus fréquente ;
+      - score (0-100) de prédominance = pondération fréquence + échéance + récence ;
+      - a_echeance : l'article a atteint son cycle de réapprovisionnement.
+
+    La prestation désossage (gérée automatiquement) est exclue. Tri par score
+    décroissant.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT cl.catalogue_fournisseur_id,
+                   c.id AS commande_id,
+                   c.date_commande,
+                   cl.quantite_commandee,
+                   cl.unite
+            FROM commande_lignes cl
+            JOIN commandes c ON c.id = cl.commande_id
+            JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
+            WHERE c.boutique_id = 1
+              AND c.statut != 'annulee'
+              AND c.date_commande >= date('now', ?)
+              AND cl.catalogue_fournisseur_id IS NOT NULL
+              AND cf.actif = 1
+              AND cf.code_article != ?
+            ORDER BY cl.catalogue_fournisseur_id, c.date_commande
+            """,
+            (f"-{fenetre_jours} days", CODE_PREST_DESOSSAGE),
+        )
+        lignes = [dict(r) for r in await cur.fetchall()]
+
+        # Nombre total de commandes (non annulées) de la fenêtre, pour normaliser
+        # la fréquence : un article présent dans toutes les commandes → 1.0.
+        cur_n = await db.execute(
+            """SELECT COUNT(*) AS n FROM commandes
+               WHERE boutique_id = 1 AND statut != 'annulee'
+                 AND date_commande >= date('now', ?)""",
+            (f"-{fenetre_jours} days",),
+        )
+        nb_commandes_total = (await cur_n.fetchone())["n"]
+
+        # Lignes de référence du comparatif (⭐) pour marquage.
+        cur_ref = await db.execute(
+            """SELECT DISTINCT gv.ligne_choisie_id AS id
+               FROM comparatif_groupe_vente gv
+               JOIN comparatif_groupe g ON g.id = gv.groupe_id
+               WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1"""
+        )
+        refs = {r["id"] for r in await cur_ref.fetchall()}
+
+        # Infos catalogue pour l'affichage.
+        cat_ids = {l["catalogue_fournisseur_id"] for l in lignes}
+        cat = {}
+        if cat_ids:
+            placeholders = ",".join("?" * len(cat_ids))
+            cur_c = await db.execute(
+                f"""SELECT c.id, c.code_article, c.designation, c.fournisseur_id,
+                           f.nom AS fournisseur_nom
+                    FROM catalogue_fournisseur c
+                    JOIN fournisseurs f ON f.id = c.fournisseur_id
+                    WHERE c.id IN ({placeholders})""",
+                list(cat_ids),
+            )
+            cat = {r["id"]: dict(r) for r in await cur_c.fetchall()}
+
+    # Agrégation par article (en Python : intervalles + unité dominante).
+    from collections import defaultdict
+    par_article = defaultdict(list)
+    for l in lignes:
+        par_article[l["catalogue_fournisseur_id"]].append(l)
+
+    aujourd_hui = date.today()
+    suggestions = []
+    for cat_id, occ in par_article.items():
+        a = cat.get(cat_id)
+        if not a:
+            continue
+
+        # Dates de commande distinctes (un article 2× dans la même commande ou
+        # le même jour compte une fois pour la récurrence). Déjà triées par SQL.
+        dates = sorted({date.fromisoformat(o["date_commande"][:10]) for o in occ})
+        nb_cmd = len({o["commande_id"] for o in occ})
+        derniere = dates[-1]
+        jours_depuis = (aujourd_hui - derniere).days
+
+        # Récurrence : intervalle moyen entre deux commandes successives.
+        intervalle_moyen = None
+        if len(dates) >= 2:
+            ecarts = [(d2 - d1).days for d1, d2 in zip(dates, dates[1:])]
+            intervalle_moyen = round(sum(ecarts) / len(ecarts), 1)
+
+        # Quantité suggérée : moyenne des quantités dans l'unité la plus fréquente.
+        unites = defaultdict(list)
+        for o in occ:
+            unites[o["unite"] or "kg"].append(o["quantite_commandee"] or 0)
+        unite_dominante = max(unites, key=lambda u: len(unites[u]))
+        qtes = unites[unite_dominante]
+        quantite_suggeree = round(sum(qtes) / len(qtes), 3)
+
+        # ── Score de prédominance (0-100) ───────────────────────────
+        # fréquence : part des commandes de la fenêtre contenant l'article.
+        frequence = min(1.0, nb_cmd / nb_commandes_total) if nb_commandes_total else 0.0
+        # échéance : 0 → vient d'être commandé, 1 → cycle atteint/dépassé.
+        # Sans récurrence connue (1 seule commande), valeur neutre 0.5.
+        if intervalle_moyen and intervalle_moyen > 0:
+            echeance = min(1.0, jours_depuis / intervalle_moyen)
+        else:
+            echeance = 0.5
+        # récence : 1 → commandé aujourd'hui, 0 → en limite de fenêtre.
+        recence = max(0.0, 1.0 - jours_depuis / fenetre_jours)
+        score = round(100 * (
+            SUGGESTION_POIDS_FREQUENCE * frequence
+            + SUGGESTION_POIDS_ECHEANCE * echeance
+            + SUGGESTION_POIDS_RECENCE * recence
+        ))
+
+        a_echeance = bool(
+            intervalle_moyen and jours_depuis >= SUGGESTION_SEUIL_ECHEANCE * intervalle_moyen
+        )
+
+        suggestions.append({
+            "catalogue_fournisseur_id": cat_id,
+            "code_article": a["code_article"],
+            "designation": a["designation"],
+            "fournisseur_id": a["fournisseur_id"],
+            "fournisseur_nom": a["fournisseur_nom"],
+            "est_reference": cat_id in refs,
+            "nb_commandes": nb_cmd,
+            "derniere_commande": derniere.isoformat(),
+            "jours_depuis": jours_depuis,
+            "intervalle_moyen_jours": intervalle_moyen,
+            "quantite_suggeree": quantite_suggeree,
+            "unite_suggeree": unite_dominante,
+            "score": score,
+            "composantes": {
+                "frequence": round(frequence, 3),
+                "echeance": round(echeance, 3),
+                "recence": round(recence, 3),
+            },
+            "a_echeance": a_echeance,
+        })
+
+    suggestions.sort(key=lambda s: s["score"], reverse=True)
+    return {
+        "fenetre_jours": fenetre_jours,
+        "nb_commandes_total": nb_commandes_total,
+        "suggestions": suggestions,
+    }
 
 
 # Code de l'article de prestation désossage veau (cf. règle métier ci-dessous).

@@ -111,7 +111,34 @@
           </label>
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
+            <input type="checkbox" id="panier-filtre-reference" style="width:18px; height:18px; accent-color:var(--color-accent);">
+            ⭐ Références seulement
+          </label>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <button type="button" class="ach-btn" id="btn-test-plus1" style="font-size:var(--text-xs); opacity:.7;">🧪 +1 à tous</button>
+        </div>
+      </div>
+
+      <!-- Suggestions de commande (récurrence des commandes passées) -->
+      <div class="ach-suggestions" id="panier-suggestions" hidden>
+        <div class="ach-suggestions-header" id="panier-suggestions-toggle">
+          <span>💡 Suggestions de commande
+            <span class="ach-badge-count" id="badge-suggestions" hidden>0</span>
+          </span>
+          <span style="display:flex; gap:var(--space-2); align-items:center;">
+            <button type="button" class="ach-btn ach-btn--ok" id="btn-suggestions-tout"
+                    style="font-size:var(--text-xs);" hidden>➕ Ajouter les articles à échéance</button>
+            <span class="ach-suggestions-chevron" id="panier-suggestions-chevron">▾</span>
+          </span>
+        </div>
+        <div id="panier-suggestions-corps">
+          <div class="ach-suggestions-hint">
+            Basées sur la récurrence de vos commandes précédentes — score de prédominance
+            (fréquence, échéance de réapprovisionnement, récence).
+          </div>
+          <div class="ach-suggestions-liste" id="panier-suggestions-liste"></div>
         </div>
       </div>
 
@@ -291,6 +318,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/commandes.js?v=3"></script>
+  <script src="/static/js/achats/commandes.js?v=4"></script>
 </body>
 </html>

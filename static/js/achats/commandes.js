@@ -4,6 +4,8 @@ const API_CMD   = '/api/achats/commandes';
 const API_FOURN = '/api/achats/fournisseurs';
 const API_CAT   = '/api/achats/catalogue';
 const API_PANIER = '/api/achats/panier';
+const API_PANIER_REF  = '/api/achats/panier/references';
+const API_PANIER_SUGG = '/api/achats/panier/suggestions';
 const LS_KEY    = 'haccp_panier';
 
 let commandes    = [];
@@ -19,6 +21,11 @@ let panier       = {};
 // Unité choisie par ligne même sans quantité (UX tablette : on peut cliquer
 // l'unité avant de taper). Non persistée — réinitialisée à chaque session.
 let uniteChoisies = {};
+// Commande semi-automatique : lignes d'achat ⭐ du comparatif (catalogueId →
+// { groupes, nb_produits_vente }) et suggestions issues de la récurrence des
+// commandes passées. Rechargées à chaque ouverture du panier.
+let referencesAchat = {};
+let suggestionsCmd  = [];
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
@@ -47,6 +54,9 @@ function bindEvents() {
   document.getElementById('panier-search').addEventListener('input', afficherCataloguePanier);
   document.getElementById('panier-filtre-fournisseur').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-reference').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
+  document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
   document.getElementById('btn-test-plus1').addEventListener('click', testPlus1);
 
   // Commande existante
@@ -441,6 +451,7 @@ function panierVider() {
   panier = {};
   panierSauver();
   afficherCataloguePanier();
+  afficherSuggestions();
   fetch(API_PANIER, { method: 'DELETE' }).catch(() => {});
 }
 
@@ -452,11 +463,129 @@ async function ouvrirPanier() {
   document.getElementById('panier-search').value = '';
   document.getElementById('panier-filtre-fournisseur').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
+  document.getElementById('panier-filtre-reference').checked = false;
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
   panierSauver();
   afficherCataloguePanier();
   afficherAlertesDesossage(alertes);
   document.getElementById('modal-panier').hidden = false;
+  // Références ⭐ + suggestions : chargées en arrière-plan, le panier reste utilisable.
+  chargerReferencesEtSuggestions();
+}
+
+// ── Commande semi-automatique : références ⭐ + suggestions ──
+async function chargerReferencesEtSuggestions() {
+  try {
+    const [rRef, rSugg] = await Promise.all([fetch(API_PANIER_REF), fetch(API_PANIER_SUGG)]);
+    const refs = rRef.ok ? await rRef.json() : [];
+    const data = rSugg.ok ? await rSugg.json() : { suggestions: [] };
+    referencesAchat = {};
+    refs.forEach(r => { referencesAchat[r.catalogue_fournisseur_id] = r; });
+    suggestionsCmd = data.suggestions || [];
+  } catch (e) {
+    referencesAchat = {};
+    suggestionsCmd = [];
+  }
+  afficherSuggestions();
+  afficherCataloguePanier();   // re-rendu avec les badges ⭐
+}
+
+function estReference(catId) { return !!referencesAchat[catId]; }
+
+function badgeReference(a) {
+  const ref = referencesAchat[a.id];
+  if (!ref) return '';
+  const titre = `Fournisseur de référence (comparatif) — groupe(s) : ${ref.groupes || '—'}`;
+  return ` <span class="ach-badge ach-badge--reference" title="${escHtml(titre)}">⭐ réf</span>`;
+}
+
+function basculerSuggestions() {
+  const corps = document.getElementById('panier-suggestions-corps');
+  corps.hidden = !corps.hidden;
+  document.getElementById('panier-suggestions-chevron').textContent = corps.hidden ? '▸' : '▾';
+}
+
+// Couleur du chip selon le score de prédominance.
+function classeScore(score) {
+  if (score >= 60) return 'ach-score--haut';
+  if (score >= 35) return 'ach-score--moyen';
+  return 'ach-score--bas';
+}
+
+function libelleRecurrence(s) {
+  const parts = [`${s.nb_commandes} cmd`];
+  if (s.intervalle_moyen_jours) parts.push(`tous les ~${Math.round(s.intervalle_moyen_jours)} j`);
+  parts.push(s.jours_depuis === 0 ? 'commandé aujourd’hui' : `dernière il y a ${s.jours_depuis} j`);
+  return parts.join(' · ');
+}
+
+function afficherSuggestions() {
+  const panneau = document.getElementById('panier-suggestions');
+  const liste   = document.getElementById('panier-suggestions-liste');
+  const badge   = document.getElementById('badge-suggestions');
+  const btnTout = document.getElementById('btn-suggestions-tout');
+
+  // Suggestions affichables : l'article doit exister dans le catalogue chargé.
+  const visibles = suggestionsCmd.filter(s => catalogueTous.some(a => a.id === s.catalogue_fournisseur_id));
+  if (!visibles.length) { panneau.hidden = true; return; }
+  panneau.hidden = false;
+
+  const aEcheance = visibles.filter(s => s.a_echeance);
+  badge.textContent = aEcheance.length;
+  badge.hidden = !aEcheance.length;
+  btnTout.hidden = !aEcheance.filter(s => !panierQte(String(s.catalogue_fournisseur_id))).length;
+
+  liste.innerHTML = visibles.map(s => {
+    const dejaAuPanier = panierQte(String(s.catalogue_fournisseur_id)) > 0;
+    return `
+      <div class="ach-suggestion ${s.a_echeance ? 'ach-suggestion--echeance' : ''}">
+        <span class="ach-score ${classeScore(s.score)}" title="Score de prédominance — fréquence ${Math.round(s.composantes.frequence*100)}%, échéance ${Math.round(s.composantes.echeance*100)}%, récence ${Math.round(s.composantes.recence*100)}%">${s.score}</span>
+        <div class="ach-suggestion-infos">
+          <div class="ach-suggestion-nom">${escHtml(s.designation)}${s.est_reference ? ' <span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}${s.a_echeance ? ' <span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
+          <div class="ach-suggestion-detail">${escHtml(s.fournisseur_nom)} · ${libelleRecurrence(s)}</div>
+        </div>
+        <div class="ach-suggestion-qte">${fmtKg(s.quantite_suggeree)} ${uniteLabel(s.unite_suggeree)}</div>
+        ${dejaAuPanier
+          ? '<span class="ach-suggestion-ok">✓ au panier</span>'
+          : `<button type="button" class="ach-btn ach-btn--primary ach-suggestion-btn" onclick="suggestionAjouter(${s.catalogue_fournisseur_id})">+ Panier</button>`}
+      </div>`;
+  }).join('');
+}
+
+// Ajoute une suggestion au panier avec sa quantité/unité suggérées.
+function suggestionAjouter(catId) {
+  const s = suggestionsCmd.find(x => x.catalogue_fournisseur_id === catId);
+  const a = catalogueTous.find(x => x.id === catId);
+  if (!s || !a || estDesossageAuto(a)) return;
+  let unite = s.unite_suggeree;
+  if (!peutCommander(a, unite)) unite = uniteParDefaut(a);   // garde-fou : unité commandable
+  panier[String(catId)] = { quantite: s.quantite_suggeree, unite };
+  uniteChoisies[String(catId)] = unite;
+  const alertes = synchroniserDesossage();
+  panierSauver();
+  afficherSuggestions();
+  afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
+}
+
+// Ajoute d'un coup toutes les suggestions « à échéance » absentes du panier.
+function suggestionsAjouterEcheance(ev) {
+  ev.stopPropagation();   // le bouton vit dans l'entête repliable
+  suggestionsCmd
+    .filter(s => s.a_echeance && !panierQte(String(s.catalogue_fournisseur_id)))
+    .forEach(s => {
+      const a = catalogueTous.find(x => x.id === s.catalogue_fournisseur_id);
+      if (!a || estDesossageAuto(a)) return;
+      let unite = s.unite_suggeree;
+      if (!peutCommander(a, unite)) unite = uniteParDefaut(a);
+      panier[String(a.id)] = { quantite: s.quantite_suggeree, unite };
+      uniteChoisies[String(a.id)] = unite;
+    });
+  const alertes = synchroniserDesossage();
+  panierSauver();
+  afficherSuggestions();
+  afficherCataloguePanier();
+  afficherAlertesDesossage(alertes);
 }
 
 function fermerPanier() {
@@ -468,11 +597,13 @@ function afficherCataloguePanier() {
   const q      = document.getElementById('panier-search').value.toLowerCase().trim();
   const fourn  = document.getElementById('panier-filtre-fournisseur').value;
   const selOnly = document.getElementById('panier-filtre-selection').checked;
+  const refOnly = document.getElementById('panier-filtre-reference').checked;
   const tbody  = document.getElementById('tbody-panier-catalogue');
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
+    if (refOnly && !estReference(a.id)) return false;
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
@@ -500,7 +631,7 @@ function afficherCataloguePanier() {
       <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}${desossageAuto ? ' ach-row--auto' : ''}">
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
         <td><code>${escHtml(a.code_article)}</code></td>
-        <td class="ach-cell-nom">${escHtml(a.designation)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
+        <td class="ach-cell-nom">${escHtml(a.designation)}${badgeReference(a)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
         <td>${a.format_prix === 'kg' ? 'kg' : 'colis'}</td>
         <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
@@ -648,6 +779,7 @@ function panierSetQte(catId, valeur) {
   const alertes = synchroniserDesossage();
   panierSauver();
   afficherCataloguePanier();
+  afficherSuggestions();   // met à jour l'état « ✓ au panier » des suggestions
   afficherAlertesDesossage(alertes);
 }
 
