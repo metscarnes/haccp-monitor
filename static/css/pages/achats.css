@@ -260,6 +260,40 @@
 .ach-score--moyen { background: #fef9c3; color: #854d0e; }
 .ach-score--bas   { background: #f3f4f6; color: #6b7280; }
 
+/* Boutons − / + tactiles (Surface Go sans clavier) : zone de tap ≥ 42px */
+.ach-step-btn {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border: 1px solid #d6c3a8;
+  background: #f4ead9;
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: #5a3e28;
+  cursor: pointer;
+  touch-action: manipulation;   /* pas de zoom double-tap */
+}
+.ach-step-btn:hover:not(:disabled) { background: #e8d9c4; }
+.ach-step-btn:active:not(:disabled) { background: #d6c3a8; }
+.ach-step-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+/* Stepper compact dans la colonne suggestion du cadencier */
+.cad-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cad-step-qte {
+  min-width: 64px;
+  text-align: center;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #166534;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Hint quantité suggérée dans la colonne quantité du panier */
 .ach-sugg-qte {
   display: inline-block;

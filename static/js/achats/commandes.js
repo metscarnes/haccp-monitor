@@ -68,6 +68,7 @@ function bindEvents() {
   document.getElementById('btn-cadencier').addEventListener('click', ouvrirCadencier);
   document.getElementById('modal-cadencier-fermer').addEventListener('click', fermerCadencier);
   document.getElementById('btn-cadencier-fermer').addEventListener('click', fermerCadencier);
+  document.getElementById('btn-cad-jour').addEventListener('click', () => cadencierSetGranu('jour'));
   document.getElementById('btn-cad-semaine').addEventListener('click', () => cadencierSetGranu('semaine'));
   document.getElementById('btn-cad-mois').addEventListener('click', () => cadencierSetGranu('mois'));
   ['cad-filtre-fournisseur', 'cad-filtre-famille', 'cad-filtre-sousfamille', 'cad-tri']
@@ -630,18 +631,21 @@ function fermerCadencier() {
   document.getElementById('modal-cadencier').hidden = true;
 }
 
+// Nombre de colonnes par granularité : 14 jours, 12 semaines, 6 mois.
+const CADENCIER_PERIODES = { jour: 14, semaine: 12, mois: 6 };
+
 function cadencierSetGranu(granu) {
   if (granu === cadencierGranu) return;
   cadencierGranu = granu;
-  document.getElementById('btn-cad-semaine').classList.toggle('is-active', granu === 'semaine');
-  document.getElementById('btn-cad-mois').classList.toggle('is-active', granu === 'mois');
+  ['jour', 'semaine', 'mois'].forEach(g =>
+    document.getElementById(`btn-cad-${g}`).classList.toggle('is-active', g === granu));
   chargerCadencier();
 }
 
 async function chargerCadencier() {
   const tbody = document.getElementById('tbody-cadencier');
   tbody.innerHTML = '<tr><td class="ach-vide">Chargement…</td></tr>';
-  const nbPeriodes = cadencierGranu === 'semaine' ? 12 : 6;
+  const nbPeriodes = CADENCIER_PERIODES[cadencierGranu];
   try {
     const r = await fetch(`${API_PANIER_CAD}?granularite=${cadencierGranu}&periodes=${nbPeriodes}`);
     if (!r.ok) throw new Error('Erreur serveur');
@@ -743,7 +747,11 @@ function afficherCadencier() {
           <span class="ach-score ${classeScore(l.score)}" title="Fréquence ${Math.round(l.composantes.frequence*100)}% · besoin ${Math.round(l.composantes.besoin*100)}%">${l.score}</span></td>
         <td style="text-align:center; white-space:nowrap;">
           ${dejaAuPanier
-            ? '<span class="ach-suggestion-ok">✓ au panier</span>'
+            ? `<div class="cad-step">
+                 <button type="button" class="ach-step-btn" onclick="cadencierStep(${l.catalogue_fournisseur_id}, -1)">−</button>
+                 <span class="cad-step-qte">${fmtKg(panierQte(String(l.catalogue_fournisseur_id)))} ${uniteLabel(panierUnite(String(l.catalogue_fournisseur_id)))}</span>
+                 <button type="button" class="ach-step-btn" onclick="cadencierStep(${l.catalogue_fournisseur_id}, 1)">+</button>
+               </div>`
             : `<button type="button" class="ach-btn ach-btn--primary ach-suggestion-btn"
                        onclick="cadencierAjouter(${l.catalogue_fournisseur_id})">+ ${fmtKg(l.quantite_suggeree)} ${uniteLabel(l.unite_suggeree)}</button>`}</td>
       </tr>`;
@@ -823,8 +831,11 @@ function afficherCataloguePanier() {
             </div>
           </div>` : `
           <div class="ach-qte-cell">
-            <input type="number" min="0" step="any" value="${qte || ''}" placeholder="0"
+            <button type="button" class="ach-step-btn" onclick="panierStep(${a.id}, -1)"
+                    ${qte > 0 ? '' : 'disabled'}>−</button>
+            <input type="number" min="0" step="any" inputmode="decimal" value="${qte || ''}" placeholder="0"
                    class="ach-qte-input" onchange="panierSetQte(${a.id}, this.value)">
+            <button type="button" class="ach-step-btn" onclick="panierStep(${a.id}, 1)">+</button>
             <div class="ach-unite-btns" role="group">
               <button type="button" class="ach-unite-btn ${unite === 'kg' ? 'is-active' : ''}"
                       ${kgOk ? '' : 'disabled'} onclick="panierSetUnite(${a.id}, 'kg')">kg</button>
@@ -940,6 +951,24 @@ function afficherAlertesDesossage(alertes) {
   }
   if (msgs.length) { el.innerHTML = msgs.join('<br>'); el.hidden = false; }
   else { el.hidden = true; }
+}
+
+// Pas d'incrément tactile : 0,5 pour le kg, 1 pour pièce/colis.
+function pasQuantite(unite) { return unite === 'kg' ? 0.5 : 1; }
+
+// Tap − / + sur une ligne du panier (Surface Go sans clavier).
+function panierStep(catId, sens) {
+  const a = catalogueTous.find(x => x.id === parseInt(catId));
+  if (estDesossageAuto(a)) return;
+  const unite = panierUnite(String(catId));
+  const q = (panierQte(String(catId)) || 0) + sens * pasQuantite(unite);
+  panierSetQte(catId, Math.max(0, Math.round(q * 1000) / 1000));
+}
+
+// Même chose depuis le cadencier (re-rendu local en plus).
+function cadencierStep(catId, sens) {
+  panierStep(catId, sens);
+  afficherCadencier();
 }
 
 // Saisie directe de la quantité (saisie libre)

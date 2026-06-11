@@ -1713,15 +1713,16 @@ async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
 
 MOIS_COURTS = ["janv", "févr", "mars", "avr", "mai", "juin",
                "juil", "août", "sept", "oct", "nov", "déc"]
+JOURS_COURTS = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"]
 
 
 @router.get("/panier/cadencier")
 async def get_panier_cadencier(
-    granularite: str = Query("semaine", pattern="^(semaine|mois)$"),
-    periodes: int = Query(12, ge=2, le=26),
+    granularite: str = Query("semaine", pattern="^(jour|semaine|mois)$"),
+    periodes: int = Query(12, ge=2, le=31),
 ):
     """Cadencier « panier intelligent » : quantités commandées par article et
-    par période (semaine ISO ou mois civil), enrichies des métriques de
+    par période (jour, semaine ISO ou mois civil), enrichies des métriques de
     suggestion (récurrence, score, quantité suggérée).
 
     Les quantités d'une ligne sont sommées dans l'unité dominante de l'article ;
@@ -1730,7 +1731,17 @@ async def get_panier_cadencier(
     hasardeuse). Tri/filtres (fournisseur, famille, sous-famille) côté front.
     """
     aujourd_hui = date.today()
-    if granularite == "semaine":
+    if granularite == "jour":
+        debuts = [aujourd_hui - timedelta(days=i) for i in range(periodes - 1, -1, -1)]
+        buckets = [
+            {"label": f"{JOURS_COURTS[d.weekday()]} {d.day}", "debut": d.isoformat(),
+             "fin": d.isoformat()}
+            for d in debuts
+        ]
+
+        def index_periode(d: date) -> int:
+            return (d - debuts[0]).days
+    elif granularite == "semaine":
         lundi_courant = aujourd_hui - timedelta(days=aujourd_hui.weekday())
         debuts = [lundi_courant - timedelta(weeks=i) for i in range(periodes - 1, -1, -1)]
         buckets = [
