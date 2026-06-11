@@ -39,12 +39,13 @@ DELETE /api/achats/panier                                → vider le panier
 POST   /api/achats/panier/generer                        → générer les commandes (1/fournisseur)
 GET    /api/achats/panier/references                     → lignes d'achat ⭐ du comparatif
 GET    /api/achats/panier/suggestions                    → suggestions (récurrence + score)
+GET    /api/achats/panier/cadencier                      → cadencier par semaine/mois
 """
 
 import io
 import logging
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -1508,77 +1509,71 @@ async def get_panier_references():
         return [dict(r) for r in await cur.fetchall()]
 
 
-@router.get("/panier/suggestions")
-async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
-    """Suggestions de commande basées sur la récurrence des commandes passées.
+async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
+    """Métriques de récurrence + score de prédominance par article catalogue.
 
-    Pour chaque article catalogue commandé dans la fenêtre (commandes non
-    annulées), calcule :
-      - nb_commandes / derniere_commande / jours_depuis ;
-      - intervalle_moyen_jours entre deux commandes (récurrence, si ≥ 2) ;
-      - quantite_suggeree = moyenne des quantités dans l'unité la plus fréquente ;
-      - score (0-100) de prédominance = pondération fréquence + échéance + récence ;
-      - a_echeance : l'article a atteint son cycle de réapprovisionnement.
+    Partagé entre /panier/suggestions et /panier/cadencier. Ne considère que
+    les commandes non annulées depuis date_debut, les articles actifs, et
+    exclut la prestation désossage (gérée automatiquement).
 
-    La prestation désossage (gérée automatiquement) est exclue. Tri par score
-    décroissant.
+    Retourne (suggestions triées par score décroissant, nb_commandes_total,
+    occurrences par article : {catalogue_id: [{date_commande, quantite_commandee,
+    unite, commande_id}, …]}).
     """
-    async with get_db() as db:
-        cur = await db.execute(
-            """
-            SELECT cl.catalogue_fournisseur_id,
-                   c.id AS commande_id,
-                   c.date_commande,
-                   cl.quantite_commandee,
-                   cl.unite
-            FROM commande_lignes cl
-            JOIN commandes c ON c.id = cl.commande_id
-            JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
-            WHERE c.boutique_id = 1
-              AND c.statut != 'annulee'
-              AND c.date_commande >= date('now', ?)
-              AND cl.catalogue_fournisseur_id IS NOT NULL
-              AND cf.actif = 1
-              AND cf.code_article != ?
-            ORDER BY cl.catalogue_fournisseur_id, c.date_commande
-            """,
-            (f"-{fenetre_jours} days", CODE_PREST_DESOSSAGE),
-        )
-        lignes = [dict(r) for r in await cur.fetchall()]
+    cur = await db.execute(
+        """
+        SELECT cl.catalogue_fournisseur_id,
+               c.id AS commande_id,
+               c.date_commande,
+               cl.quantite_commandee,
+               cl.unite
+        FROM commande_lignes cl
+        JOIN commandes c ON c.id = cl.commande_id
+        JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
+        WHERE c.boutique_id = 1
+          AND c.statut != 'annulee'
+          AND c.date_commande >= ?
+          AND cl.catalogue_fournisseur_id IS NOT NULL
+          AND cf.actif = 1
+          AND cf.code_article != ?
+        ORDER BY cl.catalogue_fournisseur_id, c.date_commande
+        """,
+        (date_debut.isoformat(), CODE_PREST_DESOSSAGE),
+    )
+    lignes = [dict(r) for r in await cur.fetchall()]
 
-        # Nombre total de commandes (non annulées) de la fenêtre, pour normaliser
-        # la fréquence : un article présent dans toutes les commandes → 1.0.
-        cur_n = await db.execute(
-            """SELECT COUNT(*) AS n FROM commandes
-               WHERE boutique_id = 1 AND statut != 'annulee'
-                 AND date_commande >= date('now', ?)""",
-            (f"-{fenetre_jours} days",),
-        )
-        nb_commandes_total = (await cur_n.fetchone())["n"]
+    # Nombre total de commandes (non annulées) de la fenêtre, pour normaliser
+    # la fréquence : un article présent dans toutes les commandes → 1.0.
+    cur_n = await db.execute(
+        """SELECT COUNT(*) AS n FROM commandes
+           WHERE boutique_id = 1 AND statut != 'annulee' AND date_commande >= ?""",
+        (date_debut.isoformat(),),
+    )
+    nb_commandes_total = (await cur_n.fetchone())["n"]
 
-        # Lignes de référence du comparatif (⭐) pour marquage.
-        cur_ref = await db.execute(
-            """SELECT DISTINCT gv.ligne_choisie_id AS id
-               FROM comparatif_groupe_vente gv
-               JOIN comparatif_groupe g ON g.id = gv.groupe_id
-               WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1"""
-        )
-        refs = {r["id"] for r in await cur_ref.fetchall()}
+    # Lignes de référence du comparatif (⭐) pour marquage.
+    cur_ref = await db.execute(
+        """SELECT DISTINCT gv.ligne_choisie_id AS id
+           FROM comparatif_groupe_vente gv
+           JOIN comparatif_groupe g ON g.id = gv.groupe_id
+           WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1"""
+    )
+    refs = {r["id"] for r in await cur_ref.fetchall()}
 
-        # Infos catalogue pour l'affichage.
-        cat_ids = {l["catalogue_fournisseur_id"] for l in lignes}
-        cat = {}
-        if cat_ids:
-            placeholders = ",".join("?" * len(cat_ids))
-            cur_c = await db.execute(
-                f"""SELECT c.id, c.code_article, c.designation, c.fournisseur_id,
-                           f.nom AS fournisseur_nom
-                    FROM catalogue_fournisseur c
-                    JOIN fournisseurs f ON f.id = c.fournisseur_id
-                    WHERE c.id IN ({placeholders})""",
-                list(cat_ids),
-            )
-            cat = {r["id"]: dict(r) for r in await cur_c.fetchall()}
+    # Infos catalogue pour l'affichage et les filtres (famille / sous-famille).
+    cat_ids = {l["catalogue_fournisseur_id"] for l in lignes}
+    cat = {}
+    if cat_ids:
+        placeholders = ",".join("?" * len(cat_ids))
+        cur_c = await db.execute(
+            f"""SELECT c.id, c.code_article, c.designation, c.fournisseur_id,
+                       c.famille, c.sous_famille, f.nom AS fournisseur_nom
+                FROM catalogue_fournisseur c
+                JOIN fournisseurs f ON f.id = c.fournisseur_id
+                WHERE c.id IN ({placeholders})""",
+            list(cat_ids),
+        )
+        cat = {r["id"]: dict(r) for r in await cur_c.fetchall()}
 
     # Agrégation par article (en Python : intervalles + unité dominante).
     from collections import defaultdict
@@ -1641,6 +1636,8 @@ async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
             "designation": a["designation"],
             "fournisseur_id": a["fournisseur_id"],
             "fournisseur_nom": a["fournisseur_nom"],
+            "famille": a["famille"],
+            "sous_famille": a["sous_famille"],
             "est_reference": cat_id in refs,
             "nb_commandes": nb_cmd,
             "derniere_commande": derniere.isoformat(),
@@ -1658,10 +1655,113 @@ async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
         })
 
     suggestions.sort(key=lambda s: s["score"], reverse=True)
+    return suggestions, nb_commandes_total, par_article
+
+
+@router.get("/panier/suggestions")
+async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
+    """Suggestions de commande basées sur la récurrence des commandes passées.
+
+    Pour chaque article catalogue commandé dans la fenêtre (commandes non
+    annulées), calcule :
+      - nb_commandes / derniere_commande / jours_depuis ;
+      - intervalle_moyen_jours entre deux commandes (récurrence, si ≥ 2) ;
+      - quantite_suggeree = moyenne des quantités dans l'unité la plus fréquente ;
+      - score (0-100) de prédominance = pondération fréquence + échéance + récence ;
+      - a_echeance : l'article a atteint son cycle de réapprovisionnement.
+    """
+    async with get_db() as db:
+        suggestions, nb_total, _ = await _calculer_suggestions(
+            db, date.today() - timedelta(days=fenetre_jours), fenetre_jours
+        )
     return {
         "fenetre_jours": fenetre_jours,
-        "nb_commandes_total": nb_commandes_total,
+        "nb_commandes_total": nb_total,
         "suggestions": suggestions,
+    }
+
+
+MOIS_COURTS = ["janv", "févr", "mars", "avr", "mai", "juin",
+               "juil", "août", "sept", "oct", "nov", "déc"]
+
+
+@router.get("/panier/cadencier")
+async def get_panier_cadencier(
+    granularite: str = Query("semaine", pattern="^(semaine|mois)$"),
+    periodes: int = Query(12, ge=2, le=26),
+):
+    """Cadencier « panier intelligent » : quantités commandées par article et
+    par période (semaine ISO ou mois civil), enrichies des métriques de
+    suggestion (récurrence, score, quantité suggérée).
+
+    Les quantités d'une ligne sont sommées dans l'unité dominante de l'article ;
+    si d'autres unités apparaissent dans l'historique, unites_mixtes=True (les
+    occurrences dans une autre unité ne sont pas sommées — pas de conversion
+    hasardeuse). Tri/filtres (fournisseur, famille, sous-famille) côté front.
+    """
+    aujourd_hui = date.today()
+    if granularite == "semaine":
+        lundi_courant = aujourd_hui - timedelta(days=aujourd_hui.weekday())
+        debuts = [lundi_courant - timedelta(weeks=i) for i in range(periodes - 1, -1, -1)]
+        buckets = [
+            {"label": f"S{d.isocalendar()[1]}", "debut": d.isoformat(),
+             "fin": (d + timedelta(days=6)).isoformat()}
+            for d in debuts
+        ]
+
+        def index_periode(d: date) -> int:
+            return ((d - timedelta(days=d.weekday())) - debuts[0]).days // 7
+    else:
+        debuts = []
+        cur_mois = aujourd_hui.replace(day=1)
+        for _ in range(periodes):
+            debuts.append(cur_mois)
+            cur_mois = (cur_mois - timedelta(days=1)).replace(day=1)
+        debuts.reverse()
+
+        def fin_mois(d: date) -> date:
+            return (d + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+        buckets = [
+            {"label": f"{MOIS_COURTS[d.month - 1]} {d.year % 100:02d}",
+             "debut": d.isoformat(), "fin": fin_mois(d).isoformat()}
+            for d in debuts
+        ]
+
+        def index_periode(d: date) -> int:
+            return (d.year * 12 + d.month) - (debuts[0].year * 12 + debuts[0].month)
+
+    fenetre_jours = (aujourd_hui - debuts[0]).days + 1
+    async with get_db() as db:
+        suggestions, nb_total, par_article = await _calculer_suggestions(
+            db, debuts[0], fenetre_jours
+        )
+
+    lignes = []
+    for s in suggestions:
+        qtes = [0.0] * periodes
+        unites_mixtes = False
+        for o in par_article.get(s["catalogue_fournisseur_id"], []):
+            d = date.fromisoformat(o["date_commande"][:10])
+            i = index_periode(d)
+            if not (0 <= i < periodes):
+                continue
+            if (o["unite"] or "kg") == s["unite_suggeree"]:
+                qtes[i] += o["quantite_commandee"] or 0
+            else:
+                unites_mixtes = True
+        lignes.append({
+            **s,
+            "qtes": [round(q, 3) for q in qtes],
+            "total": round(sum(qtes), 3),
+            "unites_mixtes": unites_mixtes,
+        })
+
+    return {
+        "granularite": granularite,
+        "nb_commandes_total": nb_total,
+        "periodes": buckets,
+        "lignes": lignes,
     }
 
 

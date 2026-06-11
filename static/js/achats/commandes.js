@@ -6,6 +6,7 @@ const API_CAT   = '/api/achats/catalogue';
 const API_PANIER = '/api/achats/panier';
 const API_PANIER_REF  = '/api/achats/panier/references';
 const API_PANIER_SUGG = '/api/achats/panier/suggestions';
+const API_PANIER_CAD  = '/api/achats/panier/cadencier';
 const LS_KEY    = 'haccp_panier';
 
 let commandes    = [];
@@ -26,6 +27,9 @@ let uniteChoisies = {};
 // commandes passées. Rechargées à chaque ouverture du panier.
 let referencesAchat = {};
 let suggestionsCmd  = [];
+// Cadencier (panier intelligent) : réponse API + granularité courante.
+let cadencier      = null;
+let cadencierGranu = 'semaine';
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
@@ -58,6 +62,16 @@ function bindEvents() {
   document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
   document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
   document.getElementById('btn-test-plus1').addEventListener('click', testPlus1);
+
+  // Cadencier (panier intelligent)
+  document.getElementById('btn-cadencier').addEventListener('click', ouvrirCadencier);
+  document.getElementById('modal-cadencier-fermer').addEventListener('click', fermerCadencier);
+  document.getElementById('btn-cadencier-fermer').addEventListener('click', fermerCadencier);
+  document.getElementById('btn-cad-semaine').addEventListener('click', () => cadencierSetGranu('semaine'));
+  document.getElementById('btn-cad-mois').addEventListener('click', () => cadencierSetGranu('mois'));
+  ['cad-filtre-fournisseur', 'cad-filtre-famille', 'cad-filtre-sousfamille', 'cad-tri']
+    .forEach(id => document.getElementById(id).addEventListener('change', afficherCadencier));
+  document.getElementById('cad-search').addEventListener('input', afficherCadencier);
 
   // Commande existante
   document.getElementById('modal-cmd-fermer').addEventListener('click', fermerModalCmd);
@@ -552,15 +566,20 @@ function afficherSuggestions() {
   }).join('');
 }
 
-// Ajoute une suggestion au panier avec sa quantité/unité suggérées.
-function suggestionAjouter(catId) {
-  const s = suggestionsCmd.find(x => x.catalogue_fournisseur_id === catId);
-  const a = catalogueTous.find(x => x.id === catId);
-  if (!s || !a || estDesossageAuto(a)) return;
+// Met au panier un article suggéré (objet portant catalogue_fournisseur_id,
+// quantite_suggeree, unite_suggeree) — partagé suggestions / cadencier.
+function ajouterArticleSuggere(s) {
+  const a = catalogueTous.find(x => x.id === s.catalogue_fournisseur_id);
+  if (!a || estDesossageAuto(a)) return false;
   let unite = s.unite_suggeree;
   if (!peutCommander(a, unite)) unite = uniteParDefaut(a);   // garde-fou : unité commandable
-  panier[String(catId)] = { quantite: s.quantite_suggeree, unite };
-  uniteChoisies[String(catId)] = unite;
+  panier[String(a.id)] = { quantite: s.quantite_suggeree, unite };
+  uniteChoisies[String(a.id)] = unite;
+  return true;
+}
+
+// Resynchronise tout l'affichage après un ajout via suggestion/cadencier.
+function rafraichirApresAjout() {
   const alertes = synchroniserDesossage();
   panierSauver();
   afficherSuggestions();
@@ -568,24 +587,158 @@ function suggestionAjouter(catId) {
   afficherAlertesDesossage(alertes);
 }
 
+// Ajoute une suggestion au panier avec sa quantité/unité suggérées.
+function suggestionAjouter(catId) {
+  const s = suggestionsCmd.find(x => x.catalogue_fournisseur_id === catId);
+  if (!s) return;
+  ajouterArticleSuggere(s);
+  rafraichirApresAjout();
+}
+
 // Ajoute d'un coup toutes les suggestions « à échéance » absentes du panier.
 function suggestionsAjouterEcheance(ev) {
   ev.stopPropagation();   // le bouton vit dans l'entête repliable
   suggestionsCmd
     .filter(s => s.a_echeance && !panierQte(String(s.catalogue_fournisseur_id)))
-    .forEach(s => {
-      const a = catalogueTous.find(x => x.id === s.catalogue_fournisseur_id);
-      if (!a || estDesossageAuto(a)) return;
-      let unite = s.unite_suggeree;
-      if (!peutCommander(a, unite)) unite = uniteParDefaut(a);
-      panier[String(a.id)] = { quantite: s.quantite_suggeree, unite };
-      uniteChoisies[String(a.id)] = unite;
-    });
-  const alertes = synchroniserDesossage();
-  panierSauver();
-  afficherSuggestions();
-  afficherCataloguePanier();
-  afficherAlertesDesossage(alertes);
+    .forEach(ajouterArticleSuggere);
+  rafraichirApresAjout();
+}
+
+// ── Cadencier (panier intelligent) ───────────────────────────
+async function ouvrirCadencier() {
+  document.getElementById('modal-cadencier').hidden = false;
+  await chargerCadencier();
+}
+
+function fermerCadencier() {
+  document.getElementById('modal-cadencier').hidden = true;
+}
+
+function cadencierSetGranu(granu) {
+  if (granu === cadencierGranu) return;
+  cadencierGranu = granu;
+  document.getElementById('btn-cad-semaine').classList.toggle('is-active', granu === 'semaine');
+  document.getElementById('btn-cad-mois').classList.toggle('is-active', granu === 'mois');
+  chargerCadencier();
+}
+
+async function chargerCadencier() {
+  const tbody = document.getElementById('tbody-cadencier');
+  tbody.innerHTML = '<tr><td class="ach-vide">Chargement…</td></tr>';
+  const nbPeriodes = cadencierGranu === 'semaine' ? 12 : 6;
+  try {
+    const r = await fetch(`${API_PANIER_CAD}?granularite=${cadencierGranu}&periodes=${nbPeriodes}`);
+    if (!r.ok) throw new Error('Erreur serveur');
+    cadencier = await r.json();
+  } catch (e) {
+    cadencier = null;
+    tbody.innerHTML = '<tr><td class="ach-vide">Erreur de chargement du cadencier</td></tr>';
+    return;
+  }
+  remplirFiltresCadencier();
+  afficherCadencier();
+}
+
+// Alimente les listes fournisseur / famille / sous-famille à partir des
+// lignes reçues, en conservant la sélection courante si encore valide.
+function remplirFiltresCadencier() {
+  if (!cadencier) return;
+  const remplir = (id, valeurs, labelTous) => {
+    const sel = document.getElementById(id);
+    const courant = sel.value;
+    sel.innerHTML = `<option value="">${labelTous}</option>` +
+      valeurs.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+    if (valeurs.includes(courant)) sel.value = courant;
+  };
+  const uniq = champ => [...new Set(cadencier.lignes.map(l => l[champ]).filter(Boolean))].sort();
+  remplir('cad-filtre-fournisseur', uniq('fournisseur_nom'), 'Tous');
+  remplir('cad-filtre-famille', uniq('famille'), 'Toutes');
+  remplir('cad-filtre-sousfamille', uniq('sous_famille'), 'Toutes');
+}
+
+function afficherCadencier() {
+  if (!cadencier) return;
+  const thead = document.getElementById('thead-cadencier');
+  const tbody = document.getElementById('tbody-cadencier');
+  const fourn = document.getElementById('cad-filtre-fournisseur').value;
+  const fam   = document.getElementById('cad-filtre-famille').value;
+  const sfam  = document.getElementById('cad-filtre-sousfamille').value;
+  const tri   = document.getElementById('cad-tri').value;
+  const q     = document.getElementById('cad-search').value.toLowerCase().trim();
+
+  thead.innerHTML = `<tr>
+      <th class="cad-col-art">Article</th>
+      ${cadencier.periodes.map((p, i) => `
+        <th class="cad-cell ${i === cadencier.periodes.length - 1 ? 'cad-col-actuel' : ''}"
+            title="${p.debut} → ${p.fin}">${escHtml(p.label)}</th>`).join('')}
+      <th class="ach-col-num">Total</th>
+      <th>Récurrence</th>
+      <th style="text-align:center;">Score</th>
+      <th style="text-align:center;">Suggestion</th>
+    </tr>`;
+
+  let lignes = cadencier.lignes.filter(l => {
+    if (fourn && l.fournisseur_nom !== fourn) return false;
+    if (fam && l.famille !== fam) return false;
+    if (sfam && l.sous_famille !== sfam) return false;
+    if (q && !(l.designation.toLowerCase().includes(q) || l.code_article.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  const TRIS = {
+    score:       (a, b) => b.score - a.score,
+    total:       (a, b) => b.total - a.total,
+    echeance:    (a, b) => (b.a_echeance - a.a_echeance) || (b.score - a.score),
+    designation: (a, b) => a.designation.localeCompare(b.designation),
+    fournisseur: (a, b) => a.fournisseur_nom.localeCompare(b.fournisseur_nom) || (b.score - a.score),
+  };
+  lignes.sort(TRIS[tri] || TRIS.score);
+
+  const nbCols = cadencier.periodes.length + 5;
+  if (!lignes.length) {
+    tbody.innerHTML = `<tr><td colspan="${nbCols}" class="ach-vide">Aucun article commandé sur la période</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = lignes.map(l => {
+    const max = Math.max(...l.qtes);
+    const cellules = l.qtes.map((qte, i) => {
+      const heat = qte > 0 && max > 0 ? (0.10 + 0.30 * qte / max) : 0;
+      return `<td class="cad-cell ${i === l.qtes.length - 1 ? 'cad-col-actuel' : ''}"
+                  ${heat ? `style="background:rgba(234,88,12,${heat.toFixed(2)});"` : ''}>
+                ${qte > 0 ? fmtKg(qte) : '<span class="cad-zero">·</span>'}</td>`;
+    }).join('');
+    const dejaAuPanier = panierQte(String(l.catalogue_fournisseur_id)) > 0;
+    return `
+      <tr class="${l.a_echeance ? 'cad-row--echeance' : ''}">
+        <td class="cad-col-art">
+          <div class="cad-art-nom">${escHtml(l.designation)}
+            ${l.est_reference ? '<span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}
+            ${l.a_echeance ? '<span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
+          <div class="cad-art-detail">${escHtml(l.fournisseur_nom)} · ${escHtml(l.famille || '—')}${l.sous_famille ? ' / ' + escHtml(l.sous_famille) : ''}</div>
+        </td>
+        ${cellules}
+        <td class="ach-col-num"><strong>${fmtKg(l.total)}</strong> ${uniteLabel(l.unite_suggeree)}${l.unites_mixtes ? ' <span title="L’historique contient d’autres unités, non sommées">≈</span>' : ''}</td>
+        <td style="white-space:nowrap;">${l.intervalle_moyen_jours ? `~${Math.round(l.intervalle_moyen_jours)} j` : '—'}
+          <div class="cad-art-detail">il y a ${l.jours_depuis} j</div></td>
+        <td style="text-align:center;">
+          <span class="ach-score ${classeScore(l.score)}" title="Fréquence ${Math.round(l.composantes.frequence*100)}% · échéance ${Math.round(l.composantes.echeance*100)}% · récence ${Math.round(l.composantes.recence*100)}%">${l.score}</span></td>
+        <td style="text-align:center; white-space:nowrap;">
+          ${dejaAuPanier
+            ? '<span class="ach-suggestion-ok">✓ au panier</span>'
+            : `<button type="button" class="ach-btn ach-btn--primary ach-suggestion-btn"
+                       onclick="cadencierAjouter(${l.catalogue_fournisseur_id})">+ ${fmtKg(l.quantite_suggeree)} ${uniteLabel(l.unite_suggeree)}</button>`}</td>
+      </tr>`;
+  }).join('');
+}
+
+// Ajout au panier depuis le cadencier (quantité/unité suggérées).
+function cadencierAjouter(catId) {
+  const l = cadencier?.lignes.find(x => x.catalogue_fournisseur_id === catId);
+  if (!l) return;
+  ajouterArticleSuggere(l);
+  rafraichirApresAjout();
+  afficherCadencier();   // bascule la ligne en « ✓ au panier »
 }
 
 function fermerPanier() {

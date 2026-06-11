@@ -260,6 +260,44 @@
 .ach-score--moyen { background: #fef9c3; color: #854d0e; }
 .ach-score--bas   { background: #f3f4f6; color: #6b7280; }
 
+/* ── Cadencier (panier intelligent) ───────────────────────── */
+.ach-cadencier-wrap { max-height: 58vh; overflow: auto; }
+.ach-cadencier th, .ach-cadencier td { padding: 6px 8px; font-size: var(--text-xs); }
+.ach-cadencier thead th {
+  position: sticky;
+  top: 0;
+  background: #faf6ee;
+  z-index: 2;
+  white-space: nowrap;
+}
+.ach-cadencier .cad-col-art {
+  position: sticky;
+  left: 0;
+  background: #fff;
+  min-width: 200px;
+  max-width: 280px;
+  z-index: 1;
+}
+.ach-cadencier thead .cad-col-art { z-index: 3; background: #faf6ee; }
+.cad-cell {
+  text-align: center;
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cad-zero { color: #d1d5db; }
+.ach-cadencier th.cad-col-actuel { color: #9a3412; border-bottom: 2px solid #ea580c; }
+.cad-art-nom { font-weight: 600; font-size: var(--text-sm); }
+.cad-art-detail { font-size: var(--text-xs); color: #6b7280; }
+.cad-row--echeance .cad-col-art { box-shadow: inset 3px 0 0 #f59e0b; }
+.ach-cadencier-legende {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: #92702a;
+  background: #fffbf2;
+  border-top: 1px solid #e8d9c4;
+}
+
 /* ── Vide / erreur ────────────────────────────────────────── */
 .ach-vide  { text-align: center; padding: var(--space-4); color: #6b7280; font-style: italic; }
 .ach-erreur { text-align: center; padding: var(--space-3); color: #991b1b; background: #fee2e2; border-radius: var(--radius-sm); margin: var(--space-3) var(--space-4); }
