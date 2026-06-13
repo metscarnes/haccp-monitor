@@ -18,7 +18,7 @@ GET    /api/receptions/{id}/photo-proprete        → Photo NC propreté camion 
 import io
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
@@ -261,7 +261,7 @@ async def creer_reception(
     fournisseur_principal_id: Optional[int] = Form(None),
     fournisseur_nom:         Optional[str]  = Form(None),
     commentaire:             Optional[str]  = Form(None),
-    photo_bl:                Optional[UploadFile] = File(None),
+    photo_bl:                List[UploadFile] = File(default=[]),
     photo_proprete:          Optional[UploadFile] = File(None),
 ):
     data = {
@@ -283,18 +283,28 @@ async def creer_reception(
 
         rid = await create_reception(db, data)
 
-        # Photo BL optionnelle
-        if photo_bl and photo_bl.filename:
-            from datetime import datetime, timezone
-            raw = await photo_bl.read()
+        # Photos BL (multi-pages) : page 0 → colonne existante, pages suivantes → reception_bl_pages
+        from datetime import datetime, timezone
+        photos_bl_valides = [f for f in photo_bl if f and f.filename]
+        for page_num, upload in enumerate(photos_bl_valides):
+            raw = await upload.read()
             jpeg = _compress_photo(raw)
             now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-            filename = f"BL-{now_str}-{rid}.jpg"
-            (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
-            await db.execute(
-                "UPDATE receptions SET photo_bl_filename = ? WHERE id = ?",
-                (filename, rid),
-            )
+            if page_num == 0:
+                filename = f"BL-{now_str}-{rid}.jpg"
+                (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+                await db.execute(
+                    "UPDATE receptions SET photo_bl_filename = ? WHERE id = ?",
+                    (filename, rid),
+                )
+            else:
+                filename = f"BL-{now_str}-{rid}-p{page_num}.jpg"
+                (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+                await db.execute(
+                    "INSERT INTO reception_bl_pages (reception_id, bl_supplementaire_id, page_num, photo_filename) VALUES (?, NULL, ?, ?)",
+                    (rid, page_num, filename),
+                )
+        if photos_bl_valides:
             await db.commit()
 
         # Photo NC propreté camion (optionnelle, uniquement si proprete=non_satisfaisant)
@@ -623,6 +633,42 @@ async def get_photo_bl(reception_id: int):
     return FileResponse(str(filepath), media_type="image/jpeg")
 
 
+@router.get("/receptions/{reception_id}/bl-pages")
+async def get_bl_pages(reception_id: int, bl_supplementaire_id: Optional[int] = None):
+    """Retourne la liste des pages BL supplémentaires (page_num >= 1).
+    bl_supplementaire_id=None → BL principal ; sinon BL supplémentaire.
+    """
+    async with get_db() as db:
+        if bl_supplementaire_id is None:
+            cur = await db.execute(
+                "SELECT id, page_num FROM reception_bl_pages WHERE reception_id = ? AND bl_supplementaire_id IS NULL ORDER BY page_num",
+                (reception_id,),
+            )
+        else:
+            cur = await db.execute(
+                "SELECT id, page_num FROM reception_bl_pages WHERE reception_id = ? AND bl_supplementaire_id = ? ORDER BY page_num",
+                (reception_id, bl_supplementaire_id),
+            )
+        rows = await cur.fetchall()
+    return [{"id": r["id"], "page_num": r["page_num"]} for r in rows]
+
+
+@router.get("/receptions/{reception_id}/bl-pages/{page_id}/photo")
+async def get_bl_page_photo(reception_id: int, page_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT photo_filename FROM reception_bl_pages WHERE id = ? AND reception_id = ?",
+            (page_id, reception_id),
+        )
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Page introuvable")
+    filepath = PHOTOS_BL_DIR / row["photo_filename"]
+    if not filepath.exists():
+        raise HTTPException(404, "Fichier photo introuvable")
+    return FileResponse(str(filepath), media_type="image/jpeg")
+
+
 @router.get("/receptions/{reception_id}/photo-proprete")
 async def get_photo_proprete(reception_id: int):
     async with get_db() as db:
@@ -647,10 +693,11 @@ async def ajouter_bl_supplementaire(
     reception_id:    int,
     fournisseur_id:  Optional[int] = Form(None),
     fournisseur_nom: Optional[str] = Form(None),
-    photo:           Optional[UploadFile] = File(None),
+    photo:           List[UploadFile] = File(default=[]),
 ):
     """Ajoute un BL supplémentaire à une réception (refus livraison multi-fournisseur).
     1 BL par fournisseur. Le 1er BL/fournisseur reste sur la table `receptions`.
+    Accepte plusieurs pages via le champ `photo` (multi-file).
     """
     if not fournisseur_id and not (fournisseur_nom and fournisseur_nom.strip()):
         raise HTTPException(400, "fournisseur_id ou fournisseur_nom requis")
@@ -661,9 +708,11 @@ async def ajouter_bl_supplementaire(
         if not await cur.fetchone():
             raise HTTPException(404, "Réception non trouvée")
 
-        if photo and photo.filename:
-            from datetime import datetime, timezone
-            raw = await photo.read()
+        from datetime import datetime, timezone
+        photos_valides = [f for f in photo if f and f.filename]
+
+        if photos_valides:
+            raw = await photos_valides[0].read()
             jpeg = _compress_photo(raw)
             now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             photo_filename = f"BL-{now_str}-{reception_id}-supp.jpg"
@@ -674,6 +723,19 @@ async def ajouter_bl_supplementaire(
             "fournisseur_nom":   (fournisseur_nom or "").strip() or None,
             "photo_bl_filename": photo_filename,
         })
+
+        # Pages supplémentaires (page_num >= 1)
+        for page_num, upload in enumerate(photos_valides[1:], start=1):
+            raw = await upload.read()
+            jpeg = _compress_photo(raw)
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            filename = f"BL-{now_str}-{reception_id}-supp-p{page_num}.jpg"
+            (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+            await db.execute(
+                "INSERT INTO reception_bl_pages (reception_id, bl_supplementaire_id, page_num, photo_filename) VALUES (?, ?, ?, ?)",
+                (reception_id, bl_id, page_num, filename),
+            )
+        await db.commit()
     return {"id": bl_id, "photo_bl_filename": photo_filename}
 
 

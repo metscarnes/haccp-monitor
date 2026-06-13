@@ -1510,6 +1510,21 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "CREATE INDEX IF NOT EXISTS idx_factures_fournisseur ON factures(fournisseur_id, date_facture DESC)",
             "CREATE INDEX IF NOT EXISTS idx_factures_reception ON factures(reception_id)",
             "CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture ON facture_lignes(facture_id)",
+            # v6.7 — Pages multiples par BL (un BL peut avoir plusieurs pages scannées).
+            # La page 0 reste dans receptions.photo_bl_filename (rétrocompat).
+            # Les pages 1+ sont stockées ici. Même structure pour les BLs supplémentaires
+            # (bl_supplementaire_id non null) et le BL principal (bl_supplementaire_id null).
+            """CREATE TABLE IF NOT EXISTS reception_bl_pages (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                reception_id             INTEGER NOT NULL,
+                bl_supplementaire_id     INTEGER,
+                page_num                 INTEGER NOT NULL DEFAULT 1,
+                photo_filename           TEXT    NOT NULL,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (reception_id)         REFERENCES receptions(id),
+                FOREIGN KEY (bl_supplementaire_id) REFERENCES reception_bls_supplementaires(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_bl_pages_reception ON reception_bl_pages(reception_id)",
         ]
         for sql in migrations:
             try:

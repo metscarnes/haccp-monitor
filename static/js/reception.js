@@ -68,13 +68,30 @@ const elBlZoomPlus       = document.getElementById('rec-bl-zoom-plus');
 const elBlZoomMoins      = document.getElementById('rec-bl-zoom-moins');
 const elBlResize         = document.getElementById('rec-bl-flottant-resize');
 let blZoom = 1;
+let blPages = [];
+let blPageIdx = 0;
 
-function ouvrirBlFlottant(url) {
+function majNavBl() {
+  const nav = document.getElementById('rec-bl-nav');
+  if (!nav) return;
+  if (blPages.length <= 1) { nav.hidden = true; return; }
+  nav.hidden = false;
+  const label = nav.querySelector('#rec-bl-nav-label');
+  const prev  = nav.querySelector('#rec-bl-nav-prev');
+  const next  = nav.querySelector('#rec-bl-nav-next');
+  if (label) label.textContent = `${blPageIdx + 1} / ${blPages.length}`;
+  if (prev)  prev.disabled  = blPageIdx === 0;
+  if (next)  next.disabled  = blPageIdx === blPages.length - 1;
+}
+
+function ouvrirBlFlottant(url, allUrls) {
   if (!elBlFlottant) return;
-  elBlImg.src = url;
+  blPages   = allUrls && allUrls.length ? allUrls : [url];
+  blPageIdx = 0;
+  elBlImg.src = blPages[0];
   blZoom = 1;
   appliquerZoomBl();
-  // Réinitialiser la position si hors écran
+  majNavBl();
   elBlFlottant.style.left = Math.max(8, (window.innerWidth - elBlFlottant.offsetWidth) / 2) + 'px';
   elBlFlottant.hidden = false;
 }
@@ -85,6 +102,12 @@ function appliquerZoomBl() {
 if (elBlFermer)    elBlFermer.addEventListener('click', () => { elBlFlottant.hidden = true; });
 if (elBlZoomPlus)  elBlZoomPlus.addEventListener('click', () => { blZoom = Math.min(5, blZoom + 0.25); appliquerZoomBl(); });
 if (elBlZoomMoins) elBlZoomMoins.addEventListener('click', () => { blZoom = Math.max(0.5, blZoom - 0.25); appliquerZoomBl(); });
+document.getElementById('rec-bl-nav-prev')?.addEventListener('click', () => {
+  if (blPageIdx > 0) { blPageIdx--; elBlImg.src = blPages[blPageIdx]; majNavBl(); }
+});
+document.getElementById('rec-bl-nav-next')?.addEventListener('click', () => {
+  if (blPageIdx < blPages.length - 1) { blPageIdx++; elBlImg.src = blPages[blPageIdx]; majNavBl(); }
+});
 
 // Déplacement de la fenêtre via la barre de titre (souris + tactile)
 function initDragBl() {
@@ -496,7 +519,7 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
     if (rowIdx > 0 && !document.getElementById(`rec-fourn-bloc-${rowIdx}`)) {
       // S'assurer que fournisseursListe a l'entrée pour cet index
       while (fournisseursListe.length <= rowIdx) {
-        fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+        fournisseursListe.push({ id: null, nom: '', photos: [] });
       }
       creerBlocFourn(rowIdx, false); // pas de bouton ✕ (géré par la liste commandes)
     }
@@ -516,7 +539,7 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
 
 // Pré-remplir le bloc fournisseur d'index idx avec les données {id, nom}
 function preRemplirFournisseurBloc(idx, fourn) {
-  fournisseursListe[idx] = fournisseursListe[idx] || { id: null, nom: '', photoFile: null, photoUrl: null };
+  fournisseursListe[idx] = fournisseursListe[idx] || { id: null, nom: '', photos: [] };
   fournisseursListe[idx].id  = fourn.id;
   fournisseursListe[idx].nom = fourn.nom;
   if (idx === 0) fournisseurId = fourn.id;
@@ -1166,7 +1189,7 @@ async function allerVersPcr01Camion() {
   let firstError = null;
   let manquePhoto = false, manqueFourn = false;
   refusBlList.forEach((b, idx) => {
-    if (!b.photoFile) {
+    if (!b.photoFile && !(b.photos && b.photos.length)) {
       manquePhoto = true;
       const z = document.getElementById(`rec-refus-bl-photo-zone-${idx}`);
       if (z) {
@@ -1272,8 +1295,8 @@ async function allerVersPcr01Camion() {
 
 
 // ── ÉTAPE 2 : Photo BL + Fournisseur(s) ───────────────────
-// État fournisseurs multiples : [{id, nom, photoFile, photoUrl}]
-let fournisseursListe = [{ id: null, nom: '', photoFile: null, photoUrl: null }];
+// État fournisseurs multiples : [{id, nom, photos: [{file, url}]}]
+let fournisseursListe = [{ id: null, nom: '', photos: [] }];
 let modeMultiFourn    = false;
 
 async function chargerFournisseurs() {
@@ -1284,13 +1307,59 @@ async function chargerFournisseurs() {
   }
 }
 
+function majVignettesBloc(idx) {
+  const fourn = fournisseursListe[idx];
+  const photoZone  = document.getElementById(`rec-photo-zone-${idx}`);
+  const photoIcone = document.getElementById(`rec-photo-icone-${idx}`);
+  const photoTitre = document.getElementById(`rec-photo-titre-${idx}`);
+  const vignRow    = document.getElementById(`rec-photo-vign-row-${idx}`);
+  const btnPage    = document.getElementById(`rec-photo-add-page-${idx}`);
+
+  if (!fourn.photos.length) {
+    photoIcone.textContent = '📋';
+    photoTitre.textContent = 'Photo du bon de livraison';
+    photoZone.classList.remove('photo-ok');
+    if (btnPage) btnPage.hidden = true;
+  } else {
+    photoIcone.textContent = '✅';
+    photoTitre.textContent = fourn.photos.length === 1 ? '1 page' : `${fourn.photos.length} pages`;
+    photoZone.classList.remove('photo-requise');
+    photoZone.classList.add('photo-ok');
+    if (btnPage) btnPage.hidden = false;
+  }
+
+  if (vignRow) {
+    vignRow.innerHTML = '';
+    fourn.photos.forEach((p, pi) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'rec-bl-vign-wrap';
+      const img = document.createElement('img');
+      img.src = p.url;
+      img.className = 'rec-photo-vignette rec-bl-vign';
+      img.alt = `Page ${pi + 1}`;
+      img.addEventListener('click', e => { e.stopPropagation(); ouvrirApercuPhoto(p.url); });
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'rec-bl-vign-del';
+      del.title = 'Supprimer cette page';
+      del.textContent = '✕';
+      del.addEventListener('click', e => {
+        e.stopPropagation();
+        URL.revokeObjectURL(fourn.photos[pi].url);
+        fourn.photos.splice(pi, 1);
+        majVignettesBloc(idx);
+      });
+      wrap.appendChild(img);
+      wrap.appendChild(del);
+      vignRow.appendChild(wrap);
+    });
+  }
+}
+
 function initBlocFourn(idx) {
   const photoZone  = document.getElementById(`rec-photo-zone-${idx}`);
   const inputPhoto = document.getElementById(`rec-input-photo-${idx}`);
-  const photoIcone = document.getElementById(`rec-photo-icone-${idx}`);
-  const photoTitre = document.getElementById(`rec-photo-titre-${idx}`);
-  const photoVign  = document.getElementById(`rec-photo-vignette-${idx}`);
-  const voirBtn    = document.getElementById(`rec-photo-voir-btn-${idx}`);
+  const btnPage    = document.getElementById(`rec-photo-add-page-${idx}`);
   const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
   const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
   const searchWrap = document.getElementById(`rec-fourn-search-wrap-${idx}`);
@@ -1303,26 +1372,22 @@ function initBlocFourn(idx) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrirChoixPhoto(inputPhoto); }
   });
 
-  if (voirBtn) {
-    voirBtn.addEventListener('click', () => {
-      const url = fournisseursListe[idx]?.photoUrl;
-      if (url) ouvrirApercuPhoto(url);
-    });
+  if (btnPage) {
+    btnPage.addEventListener('click', e => { e.stopPropagation(); ouvrirChoixPhoto(inputPhoto); });
   }
 
   inputPhoto.addEventListener('change', async () => {
     const file = inputPhoto.files[0];
     if (!file) return;
-    fournisseursListe[idx].photoFile = file; // repli avant fin de compression
-    if (fournisseursListe[idx].photoUrl) URL.revokeObjectURL(fournisseursListe[idx].photoUrl);
-    fournisseursListe[idx].photoUrl = URL.createObjectURL(file);
-    photoVign.src = fournisseursListe[idx].photoUrl;
-    photoVign.hidden = false;
-    photoIcone.textContent = '✅';
-    photoTitre.textContent = 'Photo prise';
-    photoZone.classList.remove('photo-requise');
-    if (voirBtn) voirBtn.classList.add('visible');
-    fournisseursListe[idx].photoFile = await compresserImage(file);
+    inputPhoto.value = '';
+    const url = URL.createObjectURL(file);
+    fournisseursListe[idx].photos.push({ file, url });
+    majVignettesBloc(idx);
+    const compressed = await compresserImage(file);
+    const last = fournisseursListe[idx].photos.length - 1;
+    if (fournisseursListe[idx].photos[last]?.file === file) {
+      fournisseursListe[idx].photos[last].file = compressed;
+    }
   });
 
   function afficherResultats(liste) {
@@ -1341,10 +1406,8 @@ function initBlocFourn(idx) {
         results.hidden     = true;
         searchInp.classList.remove('rec-champ-invalide');
         searchInp.title = '';
-        // Mettre à jour fournisseurId principal (index 0)
         if (idx === 0) fournisseurId = f.id;
         if (elErreur2 && !elErreur2.hidden && fournisseursListe[0].id) elErreur2.hidden = true;
-        // Mettre à jour le sélecteur de l'écran produit
         majSelectorFournisseur();
       });
       results.appendChild(div);
@@ -1440,7 +1503,7 @@ elFournMultiBtn.addEventListener('click', () => {
 // suppressible : affiche le bouton ✕ (mode manuel multi-fourn)
 function creerBlocFourn(idx, suppressible = true) {
   if (!fournisseursListe[idx]) {
-    fournisseursListe[idx] = { id: null, nom: '', photoFile: null, photoUrl: null };
+    fournisseursListe[idx] = { id: null, nom: '', photos: [] };
   }
 
   const bloc = document.createElement('div');
@@ -1460,13 +1523,13 @@ function creerBlocFourn(idx, suppressible = true) {
         <div class="rec-photo-texte-titre" id="rec-photo-titre-${idx}">Photo du bon de livraison</div>
         <div class="rec-photo-texte-sous">Obligatoire</div>
       </div>
-      <img id="rec-photo-vignette-${idx}" class="rec-photo-vignette" alt="" hidden>
     </div>
+    <div class="rec-bl-vign-row" id="rec-photo-vign-row-${idx}"></div>
+    <button class="rec-photo-add-page-btn" id="rec-photo-add-page-${idx}" type="button" hidden>
+      + Page
+    </button>
     <input type="file" accept="image/*" capture
            id="rec-input-photo-${idx}" hidden aria-hidden="true">
-    <button class="rec-photo-voir-btn" id="rec-photo-voir-btn-${idx}" type="button">
-      Voir la photo
-    </button>
     <div class="rec-fourn-search-group">
       <div id="rec-fourn-sel-wrap-${idx}" hidden>
         <div class="rec-fourn-sel">
@@ -1509,7 +1572,7 @@ function creerBlocFourn(idx, suppressible = true) {
 
 elBtnAddFourn.addEventListener('click', () => {
   const idx = fournisseursListe.length;
-  fournisseursListe.push({ id: null, nom: '', photoFile: null, photoUrl: null });
+  fournisseursListe.push({ id: null, nom: '', photos: [] });
   creerBlocFourn(idx, true);
 });
 
@@ -1550,7 +1613,7 @@ async function creerFiche() {
   }
 
   // Valider photo du bon de livraison principal
-  if (!fourn0.photoFile) {
+  if (!fourn0.photos.length) {
     const photoZone0 = document.getElementById('rec-photo-zone-0');
     if (photoZone0) {
       photoZone0.classList.add('photo-requise');
@@ -1583,7 +1646,7 @@ async function creerFiche() {
     }
 
     // Valider photo du BL supplémentaire
-    if (!fournI.photoFile) {
+    if (!fournI.photos.length) {
       const photoZoneI = document.getElementById(`rec-photo-zone-${i}`);
       if (photoZoneI) {
         photoZoneI.classList.add('photo-requise');
@@ -1612,8 +1675,8 @@ async function creerFiche() {
     }
     const fourn0 = fournisseursListe[0];
     if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
-    else if (fourn0.nom) fd.append('fournisseur_nom', fourn0.nom); // Fallback si pas d'ID
-    if (fourn0.photoFile) fd.append('photo_bl', fourn0.photoFile, fourn0.photoFile.name);
+    else if (fourn0.nom) fd.append('fournisseur_nom', fourn0.nom);
+    fourn0.photos.forEach(p => fd.append('photo_bl', p.file, p.file.name));
 
     const rec = await apiFetch('/api/receptions', {
       method: 'POST',
@@ -1629,7 +1692,7 @@ async function creerFiche() {
       const fd2 = new FormData();
       if (fi.id)  fd2.append('fournisseur_id',  fi.id);
       if (fi.nom) fd2.append('fournisseur_nom', fi.nom);
-      if (fi.photoFile) fd2.append('photo', fi.photoFile, fi.photoFile.name);
+      fi.photos.forEach(p => fd2.append('photo', p.file, p.file.name));
       try {
         await apiFetch(`/api/receptions/${rec.id}/bls-supplementaires`, { method: 'POST', body: fd2 });
       } catch (e) {
@@ -2676,11 +2739,10 @@ function creerCarteBatch(ligneCmd) {
     const blocFourn = fournisseursListe.find(f =>
       (etat.fournisseur.id  && f.id  === etat.fournisseur.id) ||
       (etat.fournisseur.nom && f.nom === etat.fournisseur.nom));
-    const photoUrl = blocFourn && blocFourn.photoUrl;
-    if (photoUrl) {
+    const photos = blocFourn?.photos || [];
+    if (photos.length) {
       btnBl.hidden = false;
-      // Fenêtre flottante non-modale : on peut continuer à saisir/scroller derrière.
-      btnBl.addEventListener('click', () => ouvrirBlFlottant(photoUrl));
+      btnBl.addEventListener('click', () => ouvrirBlFlottant(photos[0].url, photos.map(p => p.url)));
     }
   }
 

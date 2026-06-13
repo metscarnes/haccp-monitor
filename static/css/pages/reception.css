@@ -354,6 +354,83 @@ body.rec-body {
 .rec-photo-voir-btn.visible { display: block; }
 .rec-photo-voir-btn:active { opacity: .7; }
 
+/* ── Multi-pages BL ──────────────────────────────────────── */
+.rec-bl-vign-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .5rem;
+}
+.rec-bl-vign-wrap {
+  position: relative;
+}
+.rec-bl-vign {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 3px solid var(--color-ok);
+  cursor: zoom-in;
+  display: block;
+}
+.rec-bl-vign-del {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--color-alert);
+  color: #fff;
+  border: none;
+  font-size: .75rem;
+  font-weight: 900;
+  cursor: pointer;
+  line-height: 22px;
+  text-align: center;
+  padding: 0;
+}
+.rec-photo-add-page-btn {
+  display: block;
+  margin-top: .4rem;
+  padding: .35rem .9rem;
+  background: transparent;
+  border: 1.5px dashed var(--color-ok);
+  border-radius: 8px;
+  color: var(--color-ok);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-photo-add-page-btn:active { opacity: .7; }
+
+/* ── Navigation pages fenêtre BL ─────────────────────────── */
+.rec-bl-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  padding: .3rem;
+  background: #111;
+}
+.rec-bl-nav[hidden] { display: none; }
+.rec-bl-nav button {
+  width: 32px; height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255,255,255,.2);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 900;
+  cursor: pointer;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.rec-bl-nav button:disabled { opacity: .3; cursor: default; }
+.rec-bl-nav button:active:not(:disabled) { background: rgba(255,255,255,.4); }
+.rec-bl-nav #rec-bl-nav-label { color: #fff; font-size: .85rem; min-width: 3rem; text-align: center; }
+
 /* ── Overlay aperçu photo BL plein écran ─────────────────── */
 .rec-photo-preview-wrap {
   position: relative;
