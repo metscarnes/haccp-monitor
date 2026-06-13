@@ -105,13 +105,50 @@
           <input type="search" id="panier-search" placeholder="Code article ou désignation…" autocomplete="off">
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;"
+                 title="Articles déjà commandés ou produits de référence du comparatif">
+            <input type="checkbox" id="panier-filtre-habituels" checked style="width:18px; height:18px; accent-color:var(--color-accent);">
+            Mes produits habituels
+          </label>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
             <input type="checkbox" id="panier-filtre-selection" style="width:18px; height:18px; accent-color:var(--color-accent);">
             Articles du panier seulement
           </label>
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
+            <input type="checkbox" id="panier-filtre-reference" style="width:18px; height:18px; accent-color:var(--color-accent);">
+            ⭐ Références seulement
+          </label>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <button type="button" class="ach-btn ach-btn--primary" id="btn-cadencier">🧠 Panier intelligent</button>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <button type="button" class="ach-btn" id="btn-test-plus1" style="font-size:var(--text-xs); opacity:.7;">🧪 +1 à tous</button>
+        </div>
+      </div>
+
+      <!-- Suggestions de commande (récurrence des commandes passées) -->
+      <div class="ach-suggestions" id="panier-suggestions" hidden>
+        <div class="ach-suggestions-header" id="panier-suggestions-toggle">
+          <span>💡 Suggestions de commande
+            <span class="ach-badge-count" id="badge-suggestions" hidden>0</span>
+          </span>
+          <span style="display:flex; gap:var(--space-2); align-items:center;">
+            <button type="button" class="ach-btn ach-btn--ok" id="btn-suggestions-tout"
+                    style="font-size:var(--text-xs);" hidden>➕ Ajouter les besoins estimés</button>
+            <span class="ach-suggestions-chevron" id="panier-suggestions-chevron">▾</span>
+          </span>
+        </div>
+        <div id="panier-suggestions-corps">
+          <div class="ach-suggestions-hint">
+            Quoi commander et combien : besoin estimé d'après la consommation induite par vos
+            commandes passées — score de prédominance (fréquence + besoin).
+          </div>
+          <div class="ach-suggestions-liste" id="panier-suggestions-liste"></div>
         </div>
       </div>
 
@@ -128,7 +165,7 @@
               <th class="ach-col-num">TVA</th>
               <th>Unités cmd</th>
               <th class="ach-col-num">Stock</th>
-              <th style="text-align:center; min-width:200px;">Quantité</th>
+              <th style="text-align:center; min-width:300px;">Quantité</th>
               <th class="ach-col-num">Total estimé HT</th>
             </tr>
           </thead>
@@ -171,6 +208,72 @@
           <button type="button" class="ach-btn" id="btn-panier-fermer">Fermer</button>
           <button type="button" class="ach-btn ach-btn--ok" id="btn-panier-generer">✅ Générer les commandes</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal cadencier (panier intelligent) ── -->
+  <div class="ach-modal" id="modal-cadencier" hidden>
+    <div class="ach-modal-card ach-modal-card--xl">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">🧠 Panier intelligent — Cadencier des commandes</h2>
+        <button class="ach-modal-fermer" id="modal-cadencier-fermer">✕</button>
+      </header>
+
+      <div class="ach-filtres" style="margin:0; border-radius:0; border-left:none; border-right:none;">
+        <div class="ach-filtre">
+          <label>Vue</label>
+          <div class="ach-unite-btns" role="group" style="height:38px;">
+            <button type="button" class="ach-unite-btn" id="btn-cad-jour">Jour</button>
+            <button type="button" class="ach-unite-btn is-active" id="btn-cad-semaine">Semaine</button>
+            <button type="button" class="ach-unite-btn" id="btn-cad-mois">Mois</button>
+          </div>
+        </div>
+        <div class="ach-filtre">
+          <label>Fournisseur</label>
+          <select id="cad-filtre-fournisseur"><option value="">Tous</option></select>
+        </div>
+        <div class="ach-filtre">
+          <label>Famille</label>
+          <select id="cad-filtre-famille"><option value="">Toutes</option></select>
+        </div>
+        <div class="ach-filtre">
+          <label>Sous-famille</label>
+          <select id="cad-filtre-sousfamille"><option value="">Toutes</option></select>
+        </div>
+        <div class="ach-filtre">
+          <label>Tri</label>
+          <select id="cad-tri">
+            <option value="score">Score de prédominance</option>
+            <option value="total">Total commandé</option>
+            <option value="echeance">Besoin estimé d'abord</option>
+            <option value="designation">Désignation</option>
+            <option value="fournisseur">Fournisseur</option>
+          </select>
+        </div>
+        <div class="ach-filtre ach-filtre--search">
+          <label>Recherche</label>
+          <input type="search" id="cad-search" placeholder="Code article ou désignation…" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="ach-table-wrap ach-cadencier-wrap">
+        <table class="ach-table ach-cadencier">
+          <thead id="thead-cadencier"></thead>
+          <tbody id="tbody-cadencier">
+            <tr><td class="ach-vide">Chargement…</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="ach-cadencier-legende">
+        Quantités commandées par période, dans l'unité dominante de l'article (≈ : l'historique
+        contient d'autres unités, non sommées). Intensité orange = volume relatif de la ligne.
+        La colonne de droite est la période en cours.
+      </div>
+
+      <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:flex-end; border-top:1px solid #e8d9c4;">
+        <button type="button" class="ach-btn" id="btn-cadencier-fermer">Fermer</button>
       </div>
     </div>
   </div>
@@ -291,6 +394,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/commandes.js?v=3"></script>
+  <script src="/static/js/achats/commandes.js?v=7"></script>
 </body>
 </html>
