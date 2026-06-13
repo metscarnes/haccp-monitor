@@ -2427,6 +2427,8 @@ function reinitFormProduit() {
 
   elPh.value  = '';
   elPhPlage.textContent = '';
+  const elPoidsUnitaire = document.getElementById('rec-poids');
+  if (elPoidsUnitaire) elPoidsUnitaire.value = '';
 
   CRITERES.forEach(c => {
     document.getElementById(`rec-aide-${c}`).textContent = '';
@@ -2632,6 +2634,11 @@ function _buildPayload() {
   }
   const ph = parseFloat(elPh.value);
   if (!isNaN(ph)) payload.ph_valeur = ph;
+  const elPoidsUnitaire = document.getElementById('rec-poids');
+  if (elPoidsUnitaire) {
+    const poids = parseFloat(elPoidsUnitaire.value);
+    if (!isNaN(poids) && poids > 0) payload.poids_kg = poids;
+  }
   // Référence catalogue issue de la commande (suivi du stock par référence)
   if (catalogueIdPrefill) payload.catalogue_fournisseur_id = catalogueIdPrefill;
   // Type de DLC catalogue → détermine l'exigence de traçabilité (statut en attente)
@@ -3282,13 +3289,13 @@ if (elBtnCreerCommande) {
     try {
       // Construire les lignes depuis les produits réceptionnés
       const lignes = lignesAjoutees.map(l => ({
-        designation:         l.produit_nom,
+        designation:              l.produit_nom,
         catalogue_fournisseur_id: l.catalogue_id || null,
-        code_article:        null,
-        prix_unitaire_ht:    0,
-        quantite_commandee:  l.poids_kg || 1,
-        unite:               l.poids_kg ? 'kg' : 'u',
-        commentaire_ligne:   null,
+        code_article:             '',
+        prix_unitaire_ht:         0,
+        quantite_commandee:       l.poids_kg || 1,
+        unite:                    'kg',
+        commentaire_ligne:        null,
       }));
 
       const dateRecep = elDateReception.value || new Date().toISOString().slice(0, 10);

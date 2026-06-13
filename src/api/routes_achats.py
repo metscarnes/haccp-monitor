@@ -172,10 +172,10 @@ class ComparatifReferenceUpdate(BaseModel):
 
 class CommandeLigneCreate(BaseModel):
     catalogue_fournisseur_id: Optional[int] = None
-    code_article: str
+    code_article: Optional[str] = None
     designation: str
-    prix_unitaire_ht: float
-    quantite_commandee: float
+    prix_unitaire_ht: float = 0.0
+    quantite_commandee: float = 1.0
     unite: Optional[str] = "kg"
     commentaire_ligne: Optional[str] = None
 
@@ -1258,7 +1258,7 @@ async def create_commande(body: CommandeCreate):
                    (commande_id, catalogue_fournisseur_id, code_article, designation,
                     prix_unitaire_ht, quantite_commandee, unite, montant_ht, commentaire_ligne)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (commande_id, ligne.catalogue_fournisseur_id, ligne.code_article,
+                (commande_id, ligne.catalogue_fournisseur_id, ligne.code_article or '',
                  ligne.designation, ligne.prix_unitaire_ht, ligne.quantite_commandee,
                  ligne.unite, montant, ligne.commentaire_ligne)
             )
