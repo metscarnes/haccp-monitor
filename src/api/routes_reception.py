@@ -166,6 +166,7 @@ class LigneCreate(BaseModel):
     odeur_conforme: int = 1
     odeur_observation: Optional[str] = None
     ph_valeur: Optional[float] = None
+    substitution_article: Optional[str] = None   # article commandé livré en substitut
 
 
 class LigneUpdate(BaseModel):
@@ -192,6 +193,7 @@ class LigneUpdate(BaseModel):
     odeur_conforme: int = 1
     odeur_observation: Optional[str] = None
     ph_valeur: Optional[float] = None
+    substitution_article: Optional[str] = None
 
 
 class CloturerBody(BaseModel):

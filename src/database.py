@@ -1748,6 +1748,19 @@ PRAGMA foreign_keys=ON;
             logger.warning("Migration v2.4 fiches_incident : %s", e)
             await db.execute("PRAGMA foreign_keys = ON")
 
+        # Migration v5.7 : champ substitution dans reception_lignes
+        # Trace l'article commandé initialement quand le fournisseur livre un substitut.
+        try:
+            cur_sub = await db.execute("PRAGMA table_info(reception_lignes)")
+            cols_sub = {row[1] for row in await cur_sub.fetchall()}
+            if "substitution_article" not in cols_sub:
+                await db.execute(
+                    "ALTER TABLE reception_lignes ADD COLUMN substitution_article TEXT"
+                )
+                logger.info("Migration v5.7 : substitution_article ajouté à reception_lignes")
+        except Exception as e:
+            logger.warning("Migration v5.7 substitution_article : %s", e)
+
         # Migration v2.5 : rendre produit_id nullable dans fiches_incident
         # (nécessaire pour les fiches de refus livraison camion, sans produit spécifique)
         try:
@@ -3065,8 +3078,8 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
              consistance_conforme, consistance_observation,
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
-             ph_valeur, ph_conforme, conforme)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ph_valeur, ph_conforme, conforme, substitution_article)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
@@ -3099,6 +3112,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             ph_valeur,
             ph_conforme,
             conforme,
+            data.get("substitution_article"),
         ),
     )
     await db.commit()
@@ -3297,7 +3311,8 @@ async def update_reception_ligne(
             consistance_conforme = ?, consistance_observation = ?,
             exsudat_conforme = ?, exsudat_observation = ?,
             odeur_conforme = ?, odeur_observation = ?,
-            ph_valeur = ?, ph_conforme = ?, conforme = ?
+            ph_valeur = ?, ph_conforme = ?, conforme = ?,
+            substitution_article = ?
         WHERE id = ?
         """,
         (
@@ -3327,6 +3342,7 @@ async def update_reception_ligne(
             ph_valeur,
             ph_conforme,
             conforme,
+            data.get("substitution_article"),
             ligne_id,
         ),
     )

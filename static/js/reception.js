@@ -228,6 +228,18 @@ const elRecapLignes       = document.getElementById('rec-recap-lignes');
 const elCommentaireNc     = document.getElementById('rec-commentaire-nc');
 const elErreur4           = document.getElementById('rec-erreur-4');
 const elBtnCloturer       = document.getElementById('rec-btn-cloturer');
+const elBlocCreerCommande = document.getElementById('rec-bloc-creer-commande');
+const elBtnCreerCommande  = document.getElementById('rec-btn-creer-commande');
+const elCreerCmdStatut    = document.getElementById('rec-creer-cmd-statut');
+
+// Substitution
+const elSubstitutionCheck   = document.getElementById('rec-substitution-check');
+const elSubstitutionWrap    = document.getElementById('rec-substitution-wrap');
+const elSubstitutionSearch  = document.getElementById('rec-substitution-search');
+const elSubstitutionResults = document.getElementById('rec-substitution-results');
+const elSubstitutionSel     = document.getElementById('rec-substitution-sel');
+const elSubstitutionSelNom  = document.getElementById('rec-substitution-sel-nom');
+const elSubstitutionClear   = document.getElementById('rec-substitution-clear');
 
 // Étape 4 — Procédure NC
 const elNcProcedure       = document.getElementById('rec-nc-procedure');
@@ -328,6 +340,7 @@ let lotInterneGenere   = false;   // true quand lot interne auto-généré
 let ligneEnEdition     = null;    // {id, index} — null = mode ajout
 let fournisseurProduitSelected = null; // {id, nom} fournisseur sélectionné pour le produit courant
 let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé pour dialog
+let substitutionArticle = null;       // {id, designation} article commandé livré en substitut (ou null)
 
 // Lien commande
 let commandeIds        = [];      // IDs des commandes liées (tableau)
@@ -1981,6 +1994,71 @@ document.addEventListener('click', e => {
   }
 }, true);
 
+// ── Substitution ──────────────────────────────────────────────
+elSubstitutionCheck.addEventListener('change', () => {
+  elSubstitutionWrap.hidden = !elSubstitutionCheck.checked;
+  if (!elSubstitutionCheck.checked) {
+    substitutionArticle = null;
+    elSubstitutionSearch.value = '';
+    elSubstitutionResults.hidden = true;
+    elSubstitutionSel.hidden = true;
+  } else {
+    elSubstitutionSearch.focus();
+  }
+});
+
+function afficherSubstitutionResultats(articles) {
+  elSubstitutionResults.innerHTML = '';
+  if (!articles.length) { elSubstitutionResults.hidden = true; return; }
+  articles.slice(0, 12).forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'rec-fourn-item';
+    div.textContent = a.designation + (a.code_article ? ` · ${a.code_article}` : '');
+    div.addEventListener('click', () => {
+      substitutionArticle = { id: a.id, designation: a.designation };
+      elSubstitutionSelNom.textContent = a.designation;
+      elSubstitutionSel.hidden = false;
+      elSubstitutionSearch.value = '';
+      elSubstitutionResults.hidden = true;
+    });
+    elSubstitutionResults.appendChild(div);
+  });
+  elSubstitutionResults.hidden = false;
+}
+
+elSubstitutionSearch.addEventListener('input', () => {
+  const q = elSubstitutionSearch.value.trim();
+  if (!q) { elSubstitutionResults.hidden = true; return; }
+  // Cherche dans le catalogue BL si disponible, sinon texte libre uniquement
+  const liste = catalogueBl.length > 0 ? filtrerCatalogueBl(q) : [];
+  if (liste.length) {
+    afficherSubstitutionResultats(liste);
+  } else {
+    // Pas de catalogue : stocker le texte libre directement
+    substitutionArticle = { id: null, designation: q };
+    elSubstitutionSelNom.textContent = q;
+    elSubstitutionSel.hidden = false;
+    elSubstitutionResults.hidden = true;
+  }
+});
+
+elSubstitutionSearch.addEventListener('focus', () => {
+  const q = elSubstitutionSearch.value.trim();
+  if (q && catalogueBl.length > 0) afficherSubstitutionResultats(filtrerCatalogueBl(q));
+});
+
+document.addEventListener('click', e => {
+  if (!elSubstitutionResults.contains(e.target) && e.target !== elSubstitutionSearch) {
+    elSubstitutionResults.hidden = true;
+  }
+}, true);
+
+elSubstitutionClear.addEventListener('click', () => {
+  substitutionArticle = null;
+  elSubstitutionSel.hidden = true;
+  elSubstitutionSearch.value = '';
+});
+
 // Température produit → verdict temps réel
 function parseIntervalleTemp(str) {
   if (!str) return null;
@@ -2309,8 +2387,13 @@ function reinitFormProduit() {
   lotInterneGenere   = false;
   dlcMode            = 'dlc';
   fournisseurProduitSelected = null;
-  catalogueIdPrefill = null;   // réf catalogue valable seulement pour la ligne pré-remplie
+  catalogueIdPrefill = null;
   dlcTypePrefill     = null;
+  substitutionArticle = null;
+  if (elSubstitutionCheck) elSubstitutionCheck.checked = false;
+  if (elSubstitutionWrap)  elSubstitutionWrap.hidden = true;
+  if (elSubstitutionSel)   elSubstitutionSel.hidden = true;
+  if (elSubstitutionSearch) elSubstitutionSearch.value = '';
 
   elProdSel.hidden       = true;
   elProdSearchWrap.hidden = false;
@@ -2553,6 +2636,8 @@ function _buildPayload() {
   if (catalogueIdPrefill) payload.catalogue_fournisseur_id = catalogueIdPrefill;
   // Type de DLC catalogue → détermine l'exigence de traçabilité (statut en attente)
   if (dlcTypePrefill) payload.dlc_type = dlcTypePrefill;
+  // Substitution : article commandé initialement livré à la place de ce produit
+  if (substitutionArticle) payload.substitution_article = substitutionArticle.designation;
   return payload;
 }
 
@@ -2588,10 +2673,12 @@ function _ligneToLocal(ligne, produit) {
     id:                  ligne.id,
     produit_id:          estCat ? null : (produit ? produit.id : null),
     produit_nom:         estCat ? produit.designation : (produit ? produit.nom : null),
+    catalogue_id:        ligne.catalogue_fournisseur_id || null,
     fournisseur_id:      fournId,
     fournisseur_nom:     fournNom,
     conforme:            ligne.conforme,
     temperature_reception: ligne.temperature_reception,
+    poids_kg:            ligne.poids_kg || null,
     numero_lot:          ligne.numero_lot,
     lot_interne:         ligne.lot_interne,
     origine:             ligne.origine || 'France',
@@ -2600,6 +2687,7 @@ function _ligneToLocal(ligne, produit) {
     statut:              ligne.statut || 'complet',
     attente_motif:       ligne.attente_motif || null,
     motifs:              motifsNc,
+    substitution_article: ligne.substitution_article || null,
   };
 }
 
@@ -3150,9 +3238,95 @@ function remplirRecap() {
     badge.className = 'rec-ligne-badge ' + (ligneConforme ? 'ok' : 'nc');
     badge.textContent = ligneConforme ? '✓ OK' : '✗ NC';
 
+    // Badge substitution
+    if (l.substitution_article) {
+      const sub = document.createElement('div');
+      sub.style.cssText = 'font-size:.75rem;color:var(--hors-ligne);margin-top:.2rem;';
+      sub.textContent = `↔ Substitution de : ${l.substitution_article}`;
+      left.appendChild(sub);
+    }
+
     row.appendChild(left);
     row.appendChild(badge);
     elRecapLignes.appendChild(row);
+  });
+
+  // Bloc "Créer commande" : visible seulement si aucune commande liée
+  const aCommande = commandeIds.some(Boolean);
+  if (elBlocCreerCommande) {
+    elBlocCreerCommande.hidden = aCommande;
+    if (elCreerCmdStatut) elCreerCmdStatut.hidden = true;
+    if (elBtnCreerCommande) {
+      elBtnCreerCommande.disabled = false;
+      elBtnCreerCommande.textContent = '📋 Créer la commande associée';
+    }
+  }
+}
+
+// ── Création commande rétroactive ──────────────────────────
+if (elBtnCreerCommande) {
+  elBtnCreerCommande.addEventListener('click', async () => {
+    const fourn = fournisseursListe[0];
+    if (!fourn || !fourn.id) {
+      if (elCreerCmdStatut) {
+        elCreerCmdStatut.textContent = '⚠️ Le fournisseur doit être enregistré dans la base pour créer une commande.';
+        elCreerCmdStatut.hidden = false;
+      }
+      return;
+    }
+
+    elBtnCreerCommande.disabled = true;
+    elBtnCreerCommande.textContent = 'Création…';
+    if (elCreerCmdStatut) elCreerCmdStatut.hidden = true;
+
+    try {
+      // Construire les lignes depuis les produits réceptionnés
+      const lignes = lignesAjoutees.map(l => ({
+        designation:         l.produit_nom,
+        catalogue_fournisseur_id: l.catalogue_id || null,
+        code_article:        null,
+        prix_unitaire_ht:    0,
+        quantite_commandee:  l.poids_kg || 1,
+        unite:               l.poids_kg ? 'kg' : 'u',
+        commentaire_ligne:   null,
+      }));
+
+      const dateRecep = elDateReception.value || new Date().toISOString().slice(0, 10);
+      const cmd = await apiFetch('/api/achats/commandes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fournisseur_id:        fourn.id,
+          date_commande:         dateRecep,
+          date_livraison_prevue: dateRecep,
+          commentaire:           `Créée depuis la réception du ${dateRecep} (saisie rétroactive)`,
+          personnel_id:          personnelId || null,
+          lignes,
+        }),
+      });
+
+      // Passer en confirmée
+      await apiFetch(`/api/achats/commandes/${cmd.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statut: 'confirmee' }),
+      });
+
+      elBtnCreerCommande.textContent = '✓ Commande créée';
+      if (elCreerCmdStatut) {
+        elCreerCmdStatut.textContent = `Commande ${cmd.numero_commande} créée avec ${lignes.length} article(s).`;
+        elCreerCmdStatut.style.color = 'var(--conforme)';
+        elCreerCmdStatut.hidden = false;
+      }
+    } catch (err) {
+      elBtnCreerCommande.disabled = false;
+      elBtnCreerCommande.textContent = '📋 Créer la commande associée';
+      if (elCreerCmdStatut) {
+        elCreerCmdStatut.textContent = `Erreur : ${err.message}`;
+        elCreerCmdStatut.style.color = 'var(--hors-ligne)';
+        elCreerCmdStatut.hidden = false;
+      }
+    }
   });
 }
 

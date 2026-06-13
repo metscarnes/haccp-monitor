@@ -538,6 +538,28 @@
                  aria-label="Valeur pH">
         </div>
 
+        <!-- Substitution -->
+        <div class="rec-form-group">
+          <label class="rec-champ-label" style="display:flex;align-items:center;gap:.6rem;">
+            <input type="checkbox" id="rec-substitution-check" style="width:1.2rem;height:1.2rem;accent-color:var(--noyer);flex-shrink:0;">
+            Substitution — article différent de la commande
+          </label>
+          <div id="rec-substitution-wrap" hidden style="margin-top:.5rem;">
+            <div style="font-size:.8rem;color:var(--color-offline);margin-bottom:.35rem;">
+              Article initialement commandé (celui qui aurait dû être livré) :
+            </div>
+            <input type="search" id="rec-substitution-search" class="rec-input"
+                   placeholder="Rechercher dans le catalogue…" autocomplete="off">
+            <div id="rec-substitution-results" class="rec-fourn-results" hidden></div>
+            <div id="rec-substitution-sel" hidden style="display:flex;align-items:center;gap:.5rem;margin-top:.35rem;font-size:.9rem;">
+              <span style="color:var(--conforme);">✓</span>
+              <span id="rec-substitution-sel-nom" style="font-weight:600;"></span>
+              <button type="button" id="rec-substitution-clear" class="rec-fourn-clear"
+                      aria-label="Effacer">✕</button>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Footer sticky étape 3 -->
@@ -646,6 +668,18 @@
         <textarea id="rec-commentaire-nc" class="rec-textarea"
                   placeholder="Décrire la ou les non-conformité(s)…"
                   aria-label="Commentaire non-conformité"></textarea>
+      </div>
+
+      <!-- Création commande rétroactive (si pas de commande liée) -->
+      <div id="rec-bloc-creer-commande" hidden style="margin-top:1rem;">
+        <div style="font-size:.85rem;color:var(--color-offline);margin-bottom:.5rem;">
+          Aucune commande liée à cette réception. Souhaitez-vous en créer une ?
+        </div>
+        <button type="button" class="rec-toggle-btn" id="rec-btn-creer-commande"
+                style="width:100%;">
+          📋 Créer la commande associée
+        </button>
+        <div id="rec-creer-cmd-statut" hidden style="font-size:.85rem;margin-top:.4rem;"></div>
       </div>
 
       <div class="rec-erreur" id="rec-erreur-4" hidden role="alert"></div>
