@@ -337,6 +337,8 @@ let catalogueIdPrefill = null;    // catalogue_fournisseur_id de la ligne de com
                                   // (propagé vers reception_lignes pour le suivi de stock par référence)
 let dlcTypePrefill     = null;    // dlc_type du catalogue ('dlc'|'date_abattage'|'no_dlc')
 let toutesCommandes    = [];      // cache de toutes les commandes disponibles
+let catalogueBl        = [];      // articles catalogue du fournisseur BL (sans commande)
+let catalogueBlFournId = null;    // fournisseur_id pour lequel catalogueBl est chargé
 
 
 // ── Références DOM — Commande ──────────────────────────────
@@ -542,7 +544,7 @@ function preRemplirFournisseurBloc(idx, fourn) {
   fournisseursListe[idx] = fournisseursListe[idx] || { id: null, nom: '', photos: [] };
   fournisseursListe[idx].id  = fourn.id;
   fournisseursListe[idx].nom = fourn.nom;
-  if (idx === 0) fournisseurId = fourn.id;
+  if (idx === 0) { fournisseurId = fourn.id; if (fourn.id) chargerCatalogueBl(fourn.id); }
 
   const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
   const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
@@ -784,9 +786,9 @@ async function chargerPersonnel() {
       btn.addEventListener('click', () => {
         personnelId     = p.id;
         personnelPrenom = nomComplet;
-        // Initialiser date + heure à maintenant
+        // Initialiser date à aujourd'hui, heure par défaut 7h30
         const now = new Date();
-        elHeure.value = now.toTimeString().slice(0, 5);
+        if (!elHeure.value) elHeure.value = '07:30';
         if (!elDateReception.value) {
           elDateReception.value = now.toISOString().slice(0, 10);
         }
@@ -1406,7 +1408,7 @@ function initBlocFourn(idx) {
         results.hidden     = true;
         searchInp.classList.remove('rec-champ-invalide');
         searchInp.title = '';
-        if (idx === 0) fournisseurId = f.id;
+        if (idx === 0) { fournisseurId = f.id; chargerCatalogueBl(f.id); }
         if (elErreur2 && !elErreur2.hidden && fournisseursListe[0].id) elErreur2.hidden = true;
         majSelectorFournisseur();
       });
@@ -1422,7 +1424,7 @@ function initBlocFourn(idx) {
     searchWrap.hidden  = false;
     searchInp.value    = '';
     results.hidden     = true;
-    if (idx === 0) fournisseurId = null;
+    if (idx === 0) { fournisseurId = null; catalogueBl = []; catalogueBlFournId = null; }
     majSelectorFournisseur();
   });
 
@@ -1761,6 +1763,33 @@ async function chargerProduits() {
   }
 }
 
+async function chargerCatalogueBl(fournId) {
+  if (!fournId || fournId === catalogueBlFournId) return;
+  try {
+    const articles = await apiFetch(`/api/achats/catalogue?fournisseur_id=${fournId}`);
+    catalogueBl = articles;
+    catalogueBlFournId = fournId;
+  } catch {
+    catalogueBl = [];
+    catalogueBlFournId = fournId;
+  }
+}
+
+// Retourne vrai si on est en mode "sans commande avec fournisseur catalogue disponible"
+function useCatalogueBl() {
+  return !commandeIds.some(Boolean) && catalogueBl.length > 0;
+}
+
+function filtrerCatalogueBl(q) {
+  if (!q) return catalogueBl.slice(0, 50);
+  const mots = q.toLowerCase().split(/[\s\-\/,;]+/).filter(m => m.length > 0 && !STOP_WORDS.has(m));
+  if (!mots.length) return catalogueBl.slice(0, 50);
+  return catalogueBl.filter(a => {
+    const hay = ((a.designation || '') + ' ' + (a.code_article || '')).toLowerCase();
+    return mots.every(m => hay.includes(m));
+  }).slice(0, 50);
+}
+
 // Pré-remplir le formulaire produit depuis la ligne de commande courante
 function preRemplirDepuisCommande() {
   if (!commandeLignes.length || commandeLigneIdx >= commandeLignes.length) return;
@@ -1852,6 +1881,15 @@ function filtrerProduits(q) {
   }).slice(0, 50);
 }
 
+// Un article catalogue achats n'a pas de `nom` mais `designation` et `code_article`.
+// Cette fonction normalise les deux formes pour l'autocomplete et la sélection.
+function labelArticle(p) {
+  return p.nom || p.designation || '';
+}
+function codeArticle(p) {
+  return p.code_unique || p.code_article || '';
+}
+
 function afficherAutoComplete(liste) {
   elProdAutoComplete.innerHTML = '';
   if (!liste.length) {
@@ -1863,10 +1901,10 @@ function afficherAutoComplete(liste) {
     div.className = 'rec-autocomplete-item';
     div.setAttribute('role', 'option');
     const nom  = document.createElement('span');
-    nom.textContent = p.nom;
+    nom.textContent = labelArticle(p);
     const code = document.createElement('span');
     code.className = 'rec-autocomplete-code';
-    code.textContent = p.code_unique || '';
+    code.textContent = codeArticle(p);
     div.appendChild(nom);
     div.appendChild(code);
     div.addEventListener('click', () => selectionnerProduit(p));
@@ -1876,9 +1914,20 @@ function afficherAutoComplete(liste) {
 }
 
 function selectionnerProduit(p) {
-  produitSelectionne = p;
-  elProdSelNom.textContent  = p.nom;
-  elProdSelCode.textContent = p.code_unique || '';
+  // p peut être un produit interne (p.nom) ou un article catalogue (p.designation)
+  if (!p.nom && p.designation) {
+    // Article catalogue : pas de produit interne, on stocke comme article catalogue
+    produitSelectionne = p;
+    elProdSelNom.textContent  = p.designation;
+    elProdSelCode.textContent = p.code_article || '';
+    catalogueIdPrefill = p.id;
+    dlcTypePrefill     = p.dlc_type || null;
+    appliquerModeDate(dlcTypePrefill);
+  } else {
+    produitSelectionne = p;
+    elProdSelNom.textContent  = p.nom;
+    elProdSelCode.textContent = p.code_unique || '';
+  }
   elProdSel.hidden      = false;
   elProdSearchWrap.hidden = true;
   elProdAutoComplete.hidden = true;
@@ -1908,7 +1957,7 @@ elBtnChangerProduit.addEventListener('click', () => {
   elProdSel.hidden = true;
   elProdSearchWrap.hidden = false;
   elProdSearch.value = '';
-  afficherAutoComplete(tousProduits.slice(0, 50));
+  afficherAutoComplete(useCatalogueBl() ? catalogueBl.slice(0, 50) : tousProduits.slice(0, 50));
   elProdSearch.focus();
   majBtnAjouter();
 });
@@ -1917,12 +1966,13 @@ elProdSearch.addEventListener('input', () => {
   const q = elProdSearch.value.trim();
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    afficherAutoComplete(filtrerProduits(q));
+    afficherAutoComplete(useCatalogueBl() ? filtrerCatalogueBl(q) : filtrerProduits(q));
   }, 180);
 });
 elProdSearch.addEventListener('focus', () => {
   if (!produitSelectionne) {
-    afficherAutoComplete(filtrerProduits(elProdSearch.value));
+    const q = elProdSearch.value;
+    afficherAutoComplete(useCatalogueBl() ? filtrerCatalogueBl(q) : filtrerProduits(q));
   }
 });
 document.addEventListener('click', e => {
@@ -2366,9 +2416,19 @@ function majListeLignes() {
 function chargerLigneEnEdition(l, idx) {
   ligneEnEdition = { id: l.id, index: idx };
 
-  // Restaurer le produit
-  const produit = tousProduits.find(p => p.id === l.produit_id);
-  if (produit) selectionnerProduit(produit);
+  // Restaurer le produit (produit interne ou article catalogue)
+  const produit = l.produit_id ? tousProduits.find(p => p.id === l.produit_id) : null;
+  if (produit) {
+    selectionnerProduit(produit);
+  } else if (l.produit_nom) {
+    // Article catalogue : afficher le nom sans objet produit interne
+    produitSelectionne = { designation: l.produit_nom };
+    elProdSelNom.textContent  = l.produit_nom;
+    elProdSelCode.textContent = '';
+    elProdSel.hidden       = false;
+    elProdSearchWrap.hidden = true;
+    majBtnAjouter();
+  }
 
   // Restaurer le fournisseur de la ligne (id et/ou nom) + sélecteur
   if (l.fournisseur_id || l.fournisseur_nom) {
@@ -2443,8 +2503,12 @@ document.querySelector('.rec-step3-footer').addEventListener('click', e => {
 if (elBtnEnregistrer) elBtnEnregistrer.addEventListener('click', enregistrerModification);
 
 function _buildPayload() {
+  // Article catalogue (pas de produit interne) : designation_libre + catalogue_fournisseur_id
+  const estArticleCatalogue = produitSelectionne && !produitSelectionne.nom && produitSelectionne.designation;
   const payload = {
-    produit_id: produitSelectionne.id,
+    ...(estArticleCatalogue
+      ? { designation_libre: produitSelectionne.designation }
+      : { produit_id: produitSelectionne.id }),
     couleur_conforme:     criteres.couleur,
     consistance_conforme: criteres.consistance,
     exsudat_conforme:     criteres.exsudat,
@@ -2519,10 +2583,11 @@ function _ligneToLocal(ligne, produit) {
     if (fObj) fournNom = fObj.nom;
   }
 
+  const estCat = produit && !produit.nom && produit.designation;
   return {
     id:                  ligne.id,
-    produit_id:          produit.id,
-    produit_nom:         produit.nom,
+    produit_id:          estCat ? null : (produit ? produit.id : null),
+    produit_nom:         estCat ? produit.designation : (produit ? produit.nom : null),
     fournisseur_id:      fournId,
     fournisseur_nom:     fournNom,
     conforme:            ligne.conforme,
