@@ -1663,3 +1663,33 @@ body.rec-body {
   gap: .7rem;
   padding-top: .6rem;
 }
+
+/* -- Stepper commande rétroactive (réutilise le style achats) -- */
+.ach-step-btn {
+  width: 42px; height: 42px; flex: none;
+  border: 1px solid #d6c3a8; background: #f4ead9;
+  border-radius: 8px; font-size: 1.3rem; font-weight: 700;
+  line-height: 1; color: #5a3e28; cursor: pointer;
+  touch-action: manipulation;
+}
+.ach-step-btn:hover:not(:disabled) { background: #e8d9c4; }
+.ach-step-btn:active:not(:disabled) { background: #d6c3a8; }
+.ach-step-btn:disabled { opacity: .35; cursor: not-allowed; }
+.ach-qte-input {
+  border: 1px solid #d6c3a8; border-radius: 6px;
+  padding: 6px 8px; font-size: 1rem;
+}
+.ach-unite-btns {
+  display: inline-flex; border: 1px solid #d6c3a8;
+  border-radius: 6px; overflow: hidden;
+}
+.ach-unite-btn {
+  border: none; border-left: 1px solid #d6c3a8;
+  background: #f4ead9; color: #5a3e28;
+  font-size: .85rem; font-weight: 600;
+  padding: 7px 12px; min-width: 44px;
+  cursor: pointer; line-height: 1; touch-action: manipulation;
+}
+.ach-unite-btn:first-child { border-left: none; }
+.ach-unite-btn:hover:not(:disabled):not(.is-active) { background: #e8d9c4; }
+.ach-unite-btn.is-active { background: var(--color-accent); color: #fff; }

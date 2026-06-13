@@ -714,6 +714,28 @@
 
   </main>
 
+  <!-- Dialog "Révision commande rétroactive" -->
+  <div class="rec-dialog-overlay" id="rec-dialog-cmd-review" hidden
+       role="dialog" aria-modal="true" aria-labelledby="rec-dlg-cmd-titre">
+    <div class="rec-dialog" style="max-width:520px;max-height:90vh;overflow-y:auto;">
+      <div class="rec-dialog-titre" id="rec-dlg-cmd-titre">Commande associée</div>
+      <div style="font-size:.85rem;color:var(--color-offline);margin-bottom:.75rem;">
+        Vérifiez les quantités et unités avant de créer la commande.
+      </div>
+      <div id="rec-cmd-review-liste"></div>
+      <div id="rec-cmd-review-erreur" hidden
+           style="color:var(--hors-ligne);font-size:.85rem;margin-top:.5rem;"></div>
+      <div class="rec-dialog-actions" style="margin-top:1rem;">
+        <button class="rec-dialog-btn rec-dialog-btn-continuer" id="rec-cmd-review-valider">
+          Créer la commande
+        </button>
+        <button class="rec-dialog-btn rec-dialog-btn-quitter" id="rec-cmd-review-annuler">
+          Annuler
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Dialog "Même fournisseur ?" -->
   <div class="rec-dialog-overlay" id="rec-dialog-fourn" hidden
        role="alertdialog" aria-modal="true"

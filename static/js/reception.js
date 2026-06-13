@@ -3271,33 +3271,183 @@ function remplirRecap() {
 }
 
 // ── Création commande rétroactive ──────────────────────────
-if (elBtnCreerCommande) {
-  elBtnCreerCommande.addEventListener('click', async () => {
-    const fourn = fournisseursListe[0];
-    if (!fourn || !fourn.id) {
-      if (elCreerCmdStatut) {
-        elCreerCmdStatut.textContent = '⚠️ Le fournisseur doit être enregistré dans la base pour créer une commande.';
-        elCreerCmdStatut.hidden = false;
-      }
-      return;
-    }
+const elDialogCmdReview   = document.getElementById('rec-dialog-cmd-review');
+const elCmdReviewListe    = document.getElementById('rec-cmd-review-liste');
+const elCmdReviewErreur   = document.getElementById('rec-cmd-review-erreur');
+const elCmdReviewValider  = document.getElementById('rec-cmd-review-valider');
+const elCmdReviewAnnuler  = document.getElementById('rec-cmd-review-annuler');
 
-    elBtnCreerCommande.disabled = true;
-    elBtnCreerCommande.textContent = 'Création…';
-    if (elCreerCmdStatut) elCreerCmdStatut.hidden = true;
+// État interne du modal : une entrée par ligne réceptionnée
+let cmdReviewLignes = []; // [{ligneLocal, catalogueArticle, qte, unite}]
+
+function unitesDisponibles(art) {
+  if (!art) return ['kg'];
+  const csv = art.unites_autorisees;
+  if (!csv || !csv.trim()) return ['kg'];
+  return csv.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function labelUnite(u) {
+  return u === 'piece' ? 'pièce' : u;
+}
+
+function construireLigneReview(entry, idx) {
+  const { ligneLocal, catalogueArticle, qte, unite } = entry;
+  const unites = unitesDisponibles(catalogueArticle);
+  const uniqId = `cmd-rev-${idx}`;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'border-bottom:1px solid #e5d9c8;padding:.65rem 0;display:flex;flex-direction:column;gap:.4rem;';
+
+  const nom = document.createElement('div');
+  nom.style.cssText = 'font-weight:600;font-size:.95rem;color:var(--noyer);';
+  nom.textContent = ligneLocal.produit_nom;
+  wrap.appendChild(nom);
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+
+  // Stepper − valeur +
+  const btnMinus = document.createElement('button');
+  btnMinus.type = 'button';
+  btnMinus.className = 'ach-step-btn';
+  btnMinus.textContent = '−';
+
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.min = '0';
+  inp.step = 'any';
+  inp.inputMode = 'decimal';
+  inp.value = qte || '';
+  inp.placeholder = '0';
+  inp.className = 'ach-qte-input';
+  inp.style.cssText = 'width:70px;min-height:42px;text-align:center;border:1px solid #d6c3a8;border-radius:6px;font-size:1rem;padding:4px 6px;';
+
+  const btnPlus = document.createElement('button');
+  btnPlus.type = 'button';
+  btnPlus.className = 'ach-step-btn';
+  btnPlus.textContent = '+';
+
+  const step = unite === 'kg' ? 0.5 : 1;
+  btnMinus.addEventListener('click', () => {
+    const v = parseFloat(inp.value) || 0;
+    const s = cmdReviewLignes[idx].unite === 'kg' ? 0.5 : 1;
+    inp.value = Math.max(0, +(v - s).toFixed(3));
+    cmdReviewLignes[idx].qte = parseFloat(inp.value);
+    btnMinus.disabled = parseFloat(inp.value) <= 0;
+  });
+  btnPlus.addEventListener('click', () => {
+    const v = parseFloat(inp.value) || 0;
+    const s = cmdReviewLignes[idx].unite === 'kg' ? 0.5 : 1;
+    inp.value = +(v + s).toFixed(3);
+    cmdReviewLignes[idx].qte = parseFloat(inp.value);
+    btnMinus.disabled = false;
+  });
+  inp.addEventListener('input', () => {
+    cmdReviewLignes[idx].qte = parseFloat(inp.value) || 0;
+    btnMinus.disabled = (cmdReviewLignes[idx].qte <= 0);
+  });
+  btnMinus.disabled = (qte <= 0);
+
+  row.appendChild(btnMinus);
+  row.appendChild(inp);
+  row.appendChild(btnPlus);
+
+  // Boutons unité (seulement si plusieurs disponibles)
+  if (unites.length > 1) {
+    const grp = document.createElement('div');
+    grp.className = 'ach-unite-btns';
+    unites.forEach(u => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ach-unite-btn' + (u === unite ? ' is-active' : '');
+      btn.textContent = labelUnite(u);
+      btn.addEventListener('click', () => {
+        cmdReviewLignes[idx].unite = u;
+        grp.querySelectorAll('.ach-unite-btn').forEach(b => b.classList.remove('is-active'));
+        btn.classList.add('is-active');
+        // Adapter le step du stepper à l'unité
+        const newStep = u === 'kg' ? 0.5 : 1;
+        // Rien de plus à faire, les closures lisent cmdReviewLignes[idx].unite à chaque clic
+      });
+      grp.appendChild(btn);
+    });
+    row.appendChild(grp);
+  } else {
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:.9rem;color:var(--color-offline);';
+    lbl.textContent = labelUnite(unites[0] || 'kg');
+    row.appendChild(lbl);
+  }
+
+  wrap.appendChild(row);
+  return wrap;
+}
+
+function ouvrirModalCmdReview() {
+  const fourn = fournisseursListe[0];
+  if (!fourn || !fourn.id) {
+    if (elCreerCmdStatut) {
+      elCreerCmdStatut.textContent = '⚠️ Le fournisseur doit être enregistré dans la base pour créer une commande.';
+      elCreerCmdStatut.style.color = 'var(--hors-ligne)';
+      elCreerCmdStatut.hidden = false;
+    }
+    return;
+  }
+
+  // Construire l'état à partir des lignes réceptionnées + données catalogue
+  cmdReviewLignes = lignesAjoutees.map(l => {
+    const art = l.catalogue_id ? catalogueBl.find(a => a.id === l.catalogue_id) : null;
+    const unites = unitesDisponibles(art);
+    // Unité par défaut : format_prix du catalogue si dispo, sinon première unité autorisée
+    const uniteDefaut = (art && art.format_prix) ? art.format_prix : (unites[0] || 'kg');
+    return {
+      ligneLocal: l,
+      catalogueArticle: art || null,
+      qte: l.poids_kg || 1,
+      unite: uniteDefaut,
+    };
+  });
+
+  // Remplir le modal
+  elCmdReviewListe.innerHTML = '';
+  cmdReviewLignes.forEach((entry, idx) => {
+    elCmdReviewListe.appendChild(construireLigneReview(entry, idx));
+  });
+  if (elCmdReviewErreur) elCmdReviewErreur.hidden = true;
+  elCmdReviewValider.disabled = false;
+  elCmdReviewValider.textContent = 'Créer la commande';
+  elDialogCmdReview.hidden = false;
+}
+
+if (elBtnCreerCommande) {
+  elBtnCreerCommande.addEventListener('click', ouvrirModalCmdReview);
+}
+
+if (elCmdReviewAnnuler) {
+  elCmdReviewAnnuler.addEventListener('click', () => {
+    elDialogCmdReview.hidden = true;
+  });
+}
+
+if (elCmdReviewValider) {
+  elCmdReviewValider.addEventListener('click', async () => {
+    elCmdReviewValider.disabled = true;
+    elCmdReviewValider.textContent = 'Création…';
+    if (elCmdReviewErreur) elCmdReviewErreur.hidden = true;
 
     try {
-      // Construire les lignes depuis les produits réceptionnés
-      const lignes = lignesAjoutees.map(l => ({
-        designation:              l.produit_nom,
-        catalogue_fournisseur_id: l.catalogue_id || null,
-        code_article:             '',
-        prix_unitaire_ht:         0,
-        quantite_commandee:       l.poids_kg || 1,
-        unite:                    'kg',
+      const lignes = cmdReviewLignes.map(e => ({
+        designation:              e.ligneLocal.produit_nom,
+        catalogue_fournisseur_id: e.ligneLocal.catalogue_id || null,
+        code_article:             (e.catalogueArticle && e.catalogueArticle.code_article) || '',
+        prix_unitaire_ht:         (e.catalogueArticle && e.catalogueArticle.prix_achat_ht) || 0,
+        quantite_commandee:       e.qte || 1,
+        unite:                    e.unite || 'kg',
         commentaire_ligne:        null,
       }));
 
+      const fourn = fournisseursListe[0];
       const dateRecep = elDateReception.value || new Date().toISOString().slice(0, 10);
       const cmd = await apiFetch('/api/achats/commandes', {
         method: 'POST',
@@ -3312,26 +3462,25 @@ if (elBtnCreerCommande) {
         }),
       });
 
-      // Passer en confirmée
       await apiFetch(`/api/achats/commandes/${cmd.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'confirmee' }),
       });
 
-      elBtnCreerCommande.textContent = '✓ Commande créée';
+      elDialogCmdReview.hidden = true;
+      if (elBtnCreerCommande) elBtnCreerCommande.textContent = '✓ Commande créée';
       if (elCreerCmdStatut) {
         elCreerCmdStatut.textContent = `Commande ${cmd.numero_commande} créée avec ${lignes.length} article(s).`;
         elCreerCmdStatut.style.color = 'var(--conforme)';
         elCreerCmdStatut.hidden = false;
       }
     } catch (err) {
-      elBtnCreerCommande.disabled = false;
-      elBtnCreerCommande.textContent = '📋 Créer la commande associée';
-      if (elCreerCmdStatut) {
-        elCreerCmdStatut.textContent = `Erreur : ${err.message}`;
-        elCreerCmdStatut.style.color = 'var(--hors-ligne)';
-        elCreerCmdStatut.hidden = false;
+      elCmdReviewValider.disabled = false;
+      elCmdReviewValider.textContent = 'Créer la commande';
+      if (elCmdReviewErreur) {
+        elCmdReviewErreur.textContent = `Erreur : ${err.message}`;
+        elCmdReviewErreur.hidden = false;
       }
     }
   });
