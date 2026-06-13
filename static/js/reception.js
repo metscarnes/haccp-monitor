@@ -830,17 +830,13 @@ elPropreteNc.addEventListener('click', () => {
 });
 
 elDateReception.addEventListener('input', () => {
-  const today = new Date().toISOString().slice(0, 10);
-  if (elDateReception.value && elDateReception.value < today) {
-    elDateReception.classList.add('rec-champ-invalide');
-  } else {
+  if (elDateReception.value) {
     elDateReception.classList.remove('rec-champ-invalide');
   }
 });
 
 elBtnCamionSuivant.addEventListener('click', async () => {
-  const today = new Date().toISOString().slice(0, 10);
-  if (!elDateReception.value || elDateReception.value < today) {
+  if (!elDateReception.value) {
     elDateReception.classList.add('rec-champ-invalide');
     elDateReception.focus();
     return;
