@@ -1150,6 +1150,7 @@ async def get_commandes(
     fournisseur_id: Optional[int] = Query(None),
     statut: Optional[str] = Query(None),
     limit: int = Query(50),
+    non_liee: bool = Query(False),
 ):
     async with get_db() as db:
         sql = """
@@ -1167,6 +1168,8 @@ async def get_commandes(
         if statut:
             sql += " AND c.statut = ?"
             params.append(statut)
+        if non_liee:
+            sql += " AND NOT EXISTS (SELECT 1 FROM commande_receptions_mapping m WHERE m.commande_id = c.id)"
         sql += " ORDER BY c.date_commande DESC LIMIT ?"
         params.append(limit)
         cur = await db.execute(sql, params)

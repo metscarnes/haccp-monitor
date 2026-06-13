@@ -1761,6 +1761,33 @@ PRAGMA foreign_keys=ON;
         except Exception as e:
             logger.warning("Migration v5.7 substitution_article : %s", e)
 
+        # Migration v5.8 : recalculer statut des lignes en_attente mal classées
+        # - lot_interne=1 compte comme lot présent (numéro auto-généré)
+        # - dlc_type='no_dlc' → aucune exigence de traçabilité
+        try:
+            await db.execute(
+                """
+                UPDATE reception_lignes
+                SET statut = 'complet', attente_motif = NULL
+                WHERE statut = 'en_attente'
+                  AND dlc_type = 'no_dlc'
+                """
+            )
+            await db.execute(
+                """
+                UPDATE reception_lignes
+                SET statut = 'complet', attente_motif = NULL
+                WHERE statut = 'en_attente'
+                  AND attente_motif IN ('lot', 'lot_dlc')
+                  AND lot_interne = 1
+                  AND (dlc IS NOT NULL OR dluo IS NOT NULL OR dlc_type = 'no_dlc')
+                """
+            )
+            await db.commit()
+            logger.info("Migration v5.8 : statuts en_attente recalculés (lot_interne + no_dlc)")
+        except Exception as e:
+            logger.warning("Migration v5.8 statuts : %s", e)
+
         # Migration v2.5 : rendre produit_id nullable dans fiches_incident
         # (nécessaire pour les fiches de refus livraison camion, sans produit spécifique)
         try:
@@ -2996,16 +3023,22 @@ def _calc_statut_attente(data: dict) -> tuple[str, Optional[str]]:
     get_stock_unifie). Renvoie (statut, attente_motif).
 
     dlc_type :
-        'no_dlc'        → aucune date requise
+        'no_dlc'        → aucune date ni lot requis (épices, emballages, etc.)
         'date_abattage' → date d'abattage requise (carcasses en maturation)
         'dlc' / None    → DLC ou DLUO requise
+    lot_interne=1 compte comme lot présent (numéro généré automatiquement).
     """
     dlc_type = data.get("dlc_type")
-    manque_lot = not (data.get("numero_lot") or "").strip()
 
     if dlc_type == "no_dlc":
-        manque_date = False
-    elif dlc_type == "date_abattage":
+        # Pas de date ni de lot requis pour les articles sans DLC
+        return "complet", None
+
+    # lot_interne=1 signifie qu'un numéro a été généré automatiquement
+    a_lot = bool((data.get("numero_lot") or "").strip()) or bool(data.get("lot_interne"))
+    manque_lot = not a_lot
+
+    if dlc_type == "date_abattage":
         manque_date = not data.get("date_abattage")
     else:  # 'dlc' ou inconnu
         manque_date = not (data.get("dlc") or data.get("dluo"))

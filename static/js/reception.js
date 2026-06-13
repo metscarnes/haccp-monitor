@@ -396,8 +396,8 @@ if (elBtnAddCommande) {
 async function chargerCommandesDisponibles() {
   if (toutesCommandes.length) return; // déjà chargées
   try {
-    const cmds = await apiFetch('/api/achats/commandes?statut=confirmee&limit=50');
-    const brouillons = await apiFetch('/api/achats/commandes?statut=brouillon&limit=50');
+    const cmds = await apiFetch('/api/achats/commandes?statut=confirmee&limit=50&non_liee=true');
+    const brouillons = await apiFetch('/api/achats/commandes?statut=brouillon&limit=50&non_liee=true');
     toutesCommandes = [...cmds, ...brouillons];
   } catch (e) {
     toutesCommandes = [];
@@ -3467,6 +3467,20 @@ if (elCmdReviewValider) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ statut: 'confirmee' }),
       });
+
+      // Lier la commande rétroactive à la réception courante
+      // → elle n'apparaîtra plus comme disponible dans les futures réceptions
+      if (receptionId) {
+        try {
+          await apiFetch('/api/achats/commande_receptions_mapping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ commande_id: cmd.id, reception_id: receptionId }),
+          });
+        } catch (e) {
+          console.warn('[haccp] Mapping commande rétroactive échoué :', e);
+        }
+      }
 
       elDialogCmdReview.hidden = true;
       if (elBtnCreerCommande) elBtnCreerCommande.textContent = '✓ Commande créée';
