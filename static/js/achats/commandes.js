@@ -1195,7 +1195,10 @@ function afficherLignes(lignes) {
               : '<span style="color:#9ca3af">—</span>'}</td>
             <td>
               <div class="ach-qte-cell">
-                <input type="number" min="0" step="any" value="${qte}" class="ach-qte-input" readonly style="background:#f9f5ef; cursor:default;">
+                <input type="number" min="0" step="any" value="${qte}" class="ach-qte-input"
+                  ${editable
+                    ? `onchange="modifierQuantiteLigne(${l.id}, this.value)"`
+                    : 'readonly style="background:#f9f5ef; cursor:default;"'}>
                 ${btnsUnite}
               </div>
               ${hintPrix}
@@ -1426,6 +1429,28 @@ async function ajouterLigne(e) {
   } catch(err) {
     const z = document.getElementById('ligne-erreur');
     z.textContent = err.message; z.hidden = false;
+  }
+}
+
+async function modifierQuantiteLigne(ligneId, valeur) {
+  const id = document.getElementById('cmd-id').value;
+  const qte = parseFloat(valeur);
+  if (isNaN(qte) || qte < 0) { afficherLignes(cmdCourante.lignes); return; }
+  try {
+    const r = await fetch(`${API_CMD}/${id}/lignes/${ligneId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quantite_commandee: qte }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    const rc = await fetch(`${API_CMD}/${id}`);
+    cmdCourante = await rc.json();
+    afficherLignes(cmdCourante.lignes);
+    document.getElementById('cmd-form-erreur').hidden = true;
+    await chargerCommandes();
+  } catch(err) {
+    afficherErreur('Modification quantité : ' + err.message);
+    afficherLignes(cmdCourante.lignes); // restaurer la valeur d'origine
   }
 }
 
