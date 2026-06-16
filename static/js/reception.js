@@ -644,8 +644,6 @@ function resetInactivite() {
   timerInactivite = setTimeout(() => {
     if (lignesAjoutees.length > 0 && etape < 5) {
       elDialogInactivite.hidden = false;
-    } else {
-      window.location.href = '/hub.html';
     }
   }, DELAI_INACTIVITE);
 }
@@ -3762,19 +3760,8 @@ async function cloturerFiche() {
 
 // ── CONFIRMATION ───────────────────────────────────────────
 function demarrerCompteurConfirmation() {
-  let secondes = 5;
   clearInterval(timerConfirmation);
-
-  function maj() {
-    elConfirmCountdown.textContent = `Retour au menu dans ${secondes}s…`;
-    if (secondes <= 0) {
-      clearInterval(timerConfirmation);
-      window.location.href = '/hub.html';
-    }
-    secondes--;
-  }
-  maj();
-  timerConfirmation = setInterval(maj, 1000);
+  elConfirmCountdown.textContent = '';
 }
 
 elBtnHub.addEventListener('click', () => {
