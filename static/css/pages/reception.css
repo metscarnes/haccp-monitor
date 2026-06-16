@@ -1262,6 +1262,20 @@ body.rec-body {
   font-family: inherit;
 }
 .rec-btn-add-lot:active { background: var(--color-secondary); }
+
+/* Ligne lot supplémentaire avec DLC individuelle */
+.rec-lot-supp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: .6rem;
+  padding: .5rem .65rem;
+  background: rgba(107,58,31,.04);
+  border-radius: 8px;
+  border: 1px dashed rgba(107,58,31,.18);
+}
+.rec-lot-supp-row + .rec-lot-supp-row { margin-top: .4rem; }
+
 .rec-lot-genere {
   margin-top: .35rem;
   font-size: .85rem;
@@ -1601,6 +1615,32 @@ body.rec-body {
 .rec-batch-code { display: block; font-size: .75rem; color: var(--color-offline); }
 .rec-batch-fourn { display: block; font-size: .8rem; font-weight: 600; color: var(--color-accent); margin-top: .15rem; }
 .rec-batch-fourn:empty { display: none; }
+
+/* Toggle Reçu / Non reçu (mode batch commande) */
+.rec-batch-recu-toggle {
+  display: flex;
+  gap: .5rem;
+  margin-bottom: .75rem;
+}
+.rec-batch-recu-btn {
+  flex: 1;
+  padding: .45rem .5rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-offline);
+  font-size: .85rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  background: transparent;
+  color: var(--color-offline);
+}
+.rec-batch-recu-btn.ok-sel  { background: rgba(45,125,70,.12); color: var(--color-ok);   border-color: var(--color-ok); }
+.rec-batch-recu-btn.nc-sel  { background: rgba(185,28,28,.10); color: #B91C1C;            border-color: #B91C1C; }
+
+/* Carte "Non reçu" */
+.rec-batch-carte.non-recu        { border-left-color: #d1d5db; opacity: .65; }
+.rec-batch-badge.non-recu        { background: rgba(107,114,128,.1); color: #6b7280; }
+
 .rec-batch-bl-btn {
   width: 100%;
   margin-bottom: .7rem;
@@ -1622,9 +1662,10 @@ body.rec-body {
   padding: 3px 9px;
   border-radius: 999px;
 }
-.rec-batch-badge.ok      { background: rgba(45,125,70,.12);  color: var(--color-ok); }
-.rec-batch-badge.attente { background: rgba(185,28,28,.10);  color: #B91C1C; }
-.rec-batch-badge.nc      { background: rgba(201,48,48,.12);  color: var(--color-alert); }
+.rec-batch-badge.ok       { background: rgba(45,125,70,.12);  color: var(--color-ok); }
+.rec-batch-badge.attente  { background: rgba(185,28,28,.10);  color: #B91C1C; }
+.rec-batch-badge.nc       { background: rgba(201,48,48,.12);  color: var(--color-alert); }
+.rec-batch-badge.non-recu { background: rgba(107,114,128,.1); color: #6b7280; }
 
 .rec-batch-resolve { margin-bottom: .6rem; }
 .rec-batch-champs {
@@ -1664,7 +1705,7 @@ body.rec-body {
   padding-top: .6rem;
 }
 
-/* -- Stepper commande r�troactive (r�utilise le style achats) -- */
+/* -- Stepper commande r�troactive (r�utilise le style achats) -- */
 .ach-step-btn {
   width: 42px; height: 42px; flex: none;
   border: 1px solid #d6c3a8; background: #f4ead9;

@@ -2255,11 +2255,14 @@ elLot.addEventListener('input', majBtnAjouter);
 // Permet de saisir plusieurs n° de lot pour un même produit. À l'ajout, une
 // ligne de réception distincte est créée par lot (mêmes critères/DLC/origine).
 // Désactivé quand le lot est interne ou « en attente » (pas de lot fournisseur).
-function ajouterChampLotSupp(valeur = '') {
+function ajouterChampLotSupp(valeur = '', dlcVal = '') {
   if (!elLotsSupp) return;
   const row = document.createElement('div');
   row.className = 'rec-lot-supp-row';
-  row.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-top:.5rem;';
+
+  // Ligne lot
+  const lotRow = document.createElement('div');
+  lotRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;';
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -2268,6 +2271,7 @@ function ajouterChampLotSupp(valeur = '') {
   input.autocomplete = 'off';
   input.setAttribute('aria-label', 'Numéro de lot fournisseur supplémentaire');
   input.value = valeur;
+  input.style.flex = '1';
   input.addEventListener('input', majBtnAjouter);
 
   const rm = document.createElement('button');
@@ -2282,19 +2286,43 @@ function ajouterChampLotSupp(valeur = '') {
     majBtnAjouter();
   });
 
-  row.appendChild(input);
-  row.appendChild(rm);
+  lotRow.appendChild(input);
+  lotRow.appendChild(rm);
+
+  // Ligne DLC
+  const dlcRow = document.createElement('div');
+  dlcRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-top:.3rem;';
+
+  const dlcLabel = document.createElement('span');
+  dlcLabel.className = 'rec-lot-supp-dlc-label';
+  // Le libellé s'adapte au mode de date courant
+  dlcLabel.textContent = dlcMode === 'abattage' ? "Date d'abattage :" : 'DLC :';
+  dlcLabel.style.cssText = 'font-size:.8rem;color:var(--color-offline);white-space:nowrap;flex-shrink:0;';
+
+  const dlcInput = document.createElement('input');
+  dlcInput.type = 'date';
+  dlcInput.className = 'rec-input rec-lot-supp-dlc';
+  dlcInput.setAttribute('aria-label', dlcMode === 'abattage' ? "Date d'abattage pour ce lot" : 'DLC pour ce lot');
+  dlcInput.value = dlcVal;
+  dlcInput.style.flex = '1';
+
+  dlcRow.appendChild(dlcLabel);
+  dlcRow.appendChild(dlcInput);
+
+  row.appendChild(lotRow);
+  row.appendChild(dlcRow);
   elLotsSupp.appendChild(row);
   majLotsSuppHint();
   input.focus();
 }
 
-// Lots supplémentaires saisis (valeurs non vides, dédupliquées avec le lot principal)
+// Lots supplémentaires saisis : retourne [{lot, dlc}] (valeurs non vides)
 function lotsSuppValeurs() {
   if (!elLotsSupp) return [];
-  return [...elLotsSupp.querySelectorAll('.rec-lot-supp-input')]
-    .map(i => i.value.trim())
-    .filter(Boolean);
+  return [...elLotsSupp.querySelectorAll('.rec-lot-supp-row')].map(row => ({
+    lot: (row.querySelector('.rec-lot-supp-input')?.value || '').trim(),
+    dlc: (row.querySelector('.rec-lot-supp-dlc')?.value   || ''),
+  })).filter(p => p.lot);
 }
 
 function viderLotsSupp() {
@@ -2707,26 +2735,44 @@ function libelleMotifAttente(motif) {
 async function ajouterLigne() {
   if (!produitSelectionne || !receptionId) return;
 
-  // Plusieurs n° de lot → 1 ligne de réception par lot (mêmes critères/DLC/origine).
-  // Le payload de base porte le lot principal ; on l'écrase par chaque lot.
+  // Plusieurs n° de lot → 1 ligne de réception par lot, chacun avec sa propre DLC.
   const payloadBase = _buildPayload();
   const lotPrincipal = (elLot.value || '').trim();
-  const lotsSupp = lotsSuppValeurs();
-  // Liste finale des lots, dédupliquée en préservant l'ordre.
-  let lots = [lotPrincipal, ...lotsSupp].filter(Boolean);
-  lots = [...new Set(lots)];
-  // Si aucun lot saisi (produit en attente), on crée tout de même 1 ligne.
-  if (lots.length === 0) lots = [null];
+  const dlcPrincipale = elDlc.value; // déjà intégrée dans payloadBase
+  const lotsSupp = lotsSuppValeurs(); // [{lot, dlc}]
+
+  // Construire la liste finale de paires {lot, dlc}, dédupliquées par n° de lot.
+  const seenLots = new Set();
+  const paires = [];
+  if (lotPrincipal) seenLots.add(lotPrincipal);
+  paires.push({ lot: lotPrincipal, dlc: dlcPrincipale });
+  for (const { lot, dlc } of lotsSupp) {
+    if (!lot || seenLots.has(lot)) continue;
+    seenLots.add(lot);
+    paires.push({ lot, dlc: dlc || dlcPrincipale });
+  }
+  // Si aucun lot saisi (produit en attente), on garde la paire vide pour 1 ligne.
 
   elBtnAjouter.disabled = true;
-  elBtnAjouter.textContent = lots.length > 1 ? `Ajout (0/${lots.length})…` : 'Ajout…';
+  elBtnAjouter.textContent = paires.length > 1 ? `Ajout (0/${paires.length})…` : 'Ajout…';
 
   try {
-    for (let i = 0; i < lots.length; i++) {
-      const lot = lots[i];
+    for (let i = 0; i < paires.length; i++) {
+      const { lot, dlc } = paires[i];
       const payload = { ...payloadBase };
+
       if (lot) payload.numero_lot = lot;
       else     delete payload.numero_lot;
+
+      // DLC spécifique à ce lot (override si différente du lot principal)
+      if (dlc && dlc !== dlcPrincipale) {
+        delete payload.dlc;
+        delete payload.dluo;
+        delete payload.date_abattage;
+        if (dlcMode === 'dluo')          payload.dluo          = dlc;
+        else if (dlcMode === 'abattage') payload.date_abattage = dlc;
+        else                             payload.dlc           = dlc;
+      }
 
       const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
         method: 'POST',
@@ -2734,8 +2780,8 @@ async function ajouterLigne() {
         body: JSON.stringify(payload),
       });
       lignesAjoutees.push(_ligneToLocal(ligne, produitSelectionne));
-      if (lots.length > 1) {
-        elBtnAjouter.textContent = `Ajout (${i + 1}/${lots.length})…`;
+      if (paires.length > 1) {
+        elBtnAjouter.textContent = `Ajout (${i + 1}/${paires.length})…`;
       }
     }
 
@@ -2875,6 +2921,7 @@ function creerCarteBatch(ligneCmd) {
       nom: (ligneCmd._fournisseur_nom || '').trim() || null,
     },
     lotInterne: false,
+    recu: true,                    // true = reçu, false = non reçu (ligne ignorée)
     criteres:     { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 },
     observations: { couleur: '', consistance: '', exsudat: '', odeur: '' },
   };
@@ -2889,6 +2936,35 @@ function creerCarteBatch(ligneCmd) {
   // Fournisseur de la ligne
   const elFourn = carte.querySelector('.rec-batch-fourn');
   if (elFourn) elFourn.textContent = etat.fournisseur.nom ? `🏪 ${etat.fournisseur.nom}` : '';
+
+  // Toggle Reçu / Non reçu
+  const btnRecuOui = carte.querySelector('.rec-batch-recu-oui');
+  const btnRecuNon = carte.querySelector('.rec-batch-recu-non');
+  const elChampsBatch = carte.querySelector('.rec-batch-champs');
+  const elDetailToggle = carte.querySelector('.rec-batch-detail-toggle');
+
+  function appliquerEtatRecu(recu) {
+    etat.recu = recu;
+    if (recu) {
+      btnRecuOui.classList.add('ok-sel');
+      btnRecuNon.classList.remove('nc-sel');
+      btnRecuOui.setAttribute('aria-pressed', 'true');
+      btnRecuNon.setAttribute('aria-pressed', 'false');
+      if (elChampsBatch) { elChampsBatch.style.opacity = ''; elChampsBatch.style.pointerEvents = ''; }
+      if (elDetailToggle) { elDetailToggle.style.opacity = ''; elDetailToggle.style.pointerEvents = ''; }
+    } else {
+      btnRecuNon.classList.add('nc-sel');
+      btnRecuOui.classList.remove('ok-sel');
+      btnRecuNon.setAttribute('aria-pressed', 'true');
+      btnRecuOui.setAttribute('aria-pressed', 'false');
+      if (elChampsBatch) { elChampsBatch.style.opacity = '0.35'; elChampsBatch.style.pointerEvents = 'none'; }
+      if (elDetailToggle) { elDetailToggle.style.opacity = '0.35'; elDetailToggle.style.pointerEvents = 'none'; }
+    }
+    majBadgeCarte(etat);
+  }
+
+  btnRecuOui.addEventListener('click', () => appliquerEtatRecu(true));
+  btnRecuNon.addEventListener('click', () => appliquerEtatRecu(false));
 
   // Bouton « Voir le bon de livraison » : retrouve la photo BL du bloc fournisseur
   // correspondant (prise à l'étape 2). Affiché seulement si une photo existe.
@@ -2915,20 +2991,25 @@ function creerCarteBatch(ligneCmd) {
     dateLabel.textContent = 'DLC';
   }
 
+  // Nb de colis reçus : pré-rempli avec la quantité commandée (quelle que soit l'unité).
+  const elNbColis      = carte.querySelector('.rec-batch-nb-colis');
+  const elNbColisLabel = carte.querySelector('.rec-batch-nb-colis-label');
+  const uniteCmd = (ligneCmd.unite || '').trim();
+  if (elNbColisLabel) {
+    elNbColisLabel.textContent = ligneCmd.quantite_commandee != null && uniteCmd
+      ? `Nb de colis reçus — commandé : ${ligneCmd.quantite_commandee} ${uniteCmd}`
+      : 'Nb de colis reçus';
+  }
+  if (elNbColis && ligneCmd.quantite_commandee != null) {
+    elNbColis.value = ligneCmd.quantite_commandee;
+  }
+
   // Poids reçu : toujours en kg (poids réel pesé, le stock HACCP est en kg).
-  // L'unité de commande (colis, pièce…) n'est qu'un repère affiché dans le label.
-  // On ne pré-remplit le poids que si la commande est déjà en kg.
   const elPoids      = carte.querySelector('.rec-batch-poids');
   const elPoidsLabel = carte.querySelector('.rec-batch-poids-label');
-  const uniteCmd = (ligneCmd.unite || '').trim();
   const uniteEstKg = /^kg$/i.test(uniteCmd) || uniteCmd === '';
   if (elPoidsLabel) {
-    if (ligneCmd.quantite_commandee != null && uniteCmd) {
-      elPoidsLabel.textContent =
-        `Poids reçu (kg) — commandé : ${ligneCmd.quantite_commandee} ${uniteCmd}`;
-    } else {
-      elPoidsLabel.textContent = 'Poids reçu (kg)';
-    }
+    elPoidsLabel.textContent = 'Poids reçu (kg)';
   }
   if (uniteEstKg && ligneCmd.quantite_commandee != null) {
     elPoids.value = ligneCmd.quantite_commandee;
@@ -3049,16 +3130,24 @@ function initRechercheProduitCarte(carte, etat) {
   }, true);
 }
 
-// Met à jour le badge de statut d'une carte (en attente / OK / NC).
+// Met à jour le badge de statut d'une carte (non reçu / en attente / OK / NC).
 function majBadgeCarte(etat) {
   const badge = etat.el.querySelector('.rec-batch-badge');
+  etat.el.classList.remove('en-attente', 'nc', 'non-recu');
+
+  if (!etat.recu) {
+    etat.el.classList.add('non-recu');
+    badge.className = 'rec-batch-badge non-recu';
+    badge.textContent = '— Non reçu';
+    return;
+  }
+
   const inpLot = etat.el.querySelector('.rec-batch-lot');
   const inpDate = etat.el.querySelector('.rec-batch-date');
   const aLot  = etat.lotInterne || (inpLot.value.trim() !== '');
   const aDate = etat.dlcType === 'no_dlc' ? true : (inpDate.value.trim() !== '');
   const estNc = Object.values(etat.criteres).some(v => v === 0);
 
-  etat.el.classList.remove('en-attente', 'nc');
   if (estNc) {
     etat.el.classList.add('nc');
     badge.className = 'rec-batch-badge nc';
@@ -3111,6 +3200,9 @@ function _buildPayloadBatch(etat) {
   const poids = parseFloat(etat.el.querySelector('.rec-batch-poids').value);
   if (!isNaN(poids)) payload.poids_kg = poids;
 
+  const nbColis = parseInt(etat.el.querySelector('.rec-batch-nb-colis')?.value, 10);
+  if (!isNaN(nbColis) && nbColis > 0) payload.nb_colis = nbColis;
+
   // Observations sur critères NC
   CRITERES.forEach(c => {
     if (etat.criteres[c] === 0 && etat.observations[c]) {
@@ -3122,12 +3214,14 @@ function _buildPayloadBatch(etat) {
   return payload;
 }
 
-// Valide toute la liste : POST chaque carte puis passe au récap.
+// Valide toute la liste : POST chaque carte (sauf "Non reçu") puis passe au récap.
 async function validerBatch() {
   // Seule garde : une DLC saisie ne doit pas être dans le passé (pas pour l'abattage).
   // Le produit interne n'est PAS requis (article catalogue achats = source).
   const today = new Date().toISOString().slice(0, 10);
   for (const etat of batchLignes) {
+    if (!etat.recu) continue; // lignes "Non reçu" ignorées
+
     // Poids reçu obligatoire : on ne réceptionne pas une ligne sans poids pesé.
     const inpPoids = etat.el.querySelector('.rec-batch-poids');
     const poids = parseFloat(inpPoids.value);
@@ -3148,11 +3242,17 @@ async function validerBatch() {
     }
   }
 
+  const lignesRecues = batchLignes.filter(e => e.recu);
+  if (lignesRecues.length === 0) {
+    alert('Aucun produit marqué comme reçu. Veuillez indiquer au moins un produit reçu.');
+    return;
+  }
+
   elBtnTerminer.disabled = true;
   const txt = elBtnTerminer.textContent;
   elBtnTerminer.textContent = 'Enregistrement…';
   try {
-    for (const etat of batchLignes) {
+    for (const etat of lignesRecues) {
       const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

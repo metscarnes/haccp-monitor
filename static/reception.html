@@ -274,6 +274,12 @@
             <span class="rec-batch-badge"></span>
           </div>
 
+          <!-- Toggle Reçu / Non reçu -->
+          <div class="rec-batch-recu-toggle">
+            <button type="button" class="rec-batch-recu-btn rec-batch-recu-oui ok-sel" aria-pressed="true">✓ Reçu</button>
+            <button type="button" class="rec-batch-recu-btn rec-batch-recu-non" aria-pressed="false">✗ Non reçu</button>
+          </div>
+
           <!-- Bouton voir le bon de livraison (photo plein écran) -->
           <button type="button" class="rec-batch-bl-btn" hidden>
             📋 Voir le bon de livraison
@@ -307,6 +313,12 @@
             <div class="rec-batch-champ rec-batch-date-champ">
               <label class="rec-champ-label rec-batch-date-label">DLC</label>
               <input type="date" class="rec-input rec-batch-date">
+            </div>
+
+            <div class="rec-batch-champ">
+              <label class="rec-champ-label rec-batch-nb-colis-label">Nb de colis reçus</label>
+              <input type="number" step="1" min="0" inputmode="numeric"
+                     class="rec-input rec-batch-nb-colis" placeholder="ex : 10">
             </div>
 
             <div class="rec-batch-champ">
@@ -431,7 +443,7 @@
           </button>
           <div class="rec-lots-supp-hint" id="rec-lots-supp-hint" hidden
                style="font-size:.8em;color:var(--color-offline);margin-top:.35rem;">
-            ℹ️ Une ligne de réception sera créée pour chaque n° de lot (mêmes critères, DLC et origine).
+            ℹ️ Une ligne de réception sera créée pour chaque n° de lot (mêmes critères et origine — DLC individuelle par lot).
           </div>
         </div>
 
