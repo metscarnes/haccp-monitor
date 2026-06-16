@@ -635,6 +635,58 @@ async def get_photo_bl(reception_id: int):
     return FileResponse(str(filepath), media_type="image/jpeg")
 
 
+@router.post("/receptions/{reception_id}/ocr-bl")
+async def ocr_bl(reception_id: int):
+    """Lit la/les photo(s) BL stockée(s) pour cette réception et en extrait,
+    via Claude vision, les articles (désignation / lot / DLC / DLUO) sous forme
+    structurée. Aucune écriture en base : le front affiche le résultat dans un
+    écran de validation, l'utilisateur corrige, puis enregistre les lignes
+    normalement.
+    """
+    from src.ocr_bl import extraire_bl, OCRError
+
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Réception non trouvée")
+
+        # Rassembler tous les fichiers : photo principale + pages supplémentaires
+        fichiers: List[str] = []
+        if row["photo_bl_filename"]:
+            fichiers.append(row["photo_bl_filename"])
+
+        cur2 = await db.execute(
+            "SELECT photo_filename FROM reception_bl_pages "
+            "WHERE reception_id = ? AND bl_supplementaire_id IS NULL ORDER BY page_num",
+            (reception_id,),
+        )
+        for r in await cur2.fetchall():
+            if r["photo_filename"]:
+                fichiers.append(r["photo_filename"])
+
+    if not fichiers:
+        raise HTTPException(400, "Aucune photo de BL pour cette réception")
+
+    # Charger les images depuis le disque
+    images: List[bytes] = []
+    for nom in fichiers:
+        chemin = PHOTOS_BL_DIR / nom
+        if chemin.exists():
+            images.append(chemin.read_bytes())
+    if not images:
+        raise HTTPException(404, "Fichiers photo BL introuvables sur le disque")
+
+    try:
+        data = extraire_bl(images)
+    except OCRError as e:
+        raise HTTPException(502, str(e))
+
+    return data
+
+
 @router.get("/receptions/{reception_id}/bl-pages")
 async def get_bl_pages(reception_id: int, bl_supplementaire_id: Optional[int] = None):
     """Retourne la liste des pages BL supplémentaires (page_num >= 1).
