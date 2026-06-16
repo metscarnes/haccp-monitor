@@ -3566,24 +3566,10 @@ if (elCmdReviewValider) {
         body: JSON.stringify({ statut: 'confirmee' }),
       });
 
-      // Lier la commande rétroactive à la réception courante
-      // → elle n'apparaîtra plus comme disponible dans les futures réceptions
-      if (receptionId) {
-        try {
-          await apiFetch('/api/achats/commande_receptions_mapping', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ commande_id: cmd.id, reception_id: receptionId }),
-          });
-        } catch (e) {
-          console.warn('[haccp] Mapping commande rétroactive échoué :', e);
-        }
-      }
-
       elDialogCmdReview.hidden = true;
       if (elBtnCreerCommande) elBtnCreerCommande.textContent = '✓ Commande créée';
       if (elCreerCmdStatut) {
-        elCreerCmdStatut.textContent = `Commande ${cmd.numero_commande} créée avec ${lignes.length} article(s).`;
+        elCreerCmdStatut.textContent = `Commande ${cmd.numero_commande} créée — visible dans le module Commandes.`;
         elCreerCmdStatut.style.color = 'var(--conforme)';
         elCreerCmdStatut.hidden = false;
       }

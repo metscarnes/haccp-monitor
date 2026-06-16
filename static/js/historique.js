@@ -727,16 +727,30 @@ function recRemplirDetail(el, rec) {
 
   el.appendChild(btnActions);
 
+  const blsSupp = Array.isArray(rec.bls_supplementaires) ? rec.bls_supplementaires : [];
   if (rec.photo_bl_filename) {
     const btn = document.createElement('button');
     btn.className = 'he-detail-bl-btn';
-    btn.textContent = '📋 Voir le bon de livraison';
+    btn.textContent = blsSupp.length
+      ? `📋 BL — ${rec.fournisseur_nom || 'Fournisseur principal'}`
+      : '📋 Voir le bon de livraison';
     btn.addEventListener('click', e => {
       e.stopPropagation();
       ouvrirModalBL(`/api/receptions/${rec.id}/photo-bl`);
     });
     el.appendChild(btn);
   }
+  blsSupp.forEach(b => {
+    if (!b.photo_bl_filename) return;
+    const btn = document.createElement('button');
+    btn.className = 'he-detail-bl-btn';
+    btn.textContent = `📋 BL — ${b.fournisseur_nom || 'Fournisseur'}`;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      ouvrirModalBL(`/api/receptions/${rec.id}/bls-supplementaires/${b.id}/photo`);
+    });
+    el.appendChild(btn);
+  });
 
   const titreCamion = document.createElement('div');
   titreCamion.className = 'he-detail-section-titre';
