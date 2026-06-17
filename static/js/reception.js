@@ -1753,6 +1753,8 @@ async function creerFiche() {
       sortirModeBatch();
     }
 
+    majBlocOcr();
+
     allerEtape(3);
 
   } catch (err) {
@@ -2857,6 +2859,117 @@ async function enregistrerModification() {
   } finally {
     if (elBtnEnregistrer) { elBtnEnregistrer.disabled = false; elBtnEnregistrer.textContent = '✓ Enregistrer'; }
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EXTRACTION OCR DU BON DE LIVRAISON (étape 3)
+//  Lit la photo BL déjà stockée et pré-remplit les cartes batch.
+//  Garde-fou HACCP : rien n'est enregistré ici — l'utilisateur valide
+//  chaque ligne (lot/DLC) avant la suite. Les lignes douteuses sont surlignées.
+// ═══════════════════════════════════════════════════════════
+const elOcrBloc   = document.getElementById('rec-ocr-bloc');
+const elBtnOcrBl  = document.getElementById('rec-btn-ocr-bl');
+const elOcrStatut = document.getElementById('rec-ocr-statut');
+
+// Affiche le bloc OCR si une photo de BL a été prise (1er fournisseur).
+// Masqué quand une commande est déjà liée (le batch est déjà pré-rempli),
+// ou s'il n'y a pas de photo à analyser.
+function majBlocOcr() {
+  if (!elOcrBloc) return;
+  const aPhotoBl = (fournisseursListe[0]?.photos || []).length > 0;
+  const commandeLiee = commandeIds.some(Boolean) && commandeLignes.length > 0;
+  elOcrBloc.hidden = !(aPhotoBl && receptionId && !commandeLiee);
+  if (elOcrStatut) elOcrStatut.hidden = true;
+}
+
+if (elBtnOcrBl) {
+  elBtnOcrBl.addEventListener('click', lancerExtractionOcr);
+}
+
+async function lancerExtractionOcr() {
+  if (!receptionId) return;
+  elBtnOcrBl.disabled = true;
+  elBtnOcrBl.textContent = '⏳ Lecture du BL en cours…';
+  if (elOcrStatut) { elOcrStatut.hidden = false; elOcrStatut.className = 'rec-ocr-statut'; elOcrStatut.textContent = 'Analyse de la photo…'; }
+
+  try {
+    const data = await apiFetch(`/api/receptions/${receptionId}/ocr-bl`, { method: 'POST' });
+    const lignes = data.lignes || [];
+    if (!lignes.length) {
+      throw new Error("Aucun article lu sur le BL. Saisie manuelle nécessaire.");
+    }
+    prefillBatchDepuisOcr(lignes);
+
+    const nbSuspect = lignes.filter(l => l.dlc_suspecte).length;
+    elOcrBloc.hidden = true;  // l'extraction est faite, on masque le bouton
+    if (elOcrStatut) {
+      elOcrStatut.hidden = false;
+      elOcrStatut.className = 'rec-ocr-statut ok';
+      elOcrStatut.textContent = nbSuspect
+        ? `✓ ${lignes.length} article(s) lus — ⚠️ ${nbSuspect} à vérifier (surlignés). Contrôlez chaque DLC.`
+        : `✓ ${lignes.length} article(s) lus. Contrôlez chaque ligne avant d'enregistrer.`;
+    }
+  } catch (err) {
+    elBtnOcrBl.disabled = false;
+    elBtnOcrBl.textContent = '🔍 Extraire le BL automatiquement';
+    if (elOcrStatut) {
+      elOcrStatut.hidden = false;
+      elOcrStatut.className = 'rec-ocr-statut erreur';
+      elOcrStatut.textContent = `⚠️ ${err.message}`;
+    }
+  }
+}
+
+// Construit les cartes batch à partir des lignes OCR et pré-remplit lot/DLC/poids.
+// Réutilise le mode batch existant : chaque ligne OCR devient un « ligneCmd »
+// minimal (pas de catalogue, désignation = libellé lu). L'utilisateur corrige.
+function prefillBatchDepuisOcr(lignes) {
+  entrerModeBatch();  // remet batchLignes à zéro et affiche la liste
+
+  // Adapter le titre : ici les lignes viennent du BL (OCR), pas d'une commande.
+  const elTitre = document.getElementById('rec-batch-titre');
+  if (elTitre) elTitre.textContent = 'Articles lus sur le bon de livraison';
+
+  lignes.forEach(l => {
+    const ligneCmd = {
+      designation: l.designation || 'Article',
+      code_article: l.reference || null,
+      catalogue_fournisseur_id: null,
+      quantite_commandee: l.quantite ?? null,
+      unite: 'kg',
+      dlc_type: null,                       // DLC standard par défaut
+      _fournisseur_id:  fournisseursListe[0]?.id  || null,
+      _fournisseur_nom: fournisseursListe[0]?.nom || null,
+    };
+    creerCarteBatch(ligneCmd);
+
+    // La carte qu'on vient de créer est la dernière de batchLignes.
+    const etat = batchLignes[batchLignes.length - 1];
+    const carte = etat.el;
+
+    // Pré-remplir lot / DLC / poids depuis l'OCR
+    const inpLot   = carte.querySelector('.rec-batch-lot');
+    const inpDate  = carte.querySelector('.rec-batch-date');
+    const inpPoids = carte.querySelector('.rec-batch-poids');
+    if (inpLot && l.numero_lot)  inpLot.value  = l.numero_lot;
+    if (inpDate && l.dlc)        inpDate.value = l.dlc;   // format ISO AAAA-MM-JJ
+    if (inpPoids && l.poids_kg != null) inpPoids.value = l.poids_kg;
+
+    // Surligner les lignes douteuses (DLC suspecte) pour attirer la vérification
+    if (l.dlc_suspecte) {
+      carte.classList.add('rec-batch-ocr-suspect');
+      if (l.alerte) {
+        const note = document.createElement('div');
+        note.className = 'rec-batch-ocr-alerte';
+        note.textContent = `⚠️ ${l.alerte} — à vérifier`;
+        carte.querySelector('.rec-batch-champs')?.before(note);
+      }
+    }
+
+    majBadgeCarte(etat);
+  });
+
+  majBtnTerminerBatch();
 }
 
 // ═══════════════════════════════════════════════════════════

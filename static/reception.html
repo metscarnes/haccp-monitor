@@ -250,11 +250,26 @@
     <section class="rec-step" id="rec-step-3"
              aria-label="Étape 4 — Ajout des produits">
 
+      <!-- ═══ EXTRACTION OCR DU BL (pré-remplit les lignes produits) ═══ -->
+      <!-- Visible seulement si une photo de BL a été enregistrée. L'OCR lit la
+           photo déjà stockée (receptionId existe) et bascule en mode liste avec
+           une carte par article, lot/DLC pré-remplis, à valider avant d'enregistrer. -->
+      <div class="rec-ocr-bloc" id="rec-ocr-bloc" hidden>
+        <button class="rec-btn-ocr" id="rec-btn-ocr-bl" type="button">
+          🔍 Extraire le BL automatiquement
+        </button>
+        <div class="rec-ocr-aide">
+          Lit la photo du bon de livraison et pré-remplit les articles.
+          <strong>Vérifiez chaque ligne</strong> avant d'enregistrer.
+        </div>
+        <div class="rec-ocr-statut" id="rec-ocr-statut" hidden aria-live="polite"></div>
+      </div>
+
       <!-- ═══ MODE LISTE COMMANDE (toutes les lignes d'un coup) ═══ -->
       <!-- Affiché uniquement quand une commande est liée ; sinon le formulaire
            unitaire ci-dessous prend le relais. -->
       <div id="rec-batch-wrap" hidden>
-        <div class="rec-section-titre">Produits de la commande</div>
+        <div class="rec-section-titre" id="rec-batch-titre">Produits de la commande</div>
         <div class="rec-batch-aide">
           Renseignez lot &amp; date pour chaque ligne. Sans info → le produit part
           « en attente » (à compléter plus tard). Le contrôle visuel est conforme par défaut.

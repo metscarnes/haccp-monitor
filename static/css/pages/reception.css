@@ -1734,3 +1734,61 @@ body.rec-body {
 .ach-unite-btn:first-child { border-left: none; }
 .ach-unite-btn:hover:not(:disabled):not(.is-active) { background: #e8d9c4; }
 .ach-unite-btn.is-active { background: var(--color-accent); color: #fff; }
+
+/* ── Extraction OCR du bon de livraison (étape 3) ─────────── */
+.rec-ocr-bloc {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #F4EAD9;
+  border: 1.5px dashed var(--color-accent);
+  border-radius: var(--radius);
+}
+.rec-btn-ocr {
+  width: 100%;
+  padding: .95rem;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 1.02rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 56px;
+  letter-spacing: .02em;
+  transition: opacity .15s;
+  touch-action: manipulation;
+}
+.rec-btn-ocr:disabled { opacity: .55; cursor: progress; }
+.rec-btn-ocr:not(:disabled):active { opacity: .82; }
+.rec-ocr-aide {
+  margin-top: .55rem;
+  font-size: .82rem;
+  line-height: 1.35;
+  color: #5a3e28;
+}
+.rec-ocr-statut {
+  margin-top: .6rem;
+  padding: .6rem .75rem;
+  border-radius: var(--radius);
+  font-size: .85rem;
+  font-weight: 600;
+  background: #fff;
+  color: #5a3e28;
+}
+.rec-ocr-statut.ok     { background: #EAF7EC; color: #1f6b32; }
+.rec-ocr-statut.erreur { background: #FFF0F0; color: var(--color-alert); }
+
+/* Carte batch issue de l'OCR et marquée douteuse (DLC suspecte) */
+.rec-batch-carte.rec-batch-ocr-suspect {
+  border-color: var(--color-alert);
+  box-shadow: 0 0 0 2px rgba(200,40,40,.18);
+}
+.rec-batch-ocr-alerte {
+  margin: .4rem 0 .2rem;
+  padding: .4rem .6rem;
+  background: #FFF0F0;
+  color: var(--color-alert);
+  border-radius: var(--radius);
+  font-size: .8rem;
+  font-weight: 600;
+}
