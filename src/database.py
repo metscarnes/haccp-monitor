@@ -1790,6 +1790,27 @@ PRAGMA foreign_keys=ON;
         except Exception as e:
             logger.warning("Migration v5.8 statuts : %s", e)
 
+        # Migration v5.9 : sortir d'« en attente » les lignes dont le dlc_type est resté
+        # NULL/'dlc' sur la ligne mais dont l'ARTICLE CATALOGUE est marqué 'no_dlc'.
+        # Cas typique : réception saisie avant que l'article soit passé en no_dlc, ou
+        # ligne de commande sans catalogue_fournisseur_id au moment du calcul du statut.
+        # On aligne aussi le dlc_type de la ligne sur le catalogue pour la cohérence.
+        try:
+            await db.execute(
+                """
+                UPDATE reception_lignes
+                SET statut = 'complet', attente_motif = NULL, dlc_type = 'no_dlc'
+                WHERE statut = 'en_attente'
+                  AND catalogue_fournisseur_id IN (
+                      SELECT id FROM catalogue_fournisseur WHERE dlc_type = 'no_dlc'
+                  )
+                """
+            )
+            await db.commit()
+            logger.info("Migration v5.9 : lignes en_attente alignées sur le catalogue no_dlc")
+        except Exception as e:
+            logger.warning("Migration v5.9 statuts no_dlc catalogue : %s", e)
+
         # Migration v2.5 : rendre produit_id nullable dans fiches_incident
         # (nécessaire pour les fiches de refus livraison camion, sans produit spécifique)
         try:
@@ -3099,6 +3120,18 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             conforme = 0
             break
 
+    # Le dlc_type fait foi via l'article catalogue : si le front ne l'a pas transmis
+    # (ligne de commande sans dlc_type joint, etc.), on le relit depuis le catalogue
+    # pour éviter de mettre en attente un article marqué 'no_dlc'.
+    if not data.get("dlc_type") and data.get("catalogue_fournisseur_id"):
+        cur_dlc = await db.execute(
+            "SELECT dlc_type FROM catalogue_fournisseur WHERE id = ?",
+            (data["catalogue_fournisseur_id"],),
+        )
+        cat_row = await cur_dlc.fetchone()
+        if cat_row and cat_row["dlc_type"]:
+            data["dlc_type"] = cat_row["dlc_type"]
+
     # Statut traçabilité : en_attente si lot/DLC manquant → exclu du stock
     statut, attente_motif = _calc_statut_attente(data)
 
@@ -3363,7 +3396,8 @@ async def update_reception_ligne(
     """Met à jour une ligne de réception et recalcule la conformité."""
     # Récupérer la ligne existante (valeurs de traçabilité à conserver si non fournies)
     cur = await db.execute(
-        "SELECT reception_id, produit_id, numero_lot, dlc, dluo, date_abattage, dlc_type "
+        "SELECT reception_id, produit_id, numero_lot, dlc, dluo, date_abattage, dlc_type, "
+        "catalogue_fournisseur_id "
         "FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     row = await cur.fetchone()
@@ -3420,6 +3454,17 @@ async def update_reception_ligne(
     dluo          = _merge("dluo")
     date_abattage = _merge("date_abattage")
     dlc_type      = _merge("dlc_type")
+
+    # dlc_type toujours dérivé du catalogue si la ligne ne le porte pas : un article
+    # 'no_dlc' ne doit jamais rester en attente faute de dlc_type sur la ligne.
+    if not dlc_type and row["catalogue_fournisseur_id"]:
+        cur_dlc = await db.execute(
+            "SELECT dlc_type FROM catalogue_fournisseur WHERE id = ?",
+            (row["catalogue_fournisseur_id"],),
+        )
+        cat_row = await cur_dlc.fetchone()
+        if cat_row and cat_row["dlc_type"]:
+            dlc_type = cat_row["dlc_type"]
 
     statut, attente_motif = _calc_statut_attente({
         "numero_lot":    numero_lot,
