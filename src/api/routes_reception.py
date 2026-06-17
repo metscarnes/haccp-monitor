@@ -34,6 +34,7 @@ from src.database import (
     generer_lot_interne, update_reception_ligne,
     update_reception_temperature_camion,
     add_reception_bl_supplementaire,
+    supprimer_reception,
 )
 
 logger = logging.getLogger(__name__)
@@ -436,6 +437,31 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
             coeur_temperatures=body.coeur_temperatures,
         )
     return reception
+
+
+@router.delete("/receptions/{reception_id}")
+async def annuler_reception(reception_id: int):
+    """
+    Annule (supprime) une réception entière : ses lignes (donc le stock dérivé),
+    ses BL et son lien commande. Bloqué si des données aval existent (facture,
+    lot de fabrication, cuisson, refroidissement, ouverture, maturation, incident,
+    NC fournisseur) → renvoie 409 avec la liste des blocages.
+
+    La commande liée redevient « confirmee » et donc à nouveau sélectionnable dans
+    le module réception (utile pour refaire la saisie, ex. avec l'OCR du BL).
+    """
+    async with get_db() as db:
+        res = await supprimer_reception(db, reception_id)
+
+    if not res["deleted"]:
+        if res.get("raison") == "introuvable":
+            raise HTTPException(404, "Réception non trouvée")
+        blocages = res.get("blocages", [])
+        raise HTTPException(
+            409,
+            "Annulation impossible — données liées : " + ", ".join(blocages),
+        )
+    return res
 
 
 # IMPORTANT : cette route doit être AVANT /receptions/{id}

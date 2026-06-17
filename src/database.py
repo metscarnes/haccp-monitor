@@ -16,6 +16,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+import sqlite3
+
 import aiosqlite
 
 logger = logging.getLogger(__name__)
@@ -3229,6 +3231,102 @@ async def cloturer_reception(
 
     await db.commit()
     return await get_reception(db, reception_id)
+
+
+# Dépendances « aval » qui interdisent la suppression d'une réception : si une de
+# ces tables référence la réception (ou une de ses lignes), la traçabilité est
+# engagée et l'annulation doit être bloquée. (label affiché, table, colonne)
+_RECEPTION_DEPENDANCES = [
+    ("Facture saisie",          "factures",                    "reception_id"),
+    ("Facture saisie",          "factures",                    "reception_ligne_id",     True),
+    ("Lot de fabrication",      "fabrication_lots",            "reception_ligne_id",     True),
+    ("Cuisson",                 "cuissons",                    "reception_ligne_id",     True),
+    ("Refroidissement",         "refroidissements",            "reception_ligne_id",     True),
+    ("Produit ouvert",          "ouvertures",                  "reception_ligne_id",     True),
+    ("Carcasse en maturation",  "maturation_carcasses",        "reception_ligne_id",     True),
+    ("Fiche incident (PCR01)",  "fiches_incident",             "reception_id"),
+    ("Non-conformité fournisseur", "non_conformites_fournisseur", "reception_id"),
+]
+
+
+async def _dependances_reception(db: aiosqlite.Connection, reception_id: int) -> list:
+    """Retourne la liste des libellés de dépendances aval bloquant la suppression."""
+    # IDs des lignes de cette réception (pour les tables liées par reception_ligne_id)
+    cur = await db.execute(
+        "SELECT id FROM reception_lignes WHERE reception_id = ?", (reception_id,)
+    )
+    ligne_ids = [r[0] for r in await cur.fetchall()]
+
+    bloquants = []
+    for label, table, col, *par_ligne in _RECEPTION_DEPENDANCES:
+        if par_ligne and par_ligne[0]:
+            if not ligne_ids:
+                continue
+            placeholders = ",".join("?" * len(ligne_ids))
+            sql = f"SELECT 1 FROM {table} WHERE {col} IN ({placeholders}) LIMIT 1"
+            params = ligne_ids
+        else:
+            sql = f"SELECT 1 FROM {table} WHERE {col} = ? LIMIT 1"
+            params = [reception_id]
+        try:
+            cur = await db.execute(sql, params)
+        except sqlite3.OperationalError:
+            # Table/colonne absente sur cette base (ex. migration non appliquée) :
+            # pas de dépendance possible de ce côté.
+            continue
+        if await cur.fetchone() and label not in bloquants:
+            bloquants.append(label)
+    return bloquants
+
+
+async def supprimer_reception(db: aiosqlite.Connection, reception_id: int) -> dict:
+    """
+    Annule (supprime) une réception et tout ce qui en dépend directement, à
+    condition qu'AUCUNE donnée aval n'y soit rattachée (facture, lot de
+    fabrication, cuisson, refroidissement, ouverture, maturation, incident, NC).
+
+    Le stock étant DÉRIVÉ des `reception_lignes` (cf. get_stock_unifie), supprimer
+    les lignes retire automatiquement les produits du stock. Le lien commande est
+    retiré ; si la commande était passée « livrée » par cette réception, elle
+    repasse « confirmee » pour redevenir sélectionnable dans le module réception.
+
+    Retourne :
+      - {"deleted": True, "commande_ids": [...]} en cas de succès
+      - {"deleted": False, "raison": "introuvable"} si la réception n'existe pas
+      - {"deleted": False, "blocages": [...]} si des dépendances aval existent
+    """
+    cur = await db.execute("SELECT id FROM receptions WHERE id = ?", (reception_id,))
+    if not await cur.fetchone():
+        return {"deleted": False, "raison": "introuvable"}
+
+    blocages = await _dependances_reception(db, reception_id)
+    if blocages:
+        return {"deleted": False, "blocages": blocages}
+
+    # Commandes liées (pour les libérer) avant de casser le mapping
+    cur = await db.execute(
+        "SELECT commande_id FROM commande_receptions_mapping WHERE reception_id = ?",
+        (reception_id,),
+    )
+    commande_ids = [r[0] for r in await cur.fetchall()]
+
+    # Suppression en cascade des tables filles directes (pas de dépendance aval ici)
+    await db.execute("DELETE FROM commande_receptions_mapping WHERE reception_id = ?", (reception_id,))
+    await db.execute("DELETE FROM reception_bls_supplementaires WHERE reception_id = ?", (reception_id,))
+    await db.execute("DELETE FROM reception_bl_pages WHERE reception_id = ?", (reception_id,))
+    await db.execute("DELETE FROM reception_lignes WHERE reception_id = ?", (reception_id,))
+    await db.execute("DELETE FROM receptions WHERE id = ?", (reception_id,))
+
+    # La commande redevient « confirmee » (sélectionnable) si elle avait été
+    # passée « livree » par cette réception et n'est pas annulée.
+    for cid in commande_ids:
+        await db.execute(
+            "UPDATE commandes SET statut = 'confirmee' WHERE id = ? AND statut = 'livree'",
+            (cid,),
+        )
+
+    await db.commit()
+    return {"deleted": True, "commande_ids": commande_ids}
 
 
 async def generer_lot_interne(db: aiosqlite.Connection, code_unique: str) -> str:

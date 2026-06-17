@@ -419,6 +419,51 @@ function remplirDetail(el, rec) {
   }
 
   el.appendChild(divLignes);
+
+  // ── Annuler la réception ───────────────────────────────────
+  const btnAnnuler = document.createElement('button');
+  btnAnnuler.style.cssText = 'display:block;width:100%;background:#C93030;color:#FFF;border:none;border-radius:8px;padding:10px;font-size:14px;font-weight:700;cursor:pointer;margin-top:16px;';
+  btnAnnuler.textContent = '🗑️ Annuler cette réception';
+  btnAnnuler.addEventListener('click', e => {
+    e.stopPropagation();
+    annulerReception(rec, btnAnnuler);
+  });
+  el.appendChild(btnAnnuler);
+}
+
+// ── Annulation d'une réception ────────────────────────────────
+async function annulerReception(rec, btn) {
+  const date = formatDateFR(rec.date_reception);
+  const fourn = rec.fournisseur_nom ? ` — ${rec.fournisseur_nom}` : '';
+  if (!confirm(
+    `Annuler la réception du ${date}${fourn} ?\n\n` +
+    `Tous les produits réceptionnés seront retirés du stock et la commande liée ` +
+    `redeviendra sélectionnable dans le module réception.\n\n` +
+    `Cette action est irréversible.`
+  )) return;
+
+  btn.disabled = true;
+  const ancien = btn.textContent;
+  btn.textContent = 'Annulation…';
+  try {
+    const res = await fetch(`/api/receptions/${rec.id}`, { method: 'DELETE', cache: 'no-store' });
+    if (res.status === 409) {
+      const txt = await res.text().catch(() => '');
+      let detail = txt;
+      try { detail = JSON.parse(txt).detail || txt; } catch (_) {}
+      alert(`Impossible d'annuler cette réception.\n\n${detail}`);
+      btn.disabled = false;
+      btn.textContent = ancien;
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Succès : recharger l'historique depuis le début
+    await charger();
+  } catch (err) {
+    alert(`Erreur lors de l'annulation : ${err.message}`);
+    btn.disabled = false;
+    btn.textContent = ancien;
+  }
 }
 
 // ── Création ligne produit ────────────────────────────────────
