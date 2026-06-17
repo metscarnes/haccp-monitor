@@ -525,7 +525,7 @@ function recCreerCarte(rec) {
     photoWrap.appendChild(img);
     photoWrap.addEventListener('click', e => {
       e.stopPropagation();
-      ouvrirModalBL(`/api/receptions/${rec.id}/photo-bl`);
+      ouvrirModalBL(rec.id);
     });
   } else {
     const ph = document.createElement('div');
@@ -652,7 +652,7 @@ function recRemplirDetail(el, rec) {
     btn.textContent = '📋 Voir le bon de livraison';
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      ouvrirModalBL(`/api/receptions/${rec.id}/photo-bl`);
+      ouvrirModalBL(rec.id);
     });
     el.appendChild(btn);
   }
@@ -855,22 +855,78 @@ function ouvrirModal(ouvertureId, nom) {
   document.body.style.overflow = 'hidden';
 }
 
-function ouvrirModalBL(src) {
-  elModalImg.src = src;
+// Navigation multi-pages BL
+const elModalNav      = document.getElementById('he-modal-nav');
+const elModalNavLabel = document.getElementById('he-modal-nav-label');
+const elModalNavPrev  = document.getElementById('he-modal-nav-prev');
+const elModalNavNext  = document.getElementById('he-modal-nav-next');
+let blModalPages = [];
+let blModalIdx   = 0;
+
+function majModalNav() {
+  if (!elModalNav) return;
+  if (blModalPages.length <= 1) { elModalNav.hidden = true; return; }
+  elModalNav.hidden = false;
+  elModalNavLabel.textContent = `${blModalIdx + 1} / ${blModalPages.length}`;
+  elModalNavPrev.disabled = blModalIdx === 0;
+  elModalNavNext.disabled = blModalIdx === blModalPages.length - 1;
+}
+
+function afficherPageBl() {
+  elModalImg.src = blModalPages[blModalIdx];
+  elModalImg.alt = `Bon de livraison — page ${blModalIdx + 1}`;
+  majModalNav();
+}
+
+async function ouvrirModalBL(recId) {
+  // Page principale + pages supplémentaires (table reception_bl_pages)
+  blModalPages = [`/api/receptions/${recId}/photo-bl`];
+  blModalIdx = 0;
   elModalImg.alt = 'Bon de livraison';
   elModal.hidden = false;
   document.body.style.overflow = 'hidden';
+  afficherPageBl();
+  try {
+    const pages = await apiFetch(`/api/receptions/${recId}/bl-pages`);
+    if (Array.isArray(pages) && pages.length) {
+      for (const p of pages) {
+        blModalPages.push(`/api/receptions/${recId}/bl-pages/${p.id}/photo`);
+      }
+      majModalNav();
+    }
+  } catch (err) {
+    // pas de pages supplémentaires (ou erreur réseau) : on garde la page principale
+  }
 }
+
+if (elModalNavPrev) elModalNavPrev.addEventListener('click', e => {
+  e.stopPropagation();
+  if (blModalIdx > 0) { blModalIdx--; afficherPageBl(); }
+});
+if (elModalNavNext) elModalNavNext.addEventListener('click', e => {
+  e.stopPropagation();
+  if (blModalIdx < blModalPages.length - 1) { blModalIdx++; afficherPageBl(); }
+});
 
 function fermerModal() {
   elModal.hidden = true;
   elModalImg.src = '';
   document.body.style.overflow = '';
+  blModalPages = [];
+  blModalIdx = 0;
+  if (elModalNav) elModalNav.hidden = true;
 }
 
-elModal.addEventListener('click', fermerModal);
+elModal.addEventListener('click', e => {
+  // ne pas fermer si on clique sur la barre de navigation
+  if (e.target.closest('.he-modal-nav')) return;
+  fermerModal();
+});
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !elModal.hidden) fermerModal();
+  if (elModal.hidden) return;
+  if (e.key === 'Escape') fermerModal();
+  else if (e.key === 'ArrowLeft'  && blModalIdx > 0) { blModalIdx--; afficherPageBl(); }
+  else if (e.key === 'ArrowRight' && blModalIdx < blModalPages.length - 1) { blModalIdx++; afficherPageBl(); }
 });
 
 // ══════════════════════════════════════════════════════════════
