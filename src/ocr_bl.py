@@ -60,21 +60,26 @@ _SCHEMA = {
     "additionalProperties": False,
 }
 
-_INSTRUCTIONS = """Tu es un assistant de saisie pour une boucherie. On te donne la ou les photo(s) d'un bon de livraison (BL) d'un fournisseur de viande.
+_INSTRUCTIONS = """Tu es un assistant de saisie pour une boucherie. On te donne la ou les photo(s) d'un bon de livraison (BL) d'un fournisseur de viande. Chaque fournisseur a sa propre mise en page : n'en présume aucune, lis ce que tu vois.
 
-Extrais, ligne par article, les informations de traçabilité. Concentre-toi en priorité sur :
-- la désignation de l'article
-- le NUMÉRO DE LOT
-- la DLC (date limite de consommation) — c'est l'information critique
+Extrais, article par article, les informations de traçabilité. Pour chaque article du BL, donne un objet dans "lignes" avec :
+- designation : le libellé de l'article
+- numero_lot : le numéro de lot s'il est indiqué pour cet article
+- dlc_brut / dluo_brut : la DLC / la DLUO (DDM) de cet article
+- poids_kg : le poids livré (en kg) de cet article
+- quantite : le nombre d'unités/pièces livrées
 
-Règles :
-- Une ligne du tableau = un article = un objet dans "lignes". N'invente jamais d'article.
-- DATES — TRÈS IMPORTANT : recopie chaque date EXACTEMENT comme elle est écrite sur le BL, caractère pour caractère, dans "dlc_brut" / "dluo_brut" / "date_bl_brut". NE CONVERTIS RIEN, ne réordonne pas le jour et le mois. Si le BL écrit "07/12/26", mets exactement "07/12/26". Ce sont des dates françaises (jour en premier) ; la conversion sera faite ensuite par le programme, pas par toi.
-- Distingue DLC (consommer jusqu'au) et DLUO/DDM (à consommer de préférence avant) : ne mets jamais une DLUO dans le champ dlc_brut.
-- Si une information n'est pas lisible ou absente, mets null. Ne devine pas.
-- Pour chaque ligne, indique ta "confiance" sur la lecture du lot et de la DLC (haute / moyenne / basse). Sois honnête : une saisie HACCP erronée est pire qu'un champ laissé à vérifier.
-- Si plusieurs images sont fournies, ce sont les pages d'un même BL : fusionne-les en une seule liste d'articles.
-- Ignore les totaux, conditions de vente, mentions légales en bas de page.
+POINT CRITIQUE — appariement DLC ↔ article :
+Sur certains BL, le lot et la DLC d'un article sont écrits sur une LIGNE SÉPARÉE (souvent juste en dessous de l'article, parfois préfixée "lot"). Cette DLC/ce lot appartiennent à l'article AUQUEL ILS SE RAPPORTENT visuellement (le plus proche, en général juste au-dessus) — surtout PAS à l'article suivant. Vérifie l'alignement avant d'associer : ne décale jamais une DLC d'un article à l'autre. En cas de doute sur l'appariement, baisse la "confiance" de la ligne plutôt que de risquer une erreur.
+
+Règles générales :
+- Un article = un objet dans "lignes". N'invente jamais d'article, n'en oublie aucun.
+- DATES — recopie chaque date EXACTEMENT comme écrite, caractère pour caractère, dans "dlc_brut" / "dluo_brut" / "date_bl_brut". NE CONVERTIS RIEN, ne réordonne pas jour/mois. "07/12/26" → mets exactement "07/12/26". La conversion est faite ensuite par le programme.
+- Distingue DLC (consommer jusqu'au) et DLUO/DDM (à consommer de préférence avant) : ne mets jamais une DLUO dans dlc_brut.
+- Si une information est illisible ou absente, mets null. Ne devine pas.
+- "confiance" (haute/moyenne/basse) sur la lecture du lot ET de la DLC de la ligne. Sois honnête : une saisie HACCP erronée est pire qu'un champ à vérifier.
+- Plusieurs images = pages d'un même BL : fusionne en une seule liste d'articles.
+- Ignore les totaux, conditions de vente, mentions légales.
 
 Réponds uniquement via le format structuré demandé."""
 
@@ -212,10 +217,20 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
         ligne["dlc_fr"] = dlc_fr
         ligne["dluo"] = dluo_iso
         ligne["dluo_fr"] = dluo_fr
-        # DLC dans le passé par rapport à la livraison = lecture douteuse
-        ligne["dlc_suspecte"] = bool(
-            dlc_iso and jour_bl and date.fromisoformat(dlc_iso) < jour_bl
-        )
+
+        # Vérifs GÉNÉRIQUES de cohérence (valables pour TOUS les fournisseurs,
+        # indépendantes de la mise en page). Elles ne corrigent pas la DLC : elles
+        # signalent les lignes à revérifier à l'écran de validation.
+        alerte = None
+        if dlc_iso and jour_bl:
+            d = date.fromisoformat(dlc_iso)
+            if d < jour_bl:
+                alerte = "DLC antérieure à la livraison"
+            elif (d - jour_bl).days > 730:
+                alerte = "DLC très lointaine (> 2 ans) — à vérifier"
+
+        ligne["dlc_suspecte"] = alerte is not None
+        ligne["alerte"] = alerte
 
     data["_meta"] = {
         "modele": MODEL,
