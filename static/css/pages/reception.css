@@ -188,6 +188,31 @@ body.rec-body {
 }
 .rec-input:focus { border-color: var(--color-accent); }
 
+/* ── Saisie n° bon de livraison ───────────────────────────── */
+.rec-bl-saisie-row {
+  display: flex;
+  gap: .5rem;
+  align-items: stretch;
+}
+.rec-bl-saisie-row .rec-input { flex: 1; }
+.rec-btn-bl-valider {
+  flex: 0 0 auto;
+  padding: 0 1.1rem;
+  border-radius: var(--radius);
+  border: 2px solid var(--color-accent);
+  background: var(--color-accent);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+.rec-btn-bl-valider:disabled { opacity: .6; cursor: default; }
+.rec-bl-hint {
+  margin-top: .4rem;
+  font-size: .9rem;
+}
+
 /* ── Badge verdict ────────────────────────────────────────── */
 .rec-badge {
   display: inline-flex;

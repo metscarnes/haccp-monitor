@@ -207,6 +207,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     camion_conforme          INTEGER DEFAULT 1,
     fournisseur_principal_id INTEGER,
     photo_bl_filename        TEXT,
+    numero_bon_livraison     TEXT,
     commentaire              TEXT,
     conformite_globale       TEXT    DEFAULT 'conforme',
     livraison_refusee        INTEGER DEFAULT 0,
@@ -1057,6 +1058,7 @@ CREATE TABLE IF NOT EXISTS receptions (
     camion_conforme          INTEGER DEFAULT 1,
     fournisseur_principal_id INTEGER,
     photo_bl_filename        TEXT,
+    numero_bon_livraison     TEXT,
     commentaire              TEXT,
     conformite_globale       TEXT    DEFAULT 'conforme',
     livraison_refusee        INTEGER DEFAULT 0,
@@ -1827,6 +1829,20 @@ PRAGMA foreign_keys=ON;
             logger.info("Migration v5.9 : lignes en_attente alignées sur le catalogue no_dlc")
         except Exception as e:
             logger.warning("Migration v5.9 statuts no_dlc catalogue : %s", e)
+
+        # Migration v6.0 : n° de bon de livraison sur la réception.
+        # Sert de préfixe au nouveau format de lot interne {BL}-{code_article}-{JJMMAA}.
+        try:
+            cur_bl = await db.execute("PRAGMA table_info(receptions)")
+            cols_bl = {row[1] for row in await cur_bl.fetchall()}
+            if "numero_bon_livraison" not in cols_bl:
+                await db.execute(
+                    "ALTER TABLE receptions ADD COLUMN numero_bon_livraison TEXT"
+                )
+                await db.commit()
+                logger.info("Migration v6.0 : numero_bon_livraison ajouté à receptions")
+        except Exception as e:
+            logger.warning("Migration v6.0 numero_bon_livraison : %s", e)
 
         # Migration v2.5 : rendre produit_id nullable dans fiches_incident
         # (nécessaire pour les fiches de refus livraison camion, sans produit spécifique)
@@ -2982,8 +2998,9 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
             """
             INSERT INTO receptions
                 (personnel_id, date_reception, heure_reception, temperature_camion, proprete_camion,
-                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename, commentaire)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename,
+                 numero_bon_livraison, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["personnel_id"],
@@ -2995,6 +3012,7 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
                 data.get("fournisseur_principal_id"),
                 data.get("fournisseur_nom"),
                 data.get("photo_bl_filename"),
+                data.get("numero_bon_livraison"),
                 data.get("commentaire"),
             ),
         )
@@ -3003,8 +3021,9 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
             """
             INSERT INTO receptions
                 (personnel_id, heure_reception, temperature_camion, proprete_camion,
-                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename, commentaire)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 camion_conforme, fournisseur_principal_id, fournisseur_nom, photo_bl_filename,
+                 numero_bon_livraison, commentaire)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["personnel_id"],
@@ -3015,6 +3034,7 @@ async def create_reception(db: aiosqlite.Connection, data: dict) -> int:
                 data.get("fournisseur_principal_id"),
                 data.get("fournisseur_nom"),
                 data.get("photo_bl_filename"),
+                data.get("numero_bon_livraison"),
                 data.get("commentaire"),
             ),
         )
@@ -3408,6 +3428,29 @@ async def generer_lot_interne(db: aiosqlite.Connection, code_unique: str) -> str
     return f"{code_unique}-{date_jjmmyy}-{counter:03d}"
 
 
+def format_lot_interne_bl(numero_bl: str, code_article: str, date_reception: Optional[str]) -> str:
+    """Construit un lot interne au format {BL}-{code_article}-{JJMMAA}.
+
+    - numero_bl : n° du bon de livraison de la réception (saisi/OCR, 1 par réception).
+    - code_article : code article catalogue de la ligne (visible sur le BL/commande).
+    - date_reception : 'YYYY-MM-DD' ou None (→ date du jour). Rendue en JJMMAA.
+
+    Le triplet est unique par ligne de commande, donc pas de compteur nécessaire.
+    Les espaces du n° BL sont retirés (nettoyage minimal), le reste est conservé tel quel.
+    """
+    from datetime import date as _date
+    bl = "".join((numero_bl or "").split())  # retire tous les espaces
+    art = (code_article or "").strip()
+    if date_reception:
+        try:
+            d = _date.fromisoformat(date_reception)
+        except ValueError:
+            d = _date.today()
+    else:
+        d = _date.today()
+    return f"{bl}-{art}-{d.strftime('%d%m%y')}"
+
+
 async def update_reception_ligne(
     db: aiosqlite.Connection,
     ligne_id: int,
@@ -3573,9 +3616,11 @@ async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
             p.id               AS produit_id,
             COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
             p.code_unique      AS code_unique,
+            COALESCE(cf.code_article, p.code_unique) AS code_article,
             COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
             r.date_reception   AS date_reception,
             r.heure_reception  AS heure_reception,
+            r.numero_bon_livraison AS numero_bon_livraison,
             r.statut           AS reception_statut
         FROM reception_lignes rl
         JOIN receptions   r ON r.id = rl.reception_id
@@ -3606,15 +3651,17 @@ async def completer_ligne_attente(
     dlc: Optional[str] = None,
     dluo: Optional[str] = None,
     date_abattage: Optional[str] = None,
+    lot_interne: int = 0,
 ) -> Optional[dict]:
     """Complète les infos de traçabilité d'une ligne en attente et recalcule le statut.
 
     Ne touche qu'aux champs lot/DLC/DLUO/date_abattage (préserve conformité et
     observations). Si lot + date sont désormais présents, statut repasse à 'complet'
     et le produit entre en stock. Renvoie la ligne mise à jour, ou None si introuvable.
+    lot_interne=1 marque le numéro de lot comme auto-généré (sans date requise hors no_dlc).
     """
     cur = await db.execute(
-        "SELECT numero_lot, dlc, dluo, date_abattage, dlc_type "
+        "SELECT numero_lot, lot_interne, dlc, dluo, date_abattage, dlc_type "
         "FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     row = await cur.fetchone()
@@ -3631,9 +3678,11 @@ async def completer_ligne_attente(
     dluo          = _pick(dluo, row["dluo"])
     date_abattage = _pick(date_abattage, row["date_abattage"])
     dlc_type      = row["dlc_type"]
+    lot_interne   = 1 if lot_interne else (row["lot_interne"] or 0)
 
     statut, attente_motif = _calc_statut_attente({
         "numero_lot":    numero_lot,
+        "lot_interne":   lot_interne,
         "dlc":           dlc,
         "dluo":          dluo,
         "date_abattage": date_abattage,
@@ -3643,11 +3692,11 @@ async def completer_ligne_attente(
     await db.execute(
         """
         UPDATE reception_lignes SET
-            numero_lot = ?, dlc = ?, dluo = ?, date_abattage = ?,
+            numero_lot = ?, lot_interne = ?, dlc = ?, dluo = ?, date_abattage = ?,
             statut = ?, attente_motif = ?
         WHERE id = ?
         """,
-        (numero_lot, dlc, dluo, date_abattage, statut, attente_motif, ligne_id),
+        (numero_lot, lot_interne, dlc, dluo, date_abattage, statut, attente_motif, ligne_id),
     )
     await db.commit()
 

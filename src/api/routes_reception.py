@@ -31,7 +31,7 @@ from src.database import (
     create_reception, add_reception_ligne, cloturer_reception,
     get_receptions, get_reception, get_reception_en_cours,
     get_non_conformites, create_non_conformite,
-    generer_lot_interne, update_reception_ligne,
+    generer_lot_interne, format_lot_interne_bl, update_reception_ligne,
     update_reception_temperature_camion,
     add_reception_bl_supplementaire,
     supprimer_reception,
@@ -401,31 +401,94 @@ async def ajouter_ligne(reception_id: int, body: LigneCreate):
     return dict(row)
 
 
-@router.get("/receptions/{reception_id}/lot-interne")
-async def get_lot_interne_par_code(reception_id: int, code_unique: str = Query(...)):
-    """Génère un numéro de lot interne à partir du code_unique produit."""
+class NumeroBLBody(BaseModel):
+    numero_bon_livraison: str
+
+
+@router.put("/receptions/{reception_id}/numero-bl")
+async def set_numero_bl(reception_id: int, body: NumeroBLBody):
+    """Enregistre le n° de bon de livraison de la réception (1 par réception).
+
+    Sert de préfixe au lot interne {BL}-{code_article}-{JJMMAA}. Saisi manuellement
+    ou confirmé depuis l'OCR, une seule fois pour toute la réception.
+    """
+    numero = (body.numero_bon_livraison or "").strip()
+    if not numero:
+        raise HTTPException(400, "Numéro de bon de livraison vide")
     async with get_db() as db:
-        lot = await generer_lot_interne(db, code_unique)
+        cur = await db.execute("SELECT id FROM receptions WHERE id = ?", (reception_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Réception introuvable")
+        await db.execute(
+            "UPDATE receptions SET numero_bon_livraison = ? WHERE id = ?",
+            (numero, reception_id),
+        )
+        await db.commit()
+    return {"numero_bon_livraison": numero}
+
+
+async def _generer_lot_bl(db, reception_id: int, ligne_id: int) -> str:
+    """Construit le lot interne {BL}-{code_article}-{JJMMAA} pour une ligne de réception.
+
+    Récupère le n° BL + date de la réception et le code_article catalogue de la ligne.
+    Lève une 400 explicite si le n° BL n'a pas encore été saisi.
+    """
+    cur = await db.execute(
+        """
+        SELECT r.numero_bon_livraison AS bl,
+               r.date_reception       AS date_reception,
+               COALESCE(cf.code_article, p.code_unique) AS code_article
+        FROM reception_lignes rl
+        JOIN receptions r ON r.id = rl.reception_id
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+        LEFT JOIN produits p ON p.id = rl.produit_id
+        WHERE rl.id = ? AND rl.reception_id = ?
+        """,
+        (ligne_id, reception_id),
+    )
+    row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Ligne de réception introuvable")
+    if not row["bl"] or not str(row["bl"]).strip():
+        raise HTTPException(
+            400, "Saisir le n° de bon de livraison de la réception avant de générer un lot interne."
+        )
+    if not row["code_article"] or not str(row["code_article"]).strip():
+        raise HTTPException(400, "Aucun code article (catalogue) pour cette ligne.")
+    return format_lot_interne_bl(row["bl"], row["code_article"], row["date_reception"])
+
+
+@router.get("/receptions/{reception_id}/lot-interne")
+async def get_lot_interne_par_code(reception_id: int, code_article: str = Query(...)):
+    """Génère le lot interne {BL}-{code_article}-{JJMMAA} avant enregistrement de la ligne.
+
+    Utilisé pendant la saisie de réception, où la ligne n'existe pas encore en base.
+    Le n° BL et la date sont lus sur la réception ; le code_article (catalogue) vient du front.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT numero_bon_livraison AS bl, date_reception FROM receptions WHERE id = ?",
+            (reception_id,),
+        )
+        row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Réception introuvable")
+    if not row["bl"] or not str(row["bl"]).strip():
+        raise HTTPException(
+            400, "Saisir le n° de bon de livraison de la réception avant de générer un lot interne."
+        )
+    code = (code_article or "").strip()
+    if not code:
+        raise HTTPException(400, "Code article manquant.")
+    lot = format_lot_interne_bl(row["bl"], code, row["date_reception"])
     return {"lot_interne": lot}
 
 
 @router.get("/receptions/{reception_id}/lignes/{ligne_id}/lot-interne")
 async def get_lot_interne(reception_id: int, ligne_id: int):
-    """Génère un numéro de lot interne unique pour la ligne donnée."""
+    """Génère le lot interne {BL}-{code_article}-{JJMMAA} pour une ligne déjà enregistrée."""
     async with get_db() as db:
-        cur = await db.execute(
-            """
-            SELECT p.code_unique FROM reception_lignes rl
-            JOIN produits p ON p.id = rl.produit_id
-            WHERE rl.id = ? AND rl.reception_id = ?
-            """,
-            (ligne_id, reception_id),
-        )
-        row = await cur.fetchone()
-    if not row or not row["code_unique"]:
-        raise HTTPException(400, "Ligne ou code produit introuvable")
-    async with get_db() as db:
-        lot = await generer_lot_interne(db, row["code_unique"])
+        lot = await _generer_lot_bl(db, reception_id, ligne_id)
     return {"lot_interne": lot}
 
 

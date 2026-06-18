@@ -168,6 +168,20 @@
 
       <div class="rec-section-titre">Bon de livraison</div>
 
+      <!-- ── N° du bon de livraison (1 par réception, manuel ou OCR confirmé) ── -->
+      <!-- Sert de préfixe aux lots internes : {BL}-{code article}-{JJMMAA} -->
+      <div class="rec-form-group">
+        <label class="rec-champ-label" for="rec-numero-bl">N° du bon de livraison</label>
+        <div class="rec-bl-saisie-row">
+          <input type="text" id="rec-numero-bl" class="rec-input"
+                 placeholder="N° du BL (ex : BL12345)…" autocomplete="off">
+          <button type="button" class="rec-btn-bl-valider" id="rec-btn-bl-valider">
+            Valider
+          </button>
+        </div>
+        <div class="rec-bl-hint" id="rec-numero-bl-hint" hidden></div>
+      </div>
+
       <!-- ── Lier à une commande existante ── -->
       <div class="rec-form-group" id="rec-commande-groupe">
         <div class="rec-champ-label">Lier à une commande ?</div>

@@ -203,6 +203,9 @@ const elProdSearchWrap    = document.getElementById('rec-produit-search-wrap');
 const elProdSearch        = document.getElementById('rec-prod-search');
 const elProdAutoComplete  = document.getElementById('rec-prod-autocomplete');
 const elLot               = document.getElementById('rec-lot');
+const elNumeroBl          = document.getElementById('rec-numero-bl');
+const elBtnBlValider      = document.getElementById('rec-btn-bl-valider');
+const elNumeroBlHint      = document.getElementById('rec-numero-bl-hint');
 const elBtnPasLot         = document.getElementById('rec-btn-pas-lot');
 const elBtnAnnulerLot     = document.getElementById('rec-btn-annuler-lot');
 const elLotGenere         = document.getElementById('rec-lot-genere');
@@ -342,6 +345,7 @@ let batchLignes        = [];      // [{produit, dlcType, fournisseur, lotInterne
 // État formulaire produit
 let dlcMode            = 'dlc';   // 'dlc' ou 'dluo'
 let lotInterneGenere   = false;   // true quand lot interne auto-généré
+let numeroBlValide     = '';      // n° BL enregistré sur la réception (préfixe lot interne)
 let ligneEnEdition     = null;    // {id, index} — null = mode ajout
 let fournisseurProduitSelected = null; // {id, nom} fournisseur sélectionné pour le produit courant
 let dernierFournisseurProduit = null; // {id, nom} dernier fournisseur utilisé pour dialog
@@ -855,6 +859,12 @@ async function reprendreReceptionEnCours() {
 
     // Restaurer l'état minimal du wizard pour pouvoir compléter + clôturer.
     receptionId     = rec.id;
+    // Restaurer le n° BL déjà enregistré (préfixe des lots internes).
+    if (rec.numero_bon_livraison && elNumeroBl) {
+      elNumeroBl.value = rec.numero_bon_livraison;
+      numeroBlValide   = rec.numero_bon_livraison;
+      afficherHintBl(`✔ BL enregistré : ${rec.numero_bon_livraison}`, false);
+    }
     personnelId     = rec.personnel_id || receptionEnCours.personnel_id;
     personnelPrenom = receptionEnCours.personnel_prenom || null;
     if (rec.temperature_camion !== null && rec.temperature_camion !== undefined) {
@@ -2284,6 +2294,55 @@ const elLotChoix        = document.getElementById('rec-lot-choix');
 const elLotChoixInterne = document.getElementById('rec-lot-choix-interne');
 const elLotChoixAttente = document.getElementById('rec-lot-choix-attente');
 
+// ── N° de bon de livraison (1 par réception, préfixe des lots internes) ──
+// Enregistre le n° BL sur la réception. Requis pour générer un lot interne au
+// format {BL}-{code article}-{JJMMAA}.
+async function validerNumeroBl() {
+  const numero = (elNumeroBl.value || '').trim();
+  if (!numero) {
+    afficherHintBl('Saisir un numéro de BL.', true);
+    return false;
+  }
+  if (!receptionId) {
+    afficherHintBl('Démarrer la réception d’abord.', true);
+    return false;
+  }
+  try {
+    elBtnBlValider.disabled = true;
+    await apiFetch(`/api/receptions/${receptionId}/numero-bl`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numero_bon_livraison: numero }),
+    });
+    numeroBlValide = numero;
+    afficherHintBl(`✔ BL enregistré : ${numero}`, false);
+    return true;
+  } catch (e) {
+    afficherHintBl(`Erreur : ${e.message}`, true);
+    return false;
+  } finally {
+    elBtnBlValider.disabled = false;
+  }
+}
+function afficherHintBl(msg, erreur) {
+  if (!elNumeroBlHint) return;
+  elNumeroBlHint.textContent = msg;
+  elNumeroBlHint.style.color = erreur ? '#991b1b' : '#166534';
+  elNumeroBlHint.hidden = false;
+}
+if (elBtnBlValider) {
+  elBtnBlValider.addEventListener('click', validerNumeroBl);
+}
+// Toute modification après validation invalide l'état enregistré.
+if (elNumeroBl) {
+  elNumeroBl.addEventListener('input', () => {
+    if ((elNumeroBl.value || '').trim() !== numeroBlValide) {
+      numeroBlValide = '';
+      if (elNumeroBlHint) elNumeroBlHint.hidden = true;
+    }
+  });
+}
+
 // Clic « Pas de N° de lot » → afficher le choix (au lieu de générer directement)
 elBtnPasLot.addEventListener('click', () => {
   if (!produitSelectionne || !receptionId) return;
@@ -2294,12 +2353,24 @@ elBtnPasLot.addEventListener('click', () => {
 if (elLotChoixInterne) {
   elLotChoixInterne.addEventListener('click', async () => {
     if (!produitSelectionne || !receptionId) return;
+    // Le BL doit être enregistré avant de générer un lot interne (préfixe du lot).
+    if (!numeroBlValide) {
+      if ((elNumeroBl.value || '').trim()) {
+        const ok = await validerNumeroBl();
+        if (!ok) return;
+      } else {
+        afficherHintBl('Saisir et valider le n° de BL avant de générer un lot interne.', true);
+        elNumeroBl.focus();
+        return;
+      }
+    }
     elLotChoixInterne.disabled = true;
     elLotChoixInterne.textContent = '⏳…';
     try {
-      const code = produitSelectionne.code_unique;
+      // code_article du catalogue (article catalogue) ou code_unique (produit interne).
+      const code = produitSelectionne.code_article || produitSelectionne.code_unique || '';
       const data = await apiFetch(
-        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`
+        `/api/receptions/${receptionId}/lot-interne?code_article=${encodeURIComponent(code)}`
       );
       const lotNum = data.lot_interne;
       elLot.value    = lotNum;
@@ -2995,6 +3066,11 @@ async function lancerExtractionOcr() {
     if (!lignes.length) {
       throw new Error("Aucun article lu sur le BL. Saisie manuelle nécessaire.");
     }
+    // Pré-remplir le n° BL extrait (à confirmer manuellement via "Valider").
+    if (data.numero_bl && elNumeroBl && !numeroBlValide) {
+      elNumeroBl.value = data.numero_bl;
+      afficherHintBl('N° BL extrait du BL — vérifier puis cliquer « Valider ».', false);
+    }
     prefillBatchDepuisOcr(lignes);
 
     const nbSuspect = lignes.filter(l => l.dlc_suspecte).length;
@@ -3232,14 +3308,25 @@ function creerCarteBatch(ligneCmd) {
   const inpLot        = carte.querySelector('.rec-batch-lot');
   btnLotInterne.addEventListener('click', async () => {
     if (!receptionId) return;
-    // Base du lot interne : code produit interne si rattaché, sinon réf. catalogue achats.
-    const code = (etat.produit && etat.produit.code_unique)
-      || etat.ligneCmd.code_article
+    // Le BL doit être enregistré avant de générer un lot interne (préfixe du lot).
+    if (!numeroBlValide) {
+      if ((elNumeroBl.value || '').trim()) {
+        const ok = await validerNumeroBl();
+        if (!ok) return;
+      } else {
+        afficherHintBl('Saisir et valider le n° de BL avant de générer un lot interne.', true);
+        elNumeroBl.focus();
+        return;
+      }
+    }
+    // Base du lot interne : réf. catalogue achats (code_article) en priorité.
+    const code = etat.ligneCmd.code_article
+      || (etat.produit && etat.produit.code_unique)
       || 'ART';
     btnLotInterne.disabled = true; btnLotInterne.textContent = '⏳';
     try {
       const data = await apiFetch(
-        `/api/receptions/${receptionId}/lot-interne?code_unique=${encodeURIComponent(code)}`);
+        `/api/receptions/${receptionId}/lot-interne?code_article=${encodeURIComponent(code)}`);
       inpLot.value = data.lot_interne;
       inpLot.readOnly = true;
       inpLot.style.background = '#f0faf3';

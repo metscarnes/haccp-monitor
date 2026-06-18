@@ -453,6 +453,9 @@ function rendreCarte(ligne) {
       <input type="text" class="pa-input" data-field="numero_lot"
              value="${escHtml(ligne.numero_lot || '')}"
              placeholder="N° de lot du bon de livraison…">
+      <button class="pa-btn-lot-interne" type="button">
+        🏷️ Pas de N° de lot → générer un lot interne
+      </button>
     </div>
 
     <div class="pa-champ">
@@ -470,7 +473,68 @@ function rendreCarte(ligne) {
   const erreur = carte.querySelector('.pa-erreur');
   btn.addEventListener('click', () => valider(carte, ligne, btn, erreur));
 
+  const btnLot = carte.querySelector('.pa-btn-lot-interne');
+  if (btnLot) btnLot.addEventListener('click', () => genererLotInterne(carte, ligne, btnLot, erreur));
+
   return carte;
+}
+
+// ── Génération d'un lot interne {BL}-{code article}-{JJMMAA} ──
+// Pour les fournisseurs sans N° de lot. Exige le n° BL de la réception : s'il
+// manque, on le demande puis on l'enregistre avant de générer.
+async function genererLotInterne(carte, ligne, btnLot, erreur) {
+  erreur.hidden = true;
+  // Le n° BL est requis comme préfixe. S'il manque sur la réception, le demander.
+  let numeroBl = (ligne.numero_bon_livraison || '').trim();
+  if (!numeroBl) {
+    const saisi = window.prompt(
+      'N° du bon de livraison de cette réception (sert de préfixe au lot interne) :',
+      ''
+    );
+    if (saisi === null) return;            // annulé
+    numeroBl = saisi.trim();
+    if (!numeroBl) {
+      erreur.textContent = 'N° de bon de livraison requis pour générer un lot interne.';
+      erreur.hidden = false;
+      return;
+    }
+    try {
+      await apiFetch(`/api/receptions/${ligne.reception_id}/numero-bl`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numero_bon_livraison: numeroBl }),
+      });
+      // Propager à toutes les lignes de la même réception (cache local).
+      toutesLignes.forEach(l => {
+        if (l.reception_id === ligne.reception_id) l.numero_bon_livraison = numeroBl;
+      });
+    } catch (e) {
+      erreur.textContent = 'Enregistrement du n° BL impossible : ' + e.message;
+      erreur.hidden = false;
+      return;
+    }
+  }
+
+  btnLot.disabled = true;
+  const labelInit = btnLot.textContent;
+  btnLot.textContent = '⏳…';
+  try {
+    const data = await apiFetch(
+      `/api/receptions/${ligne.reception_id}/lignes/${ligne.ligne_id}/lot-interne`
+    );
+    const inpLot = carte.querySelector('[data-field="numero_lot"]');
+    inpLot.value = data.lot_interne;
+    inpLot.classList.remove('pa-input--invalide');
+    inpLot.readOnly = true;
+    inpLot.style.background = '#f0faf3';
+    carte.dataset.lotInterne = '1';   // signalé au backend lors de la validation
+  } catch (e) {
+    erreur.textContent = 'Génération du lot interne impossible : ' + e.message;
+    erreur.hidden = false;
+  } finally {
+    btnLot.disabled = false;
+    btnLot.textContent = labelInit;
+  }
 }
 
 // ── Validation / complétion ────────────────────────────────
@@ -483,6 +547,8 @@ async function valider(carte, ligne, btn, erreur) {
     const v = inp.value.trim();
     if (v) payload[inp.dataset.field] = v;
   });
+  // Lot auto-généré (interne) : informer le backend pour la traçabilité.
+  if (carte.dataset.lotInterne === '1') payload.lot_interne = 1;
 
   // Validation côté client : lot + date requis (sauf no_dlc pour la date)
   const manqueLot  = !payload.numero_lot;

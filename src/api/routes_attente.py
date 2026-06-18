@@ -33,6 +33,7 @@ class CompletionBody(BaseModel):
     dlc: Optional[str] = None
     dluo: Optional[str] = None
     date_abattage: Optional[str] = None
+    lot_interne: int = 0
 
 
 @router.get("/lignes")
@@ -61,6 +62,7 @@ async def completer(ligne_id: int, body: CompletionBody):
             dlc=body.dlc,
             dluo=body.dluo,
             date_abattage=body.date_abattage,
+            lot_interne=body.lot_interne,
         )
     if ligne is None:
         raise HTTPException(404, "Ligne de réception introuvable")
