@@ -265,38 +265,60 @@ async function chargerApercuBl(receptionId, zone) {
 
 // Bouton « + Ajouter une page de BL » (photo ou fichier image/PDF).
 function ajouterBoutonAjoutBl(receptionId, zone) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*,application/pdf';
-  input.multiple = true;
-  input.hidden = true;
+  // Input caméra (rear camera, image uniquement)
+  const inputCam = document.createElement('input');
+  inputCam.type = 'file';
+  inputCam.accept = 'image/*';
+  inputCam.capture = 'environment';
+  inputCam.hidden = true;
 
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'pa-bl-ajout';
-  btn.textContent = '＋ Ajouter une page';
-  btn.addEventListener('click', () => input.click());
+  // Input fichier (image ou PDF, multiple)
+  const inputFich = document.createElement('input');
+  inputFich.type = 'file';
+  inputFich.accept = 'image/*,application/pdf';
+  inputFich.multiple = true;
+  inputFich.hidden = true;
 
-  input.addEventListener('change', async () => {
-    if (!input.files || !input.files.length) return;
+  const btnCam = document.createElement('button');
+  btnCam.type = 'button';
+  btnCam.className = 'pa-bl-ajout';
+  btnCam.textContent = '📷 Photo';
+  btnCam.addEventListener('click', () => inputCam.click());
+
+  const btnFich = document.createElement('button');
+  btnFich.type = 'button';
+  btnFich.className = 'pa-bl-ajout';
+  btnFich.textContent = '📁 Fichier';
+  btnFich.addEventListener('click', () => inputFich.click());
+
+  async function envoyerFichiers(files, btn) {
+    if (!files || !files.length) return;
     const labelInit = btn.textContent;
     btn.disabled = true;
+    btnCam.disabled = true;
+    btnFich.disabled = true;
     btn.textContent = '⏳ Envoi…';
     const fd = new FormData();
-    [...input.files].forEach(f => fd.append('fichier', f, f.name));
+    [...files].forEach(f => fd.append('fichier', f, f.name));
     try {
       await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
-      // Recharger l'aperçu pour montrer la/les nouvelle(s) page(s)
       await chargerApercuBl(receptionId, zone);
     } catch (e) {
       btn.disabled = false;
+      btnCam.disabled = false;
+      btnFich.disabled = false;
       btn.textContent = labelInit;
       alert('Ajout du BL impossible : ' + e.message);
     }
-  });
+  }
 
-  zone.appendChild(btn);
-  zone.appendChild(input);
+  inputCam.addEventListener('change',  () => envoyerFichiers(inputCam.files,  btnCam));
+  inputFich.addEventListener('change', () => envoyerFichiers(inputFich.files, btnFich));
+
+  zone.appendChild(btnCam);
+  zone.appendChild(btnFich);
+  zone.appendChild(inputCam);
+  zone.appendChild(inputFich);
 }
 
 // ── Visionneuse plein écran ────────────────────────────────
