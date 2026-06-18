@@ -1622,6 +1622,10 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
         qtes = unites[unite_dominante]
         quantite_moyenne = round(sum(qtes) / len(qtes), 3)
         qte_max = max(qtes)
+        derniere_qte = next(
+            (o["quantite_commandee"] or 0 for o in reversed(occ) if (o["unite"] or "kg") == unite_dominante),
+            qtes[-1]
+        )
 
         # ── Consommation induite ────────────────────────────────────
         # Le commerce est irrégulier : on ne prédit pas QUAND commander, on
@@ -1675,6 +1679,7 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
             "est_reference": cat_id in refs,
             "nb_commandes": nb_cmd,
             "derniere_commande": derniere.isoformat(),
+            "derniere_qte": derniere_qte,
             "jours_depuis": jours_depuis,
             "intervalle_moyen_jours": intervalle_moyen,
             "quantite_moyenne": quantite_moyenne,

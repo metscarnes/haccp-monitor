@@ -854,7 +854,6 @@ function afficherCataloguePanier() {
     const qte = panierQte(id);
     const unite = panierUnite(id);
     const formatLbl = a.format_prix === 'kg' ? '€/kg' : '€/colis';
-    const stock = a.stock ?? 0;
     const kgOk = peutCommanderKg(a);
     const pieceOk = peutCommanderPiece(a);
     const colisOk = peutCommanderColis(a);
@@ -862,15 +861,23 @@ function afficherCataloguePanier() {
     // Indice de conversion : prix équivalent dans l'autre unité
     const puAffiche = prixUnitaire(a, unite);
     const desossageAuto = estDesossageAuto(a);   // ligne pilotée automatiquement (lecture seule)
+    const sugg = suggestionPour(a.id);
+    const cellDerniereCmd = (() => {
+      if (!sugg) return '<span style="color:#9ca3af">—</span>';
+      const qteAff = fmtKg(qteSuggereeArrondie(sugg.derniere_qte, sugg.unite_suggeree));
+      const unite = uniteLabel(sugg.unite_suggeree);
+      const dateAff = sugg.derniere_commande
+        ? new Date(sugg.derniere_commande).toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit' })
+        : '';
+      return `<strong>${qteAff} ${unite}</strong>${dateAff ? `<br><span style="font-size:.7em;color:#9ca3af">${dateAff}</span>` : ''}`;
+    })();
     return `
       <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}${desossageAuto ? ' ach-row--auto' : ''}">
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
         <td><code>${escHtml(a.code_article)}</code></td>
         <td class="ach-cell-nom">${escHtml(a.designation)}${badgeReference(a)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
-        <td class="ach-col-num">${stock > 0
-            ? `<strong>${stock}</strong>`
-            : '<span style="color:#9ca3af">0</span>'}</td>
+        <td class="ach-col-num">${cellDerniereCmd}</td>
         <td>
           ${desossageAuto ? `
           <div class="ach-qte-cell">
