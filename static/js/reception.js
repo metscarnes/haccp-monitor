@@ -3040,13 +3040,15 @@ const elBtnOcrBl  = document.getElementById('rec-btn-ocr-bl');
 const elOcrStatut = document.getElementById('rec-ocr-statut');
 
 // Affiche le bloc OCR si une photo de BL a été prise (1er fournisseur).
-// Masqué quand une commande est déjà liée (le batch est déjà pré-rempli),
-// ou s'il n'y a pas de photo à analyser.
+// Affiché dès qu'il y a une photo de BL et que la fiche est créée (receptionId).
+// Fonctionne dans les DEUX cas :
+//  • sans commande → l'OCR crée les cartes
+//  • avec commande → l'OCR remplit lot/DLC sur les cartes déjà créées (cas le
+//    plus utile : on connaît les articles attendus, l'OCR complète la traçabilité)
 function majBlocOcr() {
   if (!elOcrBloc) return;
   const aPhotoBl = (fournisseursListe[0]?.photos || []).length > 0;
-  const commandeLiee = commandeIds.some(Boolean) && commandeLignes.length > 0;
-  elOcrBloc.hidden = !(aPhotoBl && receptionId && !commandeLiee);
+  elOcrBloc.hidden = !(aPhotoBl && receptionId);
   if (elOcrStatut) elOcrStatut.hidden = true;
 }
 
@@ -3097,52 +3099,119 @@ async function lancerExtractionOcr() {
 // Réutilise le mode batch existant : chaque ligne OCR devient un « ligneCmd »
 // minimal (pas de catalogue, désignation = libellé lu). L'utilisateur corrige.
 function prefillBatchDepuisOcr(lignes) {
-  entrerModeBatch();  // remet batchLignes à zéro et affiche la liste
+  // Si une commande est déjà liée, des cartes batch existent déjà : on REMPLIT
+  // ces cartes par appariement (sans les recréer). Sinon, on crée une carte par
+  // ligne OCR.
+  const commandeLiee = modeBatch && batchLignes.length > 0;
+  if (commandeLiee) {
+    prefillCartesExistantes(lignes);
+  } else {
+    creerCartesDepuisOcr(lignes);
+  }
+  majBtnTerminerBatch();
+}
 
-  // Adapter le titre : ici les lignes viennent du BL (OCR), pas d'une commande.
+// Normalise un libellé pour comparer deux désignations (minuscules, sans accents,
+// sans ponctuation). Sert à apparier une ligne OCR à une carte de commande.
+function _normLibelle(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // retire les accents
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+// Score de recouvrement de mots entre deux libellés (0 à 1).
+function _scoreLibelle(a, b) {
+  const ma = new Set(_normLibelle(a).split(' ').filter(Boolean));
+  const mb = new Set(_normLibelle(b).split(' ').filter(Boolean));
+  if (!ma.size || !mb.size) return 0;
+  let communs = 0;
+  ma.forEach(m => { if (mb.has(m)) communs++; });
+  return communs / Math.min(ma.size, mb.size);
+}
+
+// Applique lot/DLC/poids d'une ligne OCR sur une carte batch (état existant ou neuf).
+function _appliquerOcrSurCarte(etat, l) {
+  const carte = etat.el;
+  const inpLot   = carte.querySelector('.rec-batch-lot');
+  const inpDate  = carte.querySelector('.rec-batch-date');
+  const inpPoids = carte.querySelector('.rec-batch-poids');
+  // On ne remplit que les champs vides : ne jamais écraser une saisie manuelle.
+  if (inpLot && l.numero_lot && !inpLot.value.trim())   inpLot.value  = l.numero_lot;
+  if (inpDate && l.dlc && !inpDate.value)               inpDate.value = l.dlc;  // ISO
+  if (inpPoids && l.poids_kg != null && !inpPoids.value) inpPoids.value = l.poids_kg;
+
+  if (l.dlc_suspecte) {
+    carte.classList.add('rec-batch-ocr-suspect');
+    if (l.alerte && !carte.querySelector('.rec-batch-ocr-alerte')) {
+      const note = document.createElement('div');
+      note.className = 'rec-batch-ocr-alerte';
+      note.textContent = `⚠️ ${l.alerte} — à vérifier`;
+      carte.querySelector('.rec-batch-champs')?.before(note);
+    }
+  }
+  majBadgeCarte(etat);
+}
+
+// Cas SANS commande : une carte par ligne OCR.
+function creerCartesDepuisOcr(lignes) {
+  entrerModeBatch();  // remet batchLignes à zéro et affiche la liste
   const elTitre = document.getElementById('rec-batch-titre');
   if (elTitre) elTitre.textContent = 'Articles lus sur le bon de livraison';
 
   lignes.forEach(l => {
-    const ligneCmd = {
+    creerCarteBatch({
       designation: l.designation || 'Article',
       code_article: l.reference || null,
       catalogue_fournisseur_id: null,
       quantite_commandee: l.quantite ?? null,
       unite: 'kg',
-      dlc_type: null,                       // DLC standard par défaut
+      dlc_type: null,
       _fournisseur_id:  fournisseursListe[0]?.id  || null,
       _fournisseur_nom: fournisseursListe[0]?.nom || null,
-    };
-    creerCarteBatch(ligneCmd);
+    });
+    _appliquerOcrSurCarte(batchLignes[batchLignes.length - 1], l);
+  });
+}
 
-    // La carte qu'on vient de créer est la dernière de batchLignes.
-    const etat = batchLignes[batchLignes.length - 1];
-    const carte = etat.el;
+// Cas AVEC commande : remplir les cartes existantes par appariement de libellé.
+// Chaque ligne OCR rejoint la carte de commande la plus ressemblante (non déjà prise).
+function prefillCartesExistantes(lignes) {
+  const dispo = [...batchLignes];   // cartes pas encore appariées
+  const orphelines = [];            // lignes OCR sans correspondance
 
-    // Pré-remplir lot / DLC / poids depuis l'OCR
-    const inpLot   = carte.querySelector('.rec-batch-lot');
-    const inpDate  = carte.querySelector('.rec-batch-date');
-    const inpPoids = carte.querySelector('.rec-batch-poids');
-    if (inpLot && l.numero_lot)  inpLot.value  = l.numero_lot;
-    if (inpDate && l.dlc)        inpDate.value = l.dlc;   // format ISO AAAA-MM-JJ
-    if (inpPoids && l.poids_kg != null) inpPoids.value = l.poids_kg;
-
-    // Surligner les lignes douteuses (DLC suspecte) pour attirer la vérification
-    if (l.dlc_suspecte) {
-      carte.classList.add('rec-batch-ocr-suspect');
-      if (l.alerte) {
-        const note = document.createElement('div');
-        note.className = 'rec-batch-ocr-alerte';
-        note.textContent = `⚠️ ${l.alerte} — à vérifier`;
-        carte.querySelector('.rec-batch-champs')?.before(note);
-      }
+  lignes.forEach(l => {
+    let best = null, bestScore = 0, bestIdx = -1;
+    dispo.forEach((etat, i) => {
+      const s = _scoreLibelle(l.designation, etat.designation);
+      if (s > bestScore) { bestScore = s; best = etat; bestIdx = i; }
+    });
+    if (best && bestScore >= 0.5) {   // appariement suffisamment sûr
+      _appliquerOcrSurCarte(best, l);
+      dispo.splice(bestIdx, 1);
+    } else {
+      orphelines.push(l);
     }
-
-    majBadgeCarte(etat);
   });
 
-  majBtnTerminerBatch();
+  // Lignes OCR non rattachées à la commande : on les ajoute comme cartes en plus
+  // (article livré non commandé, ou libellé trop différent). À vérifier par l'humain.
+  orphelines.forEach(l => {
+    creerCarteBatch({
+      designation: l.designation || 'Article',
+      code_article: l.reference || null,
+      catalogue_fournisseur_id: null,
+      quantite_commandee: l.quantite ?? null,
+      unite: 'kg',
+      dlc_type: null,
+      _fournisseur_id:  fournisseursListe[0]?.id  || null,
+      _fournisseur_nom: fournisseursListe[0]?.nom || null,
+    });
+    const etat = batchLignes[batchLignes.length - 1];
+    etat.el.classList.add('rec-batch-ocr-suspect');
+    _appliquerOcrSurCarte(etat, l);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
