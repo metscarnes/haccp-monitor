@@ -21,6 +21,7 @@ from src.database import (
     get_lignes_en_attente,
     count_lignes_en_attente,
     completer_ligne_attente,
+    marquer_non_recu,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,3 +68,13 @@ async def completer(ligne_id: int, body: CompletionBody):
     if ligne is None:
         raise HTTPException(404, "Ligne de réception introuvable")
     return ligne
+
+
+@router.put("/lignes/{ligne_id}/non-recu")
+async def non_recu(ligne_id: int):
+    """Marque la ligne comme non reçue — quitte la file d'attente sans entrer en stock."""
+    async with get_db() as db:
+        ligne = await marquer_non_recu(db, ligne_id)
+    if ligne is None:
+        raise HTTPException(404, "Ligne de réception introuvable")
+    return {"statut": "non_recu", "ligne_id": ligne_id}

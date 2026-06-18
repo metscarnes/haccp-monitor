@@ -402,6 +402,26 @@
     }
     .pa-message-icone { font-size: 42px; margin-bottom: 10px; }
     .pa-message-texte { font-size: 16px; font-weight: 600; }
+
+    .pa-btn-non-recu {
+      margin-top: 8px;
+      background: transparent;
+      border: 2px solid var(--alerte);
+      border-radius: 8px;
+      color: var(--alerte);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 10px 12px;
+      width: 100%;
+      transition: background .15s, color .15s;
+    }
+    .pa-btn-non-recu:active { opacity: .8; }
+    .pa-btn-non-recu.confirmer {
+      background: var(--alerte);
+      color: #FFF;
+    }
+    .pa-btn-non-recu:disabled { opacity: .5; cursor: not-allowed; }
   </style>
 </head>
 <body>

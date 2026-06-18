@@ -466,6 +466,7 @@ function rendreCarte(ligne) {
     </div>
 
     <button class="pa-btn-valider" type="button">✓ Valider et entrer en stock</button>
+    <button class="pa-btn-non-recu" type="button">✗ Non reçu</button>
     <div class="pa-erreur" hidden></div>
   `;
 
@@ -475,6 +476,9 @@ function rendreCarte(ligne) {
 
   const btnLot = carte.querySelector('.pa-btn-lot-interne');
   if (btnLot) btnLot.addEventListener('click', () => genererLotInterne(carte, ligne, btnLot, erreur));
+
+  const btnNonRecu = carte.querySelector('.pa-btn-non-recu');
+  if (btnNonRecu) btnNonRecu.addEventListener('click', () => marquerNonRecu(carte, ligne, btnNonRecu, erreur));
 
   return carte;
 }
@@ -599,6 +603,49 @@ async function valider(carte, ligne, btn, erreur) {
     erreur.hidden = false;
     btn.disabled = false;
     btn.textContent = '✓ Valider et entrer en stock';
+  }
+}
+
+// ── Marquer "non reçu" (2 taps : premier = demande, second = confirme) ─────
+async function marquerNonRecu(carte, ligne, btn, erreur) {
+  erreur.hidden = true;
+
+  // Premier tap : demande de confirmation
+  if (!btn.classList.contains('confirmer')) {
+    btn.classList.add('confirmer');
+    btn.textContent = '⚠️ Confirmer : non reçu ?';
+    // Reset automatique après 4 s si l'utilisateur ne confirme pas
+    const timer = setTimeout(() => {
+      btn.classList.remove('confirmer');
+      btn.textContent = '✗ Non reçu';
+    }, 4000);
+    btn.dataset.confirmTimer = timer;
+    return;
+  }
+
+  // Second tap : confirmation
+  clearTimeout(Number(btn.dataset.confirmTimer));
+  btn.disabled = true;
+  btn.textContent = '⏳…';
+
+  try {
+    await apiFetch(`/api/attente/lignes/${ligne.ligne_id}/non-recu`, { method: 'PUT' });
+    // Retirer de la source de vérité et re-rendre
+    toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
+    if (!toutesLignes.length) {
+      elBarre.hidden = true;
+      elCompteur.textContent = '';
+      afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
+    } else {
+      remplirFiltreFournisseurs();
+      rendre();
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.classList.remove('confirmer');
+    btn.textContent = '✗ Non reçu';
+    erreur.textContent = 'Erreur lors de l\'enregistrement. Réessayez.';
+    erreur.hidden = false;
   }
 }
 

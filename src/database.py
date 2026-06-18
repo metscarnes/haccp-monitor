@@ -3705,6 +3705,31 @@ async def completer_ligne_attente(
     return dict(updated) if updated else None
 
 
+async def marquer_non_recu(
+    db: aiosqlite.Connection,
+    ligne_id: int,
+) -> Optional[dict]:
+    """Marque une ligne en_attente comme non reçue (statut 'non_recu').
+
+    Le produit quitte la file d'attente sans entrer en stock.
+    Renvoie la ligne mise à jour, ou None si introuvable.
+    """
+    cur = await db.execute(
+        "SELECT id, statut FROM reception_lignes WHERE id = ?", (ligne_id,)
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+    await db.execute(
+        "UPDATE reception_lignes SET statut = 'non_recu' WHERE id = ?",
+        (ligne_id,),
+    )
+    await db.commit()
+    cur2 = await db.execute("SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,))
+    updated = await cur2.fetchone()
+    return dict(updated) if updated else None
+
+
 async def update_reception_temperature_camion(
     db: aiosqlite.Connection,
     reception_id: int,
