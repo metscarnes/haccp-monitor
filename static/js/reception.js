@@ -1600,6 +1600,7 @@ async function creerFiche() {
   // de revenir à l'écran produits.
   if (receptionId) {
     await propagerTempCamionSiModifiee();
+    majBlocOcr();
     allerEtape(3);
     return;
   }

@@ -57,6 +57,11 @@ function bindEvents() {
   document.getElementById('btn-panier-generer').addEventListener('click', panierGenerer);
   document.getElementById('panier-search').addEventListener('input', afficherCataloguePanier);
   document.getElementById('panier-filtre-fournisseur').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-famille').addEventListener('change', () => {
+    remplirFiltresPanier();   // recalcule les sous-familles de la famille choisie
+    afficherCataloguePanier();
+  });
+  document.getElementById('panier-filtre-sousfamille').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-reference').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-habituels').addEventListener('change', afficherCataloguePanier);
@@ -127,6 +132,35 @@ async function chargerCatalogueTous() {
   } catch(e) {
     catalogueTous = [];
   }
+}
+
+// Alimente les listes Famille / Sous-famille du modal de sélection à partir du
+// catalogue. La sous-famille dépend de la famille choisie : si une famille est
+// sélectionnée, on ne propose que ses sous-familles. Conserve la sélection
+// courante si elle reste valide.
+function remplirFiltresPanier() {
+  const selFam  = document.getElementById('panier-filtre-famille');
+  const selSfam = document.getElementById('panier-filtre-sousfamille');
+  if (!selFam || !selSfam) return;
+  const famCourante  = selFam.value;
+  const sfamCourante = selSfam.value;
+
+  const remplir = (sel, valeurs, labelTous, garder) => {
+    sel.innerHTML = `<option value="">${labelTous}</option>` +
+      valeurs.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+    sel.value = valeurs.includes(garder) ? garder : '';
+  };
+
+  const familles = [...new Set(catalogueTous.map(a => a.famille).filter(Boolean))].sort();
+  remplir(selFam, familles, 'Toutes', famCourante);
+
+  // Sous-familles : restreintes à la famille active, sinon toutes.
+  const sousFams = [...new Set(
+    catalogueTous
+      .filter(a => !selFam.value || a.famille === selFam.value)
+      .map(a => a.sous_famille).filter(Boolean)
+  )].sort();
+  remplir(selSfam, sousFams, 'Toutes', sfamCourante);
 }
 
 function afficherStats() {
@@ -478,9 +512,12 @@ async function ouvrirPanier() {
   }
   document.getElementById('panier-search').value = '';
   document.getElementById('panier-filtre-fournisseur').value = '';
+  document.getElementById('panier-filtre-famille').value = '';
+  document.getElementById('panier-filtre-sousfamille').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
   document.getElementById('panier-filtre-reference').checked = false;
   document.getElementById('panier-filtre-habituels').checked = true;   // « on commande toujours la même chose »
+  remplirFiltresPanier();   // alimente Famille / Sous-famille depuis le catalogue
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
   panierSauver();
   afficherCataloguePanier();
@@ -775,6 +812,8 @@ function fermerPanier() {
 function afficherCataloguePanier() {
   const q      = document.getElementById('panier-search').value.toLowerCase().trim();
   const fourn  = document.getElementById('panier-filtre-fournisseur').value;
+  const fam    = document.getElementById('panier-filtre-famille').value;
+  const sfam   = document.getElementById('panier-filtre-sousfamille').value;
   const selOnly = document.getElementById('panier-filtre-selection').checked;
   const refOnly = document.getElementById('panier-filtre-reference').checked;
   const habituels = document.getElementById('panier-filtre-habituels').checked;
@@ -782,6 +821,8 @@ function afficherCataloguePanier() {
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
+    if (fam && a.famille !== fam) return false;
+    if (sfam && a.sous_famille !== sfam) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
     if (refOnly && !estReference(a.id)) return false;
     if (habituels && !panierQte(String(a.id)) && !estProduitHabituel(a.id)) return false;
