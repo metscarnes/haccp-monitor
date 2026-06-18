@@ -320,7 +320,13 @@ function remplirDetail(el, rec) {
     el.appendChild(btnPcr);
   }
 
-  // Boutons photos BL (principal + supplémentaires multi-fournisseur)
+  // ── Photos BL multi-pages (nouveau système) ──
+  const zoneBlPages = document.createElement('div');
+  zoneBlPages.style.cssText = 'margin-bottom:8px;';
+  el.appendChild(zoneBlPages);
+  chargerBlPagesHistorique(rec.id, zoneBlPages);
+
+  // Boutons photos BL ancienne API (principal + supplémentaires multi-fournisseur)
   const blsSupp = Array.isArray(rec.bls_supplementaires) ? rec.bls_supplementaires : [];
   if (rec.photo_bl_filename) {
     const btnBl = document.createElement('button');
@@ -468,13 +474,14 @@ async function annulerReception(rec, btn) {
 
 // ── Création ligne produit ────────────────────────────────────
 function creerLigne(lig) {
-  const estNC = lig.conforme === 0;
-  const enAttente = lig.statut === 'en_attente';
+  const estNC      = lig.conforme === 0;
+  const enAttente  = lig.statut === 'en_attente';
+  const nonRecu    = lig.statut === 'non_recu';
 
   const div = document.createElement('div');
   div.className = `rh-ligne ${estNC ? 'rh-ligne--nc' : ''}`;
-  const couleurBord = enAttente ? '#B91C1C' : (estNC ? '#C93030' : '#2D7D46');
-  div.style.cssText = `border: 3px solid ${couleurBord}; border-radius: 8px; padding: 12px;`;
+  const couleurBord = nonRecu ? '#6B7280' : enAttente ? '#B91C1C' : (estNC ? '#C93030' : '#2D7D46');
+  div.style.cssText = `border: 3px solid ${couleurBord}; border-radius: 8px; padding: 12px; ${nonRecu ? 'opacity:.65;' : ''}`;
 
   const entete = document.createElement('div');
   entete.className = 'rh-ligne-entete';
@@ -493,7 +500,11 @@ function creerLigne(lig) {
   entete.appendChild(gauche);
 
   const badge = document.createElement('span');
-  if (enAttente) {
+  if (nonRecu) {
+    badge.className = 'rh-ligne-badge';
+    badge.style.cssText = 'background:#6B7280;color:#FFF;';
+    badge.textContent = '✗ Non reçu';
+  } else if (enAttente) {
     badge.className = 'rh-ligne-badge rh-ligne-badge--nc';
     badge.textContent = '⛔ En attente';
   } else {
@@ -507,11 +518,18 @@ function creerLigne(lig) {
   const grille = document.createElement('div');
   grille.className = 'rh-ligne-grille';
 
+  const dateLabel = lig.dlc_type === 'date_abattage' ? "Date abattage"
+                  : lig.dlc_type === 'no_dlc'        ? null
+                  : 'DLC';
+  const dateValeur = lig.dlc_type === 'date_abattage'
+    ? formatDateFR(lig.date_abattage)
+    : formatDateFR(lig.dlc);
+
   const champs = [
     { label: 'Fournisseur',   valeur: lig.fournisseur_nom || '—' },
     { label: 'N° lot',        valeur: lig.numero_lot || '—' },
     { label: 'Origine',       valeur: lig.origine || '—' },
-    { label: 'DLC',           valeur: formatDateFR(lig.dlc) },
+    ...(dateLabel ? [{ label: dateLabel, valeur: dateValeur }] : []),
     { label: 'T° réception',  valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur',     valeur: formatTemp(lig.temperature_coeur) },
   ];
@@ -554,7 +572,7 @@ function creerLigne(lig) {
   }
 
   // Produit en attente : mini-formulaire de complétion lot/DLC (ou date d'abattage)
-  if (enAttente) {
+  if (enAttente && !nonRecu) {
     div.appendChild(creerFormCompletion(lig));
   }
 
@@ -664,6 +682,155 @@ elModal.addEventListener('click', fermerModal);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !elModal.hidden) fermerModal();
 });
+
+// ── Pages BL multi-pages (produits-attente + historique) ─────
+// Charge et affiche les vignettes de pages BL pour une réception,
+// avec bouton d'ajout (caméra ou fichier via camera.js).
+async function chargerBlPagesHistorique(receptionId, zone) {
+  zone.innerHTML = '<span style="font-size:13px;color:#888;">Chargement BL…</span>';
+
+  let data;
+  try {
+    data = await apiFetch(`/api/receptions/${receptionId}/bl-apercu`);
+  } catch {
+    zone.innerHTML = '';
+    return;
+  }
+
+  const pages = data.pages || [];
+  zone.innerHTML = '';
+
+  if (pages.length) {
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:12px;font-weight:700;color:#6B3A1F;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;';
+    label.textContent = `📎 BL — ${pages.length} page(s)`;
+    zone.appendChild(label);
+
+    const strip = document.createElement('div');
+    strip.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;';
+
+    const urls = pages.map(p => p.url);
+    pages.forEach((p, idx) => {
+      const img = document.createElement('img');
+      img.src   = p.url;
+      img.alt   = `BL page ${idx + 1}`;
+      img.title = `Voir la page ${idx + 1}`;
+      img.style.cssText = 'width:54px;height:54px;object-fit:cover;border-radius:8px;border:2px solid #6B3A1F;cursor:pointer;background:#f0e6d2;';
+      img.addEventListener('click', e => {
+        e.stopPropagation();
+        ouvrirViewerPages(urls, idx);
+      });
+      strip.appendChild(img);
+    });
+    zone.appendChild(strip);
+  }
+
+  // Bouton d'ajout d'une nouvelle page
+  const input = document.createElement('input');
+  input.type   = 'file';
+  input.accept = 'image/*,application/pdf';
+  input.hidden = true;
+
+  const btnAjout = document.createElement('button');
+  btnAjout.type      = 'button';
+  btnAjout.style.cssText = 'background:#FFF;border:2px dashed #6B3A1F;border-radius:8px;color:#6B3A1F;cursor:pointer;font-size:13px;font-weight:700;height:48px;padding:0 14px;white-space:nowrap;';
+  btnAjout.textContent = '＋ Ajouter une page BL';
+
+  btnAjout.addEventListener('click', e => {
+    e.stopPropagation();
+    input.value = '';
+    if (typeof ouvrirChoixPhoto === 'function') {
+      ouvrirChoixPhoto(input);
+    } else {
+      input.click();
+    }
+  });
+
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    btnAjout.disabled    = true;
+    btnAjout.textContent = '⏳ Envoi…';
+    const fd = new FormData();
+    fd.append('fichier', file, file.name);
+    try {
+      await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
+      await chargerBlPagesHistorique(receptionId, zone);
+    } catch (err) {
+      btnAjout.disabled    = false;
+      btnAjout.textContent = '＋ Ajouter une page BL';
+      alert('Ajout impossible : ' + err.message);
+    }
+    input.value = '';
+  });
+
+  zone.appendChild(btnAjout);
+  zone.appendChild(input);
+}
+
+// Viewer plein écran pages BL (utilisé dans l'historique — produits-attente a le sien)
+function ouvrirViewerPages(urls, startIdx) {
+  let idx = startIdx;
+
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;display:flex;flex-direction:column;';
+
+  const barre = document.createElement('div');
+  barre.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 16px;color:#FFF;font-weight:700;gap:12px;';
+
+  const btnFerm = document.createElement('button');
+  btnFerm.textContent = '✕ Fermer';
+  btnFerm.style.cssText = 'background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.5);border-radius:8px;color:#FFF;cursor:pointer;font-size:16px;font-weight:700;height:44px;padding:0 16px;';
+
+  const titre = document.createElement('span');
+
+  const nav = document.createElement('div');
+  nav.style.cssText = 'display:flex;gap:8px;';
+
+  const btnPrec = document.createElement('button');
+  btnPrec.textContent = '‹';
+  btnPrec.style.cssText = 'background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.5);border-radius:8px;color:#FFF;cursor:pointer;font-size:18px;font-weight:700;height:44px;width:52px;';
+
+  const btnSuiv = document.createElement('button');
+  btnSuiv.textContent = '›';
+  btnSuiv.style.cssText = btnPrec.style.cssText;
+
+  nav.appendChild(btnPrec);
+  nav.appendChild(btnSuiv);
+  barre.appendChild(btnFerm);
+  barre.appendChild(titre);
+  barre.appendChild(nav);
+
+  const imgWrap = document.createElement('div');
+  imgWrap.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:8px;';
+  const img = document.createElement('img');
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+  imgWrap.appendChild(img);
+
+  ov.appendChild(barre);
+  ov.appendChild(imgWrap);
+  document.body.appendChild(ov);
+
+  function majViewer() {
+    img.src = urls[idx] || '';
+    titre.textContent = `Page ${idx + 1} / ${urls.length}`;
+    btnPrec.disabled = idx <= 0;
+    btnSuiv.disabled = idx >= urls.length - 1;
+  }
+  function fermer() { ov.remove(); }
+
+  btnFerm.addEventListener('click', fermer);
+  btnPrec.addEventListener('click', () => { if (idx > 0) { idx--; majViewer(); } });
+  btnSuiv.addEventListener('click', () => { if (idx < urls.length - 1) { idx++; majViewer(); } });
+  ov.addEventListener('click', e => { if (e.target === ov || e.target === imgWrap) fermer(); });
+  document.addEventListener('keydown', function handler(e) {
+    if (e.key === 'Escape') { fermer(); document.removeEventListener('keydown', handler); }
+    else if (e.key === 'ArrowLeft'  && idx > 0) { idx--; majViewer(); }
+    else if (e.key === 'ArrowRight' && idx < urls.length - 1) { idx++; majViewer(); }
+  });
+
+  majViewer();
+}
 
 // ── Messages ─────────────────────────────────────────────────
 function afficherMessage(icone, texte) {

@@ -263,62 +263,51 @@ async function chargerApercuBl(receptionId, zone) {
   ajouterBoutonAjoutBl(receptionId, zone);
 }
 
-// Bouton « + Ajouter une page de BL » (photo ou fichier image/PDF).
+// Zone « + Ajouter une/des page(s) de BL » — utilise ouvrirChoixPhoto (camera.js).
+// Après chaque envoi réussi, l'aperçu se recharge et le bouton reste disponible
+// pour enchaîner immédiatement une nouvelle page.
 function ajouterBoutonAjoutBl(receptionId, zone) {
-  // Input caméra (rear camera, image uniquement)
-  const inputCam = document.createElement('input');
-  inputCam.type = 'file';
-  inputCam.accept = 'image/*';
-  inputCam.capture = 'environment';
-  inputCam.hidden = true;
+  const input = document.createElement('input');
+  input.type   = 'file';
+  input.accept = 'image/*,application/pdf';
+  input.hidden = true;
 
-  // Input fichier (image ou PDF, multiple)
-  const inputFich = document.createElement('input');
-  inputFich.type = 'file';
-  inputFich.accept = 'image/*,application/pdf';
-  inputFich.multiple = true;
-  inputFich.hidden = true;
+  const btn = document.createElement('button');
+  btn.type      = 'button';
+  btn.className = 'pa-bl-ajout';
+  btn.textContent = '＋ Ajouter une page';
 
-  const btnCam = document.createElement('button');
-  btnCam.type = 'button';
-  btnCam.className = 'pa-bl-ajout';
-  btnCam.textContent = '📷 Photo';
-  btnCam.addEventListener('click', () => inputCam.click());
+  btn.addEventListener('click', () => {
+    input.value = '';
+    if (typeof ouvrirChoixPhoto === 'function') {
+      ouvrirChoixPhoto(input);
+    } else {
+      input.click();
+    }
+  });
 
-  const btnFich = document.createElement('button');
-  btnFich.type = 'button';
-  btnFich.className = 'pa-bl-ajout';
-  btnFich.textContent = '📁 Fichier';
-  btnFich.addEventListener('click', () => inputFich.click());
-
-  async function envoyerFichiers(files, btn) {
-    if (!files || !files.length) return;
-    const labelInit = btn.textContent;
-    btn.disabled = true;
-    btnCam.disabled = true;
-    btnFich.disabled = true;
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    if (!file) return;
+    btn.disabled    = true;
     btn.textContent = '⏳ Envoi…';
     const fd = new FormData();
-    [...files].forEach(f => fd.append('fichier', f, f.name));
+    fd.append('fichier', file, file.name);
     try {
       await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
+      // Recharger l'aperçu puis rendre le bouton disponible pour une page suivante
       await chargerApercuBl(receptionId, zone);
     } catch (e) {
-      btn.disabled = false;
-      btnCam.disabled = false;
-      btnFich.disabled = false;
-      btn.textContent = labelInit;
+      btn.disabled    = false;
+      btn.textContent = '＋ Ajouter une page';
       alert('Ajout du BL impossible : ' + e.message);
     }
-  }
+    // Réinitialiser l'input pour permettre une nouvelle sélection du même fichier
+    input.value = '';
+  });
 
-  inputCam.addEventListener('change',  () => envoyerFichiers(inputCam.files,  btnCam));
-  inputFich.addEventListener('change', () => envoyerFichiers(inputFich.files, btnFich));
-
-  zone.appendChild(btnCam);
-  zone.appendChild(btnFich);
-  zone.appendChild(inputCam);
-  zone.appendChild(inputFich);
+  zone.appendChild(btn);
+  zone.appendChild(input);
 }
 
 // ── Visionneuse plein écran ────────────────────────────────
