@@ -280,25 +280,27 @@ async function chargerApercuBl(receptionId, zone, blNumeroZone) {
     img.addEventListener('click', () => ouvrirViewer(urls, idx));
     wrapper.appendChild(img);
 
-    // Bouton supprimer (coin haut-droit)
-    const btnSup = document.createElement('button');
-    btnSup.type = 'button';
-    btnSup.textContent = '✕';
-    btnSup.style.cssText = 'position:absolute;top:-8px;right:-8px;background:#C93030;color:#FFF;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer;padding:0;line-height:1;';
-    btnSup.title = 'Supprimer cette page';
-    btnSup.addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!confirm('Supprimer cette page de BL ?')) return;
-      btnSup.disabled = true;
-      try {
-        await apiFetch(`/api/receptions/${receptionId}/bl-pages/${p.page_id}`, { method: 'DELETE' });
-        await chargerApercuBl(receptionId, zone, blNumeroZone);
-      } catch (err) {
-        alert('Suppression impossible : ' + err.message);
-        btnSup.disabled = false;
-      }
-    });
-    wrapper.appendChild(btnSup);
+    // Bouton supprimer (coin haut-droit) — uniquement pour les pages multi-pages avec page_id
+    if (p.page_id) {
+      const btnSup = document.createElement('button');
+      btnSup.type = 'button';
+      btnSup.textContent = '✕';
+      btnSup.style.cssText = 'position:absolute;top:-8px;right:-8px;background:#C93030;color:#FFF;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer;padding:0;line-height:1;';
+      btnSup.title = 'Supprimer cette page';
+      btnSup.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (!confirm('Supprimer cette page de BL ?')) return;
+        btnSup.disabled = true;
+        try {
+          await apiFetch(`/api/receptions/${receptionId}/bl-pages/${p.page_id}`, { method: 'DELETE' });
+          await chargerApercuBl(receptionId, zone, blNumeroZone);
+        } catch (err) {
+          alert('Suppression impossible : ' + err.message);
+          btnSup.disabled = false;
+        }
+      });
+      wrapper.appendChild(btnSup);
+    }
 
     divVignettes.appendChild(wrapper);
   });

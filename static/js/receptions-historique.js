@@ -725,7 +725,7 @@ async function chargerBlPagesHistorique(receptionId, zone) {
       });
       wrapper.appendChild(img);
 
-      // Bouton supprimer (coin haut-droit)
+      // Bouton supprimer (coin haut-droit) — uniquement pour les pages multi-pages avec page_id
       if (p.page_id) {
         const btnSup = document.createElement('button');
         btnSup.type = 'button';
