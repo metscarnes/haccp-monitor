@@ -1803,6 +1803,21 @@ PRAGMA foreign_keys=ON;
                 UPDATE reception_lignes
                 SET statut = 'complet', attente_motif = NULL, dlc_type = 'no_dlc'
                 WHERE statut = 'en_attente'
+                  AND (numero_lot IS NOT NULL AND TRIM(numero_lot) != '' OR lot_interne = 1)
+                  AND catalogue_fournisseur_id IN (
+                      SELECT id FROM catalogue_fournisseur WHERE dlc_type = 'no_dlc'
+                  )
+                """
+            )
+            # Aligner dlc_type='no_dlc' sur les lignes qui manquent encore le lot
+            # (elles restent en_attente mais avec le bon motif 'lot')
+            await db.execute(
+                """
+                UPDATE reception_lignes
+                SET dlc_type = 'no_dlc', attente_motif = 'lot'
+                WHERE statut = 'en_attente'
+                  AND (numero_lot IS NULL OR TRIM(numero_lot) = '')
+                  AND lot_interne = 0
                   AND catalogue_fournisseur_id IN (
                       SELECT id FROM catalogue_fournisseur WHERE dlc_type = 'no_dlc'
                   )
@@ -3048,15 +3063,18 @@ def _calc_statut_attente(data: dict) -> tuple[str, Optional[str]]:
     get_stock_unifie). Renvoie (statut, attente_motif).
 
     dlc_type :
-        'no_dlc'        → aucune date ni lot requis (épices, emballages, etc.)
-        'date_abattage' → date d'abattage requise (carcasses en maturation)
-        'dlc' / None    → DLC ou DLUO requise
+        'no_dlc'        → lot requis, mais aucune date (épices, emballages, etc.)
+        'date_abattage' → lot + date d'abattage requis (carcasses en maturation)
+        'dlc' / None    → lot + DLC ou DLUO requis
     lot_interne=1 compte comme lot présent (numéro généré automatiquement).
     """
     dlc_type = data.get("dlc_type")
 
     if dlc_type == "no_dlc":
-        # Pas de date ni de lot requis pour les articles sans DLC
+        # Pas de date requise, mais le numéro de lot reste obligatoire
+        a_lot = bool((data.get("numero_lot") or "").strip()) or bool(data.get("lot_interne"))
+        if not a_lot:
+            return "en_attente", "lot"
         return "complet", None
 
     # lot_interne=1 signifie qu'un numéro a été généré automatiquement
