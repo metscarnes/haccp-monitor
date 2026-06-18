@@ -1173,7 +1173,16 @@ async def get_commandes(
             sql += " AND c.statut = ?"
             params.append(statut)
         if non_liee:
-            sql += " AND NOT EXISTS (SELECT 1 FROM commande_receptions_mapping m WHERE m.commande_id = c.id)"
+            # Une commande n'est masquée que si elle est liée à une réception
+            # CLÔTURÉE. Tant que la réception liée est 'en_cours' (fiche créée puis
+            # abandonnée sans clôture), la commande reste sélectionnable — sinon
+            # elle se retrouve piégée à une réception fantôme (ni au stock, ni en
+            # attente, ni livrée).
+            sql += """ AND NOT EXISTS (
+                SELECT 1 FROM commande_receptions_mapping m
+                JOIN receptions r ON r.id = m.reception_id
+                WHERE m.commande_id = c.id AND r.statut = 'cloturee'
+            )"""
         sql += " ORDER BY c.date_commande DESC LIMIT ?"
         params.append(limit)
         cur = await db.execute(sql, params)
@@ -1959,6 +1968,17 @@ async def create_mapping(body: MappingCreate):
     """Lie une réception à une commande (appelé depuis le module réception)."""
     async with get_db() as db:
         try:
+            # Nettoyer un éventuel lien vers une réception NON clôturée (fiche
+            # abandonnée sans clôture) : on remplace ce lien fantôme par le nouveau.
+            await db.execute(
+                """DELETE FROM commande_receptions_mapping
+                   WHERE commande_id = ?
+                     AND reception_id <> ?
+                     AND reception_id IN (
+                         SELECT id FROM receptions WHERE statut <> 'cloturee'
+                     )""",
+                (body.commande_id, body.reception_id),
+            )
             await db.execute(
                 """INSERT OR IGNORE INTO commande_receptions_mapping
                    (commande_id, reception_id, personnel_id)

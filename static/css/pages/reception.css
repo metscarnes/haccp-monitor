@@ -247,6 +247,26 @@ body.rec-body {
   color: var(--color-text);
   text-align: center;
 }
+/* Bandeau « réception non terminée » (fiche créée puis quittée sans clôture) */
+.rec-reprise {
+  margin: 0 auto 1.5rem;
+  max-width: 640px;
+  padding: 1rem 1.25rem;
+  border: 2px solid var(--color-alert, #c0392b);
+  border-radius: 12px;
+  background: #fdecea;
+}
+.rec-reprise-txt {
+  font-weight: 700;
+  color: var(--color-alert, #c0392b);
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+.rec-reprise-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
 .rec-personnel-grille {
   display: flex;
   flex-wrap: wrap;

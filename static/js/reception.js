@@ -32,6 +32,11 @@ if (sessionStorage.getItem('haccp_rec_state') && elStep0) {
 // Étape 0
 const elPersonnelGrille   = document.getElementById('rec-personnel-grille');
 const elChargementPerso   = document.getElementById('rec-chargement-personnel');
+// Bandeau « réception non terminée »
+const elRepriseBandeau    = document.getElementById('rec-reprise-bandeau');
+const elRepriseTxt        = document.getElementById('rec-reprise-txt');
+const elRepriseReprendre  = document.getElementById('rec-reprise-reprendre');
+const elRepriseAbandonner = document.getElementById('rec-reprise-abandonner');
 
 // Étape 1
 const elDateReception     = document.getElementById('rec-date-reception');
@@ -814,6 +819,97 @@ async function chargerPersonnel() {
     elChargementPerso.textContent = 'Impossible de charger le personnel.';
   }
 }
+
+
+// ── Reprise d'une réception non terminée ───────────────────
+// Une fiche créée puis quittée sans clôture reste 'en_cours' : elle n'apparaît
+// nulle part (ni stock, ni produits en attente) et piège la commande liée.
+// Au chargement, on la détecte et on propose de la reprendre ou de l'abandonner.
+let receptionEnCours = null;   // {id, nb_lignes, personnel_id, personnel_prenom, ...}
+
+async function detecterReceptionEnCours() {
+  try {
+    receptionEnCours = await apiFetch('/api/receptions/en-cours');
+  } catch {
+    receptionEnCours = null;
+  }
+  if (!receptionEnCours || !receptionEnCours.id || !elRepriseBandeau) return;
+
+  const dateTxt = receptionEnCours.date_reception || '';
+  const heureTxt = (receptionEnCours.heure_reception || '').slice(0, 5);
+  const qui = receptionEnCours.personnel_prenom ? ` par ${receptionEnCours.personnel_prenom}` : '';
+  const nb = receptionEnCours.nb_lignes || 0;
+  elRepriseTxt.textContent =
+    `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
+    + `n'a pas été clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
+    + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
+    + `ni en attente, et la commande liée reste bloquée.`;
+  elRepriseBandeau.hidden = false;
+}
+
+async function reprendreReceptionEnCours() {
+  if (!receptionEnCours || !receptionEnCours.id) return;
+  elRepriseReprendre.disabled = true;
+  try {
+    const rec = await apiFetch(`/api/receptions/${receptionEnCours.id}`);
+
+    // Restaurer l'état minimal du wizard pour pouvoir compléter + clôturer.
+    receptionId     = rec.id;
+    personnelId     = rec.personnel_id || receptionEnCours.personnel_id;
+    personnelPrenom = receptionEnCours.personnel_prenom || null;
+    if (rec.temperature_camion !== null && rec.temperature_camion !== undefined) {
+      elTempCamion.value = rec.temperature_camion;
+      dernierTempCamionEnvoye = rec.temperature_camion;
+    }
+    propreteCamion = rec.proprete_camion || 'satisfaisant';
+
+    // Restaurer les lignes déjà saisies (telles que majListeLignes les attend).
+    lignesAjoutees = (rec.lignes || []).map(l => ({
+      id:                    l.id,
+      produit_id:            l.produit_id,
+      produit_nom:           l.produit_nom,
+      conforme:              l.conforme,
+      numero_lot:            l.numero_lot,
+      origine:               l.origine,
+      temperature_reception: l.temperature_reception,
+      statut:                l.statut,
+      attente_motif:         l.attente_motif,
+    }));
+
+    elRepriseBandeau.hidden = true;
+
+    // Vue produits classique (formulaire unitaire) : l'opérateur ajoute les
+    // produits restants puis clôture normalement.
+    sortirModeBatch();
+    reinitFormProduit();
+    majListeLignes();
+    majSelectorFournisseur();
+    majBlocOcr();
+    allerEtape(3);
+  } catch (e) {
+    alert('Impossible de reprendre la réception : ' + e.message);
+    elRepriseReprendre.disabled = false;
+  }
+}
+
+async function abandonnerReceptionEnCours() {
+  if (!receptionEnCours || !receptionEnCours.id) return;
+  if (!confirm('Abandonner définitivement cette réception non terminée ? '
+    + 'Les produits saisis seront supprimés et la commande liée redeviendra '
+    + 'sélectionnable.')) return;
+  elRepriseAbandonner.disabled = true;
+  try {
+    await apiFetch(`/api/receptions/${receptionEnCours.id}`, { method: 'DELETE' });
+    receptionEnCours = null;
+    elRepriseBandeau.hidden = true;
+  } catch (e) {
+    alert('Abandon impossible : ' + e.message);
+    elRepriseAbandonner.disabled = false;
+  }
+}
+
+if (elRepriseReprendre)  elRepriseReprendre.addEventListener('click', reprendreReceptionEnCours);
+if (elRepriseAbandonner) elRepriseAbandonner.addEventListener('click', abandonnerReceptionEnCours);
 
 
 // ── ÉTAPE 1 : Camion ───────────────────────────────────────
@@ -4123,6 +4219,10 @@ async function init() {
   if (restaurerDepuisPcr01()) return;
 
   reinitCriteres();
+
+  // Proposer de reprendre/abandonner une réception laissée 'en_cours'
+  // (fiche créée puis quittée sans clôture).
+  await detecterReceptionEnCours();
 }
 
 init();

@@ -52,6 +52,20 @@
     <!-- ── ÉTAPE 0 : Personnel ── -->
     <section class="rec-step actif" id="rec-step-0"
              aria-label="Étape 1 — Opérateur">
+
+      <!-- Bandeau réception non terminée (fiche créée puis quittée sans clôture) -->
+      <div class="rec-reprise" id="rec-reprise-bandeau" hidden role="alert">
+        <div class="rec-reprise-txt" id="rec-reprise-txt"></div>
+        <div class="rec-reprise-actions">
+          <button type="button" class="rec-toggle-btn ok-sel" id="rec-reprise-reprendre">
+            ↩︎ Reprendre la saisie
+          </button>
+          <button type="button" class="rec-toggle-btn" id="rec-reprise-abandonner">
+            🗑 Abandonner
+          </button>
+        </div>
+      </div>
+
       <div class="rec-personnel-titre">Qui réceptionne ?</div>
       <div class="rec-personnel-grille" id="rec-personnel-grille"
            role="group" aria-label="Sélection de l'opérateur">

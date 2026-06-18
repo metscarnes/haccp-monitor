@@ -3799,6 +3799,31 @@ async def get_receptions(
     return out
 
 
+async def get_reception_en_cours(db: aiosqlite.Connection) -> Optional[dict]:
+    """Retourne la réception 'en_cours' la plus récente (fiche créée mais non
+    clôturée), ou None. Sert au bandeau « reprise » du module réception : une
+    fiche quittée sans clôture n'apparaît nulle part (ni stock, ni en attente)
+    et piège sa commande liée. On propose donc de la reprendre ou de l'abandonner.
+    """
+    cursor = await db.execute(
+        """
+        SELECT r.id, r.date_reception, r.heure_reception, r.created_at,
+               r.personnel_id,
+               TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
+               COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
+               (SELECT COUNT(*) FROM reception_lignes rl WHERE rl.reception_id = r.id) AS nb_lignes
+        FROM receptions r
+        LEFT JOIN personnel    p ON p.id = r.personnel_id
+        LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
+        WHERE r.statut <> 'cloturee'
+        ORDER BY r.created_at DESC
+        LIMIT 1
+        """
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
 async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional[dict]:
     cursor = await db.execute(
         """

@@ -29,7 +29,7 @@ from src.database import (
     get_db,
     get_fournisseurs, create_fournisseur, update_fournisseur,
     create_reception, add_reception_ligne, cloturer_reception,
-    get_receptions, get_reception,
+    get_receptions, get_reception, get_reception_en_cours,
     get_non_conformites, create_non_conformite,
     generer_lot_interne, update_reception_ligne,
     update_reception_temperature_camion,
@@ -469,6 +469,17 @@ async def annuler_reception(reception_id: int):
 async def textes_aide_visuel():
     """Référentiel des critères de contrôle visuel par espèce."""
     return TEXTES_AIDE_VISUEL
+
+
+# IMPORTANT : cette route doit être AVANT /receptions/{id}
+@router.get("/receptions/en-cours")
+async def reception_en_cours():
+    """Réception 'en_cours' la plus récente (fiche créée mais non clôturée), ou null.
+    Permet au module réception de proposer de reprendre/abandonner une fiche
+    quittée sans clôture (sinon elle disparaît du stock et piège sa commande liée).
+    """
+    async with get_db() as db:
+        return await get_reception_en_cours(db)
 
 
 @router.get("/receptions")
