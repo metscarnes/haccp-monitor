@@ -724,6 +724,42 @@ async def ocr_bl(reception_id: int):
     return data
 
 
+@router.get("/receptions/{reception_id}/bl-apercu")
+async def get_bl_apercu(reception_id: int):
+    """Liste TOUTES les pages du BL principal d'une réception, prêtes à afficher :
+    page 0 (photo_bl_filename) + pages supplémentaires (reception_bl_pages).
+    Renvoie pour chacune une URL d'image servie par les routes photo existantes.
+    Permet de contrôler visuellement le BL enregistré et de repérer une page manquante.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+        )
+        rec = await cur.fetchone()
+        if not rec:
+            raise HTTPException(404, "Réception non trouvée")
+
+        pages: List[dict] = []
+        if rec["photo_bl_filename"]:
+            pages.append({
+                "page_num": 0,
+                "url": f"/api/receptions/{reception_id}/photo-bl",
+            })
+
+        cur2 = await db.execute(
+            "SELECT id, page_num FROM reception_bl_pages "
+            "WHERE reception_id = ? AND bl_supplementaire_id IS NULL ORDER BY page_num",
+            (reception_id,),
+        )
+        for r in await cur2.fetchall():
+            pages.append({
+                "page_num": r["page_num"],
+                "url": f"/api/receptions/{reception_id}/bl-pages/{r['id']}/photo",
+            })
+
+    return {"reception_id": reception_id, "nb_pages": len(pages), "pages": pages}
+
+
 @router.get("/receptions/{reception_id}/bl-pages")
 async def get_bl_pages(reception_id: int, bl_supplementaire_id: Optional[int] = None):
     """Retourne la liste des pages BL supplémentaires (page_num >= 1).

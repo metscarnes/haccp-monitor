@@ -193,6 +193,94 @@
     .pa-groupe-statut.erreur{ color: var(--alerte); background: rgba(201,48,48,.10); }
     .pa-carte--suspect { border-left-color: var(--attention); background: rgba(232,145,58,.06); }
 
+    /* Aperçu du BL enregistré (pages) */
+    .pa-bl {
+      padding: 8px 14px 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pa-bl-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .pa-bl-vignette {
+      width: 54px;
+      height: 54px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 2px solid var(--accent);
+      cursor: pointer;
+      background: #f0e6d2;
+    }
+    .pa-bl-vignette:active { opacity: .8; }
+    .pa-bl-manquant {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--alerte);
+    }
+    /* Visionneuse plein écran */
+    .pa-viewer {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.9);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+    .pa-viewer[hidden] { display: none; }
+    .pa-viewer-barre {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      color: #FFF;
+      font-weight: 700;
+      gap: 12px;
+    }
+    .pa-viewer-fermer {
+      background: rgba(255,255,255,.15);
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 700;
+      height: 44px;
+      padding: 0 16px;
+    }
+    .pa-viewer-nav {
+      display: flex;
+      gap: 8px;
+    }
+    .pa-viewer-nav button {
+      background: rgba(255,255,255,.15);
+      border: 2px solid rgba(255,255,255,.5);
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      height: 44px;
+      width: 52px;
+    }
+    .pa-viewer-nav button:disabled { opacity: .35; cursor: not-allowed; }
+    .pa-viewer-img-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+      padding: 8px;
+    }
+    .pa-viewer-img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
     .pa-liste {
       display: flex;
       flex-direction: column;
@@ -326,6 +414,21 @@
   <div class="pa-message" id="pa-message" hidden>
     <div class="pa-message-icone" id="pa-message-icone">⏳</div>
     <div class="pa-message-texte" id="pa-message-texte">Chargement…</div>
+  </div>
+
+  <!-- Visionneuse plein écran du BL -->
+  <div class="pa-viewer" id="pa-viewer" hidden role="dialog" aria-label="Aperçu du bon de livraison">
+    <div class="pa-viewer-barre">
+      <button class="pa-viewer-fermer" id="pa-viewer-fermer" type="button">✕ Fermer</button>
+      <span id="pa-viewer-titre">Page 1 / 1</span>
+      <div class="pa-viewer-nav">
+        <button id="pa-viewer-prec" type="button" aria-label="Page précédente">‹</button>
+        <button id="pa-viewer-suiv" type="button" aria-label="Page suivante">›</button>
+      </div>
+    </div>
+    <div class="pa-viewer-img-wrap">
+      <img class="pa-viewer-img" id="pa-viewer-img" alt="Page du bon de livraison">
+    </div>
   </div>
 
   <script src="/static/js/produits-attente.js"></script>

@@ -109,6 +109,56 @@ async def test_endpoint_reception_en_cours(app_client, db):
 
 
 @pytest.mark.anyio
+async def test_bl_apercu_liste_toutes_les_pages(app_client, db):
+    personnel_id = await _seed(db)
+
+    # Réception avec une photo BL principale (page 0)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+    await db.execute(
+        "UPDATE receptions SET photo_bl_filename = 'BL-test-p0.jpg' WHERE id = ?", (rid,)
+    )
+    # Deux pages supplémentaires (page_num 1 et 2)
+    await db.execute(
+        "INSERT INTO reception_bl_pages (reception_id, bl_supplementaire_id, page_num, photo_filename) "
+        "VALUES (?, NULL, 1, 'BL-test-p1.jpg')", (rid,)
+    )
+    await db.execute(
+        "INSERT INTO reception_bl_pages (reception_id, bl_supplementaire_id, page_num, photo_filename) "
+        "VALUES (?, NULL, 2, 'BL-test-p2.jpg')", (rid,)
+    )
+    await db.commit()
+
+    r = await app_client.get(f"/api/receptions/{rid}/bl-apercu")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["nb_pages"] == 3
+    nums = [p["page_num"] for p in data["pages"]]
+    assert nums == [0, 1, 2]
+    # La page 0 pointe vers la route photo-bl, les autres vers bl-pages
+    assert data["pages"][0]["url"].endswith("/photo-bl")
+    assert "/bl-pages/" in data["pages"][1]["url"]
+
+
+@pytest.mark.anyio
+async def test_bl_apercu_sans_photo(app_client, db):
+    personnel_id = await _seed(db)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+    r = await app_client.get(f"/api/receptions/{rid}/bl-apercu")
+    assert r.status_code == 200
+    assert r.json()["nb_pages"] == 0
+
+
+@pytest.mark.anyio
 async def test_relier_nettoie_ancien_lien_non_cloture(app_client, db):
     personnel_id = await _seed(db)
     rid1 = await _creer_reception_en_cours(app_client, personnel_id)

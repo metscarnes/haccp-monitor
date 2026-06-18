@@ -19,6 +19,13 @@ const elMsgTexte  = document.getElementById('pa-message-texte');
 const elBarre     = document.getElementById('pa-barre');
 const elFiltreFourn = document.getElementById('pa-filtre-fourn');
 const elTri       = document.getElementById('pa-tri');
+// Visionneuse BL
+const elViewer     = document.getElementById('pa-viewer');
+const elViewerImg  = document.getElementById('pa-viewer-img');
+const elViewerTit  = document.getElementById('pa-viewer-titre');
+const elViewerPrec = document.getElementById('pa-viewer-prec');
+const elViewerSuiv = document.getElementById('pa-viewer-suiv');
+const elViewerFerm = document.getElementById('pa-viewer-fermer');
 
 // Toutes les lignes en attente, telles que reçues du serveur (source de vérité).
 let toutesLignes = [];
@@ -203,6 +210,12 @@ function rendreGroupe(g) {
   statut.className = 'pa-groupe-statut';
   statut.hidden = true;
 
+  // Aperçu du BL enregistré (vignettes de toutes les pages) — chargé en différé.
+  const blZone = document.createElement('div');
+  blZone.className = 'pa-bl';
+  blZone.innerHTML = '<span class="pa-bl-label">📎 BL…</span>';
+  chargerApercuBl(g.reception_id, blZone);
+
   const corps = document.createElement('div');
   corps.className = 'pa-groupe-corps';
   // Index des cartes par ligne_id pour pré-remplissage OCR.
@@ -215,9 +228,68 @@ function rendreGroupe(g) {
 
   groupe.appendChild(tete);
   groupe.appendChild(statut);
+  groupe.appendChild(blZone);
   groupe.appendChild(corps);
   elListe.appendChild(groupe);
 }
+
+// ── Aperçu du BL enregistré (toutes les pages) ─────────────
+async function chargerApercuBl(receptionId, zone) {
+  let data;
+  try {
+    data = await apiFetch(`/api/receptions/${receptionId}/bl-apercu`);
+  } catch {
+    zone.innerHTML = '<span class="pa-bl-manquant">⚠️ BL indisponible</span>';
+    return;
+  }
+
+  const pages = data.pages || [];
+  if (!pages.length) {
+    zone.innerHTML = '<span class="pa-bl-manquant">⚠️ Aucune photo de BL enregistrée — contrôlez la réception</span>';
+    return;
+  }
+
+  zone.innerHTML = `<span class="pa-bl-label">📎 BL — ${pages.length} page(s)&nbsp;:</span>`;
+  const urls = pages.map(p => p.url);
+  pages.forEach((p, idx) => {
+    const img = document.createElement('img');
+    img.className = 'pa-bl-vignette';
+    img.src = p.url;
+    img.alt = `BL page ${idx + 1}`;
+    img.title = `Voir la page ${idx + 1}`;
+    img.addEventListener('click', () => ouvrirViewer(urls, idx));
+    zone.appendChild(img);
+  });
+}
+
+// ── Visionneuse plein écran ────────────────────────────────
+let viewerUrls = [];
+let viewerIdx  = 0;
+
+function ouvrirViewer(urls, idx) {
+  viewerUrls = urls;
+  viewerIdx = idx;
+  majViewer();
+  elViewer.hidden = false;
+}
+function majViewer() {
+  elViewerImg.src = viewerUrls[viewerIdx] || '';
+  elViewerTit.textContent = `Page ${viewerIdx + 1} / ${viewerUrls.length}`;
+  elViewerPrec.disabled = viewerIdx <= 0;
+  elViewerSuiv.disabled = viewerIdx >= viewerUrls.length - 1;
+}
+function fermerViewer() { elViewer.hidden = true; elViewerImg.src = ''; }
+
+if (elViewerFerm) elViewerFerm.addEventListener('click', fermerViewer);
+if (elViewerPrec) elViewerPrec.addEventListener('click', () => { if (viewerIdx > 0) { viewerIdx--; majViewer(); } });
+if (elViewerSuiv) elViewerSuiv.addEventListener('click', () => { if (viewerIdx < viewerUrls.length - 1) { viewerIdx++; majViewer(); } });
+if (elViewer) elViewer.addEventListener('click', e => { if (e.target === elViewer) fermerViewer(); });
+document.addEventListener('keydown', e => {
+  if (elViewer.hidden) return;
+  if (e.key === 'Escape') fermerViewer();
+  else if (e.key === 'ArrowLeft'  && viewerIdx > 0) { viewerIdx--; majViewer(); }
+  else if (e.key === 'ArrowRight' && viewerIdx < viewerUrls.length - 1) { viewerIdx++; majViewer(); }
+});
 
 // ── OCR du BL pour un groupe-réception ─────────────────────
 // Lit la/les photo(s) BL déjà stockées et pré-remplit lot/DLC des cartes en
@@ -256,13 +328,14 @@ async function lancerOcrGroupe(g, btn, statut) {
   // Correspondance article OCR ↔ carte en attente (par désignation normalisée).
   let nbRemplis = 0;
   let nbSuspects = 0;
+  let nbNonRapproches = 0;
   const articlesDispo = [...articles];
 
   g.lignes.forEach(ligne => {
     const carte = g._cartes[ligne.ligne_id];
     if (!carte) return;
     const idx = articlesDispo.findIndex(a => correspond(a.designation, ligne.produit_nom));
-    if (idx === -1) return;
+    if (idx === -1) { nbNonRapproches++; return; }
     const art = articlesDispo.splice(idx, 1)[0];  // consommé : pas de réutilisation
 
     const inpLot  = carte.querySelector('[data-field="numero_lot"]');
@@ -287,12 +360,22 @@ async function lancerOcrGroupe(g, btn, statut) {
 
   btn.disabled = false;
   btn.textContent = '🔄 Relancer l\'OCR';
-  statut.className = 'pa-groupe-statut ok';
-  statut.textContent = nbRemplis
-    ? `✓ ${nbRemplis} produit(s) pré-remplis depuis le BL`
-      + (nbSuspects ? ` — ⚠️ ${nbSuspects} à vérifier (surlignés)` : '')
-      + '. Contrôlez puis validez chaque ligne.'
-    : '⚠️ Articles lus mais aucun n\'a pu être rapproché des produits en attente. Saisie manuelle.';
+  // S'il reste des produits en attente non rapprochés, c'est souvent qu'une page
+  // du BL manque (ou que la désignation diffère) → on le signale clairement.
+  const alerteManque = nbNonRapproches
+    ? ` — ⚠️ ${nbNonRapproches} produit(s) non trouvé(s) sur le BL : vérifiez qu'aucune page ne manque (📎 ci-dessus) ou saisissez à la main.`
+    : '';
+  if (nbRemplis) {
+    statut.className = nbNonRapproches ? 'pa-groupe-statut' : 'pa-groupe-statut ok';
+    statut.textContent = `✓ ${nbRemplis} produit(s) pré-remplis depuis le BL`
+      + (nbSuspects ? ` (⚠️ ${nbSuspects} date(s) à vérifier, surlignées)` : '')
+      + '.' + alerteManque
+      + ' Contrôlez puis validez chaque ligne.';
+  } else {
+    statut.className = 'pa-groupe-statut erreur';
+    statut.textContent = '⚠️ Articles lus mais aucun n\'a pu être rapproché des produits en attente.'
+      + alerteManque + ' Saisie manuelle nécessaire.';
+  }
 }
 
 // Rapprochement souple de deux désignations (insensible casse/accents/ponctuation).
