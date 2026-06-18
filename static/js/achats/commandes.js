@@ -30,6 +30,8 @@ let suggestionsCmd  = [];
 // Cadencier (panier intelligent) : réponse API + granularité courante.
 let cadencier      = null;
 let cadencierGranu = 'semaine';
+// Tri du catalogue panier : { champ, ordre } où ordre ∈ { 'asc', 'desc' }.
+let triPanier      = { champ: null, ordre: 'desc' };
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
@@ -814,6 +816,20 @@ function fermerPanier() {
   document.getElementById('modal-panier').hidden = true;
 }
 
+// Bascule et applique le tri du catalogue panier sur un champ.
+// En-têtes cliquables appelleront trierCataloguePanier('derniere_qte').
+function trierCataloguePanier(champ) {
+  if (triPanier.champ === champ) {
+    // Même champ : basculer asc/desc
+    triPanier.ordre = triPanier.ordre === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Nouveau champ : tri desc par défaut (plus grosses commandes d'abord)
+    triPanier.champ = champ;
+    triPanier.ordre = 'desc';
+  }
+  afficherCataloguePanier();
+}
+
 // Affiche le catalogue filtré, avec stepper de quantité par ligne
 function afficherCataloguePanier() {
   const q      = document.getElementById('panier-search').value.toLowerCase().trim();
@@ -842,6 +858,18 @@ function afficherCataloguePanier() {
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
+
+  // Applique le tri si défini
+  if (triPanier.champ === 'derniere_qte') {
+    liste.sort((a, b) => {
+      const suggA = suggestionPour(a.id);
+      const suggB = suggestionPour(b.id);
+      const qteA = suggA?.derniere_qte ?? 0;
+      const qteB = suggB?.derniere_qte ?? 0;
+      const cmp = qteB - qteA; // tri numérique
+      return triPanier.ordre === 'asc' ? -cmp : cmp;
+    });
+  }
 
   if (!liste.length) {
     tbody.innerHTML = '<tr><td colspan="7" class="ach-vide">Aucun article</td></tr>';
