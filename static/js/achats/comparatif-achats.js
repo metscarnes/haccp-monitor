@@ -94,6 +94,55 @@ function groupeSuivant() {
   sel.dispatchEvent(new Event('change'));
 }
 
+// ── Recherche « partir du produit à vendre » ──────────────────
+// On tape un nom de produit du catalogue de vente, on voit les correspondances
+// et le groupe de comparaison auquel chacun est relié, puis on clique pour
+// ouvrir directement son VS / sa marge.
+async function rechercherVenteSauter() {
+  const q = $('cmp-recherche-vente').value.trim();
+  const pop = $('cmp-recherche-vente-resultats');
+  if (q.length < 2) { pop.style.display = 'none'; pop.innerHTML = ''; return; }
+  const r = await fetch(`${API_CMP}/recherche-ventes?q=${encodeURIComponent(q)}`);
+  if (!r.ok) { pop.style.display = 'none'; return; }
+  const items = (await r.json()).produits || [];
+  if (!items.length) {
+    pop.innerHTML = '<div class="cmp-recherche-vide">Aucun produit de vente trouvé.</div>';
+    pop.style.display = '';
+    return;
+  }
+  pop.innerHTML = items.map((p) => {
+    const prix = p.prix_vente_ttc != null ? fmtEuro(p.prix_vente_ttc) : '—';
+    const groupe = p.groupe_id
+      ? `<span class="cmp-recherche-groupe">⚖️ ${esc(p.groupe_nom)}</span>`
+      : '<span class="cmp-recherche-sansgroupe">non suivi (cliquer pour démarrer)</span>';
+    return `<div class="cmp-recherche-item" data-groupe="${p.groupe_id || ''}" data-cv="${p.id}">
+      <div class="cmp-recherche-nom">${esc(p.nom)}</div>
+      <div class="cmp-recherche-meta">${prix} · ${groupe}</div>
+    </div>`;
+  }).join('');
+  pop.style.display = '';
+  pop.querySelectorAll('.cmp-recherche-item').forEach((el) => {
+    el.addEventListener('click', () => ouvrirDepuisVente(el));
+  });
+}
+
+// Clic sur un résultat : si le produit a un groupe, on l'ouvre ; sinon on en crée un.
+async function ouvrirDepuisVente(el) {
+  $('cmp-recherche-vente-resultats').style.display = 'none';
+  $('cmp-recherche-vente').value = '';
+  const groupeId = el.dataset.groupe ? Number(el.dataset.groupe) : null;
+  if (groupeId) {
+    const sel = $('select-groupe');
+    sel.value = String(groupeId);
+    sel.dispatchEvent(new Event('change'));
+    return;
+  }
+  // Produit non suivi → on propose de démarrer son suivi de marge.
+  const cvId = Number(el.dataset.cv);
+  if (!confirm('Ce produit n\'a pas encore de groupe de comparaison. En créer un pour suivre sa marge ?')) return;
+  await creerGroupeDepuisVente(cvId);
+}
+
 // ── Affichage du VS ───────────────────────────────────────────
 async function afficherVS(groupeId) {
   groupeCourant = groupeId;
@@ -1008,6 +1057,19 @@ document.addEventListener('DOMContentLoaded', () => {
     majBoutonsGroupe();
     afficherVS(e.target.value ? Number(e.target.value) : null);
     fermerPanneau();
+  });
+
+  // Recherche « partir du produit à vendre » : saute au groupe qui le contient.
+  let tr;
+  $('cmp-recherche-vente').addEventListener('input', () => {
+    clearTimeout(tr);
+    tr = setTimeout(rechercherVenteSauter, 250);
+  });
+  // Fermer la liste de résultats au clic ailleurs.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.cmp-recherche-vente')) {
+      $('cmp-recherche-vente-resultats').style.display = 'none';
+    }
   });
   $('btn-nouveau-groupe').addEventListener('click', creerGroupe);
   $('btn-reorg-viande').addEventListener('click', reorganiserViande);

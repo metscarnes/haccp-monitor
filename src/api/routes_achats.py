@@ -2331,6 +2331,31 @@ async def comparatif_ventes_non_reliees(_=Depends(require_admin)):
         return {"total": len(produits), "produits": produits}
 
 
+@router.get("/comparatif/recherche-ventes")
+async def comparatif_recherche_ventes(q: str = "", _=Depends(require_admin)):
+    """Recherche un produit du catalogue de VENTE par nom et renvoie, pour chacun,
+    le groupe de comparaison auquel il est relié (s'il y en a un). Sert à partir du
+    produit à vendre pour sauter directement à son VS / sa marge."""
+    terme = (q or "").strip()
+    async with get_db() as db:
+        sql = """
+            SELECT v.id, v.nom, v.prix_vente_ttc, v.unite_vente, v.famille, v.sous_famille,
+                   gv.groupe_id AS groupe_id, g.nom AS groupe_nom
+            FROM catalogue_vente v
+            LEFT JOIN comparatif_groupe_vente gv ON gv.catalogue_vente_id = v.id
+            LEFT JOIN comparatif_groupe g        ON g.id = gv.groupe_id
+            WHERE v.boutique_id = 1 AND v.actif = 1
+        """
+        params: list = []
+        if terme:
+            sql += " AND v.nom LIKE ?"
+            params.append(f"%{terme}%")
+        sql += " ORDER BY v.nom LIMIT 50"
+        cur = await db.execute(sql, params)
+        produits = [dict(r) for r in await cur.fetchall()]
+        return {"total": len(produits), "produits": produits}
+
+
 @router.post("/comparatif/groupes/from-vente", status_code=201)
 async def create_groupe_from_vente(body: ComparatifVenteLink, _=Depends(require_admin)):
     """Crée un groupe de comparaison nommé d'après un produit de vente et lui associe ce produit,

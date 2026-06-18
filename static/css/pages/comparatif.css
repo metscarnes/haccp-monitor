@@ -10,6 +10,35 @@
 .cmp-toolbar .ach-filtre { min-width: 240px; }
 .cmp-toolbar-right { margin-left: auto; }
 
+/* ── Recherche « partir du produit à vendre » ──────────────── */
+.cmp-recherche-vente { position: relative; min-width: 280px; }
+.cmp-recherche-pop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin-top: 4px;
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #d4c5af;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.cmp-recherche-item {
+  padding: var(--space-3);
+  border-bottom: 1px solid #f0e6d8;
+  cursor: pointer;
+}
+.cmp-recherche-item:last-child { border-bottom: none; }
+.cmp-recherche-item:hover { background: #faf4ea; }
+.cmp-recherche-nom { font-weight: 600; color: var(--color-text); }
+.cmp-recherche-meta { font-size: 0.8rem; color: #8a7a68; margin-top: 2px; }
+.cmp-recherche-groupe { color: var(--color-accent); font-weight: 600; }
+.cmp-recherche-sansgroupe { color: #b08440; font-style: italic; }
+.cmp-recherche-vide { padding: var(--space-3); color: #8a7a68; font-size: var(--text-sm); }
+
 /* ── Badge "articles non groupés" ─────────────────────────── */
 .cmp-badge-non-groupes {
   display: flex;
