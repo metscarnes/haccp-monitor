@@ -105,6 +105,16 @@ async function charger() {
 
   toutesLignes = data.lignes || [];
 
+  // Nettoyer les clés localStorage orphelines (lignes validées ou non_recu)
+  const ligneIdsActifs = new Set(toutesLignes.map(l => String(l.ligne_id)));
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('pa_carte_')) {
+      const id = key.replace('pa_carte_', '');
+      if (!ligneIdsActifs.has(id)) localStorage.removeItem(key);
+    }
+  }
+
   if (!toutesLignes.length) {
     elBarre.hidden = true;
     elCompteur.textContent = '';
@@ -556,10 +566,7 @@ async function lancerOcrGroupe(g, btn, statut) {
     if (rempli) {
       nbRemplis++;
       // Sauvegarder les données pré-remplies par l'OCR
-      const donnees = {};
-      if (inpLot && inpLot.value) donnees.numero_lot = inpLot.value;
-      if (inpDlc && inpDlc.value) donnees.dlc = inpDlc.value;
-      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
+      sauvegarderSectionsCarte(carte, ligne.ligne_id);
     }
 
     if (art.dlc_suspecte) {
@@ -607,6 +614,19 @@ function correspond(a, b) {
   return na.includes(nb) || nb.includes(na);
 }
 
+// ── Sauvegarde sections d'une carte ────────────────────────
+function sauvegarderSectionsCarte(carte, ligneId) {
+  const sections = [];
+  carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
+    const donnees = {};
+    sect.querySelectorAll('.pa-input').forEach(inp => {
+      if (inp.value.trim()) donnees[inp.dataset.field] = inp.value.trim();
+    });
+    if (Object.keys(donnees).length > 0) sections.push(donnees);
+  });
+  if (sections.length > 0) sauvegarderDonneesCarte(ligneId, { sections });
+}
+
 // ── Ajouter une section lot/DLC supplémentaire ────────────
 function ajouterSection(carte, ligne) {
   const conteneur = carte.querySelector('.pa-sections-lot-dlc');
@@ -620,38 +640,22 @@ function ajouterSection(carte, ligne) {
     <button class="pa-btn-supprimer-section" type="button" title="Supprimer cette entrée">✕</button>
     <div class="pa-champ">
       <label class="pa-champ-label">N° de lot</label>
-      <input type="text" class="pa-input" data-field="numero_lot"
-             placeholder="N° de lot…">
+      <input type="text" class="pa-input" data-field="numero_lot" placeholder="N° de lot…">
     </div>
     <div class="pa-champ">
       <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
-      <input type="date" class="pa-input"
-             data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
+      <input type="date" class="pa-input" data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
     </div>
   `;
 
-  const btnSupp = section.querySelector('.pa-btn-supprimer-section');
-  const sauvegarderSections = () => {
-    const sections = [];
-    carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
-      const donnees = {};
-      sect.querySelectorAll('.pa-input').forEach(inp => {
-        if (inp.value.trim()) donnees[inp.dataset.field] = inp.value.trim();
-      });
-      if (Object.keys(donnees).length > 0) sections.push(donnees);
-    });
-    if (sections.length > 0) sauvegarderDonneesCarte(ligne.ligne_id, { sections });
-  };
-
-  btnSupp.addEventListener('click', () => {
+  section.querySelector('.pa-btn-supprimer-section').addEventListener('click', () => {
     section.remove();
-    sauvegarderSections();
+    sauvegarderSectionsCarte(carte, ligne.ligne_id);
   });
 
-  // Listener sauvegarde sur les nouveaux inputs
   section.querySelectorAll('.pa-input').forEach(inp => {
-    inp.addEventListener('input', sauvegarderSections);
-    inp.addEventListener('change', sauvegarderSections);
+    inp.addEventListener('input',  () => sauvegarderSectionsCarte(carte, ligne.ligne_id));
+    inp.addEventListener('change', () => sauvegarderSectionsCarte(carte, ligne.ligne_id));
   });
 
   conteneur.appendChild(section);
@@ -736,15 +740,18 @@ function rendreCarte(ligne) {
 
   // Restaurer les données sauvegardées en localStorage
   const donneesSauvegardees = chargerDonneesCarte(ligne.ligne_id);
-  if (donneesSauvegardees && donneesSauvegardees.sections) {
-    // Restaurer les sections (première restaurée en place, autres ajoutées)
-    donneesSauvegardees.sections.forEach((section, idx) => {
-      if (idx > 0) {
-        ajouterSection(carte, ligne);
-      }
+  if (donneesSauvegardees) {
+    // Normaliser : ancien format {numero_lot, dlc} → nouveau {sections: [...]}
+    const sections = donneesSauvegardees.sections
+      || [{ numero_lot: donneesSauvegardees.numero_lot, dlc: donneesSauvegardees.dlc,
+            date_abattage: donneesSauvegardees.date_abattage }];
+
+    sections.forEach((section, idx) => {
+      if (idx > 0) ajouterSection(carte, ligne);
       const sectionDiv = carte.querySelector(`[data-section-idx="${idx}"]`);
       if (sectionDiv) {
         Object.entries(section).forEach(([field, value]) => {
+          if (!value) return;
           const inp = sectionDiv.querySelector(`[data-field="${field}"]`);
           if (inp) inp.value = value;
         });
@@ -752,23 +759,10 @@ function rendreCarte(ligne) {
     });
   }
 
-  // Ajouter les listeners pour sauvegarder automatiquement
-  function sauvegarderSections() {
-    const sections = [];
-    carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
-      const donnees = {};
-      sect.querySelectorAll('.pa-input').forEach(inp => {
-        if (inp.value.trim()) donnees[inp.dataset.field] = inp.value.trim();
-      });
-      if (Object.keys(donnees).length > 0) sections.push(donnees);
-    });
-    if (sections.length > 0) sauvegarderDonneesCarte(ligne.ligne_id, { sections });
-  }
-
-  const inputs = carte.querySelectorAll('.pa-input');
-  inputs.forEach(inp => {
-    inp.addEventListener('input', sauvegarderSections);
-    inp.addEventListener('change', sauvegarderSections);
+  // Listeners sauvegarde sur les inputs de la première section
+  carte.querySelectorAll('.pa-section-lot-dlc:first-child .pa-input').forEach(inp => {
+    inp.addEventListener('input',  () => sauvegarderSectionsCarte(carte, ligne.ligne_id));
+    inp.addEventListener('change', () => sauvegarderSectionsCarte(carte, ligne.ligne_id));
   });
 
   const btn    = carte.querySelector('.pa-btn-valider');
@@ -860,7 +854,7 @@ async function genererLotInterne(carte, ligne, btnLot, erreur) {
     inpLot.style.background = '#f0faf3';
     carte.dataset.lotInterne = '1';   // signalé au backend lors de la validation
     // Sauvegarder le lot interne généré
-    sauvegarderDonneesCarte(ligne.ligne_id, { numero_lot: data.lot_interne });
+    sauvegarderSectionsCarte(carte, ligne.ligne_id);
   } catch (e) {
     erreur.textContent = 'Génération du lot interne impossible : ' + e.message;
     erreur.hidden = false;
