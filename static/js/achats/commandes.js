@@ -67,7 +67,6 @@ function bindEvents() {
   document.getElementById('panier-filtre-habituels').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
   document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
-  document.getElementById('btn-test-plus1').addEventListener('click', testPlus1);
 
   // Cadencier (panier intelligent)
   document.getElementById('btn-cadencier').addEventListener('click', ouvrirCadencier);
@@ -515,7 +514,7 @@ async function ouvrirPanier() {
   document.getElementById('panier-filtre-famille').value = '';
   document.getElementById('panier-filtre-sousfamille').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
-  document.getElementById('panier-filtre-reference').checked = false;
+  document.getElementById('panier-filtre-reference').checked = true;
   document.getElementById('panier-filtre-habituels').checked = true;   // « on commande toujours la même chose »
   remplirFiltresPanier();   // alimente Famille / Sous-famille depuis le catalogue
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
@@ -612,12 +611,19 @@ function afficherSuggestions() {
           <div class="ach-suggestion-nom">${escHtml(s.designation)}${s.est_reference ? ' <span class="ach-badge ach-badge--reference">⭐ réf</span>' : ''}${s.a_commander ? ' <span class="ach-badge ach-badge--echeance">à commander</span>' : ''}</div>
           <div class="ach-suggestion-detail">${escHtml(s.fournisseur_nom)} · ${libelleRecurrence(s)}</div>
         </div>
-        <div class="ach-suggestion-qte">${fmtKg(s.quantite_suggeree)} ${uniteLabel(s.unite_suggeree)}</div>
+        <div class="ach-suggestion-qte">${fmtKg(qteSuggereeArrondie(s.quantite_suggeree, s.unite_suggeree))} ${uniteLabel(s.unite_suggeree)}</div>
         ${dejaAuPanier
           ? '<span class="ach-suggestion-ok">✓ au panier</span>'
           : `<button type="button" class="ach-btn ach-btn--primary ach-suggestion-btn" onclick="suggestionAjouter(${s.catalogue_fournisseur_id})">+ Panier</button>`}
       </div>`;
   }).join('');
+}
+
+// Quantité suggérée arrondie pour l'affichage et l'ajout : on ne commande pas
+// une fraction de pièce → arrondi à l'entier supérieur quand l'unité est « pièce ».
+// kg/colis gardent leur valeur (le poids fractionnaire a un sens).
+function qteSuggereeArrondie(quantite, unite) {
+  return unite === 'piece' ? Math.ceil(quantite) : quantite;
 }
 
 // Met au panier un article suggéré (objet portant catalogue_fournisseur_id,
@@ -627,7 +633,7 @@ function ajouterArticleSuggere(s) {
   if (!a || estDesossageAuto(a)) return false;
   let unite = s.unite_suggeree;
   if (!peutCommander(a, unite)) unite = uniteParDefaut(a);   // garde-fou : unité commandable
-  panier[String(a.id)] = { quantite: s.quantite_suggeree, unite };
+  panier[String(a.id)] = { quantite: qteSuggereeArrondie(s.quantite_suggeree, unite), unite };
   uniteChoisies[String(a.id)] = unite;
   return true;
 }
@@ -790,7 +796,7 @@ function afficherCadencier() {
                  <button type="button" class="ach-step-btn" onclick="cadencierStep(${l.catalogue_fournisseur_id}, 1)">+</button>
                </div>`
             : `<button type="button" class="ach-btn ach-btn--primary ach-suggestion-btn"
-                       onclick="cadencierAjouter(${l.catalogue_fournisseur_id})">+ ${fmtKg(l.quantite_suggeree)} ${uniteLabel(l.unite_suggeree)}</button>`}</td>
+                       onclick="cadencierAjouter(${l.catalogue_fournisseur_id})">+ ${fmtKg(qteSuggereeArrondie(l.quantite_suggeree, l.unite_suggeree))} ${uniteLabel(l.unite_suggeree)}</button>`}</td>
       </tr>`;
   }).join('');
 }
@@ -824,14 +830,21 @@ function afficherCataloguePanier() {
     if (fam && a.famille !== fam) return false;
     if (sfam && a.sous_famille !== sfam) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
-    if (refOnly && !estReference(a.id)) return false;
-    if (habituels && !panierQte(String(a.id)) && !estProduitHabituel(a.id)) return false;
+    // « Références ⭐ » et « Mes produits habituels » se cumulent en UNION (OU) :
+    // si au moins l'une est cochée, on garde l'article dès qu'il satisfait l'une
+    // d'elles (ou qu'il est déjà au panier).
+    if (refOnly || habituels) {
+      const ok = panierQte(String(a.id))
+        || (refOnly && estReference(a.id))
+        || (habituels && estProduitHabituel(a.id));
+      if (!ok) return false;
+    }
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
 
   if (!liste.length) {
-    tbody.innerHTML = '<tr><td colspan="11" class="ach-vide">Aucun article</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="ach-vide">Aucun article</td></tr>';
     majTotalPanier();
     return;
   }
@@ -855,9 +868,6 @@ function afficherCataloguePanier() {
         <td><code>${escHtml(a.code_article)}</code></td>
         <td class="ach-cell-nom">${escHtml(a.designation)}${badgeReference(a)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
-        <td>${a.format_prix === 'kg' ? 'kg' : 'colis'}</td>
-        <td class="ach-col-num">${a.tva_percent != null ? a.tva_percent + '%' : '—'}</td>
-        <td>${fmtUnitesAutorisees(a)}</td>
         <td class="ach-col-num">${stock > 0
             ? `<strong>${stock}</strong>`
             : '<span style="color:#9ca3af">0</span>'}</td>
@@ -892,7 +902,7 @@ function afficherCataloguePanier() {
           ${(() => {
             const s = (!qte && !desossageAuto) ? suggestionPour(a.id) : null;
             return s ? `<button type="button" class="ach-sugg-qte" onclick="suggestionAjouter(${a.id})"
-                                title="Appliquer la suggestion (${s.besoin_estime ? 'besoin estimé' : 'commande type'})">💡 ${fmtKg(s.quantite_suggeree)} ${uniteLabel(s.unite_suggeree)}</button>` : '';
+                                title="Appliquer la suggestion (${s.besoin_estime ? 'besoin estimé' : 'commande type'})">💡 ${fmtKg(qteSuggereeArrondie(s.quantite_suggeree, s.unite_suggeree))} ${uniteLabel(s.unite_suggeree)}</button>` : '';
           })()}
           ${qte > 0 && detailReception(a, qte, unite)
             ? `<div class="ach-recep-detail">${detailReception(a, qte, unite)}</div>`
@@ -1038,24 +1048,6 @@ function panierSetUnite(catId, unite) {
   if (a && !peutCommander(a, unite)) unite = uniteParDefaut(a); // garde-fou : unité commandable
   uniteChoisies[catId] = unite;                       // mémorise le choix (même sans qté)
   if (panier[catId]) panier[catId].unite = unite;
-  const alertes = synchroniserDesossage();
-  panierSauver();
-  afficherCataloguePanier();
-  afficherAlertesDesossage(alertes);
-}
-
-// Bouton de test : ajoute 1 à la quantité de tous les articles visibles
-function testPlus1() {
-  const tbody = document.getElementById('tbody-panier-catalogue');
-  const inputs = tbody.querySelectorAll('input[type="number"]');
-  inputs.forEach(input => {
-    const catId = parseInt(input.getAttribute('onchange').match(/\d+/)[0]);
-    const art = catalogueTous.find(x => x.id === catId);
-    if (estDesossageAuto(art)) return;   // ligne désossage pilotée automatiquement
-    const qteActuelle = panierQte(String(catId));
-    const nouvelleQte = qteActuelle + 1;
-    panier[catId] = { quantite: nouvelleQte, unite: panierUnite(String(catId)) };
-  });
   const alertes = synchroniserDesossage();
   panierSauver();
   afficherCataloguePanier();
