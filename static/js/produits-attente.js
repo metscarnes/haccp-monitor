@@ -240,16 +240,15 @@ async function chargerApercuBl(receptionId, zone) {
     data = await apiFetch(`/api/receptions/${receptionId}/bl-apercu`);
   } catch {
     zone.innerHTML = '<span class="pa-bl-manquant">⚠️ BL indisponible</span>';
+    ajouterBoutonAjoutBl(receptionId, zone);
     return;
   }
 
   const pages = data.pages || [];
-  if (!pages.length) {
-    zone.innerHTML = '<span class="pa-bl-manquant">⚠️ Aucune photo de BL enregistrée — contrôlez la réception</span>';
-    return;
-  }
+  zone.innerHTML = pages.length
+    ? `<span class="pa-bl-label">📎 BL — ${pages.length} page(s)&nbsp;:</span>`
+    : '<span class="pa-bl-manquant">⚠️ Aucune photo de BL — ajoutez-la ci-contre</span>';
 
-  zone.innerHTML = `<span class="pa-bl-label">📎 BL — ${pages.length} page(s)&nbsp;:</span>`;
   const urls = pages.map(p => p.url);
   pages.forEach((p, idx) => {
     const img = document.createElement('img');
@@ -260,6 +259,44 @@ async function chargerApercuBl(receptionId, zone) {
     img.addEventListener('click', () => ouvrirViewer(urls, idx));
     zone.appendChild(img);
   });
+
+  ajouterBoutonAjoutBl(receptionId, zone);
+}
+
+// Bouton « + Ajouter une page de BL » (photo ou fichier image/PDF).
+function ajouterBoutonAjoutBl(receptionId, zone) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*,application/pdf';
+  input.multiple = true;
+  input.hidden = true;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'pa-bl-ajout';
+  btn.textContent = '＋ Ajouter une page';
+  btn.addEventListener('click', () => input.click());
+
+  input.addEventListener('change', async () => {
+    if (!input.files || !input.files.length) return;
+    const labelInit = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Envoi…';
+    const fd = new FormData();
+    [...input.files].forEach(f => fd.append('fichier', f, f.name));
+    try {
+      await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
+      // Recharger l'aperçu pour montrer la/les nouvelle(s) page(s)
+      await chargerApercuBl(receptionId, zone);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = labelInit;
+      alert('Ajout du BL impossible : ' + e.message);
+    }
+  });
+
+  zone.appendChild(btn);
+  zone.appendChild(input);
 }
 
 // ── Visionneuse plein écran ────────────────────────────────

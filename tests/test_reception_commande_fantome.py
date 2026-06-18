@@ -144,6 +144,110 @@ async def test_bl_apercu_liste_toutes_les_pages(app_client, db):
     assert "/bl-pages/" in data["pages"][1]["url"]
 
 
+def _jpeg_bytes():
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (60, 40), (200, 100, 50)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def _pdf_bytes(nb_pages=2):
+    import fitz
+    doc = fitz.open()
+    for _ in range(nb_pages):
+        doc.new_page()
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+@pytest.mark.anyio
+async def test_ajout_bl_premiere_page_devient_page0(app_client, db):
+    personnel_id = await _seed(db)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+
+    r = await app_client.post(
+        f"/api/receptions/{rid}/bl-pages",
+        files={"fichier": ("bl.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["pages_ajoutees"] == 1
+
+    # photo_bl_filename (page 0) maintenant renseignée
+    cur = await db.execute("SELECT photo_bl_filename FROM receptions WHERE id = ?", (rid,))
+    assert (await cur.fetchone())[0] is not None
+
+    r = await app_client.get(f"/api/receptions/{rid}/bl-apercu")
+    assert r.json()["nb_pages"] == 1
+
+
+@pytest.mark.anyio
+async def test_ajout_bl_pages_suivantes(app_client, db):
+    personnel_id = await _seed(db)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+    # Page 0 déjà présente
+    await db.execute("UPDATE receptions SET photo_bl_filename = 'BL-existant.jpg' WHERE id = ?", (rid,))
+    await db.commit()
+
+    r = await app_client.post(
+        f"/api/receptions/{rid}/bl-pages",
+        files={"fichier": ("page2.jpg", _jpeg_bytes(), "image/jpeg")},
+    )
+    assert r.status_code == 201, r.text
+
+    r = await app_client.get(f"/api/receptions/{rid}/bl-apercu")
+    data = r.json()
+    assert data["nb_pages"] == 2
+    assert [p["page_num"] for p in data["pages"]] == [0, 1]
+
+
+@pytest.mark.anyio
+async def test_ajout_bl_pdf_multipage(app_client, db):
+    personnel_id = await _seed(db)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+
+    r = await app_client.post(
+        f"/api/receptions/{rid}/bl-pages",
+        files={"fichier": ("bl.pdf", _pdf_bytes(3), "application/pdf")},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["pages_ajoutees"] == 3
+
+    r = await app_client.get(f"/api/receptions/{rid}/bl-apercu")
+    data = r.json()
+    assert data["nb_pages"] == 3
+    assert [p["page_num"] for p in data["pages"]] == [0, 1, 2]
+
+
+@pytest.mark.anyio
+async def test_ajout_bl_sans_fichier_400(app_client, db):
+    personnel_id = await _seed(db)
+    r = await app_client.post(
+        "/api/receptions",
+        data={"personnel_id": str(personnel_id), "heure_reception": "08:00",
+              "temperature_camion": "1.0"},
+    )
+    rid = r.json()["id"]
+    r = await app_client.post(f"/api/receptions/{rid}/bl-pages", files={})
+    assert r.status_code in (400, 422)
+
+
 @pytest.mark.anyio
 async def test_bl_apercu_sans_photo(app_client, db):
     personnel_id = await _seed(db)

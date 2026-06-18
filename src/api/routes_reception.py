@@ -72,6 +72,47 @@ def _compress_photo(raw_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _est_pdf(raw_bytes: bytes, filename: Optional[str]) -> bool:
+    """Détecte un PDF par sa signature (%PDF) ou son extension."""
+    if raw_bytes[:5] == b"%PDF-":
+        return True
+    return bool(filename) and filename.lower().endswith(".pdf")
+
+
+def _fichier_bl_vers_jpegs(raw_bytes: bytes, filename: Optional[str]) -> List[bytes]:
+    """Transforme un fichier BL (image OU PDF) en une liste de JPEG compressés,
+    un par page. Un fichier image → 1 JPEG ; un PDF → 1 JPEG par page.
+    Lève ValueError si le contenu est illisible.
+    """
+    if _est_pdf(raw_bytes, filename):
+        try:
+            import fitz  # PyMuPDF
+        except ImportError:
+            raise ValueError("Lecture des PDF indisponible (PyMuPDF non installé).")
+        jpegs: List[bytes] = []
+        try:
+            doc = fitz.open(stream=raw_bytes, filetype="pdf")
+        except Exception as e:
+            raise ValueError(f"PDF illisible : {e}")
+        try:
+            # Rendu à ~150 dpi (zoom 2) : suffisant pour l'OCR, taille raisonnable.
+            mat = fitz.Matrix(2, 2)
+            for page in doc:
+                pix = page.get_pixmap(matrix=mat)
+                jpegs.append(_compress_photo(pix.tobytes("png")))
+        finally:
+            doc.close()
+        if not jpegs:
+            raise ValueError("PDF sans page exploitable.")
+        return jpegs
+
+    # Sinon : fichier image
+    try:
+        return [_compress_photo(raw_bytes)]
+    except Exception as e:
+        raise ValueError(f"Image illisible : {e}")
+
+
 # ---------------------------------------------------------------------------
 # Référentiel aide visuel
 # ---------------------------------------------------------------------------
@@ -758,6 +799,78 @@ async def get_bl_apercu(reception_id: int):
             })
 
     return {"reception_id": reception_id, "nb_pages": len(pages), "pages": pages}
+
+
+@router.post("/receptions/{reception_id}/bl-pages", status_code=201)
+async def ajouter_bl_pages(
+    reception_id: int,
+    fichier: List[UploadFile] = File(default=[]),
+):
+    """Ajoute une ou plusieurs page(s) au BL principal d'une réception.
+    Accepte des images (JPG/PNG) et des PDF (convertis en 1 image par page).
+    La 1re page va dans receptions.photo_bl_filename si vide, les suivantes dans
+    reception_bl_pages (page_num croissant). Permet de compléter un BL incomplet
+    puis de relancer l'OCR.
+    """
+    from datetime import datetime, timezone
+
+    fichiers_valides = [f for f in fichier if f and f.filename]
+    if not fichiers_valides:
+        raise HTTPException(400, "Aucun fichier fourni")
+
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+        )
+        rec = await cur.fetchone()
+        if not rec:
+            raise HTTPException(404, "Réception non trouvée")
+
+        a_page0 = bool(rec["photo_bl_filename"])
+
+        cur2 = await db.execute(
+            "SELECT COALESCE(MAX(page_num), 0) AS m FROM reception_bl_pages "
+            "WHERE reception_id = ? AND bl_supplementaire_id IS NULL",
+            (reception_id,),
+        )
+        prochain_num = ((await cur2.fetchone())["m"] or 0) + 1
+
+        # Convertir tous les fichiers (image/PDF) en JPEG (1+ par fichier)
+        jpegs: List[bytes] = []
+        for upload in fichiers_valides:
+            raw = await upload.read()
+            try:
+                jpegs.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+
+        ajoutees = 0
+        for jpeg in jpegs:
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
+            if not a_page0:
+                # Première page = page 0 (colonne receptions)
+                filename = f"BL-{now_str}-{reception_id}.jpg"
+                (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+                await db.execute(
+                    "UPDATE receptions SET photo_bl_filename = ? WHERE id = ?",
+                    (filename, reception_id),
+                )
+                a_page0 = True
+            else:
+                filename = f"BL-{now_str}-{reception_id}-p{prochain_num}.jpg"
+                (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
+                await db.execute(
+                    "INSERT INTO reception_bl_pages "
+                    "(reception_id, bl_supplementaire_id, page_num, photo_filename) "
+                    "VALUES (?, NULL, ?, ?)",
+                    (reception_id, prochain_num, filename),
+                )
+                prochain_num += 1
+            ajoutees += 1
+
+        await db.commit()
+
+    return {"ok": True, "pages_ajoutees": ajoutees}
 
 
 @router.get("/receptions/{reception_id}/bl-pages")
