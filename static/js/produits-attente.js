@@ -466,8 +466,23 @@ function rendreCarte(ligne) {
     </div>
 
     <button class="pa-btn-valider" type="button">✓ Valider et entrer en stock</button>
+    <button class="pa-btn-changer-produit" type="button">🔄 Changer de produit</button>
     <button class="pa-btn-non-recu" type="button">✗ Non reçu</button>
     <div class="pa-erreur" hidden></div>
+
+    <div class="pa-recherche-produit" hidden>
+      <div class="pa-recherche-entete">
+        <span>Choisir un article du catalogue</span>
+        <button class="pa-recherche-fermer" type="button" aria-label="Fermer">✕</button>
+      </div>
+      <div class="pa-recherche-corps">
+        <input class="pa-recherche-input" type="search"
+               placeholder="Code article ou désignation…"
+               autocomplete="off" autocorrect="off" spellcheck="false">
+        <div class="pa-recherche-hint">Tapez au moins 2 caractères</div>
+        <div class="pa-recherche-resultats"></div>
+      </div>
+    </div>
   `;
 
   const btn    = carte.querySelector('.pa-btn-valider');
@@ -479,6 +494,24 @@ function rendreCarte(ligne) {
 
   const btnNonRecu = carte.querySelector('.pa-btn-non-recu');
   if (btnNonRecu) btnNonRecu.addEventListener('click', () => marquerNonRecu(carte, ligne, btnNonRecu, erreur));
+
+  const btnChanger  = carte.querySelector('.pa-btn-changer-produit');
+  const panneauRech = carte.querySelector('.pa-recherche-produit');
+  const inputRech   = carte.querySelector('.pa-recherche-input');
+  const btnFermRech = carte.querySelector('.pa-recherche-fermer');
+  const divResultats = carte.querySelector('.pa-recherche-resultats');
+
+  if (btnChanger) btnChanger.addEventListener('click', () => {
+    panneauRech.hidden = !panneauRech.hidden;
+    if (!panneauRech.hidden) { inputRech.value = ''; divResultats.innerHTML = ''; inputRech.focus(); }
+  });
+  if (btnFermRech) btnFermRech.addEventListener('click', () => { panneauRech.hidden = true; });
+
+  let _rchTimer;
+  if (inputRech) inputRech.addEventListener('input', () => {
+    clearTimeout(_rchTimer);
+    _rchTimer = setTimeout(() => rechercherProduit(inputRech.value, ligne, divResultats, carte, panneauRech, erreur), 280);
+  });
 
   return carte;
 }
@@ -603,6 +636,102 @@ async function valider(carte, ligne, btn, erreur) {
     erreur.hidden = false;
     btn.disabled = false;
     btn.textContent = '✓ Valider et entrer en stock';
+  }
+}
+
+// ── Recherche catalogue pour changer le produit d'une ligne ────────────────
+async function rechercherProduit(q, ligne, divResultats, carte, panneau, erreur) {
+  const terme = (q || '').trim();
+  if (terme.length < 2) {
+    divResultats.innerHTML = '';
+    return;
+  }
+  divResultats.innerHTML = '<div class="pa-recherche-vide">⏳ Recherche…</div>';
+
+  const params = new URLSearchParams({ q: terme, actif_only: 'true' });
+  if (ligne.fournisseur_id) params.set('fournisseur_id', ligne.fournisseur_id);
+
+  let articles;
+  try {
+    articles = await apiFetch(`/api/achats/catalogue?${params}`);
+  } catch {
+    divResultats.innerHTML = '<div class="pa-recherche-vide">⚠️ Erreur de recherche</div>';
+    return;
+  }
+
+  if (!articles.length) {
+    divResultats.innerHTML = '<div class="pa-recherche-vide">Aucun article trouvé</div>';
+    return;
+  }
+
+  divResultats.innerHTML = '';
+  articles.slice(0, 20).forEach(art => {
+    const item = document.createElement('div');
+    item.className = 'pa-recherche-item';
+    item.innerHTML = `
+      <div class="pa-recherche-item-nom">${escHtml(art.designation)}</div>
+      <div class="pa-recherche-item-code">${escHtml(art.code_article)} · ${escHtml(art.fournisseur_nom || '')}</div>
+    `;
+    item.addEventListener('click', () =>
+      appliquerChangementProduit(art, ligne, carte, panneau, erreur)
+    );
+    divResultats.appendChild(item);
+  });
+}
+
+async function appliquerChangementProduit(art, ligne, carte, panneau, erreur) {
+  erreur.hidden = true;
+  panneau.hidden = true;
+
+  const titreCarte = carte.querySelector('.pa-carte-titre');
+  const sousCarte  = carte.querySelector('.pa-carte-sous');
+  const labelOrig  = titreCarte ? titreCarte.textContent : '';
+
+  if (titreCarte) titreCarte.textContent = '⏳ Mise à jour…';
+
+  try {
+    const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}/produit`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogue_fournisseur_id: art.id }),
+    });
+
+    // Mettre à jour l'objet ligne en mémoire
+    ligne.produit_nom           = art.designation;
+    ligne.code_article          = art.code_article;
+    ligne.dlc_type              = res.dlc_type || art.dlc_type || 'dlc';
+    ligne.attente_motif         = res.attente_motif;
+    ligne.catalogue_fournisseur_id = art.id;
+
+    // Rafraîchir l'en-tête de la carte
+    if (titreCarte) titreCarte.textContent = art.designation;
+    if (sousCarte) {
+      const parts = [];
+      if (ligne.fournisseur_nom) parts.push(escHtml(ligne.fournisseur_nom));
+      parts.push(`Reçu le ${fmtDateFR(ligne.date_reception)}`);
+      if (ligne.poids_kg) parts.push(`${ligne.poids_kg} kg`);
+      sousCarte.textContent = parts.join(' · ');
+    }
+
+    // Mettre à jour le label DLC si nécessaire
+    const dateAbattage = ligne.dlc_type === 'date_abattage';
+    const inputDate = carte.querySelector('[data-field="dlc"], [data-field="date_abattage"]');
+    const labelDate = inputDate ? inputDate.closest('.pa-champ')?.querySelector('.pa-champ-label') : null;
+    if (labelDate) labelDate.textContent = dateAbattage ? "Date d'abattage" : 'DLC';
+    if (inputDate) {
+      const newField = dateAbattage ? 'date_abattage' : 'dlc';
+      inputDate.dataset.field = newField;
+      inputDate.value = '';
+    }
+
+    // Mettre à jour dans toutesLignes
+    const idx = toutesLignes.findIndex(l => l.ligne_id === ligne.ligne_id);
+    if (idx !== -1) Object.assign(toutesLignes[idx], ligne);
+
+  } catch (e) {
+    if (titreCarte) titreCarte.textContent = labelOrig;
+    erreur.textContent = 'Changement de produit impossible : ' + e.message;
+    erreur.hidden = false;
   }
 }
 

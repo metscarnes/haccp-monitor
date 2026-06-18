@@ -422,6 +422,102 @@
       color: #FFF;
     }
     .pa-btn-non-recu:disabled { opacity: .5; cursor: not-allowed; }
+
+    .pa-btn-changer-produit {
+      margin-top: 6px;
+      background: transparent;
+      border: 2px solid var(--secondaire);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 9px 12px;
+      width: 100%;
+    }
+    .pa-btn-changer-produit:active { opacity: .8; }
+
+    .pa-recherche-produit {
+      margin-top: 10px;
+      border: 2px solid var(--secondaire);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fdf8f1;
+    }
+    .pa-recherche-produit[hidden] { display: none; }
+    .pa-recherche-entete {
+      background: var(--secondaire);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--texte);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .pa-recherche-fermer {
+      background: none;
+      border: none;
+      color: var(--texte);
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .pa-recherche-corps {
+      padding: 10px;
+    }
+    .pa-recherche-input {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 16px;
+      height: 46px;
+      padding: 0 12px;
+      width: 100%;
+    }
+    .pa-recherche-input:focus { outline: none; border-color: var(--texte); }
+    .pa-recherche-hint {
+      font-size: 12px;
+      color: #8a6d54;
+      margin: 4px 0 8px;
+    }
+    .pa-recherche-resultats {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .pa-recherche-item {
+      background: #FFF;
+      border: 1px solid rgba(107,58,31,.2);
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pa-recherche-item:active { background: rgba(212,165,116,.3); }
+    .pa-recherche-item-nom {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--texte);
+    }
+    .pa-recherche-item-code {
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .pa-recherche-vide {
+      font-size: 14px;
+      color: #8a6d54;
+      padding: 8px 0;
+      text-align: center;
+    }
   </style>
 </head>
 <body>

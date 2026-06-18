@@ -22,6 +22,7 @@ from src.database import (
     count_lignes_en_attente,
     completer_ligne_attente,
     marquer_non_recu,
+    changer_produit_ligne_attente,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,3 +79,17 @@ async def non_recu(ligne_id: int):
     if ligne is None:
         raise HTTPException(404, "Ligne de réception introuvable")
     return {"statut": "non_recu", "ligne_id": ligne_id}
+
+
+class ChangerProduitBody(BaseModel):
+    catalogue_fournisseur_id: int
+
+
+@router.put("/lignes/{ligne_id}/produit")
+async def changer_produit(ligne_id: int, body: ChangerProduitBody):
+    """Remplace l'article catalogue d'une ligne en_attente (correction d'identification)."""
+    async with get_db() as db:
+        ligne = await changer_produit_ligne_attente(db, ligne_id, body.catalogue_fournisseur_id)
+    if ligne is None:
+        raise HTTPException(404, "Ligne ou article introuvable")
+    return ligne

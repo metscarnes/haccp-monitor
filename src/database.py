@@ -3618,6 +3618,7 @@ async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
             p.code_unique      AS code_unique,
             COALESCE(cf.code_article, p.code_unique) AS code_article,
             COALESCE(f.nom, rl.fournisseur_nom) AS fournisseur_nom,
+            COALESCE(f.id, rl.fournisseur_id)  AS fournisseur_id,
             r.date_reception   AS date_reception,
             r.heure_reception  AS heure_reception,
             r.numero_bon_livraison AS numero_bon_livraison,
@@ -3702,6 +3703,69 @@ async def completer_ligne_attente(
 
     cur2 = await db.execute("SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,))
     updated = await cur2.fetchone()
+    return dict(updated) if updated else None
+
+
+async def changer_produit_ligne_attente(
+    db: aiosqlite.Connection,
+    ligne_id: int,
+    catalogue_fournisseur_id: int,
+) -> Optional[dict]:
+    """Remplace l'article catalogue d'une ligne en_attente.
+
+    Met à jour catalogue_fournisseur_id et dlc_type depuis le catalogue,
+    recalcule attente_motif (lot/DLC) en tenant compte des valeurs déjà saisies.
+    Renvoie la ligne mise à jour, ou None si introuvable.
+    """
+    cur = await db.execute(
+        "SELECT id, numero_lot, lot_interne, dlc, dluo, date_abattage FROM reception_lignes WHERE id = ?",
+        (ligne_id,),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return None
+
+    cur2 = await db.execute(
+        "SELECT id, designation, dlc_type FROM catalogue_fournisseur WHERE id = ?",
+        (catalogue_fournisseur_id,),
+    )
+    cat = await cur2.fetchone()
+    if not cat:
+        return None
+
+    dlc_type = cat["dlc_type"] or "dlc"
+    _, attente_motif = _calc_statut_attente({
+        "numero_lot":    row["numero_lot"],
+        "lot_interne":   row["lot_interne"],
+        "dlc":           row["dlc"],
+        "dluo":          row["dluo"],
+        "date_abattage": row["date_abattage"],
+        "dlc_type":      dlc_type,
+    })
+
+    await db.execute(
+        """
+        UPDATE reception_lignes SET
+            catalogue_fournisseur_id = ?,
+            dlc_type = ?,
+            attente_motif = ?
+        WHERE id = ?
+        """,
+        (catalogue_fournisseur_id, dlc_type, attente_motif, ligne_id),
+    )
+    await db.commit()
+
+    cur3 = await db.execute(
+        """
+        SELECT rl.*, COALESCE(cf.designation, rl.designation_libre) AS produit_nom,
+               cf.code_article
+        FROM reception_lignes rl
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+        WHERE rl.id = ?
+        """,
+        (ligne_id,),
+    )
+    updated = await cur3.fetchone()
     return dict(updated) if updated else None
 
 
