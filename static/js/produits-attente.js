@@ -870,11 +870,11 @@ async function valider(carte, ligne, btn, erreur) {
 
   // Collecter toutes les sections remplies
   const sections = [];
-  carte.querySelectorAll(‘.pa-section-lot-dlc’).forEach(sect => {
+  carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
     const payload = {};
-    const inputs = sect.querySelectorAll(‘.pa-input’);
+    const inputs = sect.querySelectorAll('.pa-input');
     inputs.forEach(inp => {
-      inp.classList.remove(‘pa-input--invalide’);
+      inp.classList.remove('pa-input--invalide');
       const v = inp.value.trim();
       if (v) payload[inp.dataset.field] = v;
     });
@@ -882,21 +882,21 @@ async function valider(carte, ligne, btn, erreur) {
     // Valider la section
     const manqueLot  = !payload.numero_lot;
     const dateAbattage = attendDateAbattage(ligne);
-    const noDlc      = ligne.dlc_type === ‘no_dlc’;
+    const noDlc      = ligne.dlc_type === 'no_dlc';
     const manqueDate = !noDlc && !(dateAbattage ? payload.date_abattage : payload.dlc);
 
     if (manqueLot || manqueDate) {
       inputs.forEach(inp => {
-        if ((inp.dataset.field === ‘numero_lot’ && manqueLot) ||
-            (inp.dataset.field !== ‘numero_lot’ && manqueDate)) {
-          inp.classList.add(‘pa-input--invalide’);
+        if ((inp.dataset.field === 'numero_lot' && manqueLot) ||
+            (inp.dataset.field !== 'numero_lot' && manqueDate)) {
+          inp.classList.add('pa-input--invalide');
         }
       });
-      return; // Passer à la section suivante sans l’ajouter
+      return; // Passer à la section suivante sans l'ajouter
     }
 
     // Lot auto-généré (interne) : marqué au niveau de la première section
-    if (sect === carte.querySelector(‘.pa-section-lot-dlc:first-child’) && carte.dataset.lotInterne === ‘1’) {
+    if (sect === carte.querySelector('.pa-section-lot-dlc:first-child') && carte.dataset.lotInterne === '1') {
       payload.lot_interne = 1;
     }
 
@@ -904,46 +904,46 @@ async function valider(carte, ligne, btn, erreur) {
   });
 
   if (sections.length === 0) {
-    erreur.textContent = ‘Renseignez au moins un lot avec sa date.’;
+    erreur.textContent = 'Renseignez au moins un lot avec sa date.';
     erreur.hidden = false;
     return;
   }
 
   btn.disabled = true;
-  btn.textContent = ‘Validation…’;
+  btn.textContent = 'Validation…';
   try {
     // Valider chaque section séquentiellement
     for (const payload of sections) {
       const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}`, {
-        method: ‘PUT’,
-        headers: { ‘Content-Type’: ‘application/json’ },
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (res.statut !== ‘complet’) {
-        erreur.textContent = ‘Une section n\’a pas pu être finalisée.’;
+      if (res.statut !== 'complet') {
+        erreur.textContent = 'Une section n\'a pas pu être finalisée.';
         erreur.hidden = false;
         btn.disabled = false;
-        btn.textContent = ‘✓ Valider et entrer en stock’;
+        btn.textContent = '✓ Valider et entrer en stock';
         return;
       }
     }
 
-    // Tous les sections sont complètes → retirer la ligne
+    // Toutes les sections sont complètes → retirer la ligne
     effacerDonneesCarte(ligne.ligne_id);
     toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
     if (!toutesLignes.length) {
       elBarre.hidden = true;
-      elCompteur.textContent = ‘’;
-      afficherMessage(‘✅’, ‘Aucun produit en attente — tout est tracé !’);
+      elCompteur.textContent = '';
+      afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
     } else {
       remplirFiltreFournisseurs();
       rendre();
     }
   } catch (e) {
-    erreur.textContent = ‘Erreur lors de l’enregistrement. Réessayez.’;
+    erreur.textContent = 'Erreur lors de l\'enregistrement. Réessayez.';
     erreur.hidden = false;
     btn.disabled = false;
-    btn.textContent = ‘✓ Valider et entrer en stock’;
+    btn.textContent = '✓ Valider et entrer en stock';
   }
 }
 
