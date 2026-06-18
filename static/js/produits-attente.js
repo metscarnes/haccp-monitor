@@ -243,14 +243,21 @@ function rendreGroupe(g) {
 
 // ── Aperçu du BL enregistré (toutes les pages) ─────────────
 async function chargerApercuBl(receptionId, zone, blNumeroZone) {
+  // Nettoyer les anciens éléments générés (vignettes + bouton d'ajout)
+  // Garder : label et blNumeroZone
+  const children = Array.from(zone.childNodes);
+  children.forEach((child, idx) => {
+    if (idx > 1) { // Skip label (0) et blNumeroZone (1)
+      child.remove();
+    }
+  });
+
   let data;
   try {
     data = await apiFetch(`/api/receptions/${receptionId}/bl-apercu`);
   } catch {
     const span = zone.querySelector('.pa-bl-label');
     if (span) span.textContent = '⚠️ BL indisponible';
-    const divVign = zone.querySelector('div:not(.pa-bl-label):not([style*="display:flex"])');
-    if (divVign) divVign.innerHTML = '';
     ajouterBoutonAjoutBl(receptionId, zone);
     return;
   }
@@ -414,6 +421,11 @@ function ajouterWidgetNumeroBl(receptionId, zone, numeroBl) {
 // Après chaque envoi réussi, l'aperçu se recharge et le bouton reste disponible
 // pour enchaîner immédiatement une nouvelle page.
 function ajouterBoutonAjoutBl(receptionId, zone) {
+  // Vérifier si un bouton d'ajout existe déjà
+  if (zone.querySelector('.pa-bl-ajout')) {
+    return; // Bouton déjà présent, ne pas en ajouter un autre
+  }
+
   const input = document.createElement('input');
   input.type   = 'file';
   input.accept = 'image/*,application/pdf';
@@ -442,8 +454,9 @@ function ajouterBoutonAjoutBl(receptionId, zone) {
     fd.append('fichier', file, file.name);
     try {
       await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
-      // Recharger l'aperçu puis rendre le bouton disponible pour une page suivante
-      await chargerApercuBl(receptionId, zone);
+      // Recharger l'aperçu — blNumeroZone est le 2e enfant (après label)
+      const blNumeroZone = zone.childNodes[1];
+      await chargerApercuBl(receptionId, zone, blNumeroZone);
     } catch (e) {
       btn.disabled    = false;
       btn.textContent = '＋ Ajouter une page';
@@ -594,6 +607,56 @@ function correspond(a, b) {
   return na.includes(nb) || nb.includes(na);
 }
 
+// ── Ajouter une section lot/DLC supplémentaire ────────────
+function ajouterSection(carte, ligne) {
+  const conteneur = carte.querySelector('.pa-sections-lot-dlc');
+  const dateAbattage = ligne.dlc_type === 'date_abattage';
+  const nbSections = conteneur.querySelectorAll('.pa-section-lot-dlc').length;
+
+  const section = document.createElement('div');
+  section.className = 'pa-section-lot-dlc';
+  section.dataset.sectionIdx = nbSections;
+  section.innerHTML = `
+    <button class="pa-btn-supprimer-section" type="button" title="Supprimer cette entrée">✕</button>
+    <div class="pa-champ">
+      <label class="pa-champ-label">N° de lot</label>
+      <input type="text" class="pa-input" data-field="numero_lot"
+             placeholder="N° de lot…">
+    </div>
+    <div class="pa-champ">
+      <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
+      <input type="date" class="pa-input"
+             data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
+    </div>
+  `;
+
+  const btnSupp = section.querySelector('.pa-btn-supprimer-section');
+  const sauvegarderSections = () => {
+    const sections = [];
+    carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
+      const donnees = {};
+      sect.querySelectorAll('.pa-input').forEach(inp => {
+        if (inp.value.trim()) donnees[inp.dataset.field] = inp.value.trim();
+      });
+      if (Object.keys(donnees).length > 0) sections.push(donnees);
+    });
+    if (sections.length > 0) sauvegarderDonneesCarte(ligne.ligne_id, { sections });
+  };
+
+  btnSupp.addEventListener('click', () => {
+    section.remove();
+    sauvegarderSections();
+  });
+
+  // Listener sauvegarde sur les nouveaux inputs
+  section.querySelectorAll('.pa-input').forEach(inp => {
+    inp.addEventListener('input', sauvegarderSections);
+    inp.addEventListener('change', sauvegarderSections);
+  });
+
+  conteneur.appendChild(section);
+}
+
 // ── Stockage localStorage des données de cartes ────────────
 function sauvegarderDonneesCarte(ligneId, donnees) {
   const key = `pa_carte_${ligneId}`;
@@ -630,20 +693,26 @@ function rendreCarte(ligne) {
     <div class="pa-carte-sous">${sousParts.join(' · ')}</div>
     <div class="pa-carte-motif">${escHtml(libelleMotif(ligne.attente_motif))}</div>
 
-    <div class="pa-champ">
-      <label class="pa-champ-label">N° de lot</label>
-      <input type="text" class="pa-input" data-field="numero_lot"
-             placeholder="N° de lot du bon de livraison…">
-      <button class="pa-btn-lot-interne" type="button">
-        🏷️ Pas de N° de lot → générer un lot interne
-      </button>
+    <div class="pa-sections-lot-dlc" data-ligne-id="${ligne.ligne_id}">
+      <div class="pa-section-lot-dlc" data-section-idx="0">
+        <div class="pa-champ">
+          <label class="pa-champ-label">N° de lot</label>
+          <input type="text" class="pa-input" data-field="numero_lot"
+                 placeholder="N° de lot du bon de livraison…">
+          <button class="pa-btn-lot-interne" type="button">
+            🏷️ Pas de N° de lot → générer un lot interne
+          </button>
+        </div>
+
+        <div class="pa-champ">
+          <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
+          <input type="date" class="pa-input"
+                 data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
+        </div>
+      </div>
     </div>
 
-    <div class="pa-champ">
-      <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
-      <input type="date" class="pa-input"
-             data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
-    </div>
+    <button class="pa-btn-ajouter-section" type="button">＋ Ajouter une autre quantité</button>
 
     <button class="pa-btn-valider" type="button">✓ Valider et entrer en stock</button>
     <button class="pa-btn-changer-produit" type="button">🔄 Changer de produit</button>
@@ -667,33 +736,39 @@ function rendreCarte(ligne) {
 
   // Restaurer les données sauvegardées en localStorage
   const donneesSauvegardees = chargerDonneesCarte(ligne.ligne_id);
-  if (donneesSauvegardees) {
-    const inputs = carte.querySelectorAll('.pa-input');
-    inputs.forEach(inp => {
-      const field = inp.dataset.field;
-      if (donneesSauvegardees[field]) {
-        inp.value = donneesSauvegardees[field];
+  if (donneesSauvegardees && donneesSauvegardees.sections) {
+    // Restaurer les sections (première restaurée en place, autres ajoutées)
+    donneesSauvegardees.sections.forEach((section, idx) => {
+      if (idx > 0) {
+        ajouterSection(carte, ligne);
+      }
+      const sectionDiv = carte.querySelector(`[data-section-idx="${idx}"]`);
+      if (sectionDiv) {
+        Object.entries(section).forEach(([field, value]) => {
+          const inp = sectionDiv.querySelector(`[data-field="${field}"]`);
+          if (inp) inp.value = value;
+        });
       }
     });
   }
 
   // Ajouter les listeners pour sauvegarder automatiquement
+  function sauvegarderSections() {
+    const sections = [];
+    carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
+      const donnees = {};
+      sect.querySelectorAll('.pa-input').forEach(inp => {
+        if (inp.value.trim()) donnees[inp.dataset.field] = inp.value.trim();
+      });
+      if (Object.keys(donnees).length > 0) sections.push(donnees);
+    });
+    if (sections.length > 0) sauvegarderDonneesCarte(ligne.ligne_id, { sections });
+  }
+
   const inputs = carte.querySelectorAll('.pa-input');
   inputs.forEach(inp => {
-    inp.addEventListener('input', () => {
-      const donnees = {};
-      inputs.forEach(i => {
-        if (i.value.trim()) donnees[i.dataset.field] = i.value.trim();
-      });
-      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
-    });
-    inp.addEventListener('change', () => {
-      const donnees = {};
-      inputs.forEach(i => {
-        if (i.value.trim()) donnees[i.dataset.field] = i.value.trim();
-      });
-      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
-    });
+    inp.addEventListener('input', sauvegarderSections);
+    inp.addEventListener('change', sauvegarderSections);
   });
 
   const btn    = carte.querySelector('.pa-btn-valider');
@@ -723,6 +798,14 @@ function rendreCarte(ligne) {
     clearTimeout(_rchTimer);
     _rchTimer = setTimeout(() => rechercherProduit(inputRech.value, ligne, divResultats, carte, panneauRech, erreur), 280);
   });
+
+  // Bouton "Ajouter une section" pour plusieurs lots/DLC
+  const btnAjouterSection = carte.querySelector('.pa-btn-ajouter-section');
+  if (btnAjouterSection) {
+    btnAjouterSection.addEventListener('click', () => {
+      ajouterSection(carte, ligne);
+    });
+  }
 
   return carte;
 }
@@ -790,65 +873,83 @@ async function genererLotInterne(carte, ligne, btnLot, erreur) {
 // ── Validation / complétion ────────────────────────────────
 async function valider(carte, ligne, btn, erreur) {
   erreur.hidden = true;
-  const inputs = carte.querySelectorAll('.pa-input');
-  const payload = {};
-  inputs.forEach(inp => {
-    inp.classList.remove('pa-input--invalide');
-    const v = inp.value.trim();
-    if (v) payload[inp.dataset.field] = v;
-  });
-  // Lot auto-généré (interne) : informer le backend pour la traçabilité.
-  if (carte.dataset.lotInterne === '1') payload.lot_interne = 1;
 
-  // Validation côté client : lot + date requis (sauf no_dlc pour la date)
-  const manqueLot  = !payload.numero_lot;
-  const dateAbattage = attendDateAbattage(ligne);
-  const noDlc      = ligne.dlc_type === 'no_dlc';
-  const manqueDate = !noDlc && !(dateAbattage ? payload.date_abattage : payload.dlc);
-
-  if (manqueLot || manqueDate) {
+  // Collecter toutes les sections remplies
+  const sections = [];
+  carte.querySelectorAll(‘.pa-section-lot-dlc’).forEach(sect => {
+    const payload = {};
+    const inputs = sect.querySelectorAll(‘.pa-input’);
     inputs.forEach(inp => {
-      if ((inp.dataset.field === 'numero_lot' && manqueLot) ||
-          (inp.dataset.field !== 'numero_lot' && manqueDate)) {
-        inp.classList.add('pa-input--invalide');
-      }
+      inp.classList.remove(‘pa-input--invalide’);
+      const v = inp.value.trim();
+      if (v) payload[inp.dataset.field] = v;
     });
-    erreur.textContent = 'Renseignez le N° de lot et la date pour valider.';
+
+    // Valider la section
+    const manqueLot  = !payload.numero_lot;
+    const dateAbattage = attendDateAbattage(ligne);
+    const noDlc      = ligne.dlc_type === ‘no_dlc’;
+    const manqueDate = !noDlc && !(dateAbattage ? payload.date_abattage : payload.dlc);
+
+    if (manqueLot || manqueDate) {
+      inputs.forEach(inp => {
+        if ((inp.dataset.field === ‘numero_lot’ && manqueLot) ||
+            (inp.dataset.field !== ‘numero_lot’ && manqueDate)) {
+          inp.classList.add(‘pa-input--invalide’);
+        }
+      });
+      return; // Passer à la section suivante sans l’ajouter
+    }
+
+    // Lot auto-généré (interne) : marqué au niveau de la première section
+    if (sect === carte.querySelector(‘.pa-section-lot-dlc:first-child’) && carte.dataset.lotInterne === ‘1’) {
+      payload.lot_interne = 1;
+    }
+
+    sections.push(payload);
+  });
+
+  if (sections.length === 0) {
+    erreur.textContent = ‘Renseignez au moins un lot avec sa date.’;
     erreur.hidden = false;
     return;
   }
 
   btn.disabled = true;
-  btn.textContent = 'Validation…';
+  btn.textContent = ‘Validation…’;
   try {
-    const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (res.statut === 'complet') {
-      // Produit complété → le produit entre en stock. Nettoyer le localStorage et retirer de la liste.
-      effacerDonneesCarte(ligne.ligne_id);
-      toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
-      if (!toutesLignes.length) {
-        elBarre.hidden = true;
-        elCompteur.textContent = '';
-        afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
-      } else {
-        remplirFiltreFournisseurs();
-        rendre();
+    // Valider chaque section séquentiellement
+    for (const payload of sections) {
+      const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}`, {
+        method: ‘PUT’,
+        headers: { ‘Content-Type’: ‘application/json’ },
+        body: JSON.stringify(payload),
+      });
+      if (res.statut !== ‘complet’) {
+        erreur.textContent = ‘Une section n\’a pas pu être finalisée.’;
+        erreur.hidden = false;
+        btn.disabled = false;
+        btn.textContent = ‘✓ Valider et entrer en stock’;
+        return;
       }
+    }
+
+    // Tous les sections sont complètes → retirer la ligne
+    effacerDonneesCarte(ligne.ligne_id);
+    toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
+    if (!toutesLignes.length) {
+      elBarre.hidden = true;
+      elCompteur.textContent = ‘’;
+      afficherMessage(‘✅’, ‘Aucun produit en attente — tout est tracé !’);
     } else {
-      erreur.textContent = 'Il manque encore une information pour finaliser.';
-      erreur.hidden = false;
-      btn.disabled = false;
-      btn.textContent = '✓ Valider et entrer en stock';
+      remplirFiltreFournisseurs();
+      rendre();
     }
   } catch (e) {
-    erreur.textContent = 'Erreur lors de l’enregistrement. Réessayez.';
+    erreur.textContent = ‘Erreur lors de l’enregistrement. Réessayez.’;
     erreur.hidden = false;
     btn.disabled = false;
-    btn.textContent = '✓ Valider et entrer en stock';
+    btn.textContent = ‘✓ Valider et entrer en stock’;
   }
 }
 

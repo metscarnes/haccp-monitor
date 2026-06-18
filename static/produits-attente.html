@@ -395,6 +395,50 @@
       margin-top: 6px;
     }
 
+    .pa-sections-lot-dlc {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .pa-section-lot-dlc {
+      padding: 10px 12px;
+      background: rgba(212,165,116,.08);
+      border-radius: 8px;
+      border-left: 3px solid var(--secondaire);
+      position: relative;
+    }
+    .pa-section-lot-dlc:first-child {
+      background: transparent;
+      border: none;
+      padding: 0;
+    }
+    .pa-btn-supprimer-section {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: transparent;
+      border: none;
+      color: var(--alerte);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 0;
+      line-height: 1;
+    }
+    .pa-btn-ajouter-section {
+      background: transparent;
+      border: 2px dashed var(--secondaire);
+      border-radius: 8px;
+      color: var(--accent);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .pa-btn-ajouter-section:active { opacity: .8; }
+
     .pa-message {
       text-align: center;
       padding: 48px 16px;
