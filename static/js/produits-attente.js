@@ -16,6 +16,12 @@ const elListe     = document.getElementById('pa-liste');
 const elMessage   = document.getElementById('pa-message');
 const elMsgIcone  = document.getElementById('pa-message-icone');
 const elMsgTexte  = document.getElementById('pa-message-texte');
+const elBarre     = document.getElementById('pa-barre');
+const elFiltreFourn = document.getElementById('pa-filtre-fourn');
+const elTri       = document.getElementById('pa-tri');
+
+// Toutes les lignes en attente, telles que reçues du serveur (source de vérité).
+let toutesLignes = [];
 
 // ── Horloge ────────────────────────────────────────────────
 function majHorloge() {
@@ -90,17 +96,217 @@ async function charger() {
     return;
   }
 
-  const lignes = data.lignes || [];
-  elCompteur.textContent = lignes.length
-    ? `${lignes.length} produit(s) à compléter`
-    : '';
+  toutesLignes = data.lignes || [];
 
-  if (!lignes.length) {
+  if (!toutesLignes.length) {
+    elBarre.hidden = true;
+    elCompteur.textContent = '';
     afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
     return;
   }
+
   masquerMessage();
-  lignes.forEach(rendreCarte);
+  remplirFiltreFournisseurs();
+  elBarre.hidden = false;
+  rendre();
+}
+
+// Remplit la liste déroulante des fournisseurs distincts présents dans la file.
+function remplirFiltreFournisseurs() {
+  const courant = elFiltreFourn.value;
+  const noms = [...new Set(
+    toutesLignes.map(l => (l.fournisseur_nom || '').trim()).filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b, 'fr'));
+
+  elFiltreFourn.innerHTML = '<option value="">Tous les fournisseurs</option>'
+    + noms.map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('');
+  // Conserver la sélection si toujours présente
+  if (courant && noms.includes(courant)) elFiltreFourn.value = courant;
+}
+
+// ── Rendu groupé par réception, avec filtre + tri ──────────
+function rendre() {
+  elListe.innerHTML = '';
+
+  const filtreFourn = elFiltreFourn.value;
+  const tri = elTri.value;
+
+  let lignes = toutesLignes;
+  if (filtreFourn) {
+    lignes = lignes.filter(l => (l.fournisseur_nom || '').trim() === filtreFourn);
+  }
+
+  // Regrouper par réception
+  const groupes = new Map();  // reception_id → {reception_id, fournisseur_nom, date, heure, lignes:[]}
+  lignes.forEach(l => {
+    let g = groupes.get(l.reception_id);
+    if (!g) {
+      g = {
+        reception_id:    l.reception_id,
+        fournisseur_nom: l.fournisseur_nom || '—',
+        date_reception:  l.date_reception || '',
+        heure_reception: l.heure_reception || '',
+        lignes:          [],
+      };
+      groupes.set(l.reception_id, g);
+    }
+    g.lignes.push(l);
+  });
+
+  let liste = [...groupes.values()];
+
+  // Tri des groupes
+  liste.sort((a, b) => {
+    if (tri === 'date_asc')  return (a.date_reception || '').localeCompare(b.date_reception || '');
+    if (tri === 'fourn')     return a.fournisseur_nom.localeCompare(b.fournisseur_nom, 'fr');
+    if (tri === 'nb_desc')   return b.lignes.length - a.lignes.length;
+    // date_desc (défaut)
+    return (b.date_reception || '').localeCompare(a.date_reception || '');
+  });
+
+  const nbProduits = lignes.length;
+  const nbReceptions = liste.length;
+  elCompteur.textContent =
+    `${nbProduits} produit(s) à compléter · ${nbReceptions} réception(s)`;
+
+  if (!nbProduits) {
+    afficherMessage('🔍', 'Aucun produit pour ce filtre.');
+    return;
+  }
+  masquerMessage();
+  liste.forEach(rendreGroupe);
+}
+
+// ── Groupe = une réception ─────────────────────────────────
+function rendreGroupe(g) {
+  const groupe = document.createElement('div');
+  groupe.className = 'pa-groupe';
+  groupe.dataset.receptionId = g.reception_id;
+
+  const heure = g.heure_reception ? ` à ${String(g.heure_reception).slice(0, 5)}` : '';
+  const nb = g.lignes.length;
+
+  const tete = document.createElement('div');
+  tete.className = 'pa-groupe-tete';
+  tete.innerHTML = `
+    <div class="pa-groupe-info">
+      <div class="pa-groupe-fourn">${escHtml(g.fournisseur_nom)}</div>
+      <div class="pa-groupe-meta">Livré le ${fmtDateFR(g.date_reception)}${heure} · Réception n°${g.reception_id}</div>
+    </div>
+    <span class="pa-groupe-badge">${nb} à compléter</span>
+    <button class="pa-groupe-reprendre" type="button">🔍 OCR du BL</button>
+  `;
+  const btnOcr = tete.querySelector('.pa-groupe-reprendre');
+  btnOcr.addEventListener('click', () => lancerOcrGroupe(g, btnOcr, statut));
+
+  const statut = document.createElement('div');
+  statut.className = 'pa-groupe-statut';
+  statut.hidden = true;
+
+  const corps = document.createElement('div');
+  corps.className = 'pa-groupe-corps';
+  // Index des cartes par ligne_id pour pré-remplissage OCR.
+  g._cartes = {};
+  g.lignes.forEach(l => {
+    const carte = rendreCarte(l);
+    g._cartes[l.ligne_id] = carte;
+    corps.appendChild(carte);
+  });
+
+  groupe.appendChild(tete);
+  groupe.appendChild(statut);
+  groupe.appendChild(corps);
+  elListe.appendChild(groupe);
+}
+
+// ── OCR du BL pour un groupe-réception ─────────────────────
+// Lit la/les photo(s) BL déjà stockées et pré-remplit lot/DLC des cartes en
+// attente de cette réception, par correspondance de désignation. Rien n'est
+// enregistré : l'utilisateur contrôle puis valide chaque carte normalement.
+async function lancerOcrGroupe(g, btn, statut) {
+  btn.disabled = true;
+  const labelInit = btn.textContent;
+  btn.textContent = '⏳ Lecture…';
+  statut.hidden = false;
+  statut.className = 'pa-groupe-statut';
+  statut.textContent = 'Analyse du bon de livraison…';
+
+  let data;
+  try {
+    data = await apiFetch(`/api/receptions/${g.reception_id}/ocr-bl`, { method: 'POST' });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = labelInit;
+    statut.className = 'pa-groupe-statut erreur';
+    statut.textContent = `⚠️ ${e.message.includes('Aucune photo')
+      ? 'Aucune photo de BL pour cette réception.'
+      : 'Lecture du BL impossible. Réessayez ou saisissez à la main.'}`;
+    return;
+  }
+
+  const articles = data.lignes || [];
+  if (!articles.length) {
+    btn.disabled = false;
+    btn.textContent = labelInit;
+    statut.className = 'pa-groupe-statut erreur';
+    statut.textContent = '⚠️ Aucun article lu sur le BL. Saisie manuelle nécessaire.';
+    return;
+  }
+
+  // Correspondance article OCR ↔ carte en attente (par désignation normalisée).
+  let nbRemplis = 0;
+  let nbSuspects = 0;
+  const articlesDispo = [...articles];
+
+  g.lignes.forEach(ligne => {
+    const carte = g._cartes[ligne.ligne_id];
+    if (!carte) return;
+    const idx = articlesDispo.findIndex(a => correspond(a.designation, ligne.produit_nom));
+    if (idx === -1) return;
+    const art = articlesDispo.splice(idx, 1)[0];  // consommé : pas de réutilisation
+
+    const inpLot  = carte.querySelector('[data-field="numero_lot"]');
+    const inpDlc  = carte.querySelector('[data-field="dlc"]');  // null si date_abattage / no_dlc
+    let rempli = false;
+    if (inpLot && art.numero_lot) { inpLot.value = art.numero_lot; rempli = true; }
+    // L'OCR lit une DLC : on ne pré-remplit que les cartes attendant une DLC
+    // (les articles 'date_abattage' gardent la saisie manuelle de la date d'abattage).
+    if (inpDlc && art.dlc) { inpDlc.value = art.dlc; rempli = true; }
+    if (rempli) nbRemplis++;
+
+    if (art.dlc_suspecte) {
+      nbSuspects++;
+      carte.classList.add('pa-carte--suspect');
+      const err = carte.querySelector('.pa-erreur');
+      if (err) {
+        err.hidden = false;
+        err.textContent = `⚠️ ${art.alerte || 'Date à vérifier'} — contrôlez avant de valider.`;
+      }
+    }
+  });
+
+  btn.disabled = false;
+  btn.textContent = '🔄 Relancer l\'OCR';
+  statut.className = 'pa-groupe-statut ok';
+  statut.textContent = nbRemplis
+    ? `✓ ${nbRemplis} produit(s) pré-remplis depuis le BL`
+      + (nbSuspects ? ` — ⚠️ ${nbSuspects} à vérifier (surlignés)` : '')
+      + '. Contrôlez puis validez chaque ligne.'
+    : '⚠️ Articles lus mais aucun n\'a pu être rapproché des produits en attente. Saisie manuelle.';
+}
+
+// Rapprochement souple de deux désignations (insensible casse/accents/ponctuation).
+function correspond(a, b) {
+  const norm = s => String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  // Sous-chaîne dans un sens ou l'autre (ex. "PALERON VB" ⊃ "PALERON")
+  return na.includes(nb) || nb.includes(na);
 }
 
 // ── Carte d'un produit en attente ──────────────────────────
@@ -144,7 +350,7 @@ function rendreCarte(ligne) {
   const erreur = carte.querySelector('.pa-erreur');
   btn.addEventListener('click', () => valider(carte, ligne, btn, erreur));
 
-  elListe.appendChild(carte);
+  return carte;
 }
 
 // ── Validation / complétion ────────────────────────────────
@@ -185,11 +391,17 @@ async function valider(carte, ligne, btn, erreur) {
       body: JSON.stringify(payload),
     });
     if (res.statut === 'complet') {
-      // Produit complété → retirer la carte, le produit entre en stock
-      carte.remove();
-      const restantes = elListe.querySelectorAll('.pa-carte').length;
-      elCompteur.textContent = restantes ? `${restantes} produit(s) à compléter` : '';
-      if (!restantes) afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
+      // Produit complété → le produit entre en stock. On le retire de la source
+      // de vérité puis on re-rend (le groupe disparaît s'il devient vide).
+      toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
+      if (!toutesLignes.length) {
+        elBarre.hidden = true;
+        elCompteur.textContent = '';
+        afficherMessage('✅', 'Aucun produit en attente — tout est tracé !');
+      } else {
+        remplirFiltreFournisseurs();
+        rendre();
+      }
     } else {
       erreur.textContent = 'Il manque encore une information pour finaliser.';
       erreur.hidden = false;
@@ -203,6 +415,10 @@ async function valider(carte, ligne, btn, erreur) {
     btn.textContent = '✓ Valider et entrer en stock';
   }
 }
+
+// ── Contrôles filtre / tri ─────────────────────────────────
+if (elFiltreFourn) elFiltreFourn.addEventListener('change', rendre);
+if (elTri)         elTri.addEventListener('change', rendre);
 
 // ── Init ───────────────────────────────────────────────────
 charger();

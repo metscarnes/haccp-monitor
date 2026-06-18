@@ -85,12 +85,113 @@
       line-height: 1.4;
     }
 
+    .pa-barre {
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px 4px;
+      flex-wrap: wrap;
+    }
+    .pa-barre-champ {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1;
+      min-width: 150px;
+    }
+    .pa-barre-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .pa-barre-select {
+      background: #FFF;
+      border: 2px solid var(--accent);
+      border-radius: 8px;
+      color: var(--texte);
+      font-size: 16px;
+      height: 46px;
+      padding: 0 10px;
+      width: 100%;
+    }
+    .pa-barre-select:focus { outline: none; border-color: var(--texte); }
+
     .pa-compteur {
       padding: 10px 16px;
       font-size: 15px;
       color: var(--accent);
       font-weight: 700;
     }
+
+    /* Groupe = une réception */
+    .pa-groupe {
+      background: #FFF;
+      border: 1px solid rgba(107,58,31,.15);
+      border-radius: 12px;
+      margin: 0 16px 14px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .pa-groupe-tete {
+      background: var(--secondaire);
+      color: var(--texte);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .pa-groupe-info { flex: 1; min-width: 0; }
+    .pa-groupe-fourn {
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .pa-groupe-meta {
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .pa-groupe-badge {
+      background: var(--alerte);
+      color: #FFF;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .pa-groupe-reprendre {
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      color: #FFF;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      height: 42px;
+      padding: 0 14px;
+      white-space: nowrap;
+    }
+    .pa-groupe-reprendre:active { opacity: .85; }
+    .pa-groupe-reprendre:disabled { opacity: .5; cursor: not-allowed; }
+    .pa-groupe-corps {
+      padding: 8px 12px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .pa-groupe-statut {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 14px;
+      line-height: 1.4;
+      color: var(--accent);
+      background: rgba(212,165,116,.15);
+    }
+    .pa-groupe-statut.ok    { color: var(--ok);     background: rgba(45,125,70,.10); }
+    .pa-groupe-statut.erreur{ color: var(--alerte); background: rgba(201,48,48,.10); }
+    .pa-carte--suspect { border-left-color: var(--attention); background: rgba(232,145,58,.06); }
 
     .pa-liste {
       display: flex;
@@ -198,6 +299,24 @@
   <div class="pa-bandeau">
     Tâche HACCP prioritaire — ces produits ne sont PAS comptés en stock tant que le
     N° de lot et la DLC (ou la date d'abattage) ne sont pas renseignés.
+  </div>
+
+  <div class="pa-barre" id="pa-barre" hidden>
+    <div class="pa-barre-champ">
+      <label class="pa-barre-label" for="pa-filtre-fourn">Fournisseur</label>
+      <select class="pa-barre-select" id="pa-filtre-fourn">
+        <option value="">Tous les fournisseurs</option>
+      </select>
+    </div>
+    <div class="pa-barre-champ">
+      <label class="pa-barre-label" for="pa-tri">Trier par</label>
+      <select class="pa-barre-select" id="pa-tri">
+        <option value="date_desc">Livraison — plus récent</option>
+        <option value="date_asc">Livraison — plus ancien</option>
+        <option value="fourn">Fournisseur (A→Z)</option>
+        <option value="nb_desc">Nb produits à compléter</option>
+      </select>
+    </div>
   </div>
 
   <div class="pa-compteur" id="pa-compteur" aria-live="polite"></div>
