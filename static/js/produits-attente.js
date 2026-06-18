@@ -210,11 +210,19 @@ function rendreGroupe(g) {
   statut.className = 'pa-groupe-statut';
   statut.hidden = true;
 
-  // Aperçu du BL enregistré (vignettes de toutes les pages) — chargé en différé.
+  // Aperçu du BL enregistré (vignettes de toutes les pages) + N° BL editable — chargé en différé.
   const blZone = document.createElement('div');
   blZone.className = 'pa-bl';
-  blZone.innerHTML = '<span class="pa-bl-label">📎 BL…</span>';
-  chargerApercuBl(g.reception_id, blZone);
+  const blLabel = document.createElement('span');
+  blLabel.className = 'pa-bl-label';
+  blLabel.textContent = '📎 BL…';
+  blZone.appendChild(blLabel);
+
+  const blNumeroZone = document.createElement('div');
+  blNumeroZone.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:4px;';
+  blZone.appendChild(blNumeroZone);
+
+  chargerApercuBl(g.reception_id, blZone, blNumeroZone);
 
   const corps = document.createElement('div');
   corps.className = 'pa-groupe-corps';
@@ -234,21 +242,30 @@ function rendreGroupe(g) {
 }
 
 // ── Aperçu du BL enregistré (toutes les pages) ─────────────
-async function chargerApercuBl(receptionId, zone) {
+async function chargerApercuBl(receptionId, zone, blNumeroZone) {
   let data;
   try {
     data = await apiFetch(`/api/receptions/${receptionId}/bl-apercu`);
   } catch {
-    zone.innerHTML = '<span class="pa-bl-manquant">⚠️ BL indisponible</span>';
+    const span = zone.querySelector('.pa-bl-label');
+    if (span) span.textContent = '⚠️ BL indisponible';
+    const divVign = zone.querySelector('div:not(.pa-bl-label):not([style*="display:flex"])');
+    if (divVign) divVign.innerHTML = '';
     ajouterBoutonAjoutBl(receptionId, zone);
     return;
   }
 
   const pages = data.pages || [];
-  zone.innerHTML = pages.length
-    ? `<span class="pa-bl-label">📎 BL — ${pages.length} page(s)&nbsp;:</span>`
-    : '<span class="pa-bl-manquant">⚠️ Aucune photo de BL — ajoutez-la ci-contre</span>';
+  const label = zone.querySelector('.pa-bl-label');
+  if (label) {
+    label.textContent = pages.length
+      ? `📎 BL — ${pages.length} page(s) :`
+      : '⚠️ Aucune photo de BL — ajoutez-la ci-contre';
+  }
 
+  // Vignettes des pages
+  const divVignettes = document.createElement('div');
+  divVignettes.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
   const urls = pages.map(p => p.url);
   pages.forEach((p, idx) => {
     const img = document.createElement('img');
@@ -257,10 +274,112 @@ async function chargerApercuBl(receptionId, zone) {
     img.alt = `BL page ${idx + 1}`;
     img.title = `Voir la page ${idx + 1}`;
     img.addEventListener('click', () => ouvrirViewer(urls, idx));
-    zone.appendChild(img);
+    divVignettes.appendChild(img);
   });
+  zone.appendChild(divVignettes);
+
+  // Widget N° de BL editable
+  if (blNumeroZone) {
+    ajouterWidgetNumeroBl(receptionId, blNumeroZone, data.numero_bon_livraison || '');
+  }
 
   ajouterBoutonAjoutBl(receptionId, zone);
+}
+
+// ── Widget N° de BL editable ──────────────────────────────
+function ajouterWidgetNumeroBl(receptionId, zone, numeroBl) {
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;';
+
+  const label = document.createElement('span');
+  label.style.cssText = 'color:#8a6d54;font-weight:600;';
+  label.textContent = 'N° BL :';
+  wrapper.appendChild(label);
+
+  const display = document.createElement('span');
+  display.style.cssText = 'color:#3D2008;font-weight:700;min-width:80px;';
+  display.textContent = numeroBl || '(non saisi)';
+
+  const btnEdit = document.createElement('button');
+  btnEdit.type = 'button';
+  btnEdit.style.cssText = 'background:none;border:none;color:#6B3A1F;cursor:pointer;font-size:13px;font-weight:700;padding:2px 4px;';
+  btnEdit.textContent = '✏️';
+
+  let editing = false;
+  btnEdit.addEventListener('click', async () => {
+    if (editing) return;
+    editing = true;
+    btnEdit.disabled = true;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = numeroBl || '';
+    input.style.cssText = 'border:2px solid #6B3A1F;border-radius:6px;font-size:13px;padding:4px 8px;width:100px;';
+    input.placeholder = 'N° BL…';
+
+    const btnVal = document.createElement('button');
+    btnVal.type = 'button';
+    btnVal.textContent = '✓';
+    btnVal.style.cssText = 'background:#2D7D46;border:none;border-radius:6px;color:#FFF;cursor:pointer;font-size:12px;font-weight:700;height:32px;width:32px;margin-left:4px;';
+
+    const btnAnn = document.createElement('button');
+    btnAnn.type = 'button';
+    btnAnn.textContent = '✕';
+    btnAnn.style.cssText = 'background:#C93030;border:none;border-radius:6px;color:#FFF;cursor:pointer;font-size:12px;font-weight:700;height:32px;width:32px;';
+
+    wrapper.innerHTML = '';
+    wrapper.appendChild(label);
+    wrapper.appendChild(input);
+    wrapper.appendChild(btnVal);
+    wrapper.appendChild(btnAnn);
+
+    input.focus();
+    input.select();
+
+    async function valider() {
+      const newNum = input.value.trim();
+      if (newNum === numeroBl) {
+        annuler();
+        return;
+      }
+      btnVal.disabled = true;
+      btnAnn.disabled = true;
+      try {
+        await apiFetch(`/api/receptions/${receptionId}/numero-bl`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numero_bon_livraison: newNum }),
+        });
+        numeroBl = newNum;
+        display.textContent = newNum || '(non saisi)';
+        annuler();
+      } catch (err) {
+        alert('Erreur : ' + err.message);
+        btnVal.disabled = false;
+        btnAnn.disabled = false;
+      }
+    }
+
+    function annuler() {
+      editing = false;
+      btnEdit.disabled = false;
+      wrapper.innerHTML = '';
+      wrapper.appendChild(label);
+      wrapper.appendChild(display);
+      wrapper.appendChild(btnEdit);
+    }
+
+    btnVal.addEventListener('click', valider);
+    btnAnn.addEventListener('click', annuler);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') valider();
+      else if (e.key === 'Escape') annuler();
+    });
+  });
+
+  wrapper.appendChild(display);
+  wrapper.appendChild(btnEdit);
+  zone.appendChild(wrapper);
 }
 
 // Zone « + Ajouter une/des page(s) de BL » — utilise ouvrirChoixPhoto (camera.js).

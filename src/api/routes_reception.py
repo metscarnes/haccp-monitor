@@ -834,10 +834,11 @@ async def get_bl_apercu(reception_id: int):
     page 0 (photo_bl_filename) + pages supplémentaires (reception_bl_pages).
     Renvoie pour chacune une URL d'image servie par les routes photo existantes.
     Permet de contrôler visuellement le BL enregistré et de repérer une page manquante.
+    Retourne aussi le N° de BL pour édition.
     """
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id, photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+            "SELECT id, photo_bl_filename, numero_bon_livraison FROM receptions WHERE id = ?", (reception_id,)
         )
         rec = await cur.fetchone()
         if not rec:
@@ -861,7 +862,12 @@ async def get_bl_apercu(reception_id: int):
                 "url": f"/api/receptions/{reception_id}/bl-pages/{r['id']}/photo",
             })
 
-    return {"reception_id": reception_id, "nb_pages": len(pages), "pages": pages}
+    return {
+        "reception_id": reception_id,
+        "nb_pages": len(pages),
+        "pages": pages,
+        "numero_bon_livraison": rec["numero_bon_livraison"],
+    }
 
 
 @router.post("/receptions/{reception_id}/bl-pages", status_code=201)
