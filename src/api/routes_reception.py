@@ -858,6 +858,7 @@ async def get_bl_apercu(reception_id: int):
         )
         for r in await cur2.fetchall():
             pages.append({
+                "page_id": r["id"],
                 "page_num": r["page_num"],
                 "url": f"/api/receptions/{reception_id}/bl-pages/{r['id']}/photo",
             })
@@ -976,6 +977,28 @@ async def get_bl_page_photo(reception_id: int, page_id: int):
     if not filepath.exists():
         raise HTTPException(404, "Fichier photo introuvable")
     return FileResponse(str(filepath), media_type="image/jpeg")
+
+
+@router.delete("/receptions/{reception_id}/bl-pages/{page_id}", status_code=200)
+async def supprimer_bl_page(reception_id: int, page_id: int):
+    """Supprime une page du BL (reception_bl_pages). Le fichier physique est aussi supprimé."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT photo_filename FROM reception_bl_pages WHERE id = ? AND reception_id = ?",
+            (page_id, reception_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Page introuvable")
+
+        filepath = PHOTOS_BL_DIR / row["photo_filename"]
+        if filepath.exists():
+            filepath.unlink()
+
+        await db.execute("DELETE FROM reception_bl_pages WHERE id = ?", (page_id,))
+        await db.commit()
+
+    return {"statut": "supprimée", "page_id": page_id}
 
 
 @router.get("/receptions/{reception_id}/photo-proprete")

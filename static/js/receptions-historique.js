@@ -711,16 +711,43 @@ async function chargerBlPagesHistorique(receptionId, zone) {
 
     const urls = pages.map(p => p.url);
     pages.forEach((p, idx) => {
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'position:relative;display:inline-block;';
+
       const img = document.createElement('img');
       img.src   = p.url;
       img.alt   = `BL page ${idx + 1}`;
       img.title = `Voir la page ${idx + 1}`;
-      img.style.cssText = 'width:54px;height:54px;object-fit:cover;border-radius:8px;border:2px solid #6B3A1F;cursor:pointer;background:#f0e6d2;';
+      img.style.cssText = 'width:54px;height:54px;object-fit:cover;border-radius:8px;border:2px solid #6B3A1F;cursor:pointer;background:#f0e6d2;display:block;';
       img.addEventListener('click', e => {
         e.stopPropagation();
         ouvrirViewerPages(urls, idx);
       });
-      strip.appendChild(img);
+      wrapper.appendChild(img);
+
+      // Bouton supprimer (coin haut-droit)
+      if (p.page_id) {
+        const btnSup = document.createElement('button');
+        btnSup.type = 'button';
+        btnSup.textContent = '✕';
+        btnSup.style.cssText = 'position:absolute;top:-8px;right:-8px;background:#C93030;color:#FFF;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer;padding:0;line-height:1;';
+        btnSup.title = 'Supprimer cette page';
+        btnSup.addEventListener('click', async e => {
+          e.stopPropagation();
+          if (!confirm('Supprimer cette page de BL ?')) return;
+          btnSup.disabled = true;
+          try {
+            await apiFetch(`/api/receptions/${receptionId}/bl-pages/${p.page_id}`, { method: 'DELETE' });
+            await chargerBlPagesHistorique(receptionId, zone);
+          } catch (err) {
+            alert('Suppression impossible : ' + err.message);
+            btnSup.disabled = false;
+          }
+        });
+        wrapper.appendChild(btnSup);
+      }
+
+      strip.appendChild(wrapper);
     });
     zone.appendChild(strip);
   }

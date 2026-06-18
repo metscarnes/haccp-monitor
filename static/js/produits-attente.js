@@ -268,13 +268,39 @@ async function chargerApercuBl(receptionId, zone, blNumeroZone) {
   divVignettes.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
   const urls = pages.map(p => p.url);
   pages.forEach((p, idx) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative;display:inline-block;';
+
     const img = document.createElement('img');
     img.className = 'pa-bl-vignette';
     img.src = p.url;
     img.alt = `BL page ${idx + 1}`;
     img.title = `Voir la page ${idx + 1}`;
+    img.style.cssText = 'width:54px;height:54px;object-fit:cover;border-radius:8px;border:2px solid #6B3A1F;cursor:pointer;background:#f0e6d2;display:block;';
     img.addEventListener('click', () => ouvrirViewer(urls, idx));
-    divVignettes.appendChild(img);
+    wrapper.appendChild(img);
+
+    // Bouton supprimer (coin haut-droit)
+    const btnSup = document.createElement('button');
+    btnSup.type = 'button';
+    btnSup.textContent = '✕';
+    btnSup.style.cssText = 'position:absolute;top:-8px;right:-8px;background:#C93030;color:#FFF;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer;padding:0;line-height:1;';
+    btnSup.title = 'Supprimer cette page';
+    btnSup.addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!confirm('Supprimer cette page de BL ?')) return;
+      btnSup.disabled = true;
+      try {
+        await apiFetch(`/api/receptions/${receptionId}/bl-pages/${p.page_id}`, { method: 'DELETE' });
+        await chargerApercuBl(receptionId, zone, blNumeroZone);
+      } catch (err) {
+        alert('Suppression impossible : ' + err.message);
+        btnSup.disabled = false;
+      }
+    });
+    wrapper.appendChild(btnSup);
+
+    divVignettes.appendChild(wrapper);
   });
   zone.appendChild(divVignettes);
 
@@ -512,7 +538,14 @@ async function lancerOcrGroupe(g, btn, statut) {
     // L'OCR lit une DLC : on ne pré-remplit que les cartes attendant une DLC
     // (les articles 'date_abattage' gardent la saisie manuelle de la date d'abattage).
     if (inpDlc && art.dlc) { inpDlc.value = art.dlc; rempli = true; }
-    if (rempli) nbRemplis++;
+    if (rempli) {
+      nbRemplis++;
+      // Sauvegarder les données pré-remplies par l'OCR
+      const donnees = {};
+      if (inpLot && inpLot.value) donnees.numero_lot = inpLot.value;
+      if (inpDlc && inpDlc.value) donnees.dlc = inpDlc.value;
+      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
+    }
 
     if (art.dlc_suspecte) {
       nbSuspects++;
@@ -559,6 +592,23 @@ function correspond(a, b) {
   return na.includes(nb) || nb.includes(na);
 }
 
+// ── Stockage localStorage des données de cartes ────────────
+function sauvegarderDonneesCarte(ligneId, donnees) {
+  const key = `pa_carte_${ligneId}`;
+  localStorage.setItem(key, JSON.stringify(donnees));
+}
+
+function chargerDonneesCarte(ligneId) {
+  const key = `pa_carte_${ligneId}`;
+  const data = localStorage.getItem(key);
+  return data ? JSON.parse(data) : null;
+}
+
+function effacerDonneesCarte(ligneId) {
+  const key = `pa_carte_${ligneId}`;
+  localStorage.removeItem(key);
+}
+
 // ── Carte d'un produit en attente ──────────────────────────
 function rendreCarte(ligne) {
   const carte = document.createElement('div');
@@ -581,7 +631,6 @@ function rendreCarte(ligne) {
     <div class="pa-champ">
       <label class="pa-champ-label">N° de lot</label>
       <input type="text" class="pa-input" data-field="numero_lot"
-             value="${escHtml(ligne.numero_lot || '')}"
              placeholder="N° de lot du bon de livraison…">
       <button class="pa-btn-lot-interne" type="button">
         🏷️ Pas de N° de lot → générer un lot interne
@@ -591,8 +640,7 @@ function rendreCarte(ligne) {
     <div class="pa-champ">
       <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
       <input type="date" class="pa-input"
-             data-field="${dateAbattage ? 'date_abattage' : 'dlc'}"
-             value="${escHtml(dateAbattage ? (ligne.date_abattage || '') : (ligne.dlc || ''))}">
+             data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
     </div>
 
     <button class="pa-btn-valider" type="button">✓ Valider et entrer en stock</button>
@@ -614,6 +662,37 @@ function rendreCarte(ligne) {
       </div>
     </div>
   `;
+
+  // Restaurer les données sauvegardées en localStorage
+  const donneesSauvegardees = chargerDonneesCarte(ligne.ligne_id);
+  if (donneesSauvegardees) {
+    const inputs = carte.querySelectorAll('.pa-input');
+    inputs.forEach(inp => {
+      const field = inp.dataset.field;
+      if (donneesSauvegardees[field]) {
+        inp.value = donneesSauvegardees[field];
+      }
+    });
+  }
+
+  // Ajouter les listeners pour sauvegarder automatiquement
+  const inputs = carte.querySelectorAll('.pa-input');
+  inputs.forEach(inp => {
+    inp.addEventListener('input', () => {
+      const donnees = {};
+      inputs.forEach(i => {
+        if (i.value.trim()) donnees[i.dataset.field] = i.value.trim();
+      });
+      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
+    });
+    inp.addEventListener('change', () => {
+      const donnees = {};
+      inputs.forEach(i => {
+        if (i.value.trim()) donnees[i.dataset.field] = i.value.trim();
+      });
+      sauvegarderDonneesCarte(ligne.ligne_id, donnees);
+    });
+  });
 
   const btn    = carte.querySelector('.pa-btn-valider');
   const erreur = carte.querySelector('.pa-erreur');
@@ -695,6 +774,8 @@ async function genererLotInterne(carte, ligne, btnLot, erreur) {
     inpLot.readOnly = true;
     inpLot.style.background = '#f0faf3';
     carte.dataset.lotInterne = '1';   // signalé au backend lors de la validation
+    // Sauvegarder le lot interne généré
+    sauvegarderDonneesCarte(ligne.ligne_id, { numero_lot: data.lot_interne });
   } catch (e) {
     erreur.textContent = 'Génération du lot interne impossible : ' + e.message;
     erreur.hidden = false;
@@ -744,8 +825,8 @@ async function valider(carte, ligne, btn, erreur) {
       body: JSON.stringify(payload),
     });
     if (res.statut === 'complet') {
-      // Produit complété → le produit entre en stock. On le retire de la source
-      // de vérité puis on re-rend (le groupe disparaît s'il devient vide).
+      // Produit complété → le produit entre en stock. Nettoyer le localStorage et retirer de la liste.
+      effacerDonneesCarte(ligne.ligne_id);
       toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
       if (!toutesLignes.length) {
         elBarre.hidden = true;
@@ -889,7 +970,8 @@ async function marquerNonRecu(carte, ligne, btn, erreur) {
 
   try {
     await apiFetch(`/api/attente/lignes/${ligne.ligne_id}/non-recu`, { method: 'PUT' });
-    // Retirer de la source de vérité et re-rendre
+    // Nettoyer le localStorage et retirer de la source de vérité
+    effacerDonneesCarte(ligne.ligne_id);
     toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
     if (!toutesLignes.length) {
       elBarre.hidden = true;
