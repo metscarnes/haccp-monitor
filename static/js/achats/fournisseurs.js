@@ -3,6 +3,55 @@
 const API = '/api/achats/fournisseurs';
 let fournisseurs = [];
 let modeEdition = false;
+let emailsCopieList = []; // liste des emails CC en cours d'édition
+
+// ── Emails CC (widget chips) ─────────────────────────────────
+function emailsCopieKeydown(e) {
+  if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+    e.preventDefault();
+    emailsCopieAjouter();
+  }
+}
+
+function emailsCopieBlur() {
+  emailsCopieAjouter();
+}
+
+function emailsCopieAjouter() {
+  const input = document.getElementById('f-emails-copie-input');
+  const val = input.value.trim().replace(/,$/, '');
+  if (!val) return;
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRe.test(val)) { input.value = ''; return; }
+  if (!emailsCopieList.includes(val)) {
+    emailsCopieList.push(val);
+    emailsCopieRendu();
+  }
+  input.value = '';
+}
+
+function emailsCopieSupprimerChip(email) {
+  emailsCopieList = emailsCopieList.filter(e => e !== email);
+  emailsCopieRendu();
+}
+
+function emailsCopieRendu() {
+  const wrap = document.getElementById('f-emails-copie-chips');
+  wrap.innerHTML = emailsCopieList.map(em => `
+    <span style="display:inline-flex;align-items:center;gap:4px;background:#f3e8d0;border:1px solid #d1c4b0;
+          border-radius:4px;padding:2px 6px;font-size:var(--text-xs);white-space:nowrap;">
+      ${escHtml(em)}
+      <button type="button" onclick="emailsCopieSupprimerChip('${em.replace(/'/g, "\\'")}')"
+        style="background:none;border:none;cursor:pointer;padding:0;line-height:1;color:#7c3000;font-size:14px;"
+        title="Retirer">×</button>
+    </span>
+  `).join('');
+}
+
+function emailsCopieInitialiser(liste) {
+  emailsCopieList = Array.isArray(liste) ? liste : [];
+  emailsCopieRendu();
+}
 
 const RYTHME_LABELS = {
   'A-B': 'A-B (J+1)',
@@ -127,6 +176,9 @@ function ouvrirEditionModal(id) {
   document.getElementById('f-nom').value = f.nom;
   document.getElementById('f-nom-commercial').value = f.nom_commercial || '';
   document.getElementById('f-email').value = f.email_commercial || '';
+  let ccList = [];
+  try { ccList = f.emails_copie ? (typeof f.emails_copie === 'string' ? JSON.parse(f.emails_copie) : f.emails_copie) : []; } catch {}
+  emailsCopieInitialiser(ccList);
   document.getElementById('f-telephone').value = f.telephone || '';
   document.getElementById('f-adresse').value = f.adresse || '';
   const delai = f.delai_paiement_jours !== null && f.delai_paiement_jours !== undefined
@@ -158,6 +210,7 @@ function viderForm() {
    'f-heure-limite-commande','f-heure-livraison','f-commentaire'].forEach(id => {
     document.getElementById(id).value = '';
   });
+  emailsCopieInitialiser([]);
   document.getElementById('f-delai-paiement').value = 0;
   majSliderDelai(0);
   document.getElementById('f-rythme-livraison').value = '';
@@ -191,6 +244,7 @@ async function sauver(e) {
     nom:                    document.getElementById('f-nom').value.trim(),
     nom_commercial:         document.getElementById('f-nom-commercial').value.trim() || null,
     email_commercial:       document.getElementById('f-email').value.trim() || null,
+    emails_copie:           emailsCopieList.length ? JSON.stringify(emailsCopieList) : null,
     telephone:              document.getElementById('f-telephone').value.trim() || null,
     adresse:                document.getElementById('f-adresse').value.trim() || null,
     delai_paiement_jours:   parseInt(document.getElementById('f-delai-paiement').value),

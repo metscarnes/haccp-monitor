@@ -1527,6 +1527,8 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (bl_supplementaire_id) REFERENCES reception_bls_supplementaires(id)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_bl_pages_reception ON reception_bl_pages(reception_id)",
+            # v5.9 — Fournisseurs : emails supplémentaires en copie (liste JSON)
+            "ALTER TABLE fournisseurs ADD COLUMN emails_copie TEXT",
         ]
         for sql in migrations:
             try:

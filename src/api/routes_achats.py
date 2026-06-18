@@ -68,6 +68,7 @@ class FournisseurCreate(BaseModel):
     nom: str
     nom_commercial: Optional[str] = None
     email_commercial: Optional[str] = None
+    emails_copie: Optional[str] = None  # JSON list ex: '["cc1@x.fr","cc2@x.fr"]'
     telephone: Optional[str] = None
     adresse: Optional[str] = None
     conditions_paiement: Optional[str] = None
@@ -84,6 +85,7 @@ class FournisseurUpdate(BaseModel):
     nom: Optional[str] = None
     nom_commercial: Optional[str] = None
     email_commercial: Optional[str] = None
+    emails_copie: Optional[str] = None  # JSON list ex: '["cc1@x.fr","cc2@x.fr"]'
     telephone: Optional[str] = None
     adresse: Optional[str] = None
     conditions_paiement: Optional[str] = None
@@ -310,12 +312,12 @@ async def create_fournisseur_achats(body: FournisseurCreate, _=Depends(require_a
     async with get_db() as db:
         cur = await db.execute(
             """INSERT INTO fournisseurs
-               (boutique_id, nom, nom_commercial, email_commercial, telephone, adresse,
+               (boutique_id, nom, nom_commercial, email_commercial, emails_copie, telephone, adresse,
                 conditions_paiement, delai_paiement_jours, jours_livraison,
                 rythme_livraison, heure_limite_commande, heure_livraison,
                 commentaire, actif)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (body.nom, body.nom_commercial, body.email_commercial, body.telephone, body.adresse,
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (body.nom, body.nom_commercial, body.email_commercial, body.emails_copie, body.telephone, body.adresse,
              body.conditions_paiement, body.delai_paiement_jours, body.jours_livraison,
              body.rythme_livraison, body.heure_limite_commande, body.heure_livraison,
              body.commentaire, 1 if body.actif else 0)
@@ -334,7 +336,9 @@ async def update_fournisseur_achats(fid: int, body: FournisseurUpdate, _=Depends
         if not existing:
             raise HTTPException(404, "Fournisseur introuvable")
 
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        dump = body.model_dump()
+        # emails_copie peut légitimement être None (vider la liste) → toujours inclure si présent dans le body
+        fields = {k: v for k, v in dump.items() if v is not None or k == "emails_copie"}
         if not fields:
             return dict(existing)
 
@@ -1967,7 +1971,7 @@ async def envoyer_commande(commande_id: int):
     """Envoie le récapitulatif de commande par mail au commercial fournisseur."""
     async with get_db() as db:
         cur = await db.execute(
-            """SELECT c.*, f.nom AS fournisseur_nom, f.email_commercial
+            """SELECT c.*, f.nom AS fournisseur_nom, f.email_commercial, f.emails_copie
                FROM commandes c JOIN fournisseurs f ON f.id = c.fournisseur_id
                WHERE c.id = ?""",
             (commande_id,)
@@ -2106,25 +2110,38 @@ async def envoyer_commande(commande_id: int):
                 "corps": corps,
             }
 
+        import json as _json
+        emails_copie = []
+        try:
+            raw_cc = commande["emails_copie"]
+            if raw_cc:
+                emails_copie = _json.loads(raw_cc) if isinstance(raw_cc, str) else raw_cc
+        except Exception:
+            pass
+
         msg = MIMEMultipart("alternative")
         msg["From"]    = from_addr
         msg["To"]      = commande["email_commercial"]
+        if emails_copie:
+            msg["Cc"] = ", ".join(emails_copie)
         msg["Subject"] = f"Commande {commande['numero_commande']} — Au Comptoir des Lilas"
         msg.attach(MIMEText(corps, "plain", "utf-8"))
         msg.attach(MIMEText(corps_html, "html", "utf-8"))
+
+        all_recipients = [commande["email_commercial"]] + emails_copie
 
         try:
             with smtplib.SMTP(smtp_host, smtp_port) as server:
                 server.starttls()
                 server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
+                server.sendmail(from_addr, all_recipients, msg.as_string())
 
             await db.execute(
                 "UPDATE commandes SET statut = 'confirmee', date_envoi_mail = CURRENT_TIMESTAMP WHERE id = ?",
                 (commande_id,)
             )
             await db.commit()
-            return {"envoye": True, "destinataire": commande["email_commercial"]}
+            return {"envoye": True, "destinataire": commande["email_commercial"], "copie": emails_copie}
 
         except Exception as e:
             logger.error("Erreur envoi mail commande %d : %s", commande_id, e)
