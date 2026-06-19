@@ -3706,6 +3706,118 @@ async def completer_ligne_attente(
     return dict(updated) if updated else None
 
 
+async def completer_ligne_attente_multi(
+    db: aiosqlite.Connection,
+    ligne_id: int,
+    sections: list[dict],
+) -> Optional[dict]:
+    """Complète une ligne en attente avec PLUSIEURS lots (1 lot par section).
+
+    Un même produit reçu peut être livré en plusieurs lots, chacun avec son propre
+    N° de lot, sa DLC/date d'abattage et son poids pesé. La ligne d'origine ne peut
+    représenter qu'un seul lot : on met donc à jour la ligne existante avec la 1re
+    section, puis on CLONE une nouvelle ligne de réception par section suivante (en
+    recopiant tout le contrôle HACCP : produit, fournisseur, critères, température…).
+
+    `sections` : liste de dicts {numero_lot, dlc, dluo, date_abattage, poids_kg,
+    lot_interne}. Chaque champ vide → ignoré (la 1re section conserve l'existant).
+
+    Renvoie un récap {ligne_id, total, complets, en_attente, lignes_ids} ou None si
+    la ligne d'origine est introuvable.
+    """
+    if not sections:
+        return None
+
+    cur = await db.execute("SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,))
+    base = await cur.fetchone()
+    if not base:
+        return None
+    base = dict(base)
+
+    def _pick(new, old):
+        if new is None or (isinstance(new, str) and not new.strip()):
+            return old
+        return new
+
+    lignes_ids: list[int] = []
+    complets = 0
+
+    for idx, sect in enumerate(sections):
+        numero_lot    = _pick(sect.get("numero_lot"),    base["numero_lot"] if idx == 0 else None)
+        dlc           = _pick(sect.get("dlc"),           base["dlc"] if idx == 0 else None)
+        dluo          = _pick(sect.get("dluo"),          base["dluo"] if idx == 0 else None)
+        date_abattage = _pick(sect.get("date_abattage"), base["date_abattage"] if idx == 0 else None)
+        poids_kg      = _pick(sect.get("poids_kg"),      base["poids_kg"])
+        lot_interne   = 1 if sect.get("lot_interne") else (base["lot_interne"] if idx == 0 else 0) or 0
+
+        statut, attente_motif = _calc_statut_attente({
+            "numero_lot":    numero_lot,
+            "lot_interne":   lot_interne,
+            "dlc":           dlc,
+            "dluo":          dluo,
+            "date_abattage": date_abattage,
+            "dlc_type":      base["dlc_type"],
+        })
+        if statut == "complet":
+            complets += 1
+
+        if idx == 0:
+            # 1re section : on met à jour la ligne d'origine (préserve conformité/obs).
+            await db.execute(
+                """
+                UPDATE reception_lignes SET
+                    numero_lot = ?, lot_interne = ?, dlc = ?, dluo = ?, date_abattage = ?,
+                    poids_kg = ?, statut = ?, attente_motif = ?
+                WHERE id = ?
+                """,
+                (numero_lot, lot_interne, dlc, dluo, date_abattage, poids_kg,
+                 statut, attente_motif, ligne_id),
+            )
+            lignes_ids.append(ligne_id)
+        else:
+            # Sections suivantes : clone d'une nouvelle ligne (mêmes contrôles HACCP).
+            cursor = await db.execute(
+                """
+                INSERT INTO reception_lignes
+                    (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id,
+                     fournisseur_nom, numero_lot, lot_interne, dlc, dluo, date_abattage,
+                     dlc_type, statut, attente_motif, designation_libre, origine, poids_kg,
+                     temperature_reception, temperature_conforme, temperature_coeur,
+                     couleur_conforme, couleur_observation,
+                     consistance_conforme, consistance_observation,
+                     exsudat_conforme, exsudat_observation,
+                     odeur_conforme, odeur_observation,
+                     ph_valeur, ph_conforme, conforme, substitution_article)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    base["reception_id"], base["produit_id"], base["catalogue_fournisseur_id"],
+                    base["fournisseur_id"], base["fournisseur_nom"],
+                    numero_lot, lot_interne, dlc, dluo, date_abattage,
+                    base["dlc_type"], statut, attente_motif, base["designation_libre"],
+                    base["origine"], poids_kg,
+                    base["temperature_reception"], base["temperature_conforme"], base["temperature_coeur"],
+                    base["couleur_conforme"], base["couleur_observation"],
+                    base["consistance_conforme"], base["consistance_observation"],
+                    base["exsudat_conforme"], base["exsudat_observation"],
+                    base["odeur_conforme"], base["odeur_observation"],
+                    base["ph_valeur"], base["ph_conforme"], base["conforme"],
+                    base.get("substitution_article"),
+                ),
+            )
+            lignes_ids.append(cursor.lastrowid)
+
+    await db.commit()
+
+    return {
+        "ligne_id":   ligne_id,
+        "total":      len(sections),
+        "complets":   complets,
+        "en_attente": len(sections) - complets,
+        "lignes_ids": lignes_ids,
+    }
+
+
 async def generer_lots_internes_reception(
     db: aiosqlite.Connection, reception_id: int
 ) -> Optional[dict]:

@@ -16,11 +16,14 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from typing import List
+
 from src.database import (
     get_db,
     get_lignes_en_attente,
     count_lignes_en_attente,
     completer_ligne_attente,
+    completer_ligne_attente_multi,
     marquer_non_recu,
     changer_produit_ligne_attente,
 )
@@ -36,6 +39,19 @@ class CompletionBody(BaseModel):
     dluo: Optional[str] = None
     date_abattage: Optional[str] = None
     lot_interne: int = 0
+
+
+class SectionBody(BaseModel):
+    numero_lot: Optional[str] = None
+    dlc: Optional[str] = None
+    dluo: Optional[str] = None
+    date_abattage: Optional[str] = None
+    poids_kg: Optional[float] = None
+    lot_interne: int = 0
+
+
+class CompletionMultiBody(BaseModel):
+    sections: List[SectionBody]
 
 
 @router.get("/lignes")
@@ -69,6 +85,24 @@ async def completer(ligne_id: int, body: CompletionBody):
     if ligne is None:
         raise HTTPException(404, "Ligne de réception introuvable")
     return ligne
+
+
+@router.put("/lignes/{ligne_id}/multi")
+async def completer_multi(ligne_id: int, body: CompletionMultiBody):
+    """Complète une ligne en attente avec PLUSIEURS lots (1 lot/DLC/poids par section).
+
+    La ligne d'origine prend la 1re section ; chaque section suivante crée une
+    nouvelle ligne de réception clonée. Chaque lot entre en stock dès qu'il a son
+    lot + sa date (selon dlc_type). Renvoie un récap (total / complets / en_attente).
+    """
+    if not body.sections:
+        raise HTTPException(400, "Au moins une section lot/date est requise.")
+    sections = [s.model_dump() for s in body.sections]
+    async with get_db() as db:
+        res = await completer_ligne_attente_multi(db, ligne_id, sections)
+    if res is None:
+        raise HTTPException(404, "Ligne de réception introuvable")
+    return res
 
 
 @router.put("/lignes/{ligne_id}/non-recu")

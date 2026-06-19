@@ -563,20 +563,37 @@ async function lancerOcrGroupe(g, btn, statut) {
     if (idx === -1) { nbNonRapproches++; return; }
     const art = articlesDispo.splice(idx, 1)[0];  // consommé : pas de réutilisation
 
-    const inpLot  = carte.querySelector('[data-field="numero_lot"]');
-    const inpDlc  = carte.querySelector('[data-field="dlc"]');  // null si date_abattage / no_dlc
+    // On ne pré-remplit que la 1re section (l'OCR ne sépare pas encore les lots ici).
+    const sect0 = carte.querySelector('.pa-section-lot-dlc:first-child') || carte;
+    const inpLot  = sect0.querySelector('[data-field="numero_lot"]');
+    // Champ date selon le type paramétré de l'article :
+    //  - dlc            → [data-field="dlc"]
+    //  - date_abattage  → [data-field="date_abattage"] (la date lue sur le BL fait foi)
+    //  - no_dlc         → aucun champ date (le lot seul suffit à lever l'attente)
+    const inpDate  = sect0.querySelector('[data-field="dlc"], [data-field="date_abattage"]');
+    const inpPoids = sect0.querySelector('[data-field="poids_kg"]');
     let rempli = false;
     if (inpLot && art.numero_lot) { inpLot.value = art.numero_lot; rempli = true; }
-    // L'OCR lit une DLC : on ne pré-remplit que les cartes attendant une DLC
-    // (les articles 'date_abattage' gardent la saisie manuelle de la date d'abattage).
-    if (inpDlc && art.dlc) { inpDlc.value = art.dlc; rempli = true; }
+    // Date à appliquer : DLC pour un article 'dlc', sinon la date lue (DLC ou DLUO)
+    // sert de date d'abattage pour un article 'date_abattage'.
+    const dateOcr = ligne.dlc_type === 'date_abattage'
+      ? (art.dlc || art.dluo || '')
+      : (ligne.dlc_type === 'no_dlc' ? '' : (art.dlc || ''));
+    if (inpDate && dateOcr) { inpDate.value = dateOcr; rempli = true; }
+    // Poids lu sur le BL : ne remplace pas un poids déjà saisi.
+    if (inpPoids && art.poids_kg != null && !inpPoids.value.trim()) { inpPoids.value = art.poids_kg; rempli = true; }
     if (rempli) {
       nbRemplis++;
       // Sauvegarder les données pré-remplies par l'OCR
       sauvegarderSectionsCarte(carte, ligne.ligne_id);
     }
 
-    if (art.dlc_suspecte) {
+    // Article « date d'abattage » : une date antérieure à la livraison est NORMALE.
+    // L'OCR (sans connaissance du type) la signale à tort → on neutralise l'alerte.
+    const fauxSuspectAbattage = ligne.dlc_type === 'date_abattage'
+      && /antérieure à la livraison/i.test(art.alerte || '');
+
+    if (art.dlc_suspecte && !fauxSuspectAbattage) {
       nbSuspects++;
       carte.classList.add('pa-carte--suspect');
       const err = carte.querySelector('.pa-erreur');
@@ -781,6 +798,7 @@ function sauvegarderSectionsCarte(carte, ligneId) {
 function ajouterSection(carte, ligne) {
   const conteneur = carte.querySelector('.pa-sections-lot-dlc');
   const dateAbattage = ligne.dlc_type === 'date_abattage';
+  const noDlc = ligne.dlc_type === 'no_dlc';
   const nbSections = conteneur.querySelectorAll('.pa-section-lot-dlc').length;
 
   const section = document.createElement('div');
@@ -792,9 +810,14 @@ function ajouterSection(carte, ligne) {
       <label class="pa-champ-label">N° de lot</label>
       <input type="text" class="pa-input" data-field="numero_lot" placeholder="N° de lot…">
     </div>
-    <div class="pa-champ">
+    <div class="pa-champ"${noDlc ? ' hidden' : ''}>
       <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
       <input type="date" class="pa-input" data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
+    </div>
+    <div class="pa-champ">
+      <label class="pa-champ-label">Poids (kg)</label>
+      <input type="number" step="0.01" min="0" inputmode="decimal"
+             class="pa-input" data-field="poids_kg" placeholder="kg">
     </div>
   `;
 
@@ -858,15 +881,22 @@ function rendreCarte(ligne) {
           </button>
         </div>
 
-        <div class="pa-champ">
+        <div class="pa-champ"${ligne.dlc_type === 'no_dlc' ? ' hidden' : ''}>
           <label class="pa-champ-label">${dateAbattage ? "Date d'abattage" : 'DLC'}</label>
           <input type="date" class="pa-input"
                  data-field="${dateAbattage ? 'date_abattage' : 'dlc'}">
         </div>
+
+        <div class="pa-champ">
+          <label class="pa-champ-label">Poids (kg)</label>
+          <input type="number" step="0.01" min="0" inputmode="decimal"
+                 class="pa-input" data-field="poids_kg" placeholder="kg"
+                 value="${ligne.poids_kg != null ? ligne.poids_kg : ''}">
+        </div>
       </div>
     </div>
 
-    <button class="pa-btn-ajouter-section" type="button">＋ Ajouter une autre quantité</button>
+    <button class="pa-btn-ajouter-section" type="button">＋ Ajouter un autre lot</button>
 
     <button class="pa-btn-valider" type="button">✓ Valider et entrer en stock</button>
     <button class="pa-btn-changer-produit" type="button">🔄 Changer de produit</button>
@@ -1015,11 +1045,19 @@ async function genererLotInterne(carte, ligne, btnLot, erreur) {
 }
 
 // ── Validation / complétion ────────────────────────────────
+// Chaque section = 1 lot (lot + DLC/date + poids propres). La ligne d'origine
+// prend la 1re section ; les sections suivantes créent des lignes clonées via
+// l'endpoint /multi. Une ligne par lot entre alors séparément en stock.
 async function valider(carte, ligne, btn, erreur) {
   erreur.hidden = true;
 
-  // Collecter toutes les sections remplies
+  const dateAbattage = attendDateAbattage(ligne);
+  const noDlc        = ligne.dlc_type === 'no_dlc';
+  const premiereSect = carte.querySelector('.pa-section-lot-dlc:first-child');
+
+  // Collecter + valider chaque section.
   const sections = [];
+  let invalide = false;
   carte.querySelectorAll('.pa-section-lot-dlc').forEach(sect => {
     const payload = {};
     const inputs = sect.querySelectorAll('.pa-input');
@@ -1029,32 +1067,41 @@ async function valider(carte, ligne, btn, erreur) {
       if (v) payload[inp.dataset.field] = v;
     });
 
-    // Valider la section
     const manqueLot  = !payload.numero_lot;
-    const dateAbattage = attendDateAbattage(ligne);
-    const noDlc      = ligne.dlc_type === 'no_dlc';
     const manqueDate = !noDlc && !(dateAbattage ? payload.date_abattage : payload.dlc);
+    // Poids obligatoire et > 0 pour chaque lot (chacun a son propre poids pesé).
+    const poidsNum   = parseFloat(payload.poids_kg);
+    const manquePoids = !(poidsNum > 0);
 
-    if (manqueLot || manqueDate) {
+    if (manqueLot || manqueDate || manquePoids) {
+      invalide = true;
       inputs.forEach(inp => {
         if ((inp.dataset.field === 'numero_lot' && manqueLot) ||
-            (inp.dataset.field !== 'numero_lot' && manqueDate)) {
+            ((inp.dataset.field === 'dlc' || inp.dataset.field === 'date_abattage') && manqueDate) ||
+            (inp.dataset.field === 'poids_kg' && manquePoids)) {
           inp.classList.add('pa-input--invalide');
         }
       });
-      return; // Passer à la section suivante sans l'ajouter
+      return;
     }
 
-    // Lot auto-généré (interne) : marqué au niveau de la première section
-    if (sect === carte.querySelector('.pa-section-lot-dlc:first-child') && carte.dataset.lotInterne === '1') {
+    // Lot auto-généré (interne) : marqué au niveau de la première section.
+    if (sect === premiereSect && carte.dataset.lotInterne === '1') {
       payload.lot_interne = 1;
     }
-
+    // Normaliser le poids en nombre pour le backend.
+    payload.poids_kg = poidsNum;
     sections.push(payload);
   });
 
+  if (invalide) {
+    erreur.textContent = 'Chaque lot doit avoir son N° de lot, sa date'
+      + (noDlc ? '' : ' (DLC / abattage)') + ' et son poids (kg).';
+    erreur.hidden = false;
+    return;
+  }
   if (sections.length === 0) {
-    erreur.textContent = 'Renseignez au moins un lot avec sa date.';
+    erreur.textContent = 'Renseignez au moins un lot avec sa date et son poids.';
     erreur.hidden = false;
     return;
   }
@@ -1062,23 +1109,22 @@ async function valider(carte, ligne, btn, erreur) {
   btn.disabled = true;
   btn.textContent = 'Validation…';
   try {
-    // Valider chaque section séquentiellement
-    for (const payload of sections) {
-      const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.statut !== 'complet') {
-        erreur.textContent = 'Une section n\'a pas pu être finalisée.';
-        erreur.hidden = false;
-        btn.disabled = false;
-        btn.textContent = '✓ Valider et entrer en stock';
-        return;
-      }
+    const res = await apiFetch(`/api/attente/lignes/${ligne.ligne_id}/multi`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections }),
+    });
+    if (res.en_attente > 0) {
+      erreur.textContent = `${res.en_attente} lot(s) encore incomplet(s) — vérifiez lot et date.`;
+      erreur.hidden = false;
+      btn.disabled = false;
+      btn.textContent = '✓ Valider et entrer en stock';
+      // Recharger pour refléter l'état réel (certaines lignes ont pu être créées).
+      await charger();
+      return;
     }
 
-    // Toutes les sections sont complètes → retirer la ligne
+    // Tous les lots sont complets → retirer la ligne de la file.
     effacerDonneesCarte(ligne.ligne_id);
     toutesLignes = toutesLignes.filter(l => l.ligne_id !== ligne.ligne_id);
     if (!toutesLignes.length) {

@@ -3338,18 +3338,35 @@ function _appliquerOcrSurCarte(etat, l) {
   const inpDate  = carte.querySelector('.rec-batch-date');
   const inpPoids = carte.querySelector('.rec-batch-poids');
 
+  // Date à appliquer selon le type paramétré de l'article :
+  //  - no_dlc        → aucune date (champ masqué) ;
+  //  - date_abattage → la date lue sur le BL (DLC ou DLUO) EST la date d'abattage ;
+  //  - dlc (défaut)  → la DLC lue.
+  let dateOcr = '';
+  if (etat.dlcType === 'no_dlc')          dateOcr = '';
+  else if (etat.dlcType === 'date_abattage') dateOcr = l.dlc || l.dluo || '';
+  else                                       dateOcr = l.dlc || '';
+
   const lotPrincipalRempli = inpLot && inpLot.value.trim() !== '';
   if (l.numero_lot && lotPrincipalRempli && inpLot.value.trim() !== l.numero_lot) {
-    // Lot supplémentaire pour cet article (DLC propre au lot).
-    ajouterChampLotSuppBatch(etat, l.numero_lot, l.dlc || '');
+    // Lot supplémentaire pour cet article (DLC + poids propres au lot).
+    ajouterChampLotSuppBatch(etat, l.numero_lot, dateOcr, l.poids_kg != null ? l.poids_kg : '');
   } else {
     // On ne remplit que les champs vides : ne jamais écraser une saisie manuelle.
     if (inpLot && l.numero_lot && !inpLot.value.trim())   inpLot.value  = l.numero_lot;
-    if (inpDate && l.dlc && !inpDate.value)               inpDate.value = l.dlc;  // ISO
+    if (inpDate && dateOcr && !inpDate.value)             inpDate.value = dateOcr;  // ISO
+    // Poids principal : l'OCR n'écrase pas une quantité commandée pré-remplie que
+    // si elle vient d'une commande. Sans commande, le champ est vide → on remplit.
+    if (inpPoids && l.poids_kg != null && !inpPoids.value) inpPoids.value = l.poids_kg;
   }
-  if (inpPoids && l.poids_kg != null && !inpPoids.value) inpPoids.value = l.poids_kg;
 
-  if (l.dlc_suspecte) {
+  // Pour un article « date d'abattage », une date antérieure à la livraison est
+  // NORMALE (l'abattage précède toujours la réception) : l'OCR ignore le type de
+  // l'article et la signale à tort comme suspecte → on neutralise cette alerte.
+  const fauxSuspectAbattage = etat.dlcType === 'date_abattage'
+    && /antérieure à la livraison/i.test(l.alerte || '');
+
+  if (l.dlc_suspecte && !fauxSuspectAbattage) {
     carte.classList.add('rec-batch-ocr-suspect');
     if (l.alerte && !carte.querySelector('.rec-batch-ocr-alerte')) {
       const note = document.createElement('div');
@@ -3377,13 +3394,16 @@ function creerCartesDepuisOcr(lignes) {
       : `des:${_normLibelle(l.designation)}`;
 
     if (!cartesParArticle.has(cle)) {
+      // Article du catalogue achats correspondant : pour récupérer le dlc_type
+      // paramétré (dlc / date_abattage / no_dlc) et la réf catalogue.
+      const art = resoudreArticleCatalogue(l);
       creerCarteBatch({
-        designation: l.designation || 'Article',
-        code_article: l.reference || null,
-        catalogue_fournisseur_id: null,
+        designation: (art && art.designation) || l.designation || 'Article',
+        code_article: (art && art.code_article) || l.reference || null,
+        catalogue_fournisseur_id: art ? art.id : null,
         quantite_commandee: l.quantite ?? null,
         unite: 'kg',
-        dlc_type: null,
+        dlc_type: art ? (art.dlc_type || 'dlc') : null,
         _fournisseur_id:  fournisseursListe[0]?.id  || null,
         _fournisseur_nom: fournisseursListe[0]?.nom || null,
       });
@@ -3484,6 +3504,32 @@ function sortirModeBatch() {
 function resoudreProduit(designation) {
   const res = filtrerProduits(designation || '');
   return res.length === 1 ? res[0] : null;  // match seulement si non ambigu
+}
+
+// Tente de retrouver l'article du catalogue achats du fournisseur BL correspondant
+// à une ligne OCR (par référence exacte, sinon par désignation normalisée non
+// ambiguë). Sert à récupérer le `dlc_type` paramétré (dlc / date_abattage / no_dlc)
+// et le `catalogue_fournisseur_id` : sans ça, l'OCR force une DLC sur des articles
+// « sans DLC » ou « date d'abattage » → mise en attente injustifiée.
+function resoudreArticleCatalogue(ocrLigne) {
+  if (!catalogueBl.length) return null;
+  const ref = (ocrLigne.reference || '').trim().toLowerCase();
+  if (ref) {
+    const parRef = catalogueBl.find(a => (a.code_article || '').trim().toLowerCase() === ref);
+    if (parRef) return parRef;
+  }
+  const cible = _normLibelle(ocrLigne.designation);
+  if (!cible) return null;
+  const exacts = catalogueBl.filter(a => _normLibelle(a.designation) === cible);
+  if (exacts.length === 1) return exacts[0];
+  // Recouvrement de mots si pas de correspondance exacte unique.
+  let best = null, bestScore = 0, nbBest = 0;
+  catalogueBl.forEach(a => {
+    const s = _scoreLibelle(ocrLigne.designation, a.designation);
+    if (s > bestScore) { bestScore = s; best = a; nbBest = 1; }
+    else if (s === bestScore) { nbBest++; }
+  });
+  return (best && bestScore >= 0.6 && nbBest === 1) ? best : null;
 }
 
 // Crée une carte éditable pour une ligne de commande (article du catalogue achats).
@@ -3715,10 +3761,10 @@ function creerCarteBatch(ligneCmd) {
   majBadgeCarte(etat);
 }
 
-// Ajoute un champ « n° de lot + DLC » supplémentaire sur une carte batch.
-// Mêmes critères/origine/poids que le lot principal ; seuls lot et DLC diffèrent.
-// `valeur`/`dlcVal` permettent de pré-remplir (utilisé par l'OCR multi-lot).
-function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '') {
+// Ajoute un champ « n° de lot + DLC + poids » supplémentaire sur une carte batch.
+// Mêmes critères/origine que le lot principal ; lot, DLC et poids sont propres au
+// lot. `valeur`/`dlcVal`/`poidsVal` permettent de pré-remplir (OCR multi-lot).
+function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '') {
   const cont = etat.el.querySelector('.rec-batch-lots-supp');
   if (!cont) return;
   const row = document.createElement('div');
@@ -3759,7 +3805,7 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '') {
   const dlcLabel = document.createElement('span');
   dlcLabel.className = 'rec-batch-lot-supp-dlc-label';
   dlcLabel.textContent = etat.dlcType === 'date_abattage' ? "Date d'abattage :" : 'DLC :';
-  dlcLabel.style.cssText = 'font-size:.8rem;color:var(--color-offline);white-space:nowrap;flex-shrink:0;';
+  dlcLabel.style.cssText = 'font-size:.8rem;color:var(--color-offline);white-space:nowrap;flex-shrink:0;min-width:90px;';
 
   const dlcInput = document.createElement('input');
   dlcInput.type = 'date';
@@ -3773,20 +3819,45 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '') {
   dlcRow.appendChild(dlcLabel);
   dlcRow.appendChild(dlcInput);
 
+  // Poids propre à ce lot (kg) — chaque lot a son propre poids pesé.
+  const poidsRow = document.createElement('div');
+  poidsRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-top:.3rem;';
+
+  const poidsLabel = document.createElement('span');
+  poidsLabel.textContent = 'Poids (kg) :';
+  poidsLabel.style.cssText = 'font-size:.8rem;color:var(--color-offline);white-space:nowrap;flex-shrink:0;min-width:90px;';
+
+  const poidsInput = document.createElement('input');
+  poidsInput.type = 'number';
+  poidsInput.step = '0.01';
+  poidsInput.min = '0';
+  poidsInput.inputMode = 'decimal';
+  poidsInput.className = 'rec-input rec-batch-lot-supp-poids';
+  poidsInput.placeholder = 'kg';
+  poidsInput.setAttribute('aria-label', 'Poids reçu pour ce lot (kg)');
+  poidsInput.value = poidsVal;
+  poidsInput.style.flex = '1';
+  poidsInput.addEventListener('input', () => poidsInput.classList.remove('rec-champ-invalide'));
+
+  poidsRow.appendChild(poidsLabel);
+  poidsRow.appendChild(poidsInput);
+
   row.appendChild(lotRow);
   row.appendChild(dlcRow);
+  row.appendChild(poidsRow);
   cont.appendChild(row);
   majLotsSuppHintBatch(etat);
   if (!valeur) input.focus();
 }
 
-// Lots supplémentaires saisis sur une carte batch : [{lot, dlc}] (lot non vide).
+// Lots supplémentaires saisis sur une carte batch : [{lot, dlc, poids}] (lot non vide).
 function lotsSuppValeursBatch(etat) {
   const cont = etat.el.querySelector('.rec-batch-lots-supp');
   if (!cont) return [];
   return [...cont.querySelectorAll('.rec-batch-lot-supp-row')].map(row => ({
-    lot: (row.querySelector('.rec-batch-lot-supp-input')?.value || '').trim(),
-    dlc: (row.querySelector('.rec-batch-lot-supp-dlc')?.value   || ''),
+    lot:   (row.querySelector('.rec-batch-lot-supp-input')?.value || '').trim(),
+    dlc:   (row.querySelector('.rec-batch-lot-supp-dlc')?.value   || ''),
+    poids: (row.querySelector('.rec-batch-lot-supp-poids')?.value || '').trim(),
   })).filter(p => p.lot);
 }
 
@@ -3866,30 +3937,32 @@ function majBtnTerminerBatch() {
   elBtnTerminer.disabled = (batchLignes.length === 0);
 }
 
-// Liste finale des couples {lot, dlc} d'une carte batch (lot principal + lots
-// supplémentaires), dédupliqués par n° de lot. 1 couple = 1 ligne de réception.
-// On garde toujours au moins un couple (le principal, éventuellement vide pour
-// un produit en attente).
+// Liste finale des couples {lot, dlc, poids} d'une carte batch (lot principal +
+// lots supplémentaires), dédupliqués par n° de lot. 1 couple = 1 ligne de
+// réception, chacune avec son propre poids. On garde toujours au moins un couple
+// (le principal, éventuellement vide pour un produit en attente).
 function pairesLotsBatch(etat) {
-  const lotPrincipal  = etat.el.querySelector('.rec-batch-lot').value.trim();
-  const dlcPrincipale = etat.el.querySelector('.rec-batch-date').value;
+  const lotPrincipal   = etat.el.querySelector('.rec-batch-lot').value.trim();
+  const dlcPrincipale  = etat.el.querySelector('.rec-batch-date').value;
+  const poidsPrincipal = etat.el.querySelector('.rec-batch-poids').value.trim();
   const seen = new Set();
-  const paires = [{ lot: lotPrincipal, dlc: dlcPrincipale }];
+  const paires = [{ lot: lotPrincipal, dlc: dlcPrincipale, poids: poidsPrincipal }];
   if (lotPrincipal) seen.add(lotPrincipal);
   // Un lot interne occupe le lot principal : pas de lots supplémentaires possibles.
   if (!etat.lotInterne) {
-    for (const { lot, dlc } of lotsSuppValeursBatch(etat)) {
+    for (const { lot, dlc, poids } of lotsSuppValeursBatch(etat)) {
       if (!lot || seen.has(lot)) continue;
       seen.add(lot);
-      paires.push({ lot, dlc: dlc || dlcPrincipale });
+      // Poids propre au lot ; à défaut, on retombe sur le poids principal.
+      paires.push({ lot, dlc: dlc || dlcPrincipale, poids: poids || poidsPrincipal });
     }
   }
   return paires;
 }
 
 // Construit le payload d'une carte (même forme que _buildPayload unitaire).
-// `paire` (optionnel) {lot, dlc} : si fourni, surcharge le lot et la DLC de base
-// (cas multi-lot : 1 payload par couple lot/DLC).
+// `paire` (optionnel) {lot, dlc, poids} : si fourni, surcharge le lot, la DLC et
+// le poids de base (cas multi-lot : 1 payload par couple lot/DLC/poids).
 function _buildPayloadBatch(etat, paire = null) {
   const payload = {
     couleur_conforme:     etat.criteres.couleur,
@@ -3918,7 +3991,9 @@ function _buildPayloadBatch(etat, paire = null) {
     if (etat.dlcType === 'date_abattage') payload.date_abattage = dateVal;
     else                                  payload.dlc           = dateVal;
   }
-  const poids = parseFloat(etat.el.querySelector('.rec-batch-poids').value);
+  const poids = parseFloat(paire && paire.poids !== undefined && paire.poids !== ''
+    ? paire.poids
+    : etat.el.querySelector('.rec-batch-poids').value);
   if (!isNaN(poids)) payload.poids_kg = poids;
 
   const nbColis = parseInt(etat.el.querySelector('.rec-batch-nb-colis')?.value, 10);
@@ -3952,6 +4027,19 @@ async function validerBatch() {
       etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       alert('Le poids reçu (kg) est obligatoire et doit être supérieur à 0.');
       return;
+    }
+
+    // Poids des lots supplémentaires : optionnel (retombe sur le poids principal),
+    // mais s'il est saisi il doit être > 0.
+    for (const inpP of etat.el.querySelectorAll('.rec-batch-lot-supp-poids')) {
+      const v = inpP.value.trim();
+      if (v !== '' && (parseFloat(v) <= 0 || isNaN(parseFloat(v)))) {
+        inpP.classList.add('rec-champ-invalide');
+        inpP.focus();
+        etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        alert('Le poids d\'un lot supplémentaire doit être supérieur à 0.');
+        return;
+      }
     }
 
     // DLC dans le passé : on contrôle la DLC principale ET celles des lots supp.
