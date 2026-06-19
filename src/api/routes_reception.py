@@ -198,6 +198,7 @@ class LigneCreate(BaseModel):
     dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: str = "France"
     poids_kg: Optional[float] = None
+    nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
     temperature_coeur: Optional[float] = None
     couleur_conforme: int = 1
@@ -225,6 +226,7 @@ class LigneUpdate(BaseModel):
     dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: Optional[str] = None
     poids_kg: Optional[float] = None
+    nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
     temperature_coeur: Optional[float] = None
     couleur_conforme: int = 1

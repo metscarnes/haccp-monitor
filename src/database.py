@@ -1767,6 +1767,19 @@ PRAGMA foreign_keys=ON;
         except Exception as e:
             logger.warning("Migration v5.7 substitution_article : %s", e)
 
+        # Migration v6.8 : nombre de colis reçus dans reception_lignes
+        # Saisi à la réception (rec-batch-nb-colis) mais jusqu'ici jeté à l'écriture.
+        try:
+            cur_col = await db.execute("PRAGMA table_info(reception_lignes)")
+            cols_col = {row[1] for row in await cur_col.fetchall()}
+            if "nb_colis" not in cols_col:
+                await db.execute(
+                    "ALTER TABLE reception_lignes ADD COLUMN nb_colis INTEGER"
+                )
+                logger.info("Migration v6.8 : nb_colis ajouté à reception_lignes")
+        except Exception as e:
+            logger.warning("Migration v6.8 nb_colis : %s", e)
+
         # Migration v5.8 : recalculer statut des lignes en_attente mal classées
         # - lot_interne=1 compte comme lot présent (numéro auto-généré)
         # - dlc_type='no_dlc' → aucune exigence de traçabilité
@@ -3180,14 +3193,14 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
         INSERT INTO reception_lignes
             (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
              date_abattage, dlc_type, statut, attente_motif, designation_libre,
-             origine, poids_kg, temperature_reception, temperature_conforme,
+             origine, poids_kg, nb_colis, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
              consistance_conforme, consistance_observation,
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme, substitution_article)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
@@ -3206,6 +3219,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             data.get("designation_libre"),
             data.get("origine", "France"),
             data.get("poids_kg"),
+            data.get("nb_colis"),
             temp_recep,
             temperature_conforme,
             data.get("temperature_coeur"),
@@ -3543,7 +3557,7 @@ async def update_reception_ligne(
             produit_id = ?, fournisseur_id = ?, numero_lot = ?, lot_interne = ?,
             dlc = ?, dluo = ?, date_abattage = ?, dlc_type = ?,
             statut = ?, attente_motif = ?,
-            origine = ?, poids_kg = ?,
+            origine = ?, poids_kg = ?, nb_colis = ?,
             temperature_reception = ?, temperature_conforme = ?,
             temperature_coeur = ?,
             couleur_conforme = ?, couleur_observation = ?,
@@ -3567,6 +3581,7 @@ async def update_reception_ligne(
             attente_motif,
             data.get("origine", "France"),
             data.get("poids_kg"),
+            data.get("nb_colis"),
             temp_recep,
             temperature_conforme,
             data.get("temperature_coeur"),
@@ -4143,7 +4158,19 @@ async def get_receptions(
             (
                 SELECT COUNT(*) FROM reception_bls_supplementaires rb2
                 WHERE rb2.reception_id = r.id
-            ) AS nb_bls_supp
+            ) AS nb_bls_supp,
+            (
+                -- Fournisseurs distincts portés par les lignes (catalogue achats /
+                -- multi-fournisseur) : sert de repli quand l'en-tête est vide.
+                SELECT GROUP_CONCAT(nom, '||') FROM (
+                    SELECT DISTINCT COALESCE(flx.nom, rlx.fournisseur_nom) AS nom
+                    FROM reception_lignes rlx
+                    LEFT JOIN fournisseurs flx ON flx.id = rlx.fournisseur_id
+                    WHERE rlx.reception_id = r.id
+                      AND COALESCE(flx.nom, rlx.fournisseur_nom) IS NOT NULL
+                      AND TRIM(COALESCE(flx.nom, rlx.fournisseur_nom)) <> ''
+                )
+            ) AS fournisseurs_lignes_concat
         FROM receptions r
         LEFT JOIN personnel         p  ON p.id  = r.personnel_id
         LEFT JOIN fournisseurs      f  ON f.id  = r.fournisseur_principal_id
@@ -4162,6 +4189,10 @@ async def get_receptions(
         concat = d.pop("bls_supp_noms_concat", None)
         d["bls_supplementaires_noms"] = (
             [n for n in concat.split("||") if n] if concat else []
+        )
+        concat_lig = d.pop("fournisseurs_lignes_concat", None)
+        d["fournisseurs_lignes"] = (
+            [n for n in concat_lig.split("||") if n] if concat_lig else []
         )
         out.append(d)
     return out

@@ -229,24 +229,28 @@ function creerCarte(rec) {
   meta.textContent = `${rec.personnel_prenom || '—'}${heure}`;
   info.appendChild(meta);
 
-  // Chips : fournisseur, nb produits
+  // Chips : fournisseur(s), nb produits
   const chips = document.createElement('div');
   chips.className = 'rh-chips';
 
-  if (rec.fournisseur_nom) {
-    const cf = document.createElement('span');
-    cf.className = 'rh-chip';
-    cf.textContent = rec.fournisseur_nom;
-    chips.appendChild(cf);
-  }
-  // Fournisseurs supplémentaires (BL refus livraison multi)
-  (rec.bls_supplementaires_noms || []).forEach(nom => {
+  // Fournisseur : en-tête prioritaire, puis ceux portés par les lignes
+  // (catalogue achats / multi-fournisseur), puis les BL supplémentaires.
+  // Dédupliqué (insensible à la casse/espaces) pour ne pas répéter un même nom.
+  const fournisseursVus = new Set();
+  const ajouterChipFournisseur = (nom) => {
     if (!nom) return;
+    const cle = nom.trim().toLowerCase();
+    if (!cle || fournisseursVus.has(cle)) return;
+    fournisseursVus.add(cle);
     const cf = document.createElement('span');
     cf.className = 'rh-chip';
     cf.textContent = nom;
     chips.appendChild(cf);
-  });
+  };
+
+  ajouterChipFournisseur(rec.fournisseur_nom);
+  (rec.fournisseurs_lignes || []).forEach(ajouterChipFournisseur);
+  (rec.bls_supplementaires_noms || []).forEach(ajouterChipFournisseur);
 
   const cp = document.createElement('span');
   cp.className = 'rh-chip';
@@ -532,12 +536,11 @@ function creerLigne(lig) {
     ...(dateLabel ? [{ label: dateLabel, valeur: dateValeur }] : []),
     { label: 'T° réception',  valeur: formatTemp(lig.temperature_reception) },
     { label: 'T° à cœur',     valeur: formatTemp(lig.temperature_coeur) },
+    { label: 'Poids',         valeur: (lig.poids_kg !== null && lig.poids_kg !== undefined && lig.poids_kg !== '') ? `${lig.poids_kg} kg` : '—' },
+    { label: 'Nb colis',      valeur: (lig.nb_colis !== null && lig.nb_colis !== undefined && lig.nb_colis !== '') ? String(lig.nb_colis) : '—' },
   ];
   if (lig.ph_valeur !== null && lig.ph_valeur !== undefined) {
     champs.push({ label: 'pH', valeur: String(lig.ph_valeur) });
-  }
-  if (lig.poids_kg) {
-    champs.push({ label: 'Poids', valeur: `${lig.poids_kg} kg` });
   }
 
   champs.forEach(({ label, valeur }) => {
