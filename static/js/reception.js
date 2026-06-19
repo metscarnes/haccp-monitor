@@ -843,11 +843,26 @@ async function detecterReceptionEnCours() {
   const heureTxt = (receptionEnCours.heure_reception || '').slice(0, 5);
   const qui = receptionEnCours.personnel_prenom ? ` par ${receptionEnCours.personnel_prenom}` : '';
   const nb = receptionEnCours.nb_lignes || 0;
-  elRepriseTxt.textContent =
-    `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
-    + `n'a pas été clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
-    + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
-    + `ni en attente, et la commande liée reste bloquée.`;
+
+  if (nb === 0) {
+    // Fiche créée à l'étape 1 puis quittée sans saisir aucun produit : il n'y a
+    // rien à « reprendre ». On ne propose que l'abandon (qui débloque la commande
+    // liée), pour éviter de rouvrir un wizard vide qui ressemble à une nouvelle
+    // réception.
+    elRepriseTxt.textContent =
+      `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
+      + `a été démarrée mais aucun produit n'y a été saisi, et elle n'a pas été `
+      + `clôturée. Tant qu'elle existe, la commande liée reste bloquée. `
+      + `Comme elle est vide, abandonnez-la pour débloquer la commande.`;
+    if (elRepriseReprendre) elRepriseReprendre.hidden = true;
+  } else {
+    elRepriseTxt.textContent =
+      `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
+      + `n'a pas été clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
+      + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
+      + `ni en attente, et la commande liée reste bloquée.`;
+    if (elRepriseReprendre) elRepriseReprendre.hidden = false;
+  }
   elRepriseBandeau.hidden = false;
 }
 
