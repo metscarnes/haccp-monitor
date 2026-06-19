@@ -1531,6 +1531,13 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "CREATE INDEX IF NOT EXISTS idx_bl_pages_reception ON reception_bl_pages(reception_id)",
             # v5.9 — Fournisseurs : emails supplémentaires en copie (liste JSON)
             "ALTER TABLE fournisseurs ADD COLUMN emails_copie TEXT",
+            # v6.8 — Module étiquettes prix (éditeur visuel, Brother QL-820NWBc)
+            """CREATE TABLE IF NOT EXISTS modeles_etiquettes_prix (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom         TEXT    NOT NULL,
+                config_json TEXT    NOT NULL,
+                created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+            )""",
         ]
         for sql in migrations:
             try:

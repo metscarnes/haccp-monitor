@@ -52,6 +52,7 @@ from src.api.routes_auth            import router as router_auth
 from src.api.routes_achats          import router as router_achats
 from src.api.routes_vente           import router as router_vente
 from src.api.routes_attente         import router as router_attente
+from src.api.routes_prix_etiquettes import router as router_prix_etiquettes
 
 load_dotenv()
 
@@ -271,6 +272,9 @@ app.include_router(router_vente)
 
 # Routes API — Produits en attente de traçabilité (lot/DLC manquant)
 app.include_router(router_attente)
+
+# Routes API — Étiquettes prix (éditeur visuel, Brother QL-820NWBc)
+app.include_router(router_prix_etiquettes)
 
 
 # ---------------------------------------------------------------------------
