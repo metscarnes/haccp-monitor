@@ -32,6 +32,7 @@ from src.database import (
     get_receptions, get_reception, get_reception_en_cours,
     get_non_conformites, create_non_conformite,
     generer_lot_interne, format_lot_interne_bl, update_reception_ligne,
+    generer_lots_internes_reception,
     update_reception_temperature_camion,
     add_reception_bl_supplementaire,
     supprimer_reception,
@@ -305,6 +306,7 @@ async def creer_reception(
     fournisseur_principal_id: Optional[int] = Form(None),
     fournisseur_nom:         Optional[str]  = Form(None),
     commentaire:             Optional[str]  = Form(None),
+    numero_bon_livraison:    Optional[str]  = Form(None),
     photo_bl:                List[UploadFile] = File(default=[]),
     photo_proprete:          Optional[UploadFile] = File(None),
 ):
@@ -317,6 +319,7 @@ async def creer_reception(
         "fournisseur_principal_id": fournisseur_principal_id,
         "fournisseur_nom":         fournisseur_nom,
         "commentaire":             commentaire,
+        "numero_bon_livraison":    (numero_bon_livraison or "").strip() or None,
     }
 
     async with get_db() as db:
@@ -490,6 +493,24 @@ async def get_lot_interne(reception_id: int, ligne_id: int):
     async with get_db() as db:
         lot = await _generer_lot_bl(db, reception_id, ligne_id)
     return {"lot_interne": lot}
+
+
+@router.post("/receptions/{reception_id}/lots-internes")
+async def generer_lots_internes(reception_id: int):
+    """Applique la règle de lot interne à toute la commande.
+
+    Génère un lot interne {BL}-{code_article}-{JJMMAA} pour chaque ligne de la
+    réception qui n'a pas encore de N° de lot. Utile quand un fournisseur ne fournit
+    aucun N° de lot. Les lignes déjà tracées (lot fourni/interne) ne sont pas touchées.
+    """
+    async with get_db() as db:
+        try:
+            res = await generer_lots_internes_reception(db, reception_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    if res is None:
+        raise HTTPException(404, "Réception introuvable")
+    return res
 
 
 @router.put("/receptions/{reception_id}/lignes/{ligne_id}")

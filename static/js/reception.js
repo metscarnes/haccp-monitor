@@ -212,6 +212,8 @@ const elLotGenere         = document.getElementById('rec-lot-genere');
 const elLotsSupp          = document.getElementById('rec-lots-supp');
 const elBtnAddLot         = document.getElementById('rec-btn-add-lot');
 const elLotsSuppHint      = document.getElementById('rec-lots-supp-hint');
+const elBtnLotsCommande   = document.getElementById('rec-btn-lots-commande');
+const elLotsCommandeHint  = document.getElementById('rec-lots-commande-hint');
 const elOrigine           = document.getElementById('rec-origine');
 const elOrigineToggle     = document.getElementById('rec-origine-toggle');
 const elOrigineList       = document.getElementById('rec-origine-suggestions-list');
@@ -1812,12 +1814,17 @@ async function creerFiche() {
     if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
     else if (fourn0.nom) fd.append('fournisseur_nom', fourn0.nom);
     fourn0.photos.forEach(p => fd.append('photo_bl', p.file, p.file.name));
+    // N° BL saisi à l'étape précédente (avant que la réception n'existe) : on le
+    // rattache directement à la création.
+    const blSaisi = (elNumeroBl && elNumeroBl.value || '').trim();
+    if (blSaisi) fd.append('numero_bon_livraison', blSaisi);
 
     const rec = await apiFetch('/api/receptions', {
       method: 'POST',
       body: fd,
     });
     receptionId = rec.id;
+    if (blSaisi) numeroBlValide = blSaisi;
     const tempEnvoyee = parseFloat(elTempCamion.value);
     dernierTempCamionEnvoye = isNaN(tempEnvoyee) ? null : tempEnvoyee;
 
@@ -2318,9 +2325,12 @@ async function validerNumeroBl() {
     afficherHintBl('Saisir un numéro de BL.', true);
     return false;
   }
+  // La réception n'existe pas encore (saisie avant le passage à l'étape produits) :
+  // on mémorise le n° localement, il sera enregistré à la création de la réception.
   if (!receptionId) {
-    afficherHintBl('Démarrer la réception d’abord.', true);
-    return false;
+    numeroBlValide = numero;
+    afficherHintBl(`✔ BL enregistré : ${numero} (rattaché au démarrage de la réception)`, false);
+    return true;
   }
   try {
     elBtnBlValider.disabled = true;
@@ -2435,6 +2445,82 @@ elBtnAnnulerLot.addEventListener('click', () => {
 });
 
 elLot.addEventListener('input', majBtnAjouter);
+
+// ── Lot interne sur toute la commande ──────────────────────
+// Applique la règle {BL}-{code article}-{JJMMAA} à toutes les lignes déjà
+// ajoutées qui n'ont pas de N° de lot (fournisseur sans lot sur son BL).
+// Le n° de BL est requis comme préfixe : on le valide d'abord si besoin.
+if (elBtnLotsCommande) {
+  elBtnLotsCommande.addEventListener('click', async () => {
+    if (!receptionId) return;
+    // Le BL doit être enregistré avant de générer les lots internes.
+    if (!numeroBlValide) {
+      if ((elNumeroBl.value || '').trim()) {
+        const ok = await validerNumeroBl();
+        if (!ok) return;
+      } else {
+        afficherHintLotsCommande(
+          'Saisir et valider le n° de BL (étape précédente) avant de générer les lots internes.',
+          true
+        );
+        return;
+      }
+    }
+    elBtnLotsCommande.disabled = true;
+    const label = elBtnLotsCommande.textContent;
+    elBtnLotsCommande.textContent = '⏳ Génération…';
+    try {
+      const res = await apiFetch(`/api/receptions/${receptionId}/lots-internes`, {
+        method: 'POST',
+      });
+      // Recharger les lignes depuis le serveur (lots + statuts à jour).
+      await rechargerLignesReception();
+      const msgs = [`✔ ${res.generes} lot(s) interne(s) généré(s)`];
+      if (res.deja_lot)        msgs.push(`${res.deja_lot} déjà tracé(s)`);
+      if (res.restant_attente) msgs.push(`${res.restant_attente} encore en attente (DLC/date à compléter)`);
+      afficherHintLotsCommande(msgs.join(' · ') + '.', res.restant_attente > 0);
+    } catch (e) {
+      afficherHintLotsCommande('Erreur : ' + e.message, true);
+    } finally {
+      elBtnLotsCommande.disabled = false;
+      elBtnLotsCommande.textContent = label;
+    }
+  });
+}
+
+function afficherHintLotsCommande(msg, alerte) {
+  if (!elLotsCommandeHint) return;
+  elLotsCommandeHint.textContent = msg;
+  elLotsCommandeHint.style.color = alerte ? '#991b1b' : '#166534';
+  elLotsCommandeHint.hidden = false;
+}
+
+// Recharge la liste des lignes de la réception en cours depuis le serveur.
+async function rechargerLignesReception() {
+  if (!receptionId) return;
+  const rec = await apiFetch(`/api/receptions/${receptionId}`);
+  lignesAjoutees = (rec.lignes || []).map(l => ({
+    id:                    l.id,
+    produit_id:            l.produit_id,
+    produit_nom:           l.produit_nom,
+    catalogue_id:          l.catalogue_fournisseur_id || null,
+    fournisseur_id:        l.fournisseur_id || null,
+    fournisseur_nom:       l.fournisseur_nom || null,
+    conforme:              l.conforme,
+    numero_lot:            l.numero_lot,
+    lot_interne:           l.lot_interne,
+    origine:               l.origine,
+    dlc:                   l.dlc,
+    dluo:                  l.dluo,
+    temperature_reception: l.temperature_reception,
+    poids_kg:              l.poids_kg || null,
+    statut:                l.statut,
+    attente_motif:         l.attente_motif,
+    motifs:                [],
+    substitution_article:  l.substitution_article || null,
+  }));
+  majListeLignes();
+}
 
 // ── N° de lot supplémentaires ──────────────────────────────
 // Permet de saisir plusieurs n° de lot pour un même produit. À l'ajout, une
@@ -2707,6 +2793,24 @@ function majListeLignes() {
   });
 
   elBtnTerminer.disabled = (lignesAjoutees.length === 0);
+  majBtnLotsCommande();
+}
+
+// Affiche le bouton « lot interne sur toute la commande » dès qu'au moins une
+// ligne ajoutée n'a pas de N° de lot (ni fournisseur, ni interne).
+function majBtnLotsCommande() {
+  if (!elBtnLotsCommande) return;
+  const sansLot = lignesAjoutees.filter(
+    l => !((l.numero_lot || '').trim()) && !l.lot_interne
+  ).length;
+  if (sansLot > 0) {
+    elBtnLotsCommande.hidden = false;
+    elBtnLotsCommande.textContent =
+      `🏷️ Lot interne sur toute la commande (${sansLot} sans n° de lot)`;
+  } else {
+    elBtnLotsCommande.hidden = true;
+    if (elLotsCommandeHint) elLotsCommandeHint.hidden = true;
+  }
 }
 
 function chargerLigneEnEdition(l, idx) {
@@ -3076,9 +3180,11 @@ async function lancerExtractionOcr() {
   elBtnOcrBl.disabled = true;
   elBtnOcrBl.textContent = '⏳ Lecture du BL en cours…';
   if (elOcrStatut) { elOcrStatut.hidden = false; elOcrStatut.className = 'rec-ocr-statut'; elOcrStatut.textContent = 'Analyse de la photo…'; }
+  const barre = demarrerBarreOcr(elOcrStatut);
 
   try {
     const data = await apiFetch(`/api/receptions/${receptionId}/ocr-bl`, { method: 'POST' });
+    barre.terminer();
     const lignes = data.lignes || [];
     if (!lignes.length) {
       throw new Error("Aucun article lu sur le BL. Saisie manuelle nécessaire.");
@@ -3100,6 +3206,7 @@ async function lancerExtractionOcr() {
         : `✓ ${lignes.length} article(s) lus. Contrôlez chaque ligne avant d'enregistrer.`;
     }
   } catch (err) {
+    barre.annuler();
     elBtnOcrBl.disabled = false;
     elBtnOcrBl.textContent = '🔍 Extraire le BL automatiquement';
     if (elOcrStatut) {
@@ -3108,6 +3215,81 @@ async function lancerExtractionOcr() {
       elOcrStatut.textContent = `⚠️ ${err.message}`;
     }
   }
+}
+
+// Barre de progression « estimée » pour l'OCR : l'extraction est un appel unique
+// (analyse Claude vision, ~15-30 s) dont on ne connaît pas l'avancement réel. On
+// anime donc une barre qui monte progressivement vers 90 % sur une durée typique,
+// puis se complète à 100 % à la réception de la réponse. But : donner à l'utilisateur
+// un repère « combien de temps attendre » plutôt qu'un simple ⏳ figé.
+// `ancre` : élément après lequel la barre est insérée (comme frère). Une barre
+// déjà présente est réutilisée (cas « relancer l'OCR »).
+function demarrerBarreOcr(ancre) {
+  injecterStylesBarreOcr();
+  let wrap = ancre && ancre.nextElementSibling && ancre.nextElementSibling.classList.contains('ocr-barre')
+    ? ancre.nextElementSibling : null;
+  if (!wrap && ancre && ancre.parentNode) {
+    wrap = document.createElement('div');
+    wrap.className = 'ocr-barre';
+    wrap.innerHTML = '<div class="ocr-barre-piste"><div class="ocr-barre-jauge"></div></div>'
+                   + '<div class="ocr-barre-txt">0 %</div>';
+    ancre.parentNode.insertBefore(wrap, ancre.nextSibling);
+  }
+  const jauge = wrap ? wrap.querySelector('.ocr-barre-jauge') : null;
+  const txt   = wrap ? wrap.querySelector('.ocr-barre-txt')   : null;
+
+  const DUREE_ESTIMEE = 22000;  // ms : durée typique d'un appel OCR
+  const PLAFOND = 90;           // on ne dépasse pas 90 % tant que ce n'est pas fini
+  const t0 = Date.now();
+  let timer = null;
+
+  function rendu(pct) {
+    if (jauge) jauge.style.width = pct + '%';
+    if (txt)   txt.textContent = Math.round(pct) + ' %';
+  }
+  function tick() {
+    const ecoule = Date.now() - t0;
+    // Progression qui ralentit en approchant du plafond (asymptotique).
+    const pct = PLAFOND * (1 - Math.exp(-ecoule / (DUREE_ESTIMEE / 2.3)));
+    rendu(pct);
+    timer = setTimeout(tick, 150);
+  }
+  if (wrap) { wrap.hidden = false; tick(); }
+
+  return {
+    terminer() {
+      clearTimeout(timer);
+      rendu(100);
+      if (wrap) { wrap.classList.add('ocr-barre--ok'); setTimeout(() => wrap.remove(), 600); }
+    },
+    annuler() {
+      clearTimeout(timer);
+      if (wrap) wrap.remove();
+    },
+  };
+}
+
+let _stylesBarreOcrInjectes = false;
+function injecterStylesBarreOcr() {
+  if (_stylesBarreOcrInjectes) return;
+  _stylesBarreOcrInjectes = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .ocr-barre { margin-top:.6rem; }
+    .ocr-barre-piste {
+      height:8px; border-radius:6px; background:#e5ddd4; overflow:hidden;
+    }
+    .ocr-barre-jauge {
+      height:100%; width:0%; border-radius:6px;
+      background:linear-gradient(90deg,#c8852f,#e0a64b);
+      transition:width .15s linear;
+    }
+    .ocr-barre--ok .ocr-barre-jauge { background:#3aa657; }
+    .ocr-barre-txt {
+      margin-top:.25rem; font-size:.78rem; font-weight:600; color:#5a3e28;
+      text-align:right;
+    }`;
+  document.head.appendChild(st);
 }
 
 // Construit les cartes batch à partir des lignes OCR et pré-remplit lot/DLC/poids.
@@ -3147,14 +3329,24 @@ function _scoreLibelle(a, b) {
 }
 
 // Applique lot/DLC/poids d'une ligne OCR sur une carte batch (état existant ou neuf).
+// Si le lot principal est déjà rempli (ligne OCR précédente pour le MÊME article :
+// article livré en plusieurs lots), on AJOUTE un champ lot supplémentaire au lieu
+// d'écraser → 1 ligne de réception par couple (lot, DLC) à la validation.
 function _appliquerOcrSurCarte(etat, l) {
   const carte = etat.el;
   const inpLot   = carte.querySelector('.rec-batch-lot');
   const inpDate  = carte.querySelector('.rec-batch-date');
   const inpPoids = carte.querySelector('.rec-batch-poids');
-  // On ne remplit que les champs vides : ne jamais écraser une saisie manuelle.
-  if (inpLot && l.numero_lot && !inpLot.value.trim())   inpLot.value  = l.numero_lot;
-  if (inpDate && l.dlc && !inpDate.value)               inpDate.value = l.dlc;  // ISO
+
+  const lotPrincipalRempli = inpLot && inpLot.value.trim() !== '';
+  if (l.numero_lot && lotPrincipalRempli && inpLot.value.trim() !== l.numero_lot) {
+    // Lot supplémentaire pour cet article (DLC propre au lot).
+    ajouterChampLotSuppBatch(etat, l.numero_lot, l.dlc || '');
+  } else {
+    // On ne remplit que les champs vides : ne jamais écraser une saisie manuelle.
+    if (inpLot && l.numero_lot && !inpLot.value.trim())   inpLot.value  = l.numero_lot;
+    if (inpDate && l.dlc && !inpDate.value)               inpDate.value = l.dlc;  // ISO
+  }
   if (inpPoids && l.poids_kg != null && !inpPoids.value) inpPoids.value = l.poids_kg;
 
   if (l.dlc_suspecte) {
@@ -3169,24 +3361,35 @@ function _appliquerOcrSurCarte(etat, l) {
   majBadgeCarte(etat);
 }
 
-// Cas SANS commande : une carte par ligne OCR.
+// Cas SANS commande : une carte par article. Les lignes OCR partageant le même
+// article (même désignation/référence) sont regroupées sur UNE carte : le 1er lot
+// remplit le lot principal, les suivants deviennent des lots supplémentaires.
 function creerCartesDepuisOcr(lignes) {
   entrerModeBatch();  // remet batchLignes à zéro et affiche la liste
   const elTitre = document.getElementById('rec-batch-titre');
   if (elTitre) elTitre.textContent = 'Articles lus sur le bon de livraison';
 
+  // Clé d'article : référence si présente, sinon désignation normalisée.
+  const cartesParArticle = new Map();
   lignes.forEach(l => {
-    creerCarteBatch({
-      designation: l.designation || 'Article',
-      code_article: l.reference || null,
-      catalogue_fournisseur_id: null,
-      quantite_commandee: l.quantite ?? null,
-      unite: 'kg',
-      dlc_type: null,
-      _fournisseur_id:  fournisseursListe[0]?.id  || null,
-      _fournisseur_nom: fournisseursListe[0]?.nom || null,
-    });
-    _appliquerOcrSurCarte(batchLignes[batchLignes.length - 1], l);
+    const cle = (l.reference && l.reference.trim())
+      ? `ref:${l.reference.trim().toLowerCase()}`
+      : `des:${_normLibelle(l.designation)}`;
+
+    if (!cartesParArticle.has(cle)) {
+      creerCarteBatch({
+        designation: l.designation || 'Article',
+        code_article: l.reference || null,
+        catalogue_fournisseur_id: null,
+        quantite_commandee: l.quantite ?? null,
+        unite: 'kg',
+        dlc_type: null,
+        _fournisseur_id:  fournisseursListe[0]?.id  || null,
+        _fournisseur_nom: fournisseursListe[0]?.nom || null,
+      });
+      cartesParArticle.set(cle, batchLignes[batchLignes.length - 1]);
+    }
+    _appliquerOcrSurCarte(cartesParArticle.get(cle), l);
   });
 }
 
@@ -3197,6 +3400,20 @@ function prefillCartesExistantes(lignes) {
   const orphelines = [];            // lignes OCR sans correspondance
 
   lignes.forEach(l => {
+    // 1) Si une carte DÉJÀ appariée correspond à cet article (même article livré
+    //    en plusieurs lots), on l'y rattache : _appliquerOcrSurCarte ajoute un lot.
+    let deja = null, dejaScore = 0;
+    batchLignes.forEach(etat => {
+      if (dispo.includes(etat)) return;  // pas encore appariée → traité en 2)
+      const s = _scoreLibelle(l.designation, etat.designation);
+      if (s > dejaScore) { dejaScore = s; deja = etat; }
+    });
+    if (deja && dejaScore >= 0.5) {
+      _appliquerOcrSurCarte(deja, l);
+      return;
+    }
+
+    // 2) Sinon, on apparie à la meilleure carte encore disponible.
     let best = null, bestScore = 0, bestIdx = -1;
     dispo.forEach((etat, i) => {
       const s = _scoreLibelle(l.designation, etat.designation);
@@ -3415,6 +3632,12 @@ function creerCarteBatch(ligneCmd) {
       inpLot.readOnly = true;
       inpLot.style.background = '#f0faf3';
       etat.lotInterne = true;
+      // Un lot interne = un seul lot généré : on retire les lots supplémentaires.
+      const contSupp = carte.querySelector('.rec-batch-lots-supp');
+      if (contSupp) contSupp.innerHTML = '';
+      majLotsSuppHintBatch(etat);
+      const addBtn = carte.querySelector('.rec-batch-add-lot');
+      if (addBtn) addBtn.hidden = true;
       majBadgeCarte(etat);
     } catch (e) {
       alert(`Erreur génération lot : ${e.message}`);
@@ -3423,10 +3646,23 @@ function creerCarteBatch(ligneCmd) {
     }
   });
   inpLot.addEventListener('input', () => {
-    if (etat.lotInterne) { etat.lotInterne = false; inpLot.readOnly = false; inpLot.style.background = ''; }
+    if (etat.lotInterne) {
+      etat.lotInterne = false; inpLot.readOnly = false; inpLot.style.background = '';
+      // Le lot redevient un lot fournisseur saisi → on réautorise les lots multiples.
+      const addBtn = carte.querySelector('.rec-batch-add-lot');
+      if (addBtn) addBtn.hidden = false;
+    }
     majBadgeCarte(etat);
   });
   carte.querySelector('.rec-batch-date').addEventListener('input', () => majBadgeCarte(etat));
+
+  // N° de lot supplémentaires : permet plusieurs lots (DLC propre par lot) sur une
+  // même carte. À la validation, 1 ligne de réception est créée par lot. Un lot
+  // interne occupe le lot principal → on masque l'ajout de lots multiples.
+  const elAddLotBatch = carte.querySelector('.rec-batch-add-lot');
+  if (elAddLotBatch) {
+    elAddLotBatch.addEventListener('click', () => ajouterChampLotSuppBatch(etat));
+  }
 
   // Dépliant contrôle visuel
   const toggle = carte.querySelector('.rec-batch-detail-toggle');
@@ -3477,6 +3713,87 @@ function creerCarteBatch(ligneCmd) {
 
   elBatchListe.appendChild(carte);
   majBadgeCarte(etat);
+}
+
+// Ajoute un champ « n° de lot + DLC » supplémentaire sur une carte batch.
+// Mêmes critères/origine/poids que le lot principal ; seuls lot et DLC diffèrent.
+// `valeur`/`dlcVal` permettent de pré-remplir (utilisé par l'OCR multi-lot).
+function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '') {
+  const cont = etat.el.querySelector('.rec-batch-lots-supp');
+  if (!cont) return;
+  const row = document.createElement('div');
+  row.className = 'rec-lot-supp-row rec-batch-lot-supp-row';
+  row.style.cssText = 'margin-top:.5rem;padding-top:.5rem;border-top:1px dashed #e0d6c8;';
+
+  const lotRow = document.createElement('div');
+  lotRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rec-input rec-batch-lot-supp-input';
+  input.placeholder = 'ex : LOT-2026-002';
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', 'Numéro de lot fournisseur supplémentaire');
+  input.value = valeur;
+  input.style.flex = '1';
+  input.addEventListener('input', () => majBadgeCarte(etat));
+
+  const rm = document.createElement('button');
+  rm.type = 'button';
+  rm.className = 'rec-fourn-clear';
+  rm.setAttribute('aria-label', 'Retirer ce n° de lot');
+  rm.textContent = '✕';
+  rm.style.flexShrink = '0';
+  rm.addEventListener('click', () => {
+    row.remove();
+    majLotsSuppHintBatch(etat);
+    majBadgeCarte(etat);
+  });
+
+  lotRow.appendChild(input);
+  lotRow.appendChild(rm);
+
+  const dlcRow = document.createElement('div');
+  dlcRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;margin-top:.3rem;';
+
+  const dlcLabel = document.createElement('span');
+  dlcLabel.className = 'rec-batch-lot-supp-dlc-label';
+  dlcLabel.textContent = etat.dlcType === 'date_abattage' ? "Date d'abattage :" : 'DLC :';
+  dlcLabel.style.cssText = 'font-size:.8rem;color:var(--color-offline);white-space:nowrap;flex-shrink:0;';
+
+  const dlcInput = document.createElement('input');
+  dlcInput.type = 'date';
+  dlcInput.className = 'rec-input rec-batch-lot-supp-dlc';
+  dlcInput.setAttribute('aria-label', etat.dlcType === 'date_abattage' ? "Date d'abattage pour ce lot" : 'DLC pour ce lot');
+  dlcInput.value = dlcVal;
+  dlcInput.style.flex = '1';
+  // Le champ date est masqué pour les articles sans DLC (cohérent avec le lot principal).
+  if (etat.dlcType === 'no_dlc') dlcRow.hidden = true;
+
+  dlcRow.appendChild(dlcLabel);
+  dlcRow.appendChild(dlcInput);
+
+  row.appendChild(lotRow);
+  row.appendChild(dlcRow);
+  cont.appendChild(row);
+  majLotsSuppHintBatch(etat);
+  if (!valeur) input.focus();
+}
+
+// Lots supplémentaires saisis sur une carte batch : [{lot, dlc}] (lot non vide).
+function lotsSuppValeursBatch(etat) {
+  const cont = etat.el.querySelector('.rec-batch-lots-supp');
+  if (!cont) return [];
+  return [...cont.querySelectorAll('.rec-batch-lot-supp-row')].map(row => ({
+    lot: (row.querySelector('.rec-batch-lot-supp-input')?.value || '').trim(),
+    dlc: (row.querySelector('.rec-batch-lot-supp-dlc')?.value   || ''),
+  })).filter(p => p.lot);
+}
+
+function majLotsSuppHintBatch(etat) {
+  const cont = etat.el.querySelector('.rec-batch-lots-supp');
+  const hint = etat.el.querySelector('.rec-batch-lots-supp-hint');
+  if (hint) hint.hidden = !(cont && cont.children.length > 0);
 }
 
 // Recherche produit manuelle sur une carte (produit non résolu auto).
@@ -3549,8 +3866,31 @@ function majBtnTerminerBatch() {
   elBtnTerminer.disabled = (batchLignes.length === 0);
 }
 
+// Liste finale des couples {lot, dlc} d'une carte batch (lot principal + lots
+// supplémentaires), dédupliqués par n° de lot. 1 couple = 1 ligne de réception.
+// On garde toujours au moins un couple (le principal, éventuellement vide pour
+// un produit en attente).
+function pairesLotsBatch(etat) {
+  const lotPrincipal  = etat.el.querySelector('.rec-batch-lot').value.trim();
+  const dlcPrincipale = etat.el.querySelector('.rec-batch-date').value;
+  const seen = new Set();
+  const paires = [{ lot: lotPrincipal, dlc: dlcPrincipale }];
+  if (lotPrincipal) seen.add(lotPrincipal);
+  // Un lot interne occupe le lot principal : pas de lots supplémentaires possibles.
+  if (!etat.lotInterne) {
+    for (const { lot, dlc } of lotsSuppValeursBatch(etat)) {
+      if (!lot || seen.has(lot)) continue;
+      seen.add(lot);
+      paires.push({ lot, dlc: dlc || dlcPrincipale });
+    }
+  }
+  return paires;
+}
+
 // Construit le payload d'une carte (même forme que _buildPayload unitaire).
-function _buildPayloadBatch(etat) {
+// `paire` (optionnel) {lot, dlc} : si fourni, surcharge le lot et la DLC de base
+// (cas multi-lot : 1 payload par couple lot/DLC).
+function _buildPayloadBatch(etat, paire = null) {
   const payload = {
     couleur_conforme:     etat.criteres.couleur,
     consistance_conforme: etat.criteres.consistance,
@@ -3570,10 +3910,10 @@ function _buildPayloadBatch(etat) {
   const tempCamion = parseFloat(elTempCamion.value);
   if (!isNaN(tempCamion)) payload.temperature_reception = tempCamion;
 
-  const lot = etat.el.querySelector('.rec-batch-lot').value.trim();
+  const lot = paire ? paire.lot : etat.el.querySelector('.rec-batch-lot').value.trim();
   if (lot) payload.numero_lot = lot;
 
-  const dateVal = etat.el.querySelector('.rec-batch-date').value;
+  const dateVal = paire ? paire.dlc : etat.el.querySelector('.rec-batch-date').value;
   if (dateVal) {
     if (etat.dlcType === 'date_abattage') payload.date_abattage = dateVal;
     else                                  payload.dlc           = dateVal;
@@ -3614,12 +3954,20 @@ async function validerBatch() {
       return;
     }
 
-    const inpDate = etat.el.querySelector('.rec-batch-date');
-    if (etat.dlcType !== 'date_abattage' && inpDate.value && inpDate.value < today) {
-      inpDate.classList.add('rec-champ-invalide');
-      etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      alert('Une DLC est dans le passé.');
-      return;
+    // DLC dans le passé : on contrôle la DLC principale ET celles des lots supp.
+    if (etat.dlcType !== 'date_abattage') {
+      const dlcs = [
+        { el: etat.el.querySelector('.rec-batch-date'), val: etat.el.querySelector('.rec-batch-date').value },
+        ...[...etat.el.querySelectorAll('.rec-batch-lot-supp-dlc')].map(el => ({ el, val: el.value })),
+      ];
+      for (const { el, val } of dlcs) {
+        if (val && val < today) {
+          el.classList.add('rec-champ-invalide');
+          etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          alert('Une DLC est dans le passé.');
+          return;
+        }
+      }
     }
   }
 
@@ -3634,14 +3982,17 @@ async function validerBatch() {
   elBtnTerminer.textContent = 'Enregistrement…';
   try {
     for (const etat of lignesRecues) {
-      const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(_buildPayloadBatch(etat)),
-      });
       // Produit d'affichage : produit interne si rattaché, sinon désignation catalogue.
       const prodAffiche = etat.produit || { id: null, nom: etat.designation };
-      lignesAjoutees.push(_ligneToLocal(ligne, prodAffiche));
+      // Plusieurs n° de lot → 1 ligne de réception par lot, chacune avec sa DLC.
+      for (const paire of pairesLotsBatch(etat)) {
+        const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(_buildPayloadBatch(etat, paire)),
+        });
+        lignesAjoutees.push(_ligneToLocal(ligne, prodAffiche));
+      }
     }
     majListeLignes();
     remplirRecap();

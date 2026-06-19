@@ -1308,6 +1308,23 @@ body.rec-body {
 }
 .rec-btn-add-lot:active { background: var(--color-secondary); }
 
+/* Lot interne sur toute la commande (fournisseur sans N° de lot) */
+.rec-btn-lots-commande {
+  margin-top: .6rem;
+  width: 100%;
+  padding: .6rem .75rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--noyer, #6B3A1F);
+  color: #fff;
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rec-btn-lots-commande:active { opacity: .85; }
+.rec-btn-lots-commande:disabled { opacity: .5; cursor: not-allowed; }
+
 /* Ligne lot supplémentaire avec DLC individuelle */
 .rec-lot-supp-row {
   display: flex;

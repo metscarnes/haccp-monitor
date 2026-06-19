@@ -3706,6 +3706,106 @@ async def completer_ligne_attente(
     return dict(updated) if updated else None
 
 
+async def generer_lots_internes_reception(
+    db: aiosqlite.Connection, reception_id: int
+) -> Optional[dict]:
+    """Génère un lot interne {BL}-{code_article}-{JJMMAA} pour toutes les lignes
+    d'une réception qui n'ont pas encore de N° de lot.
+
+    Pratique quand un fournisseur ne fournit aucun N° de lot sur son BL : un seul
+    geste applique la règle de lot interne à toute la commande. Les lignes ayant
+    déjà un N° de lot (fournisseur ou interne) ne sont pas touchées.
+
+    Le statut de chaque ligne est recalculé via _calc_statut_attente : une ligne
+    qui attendait seulement le lot repasse 'complet' (entre en stock) ; une ligne
+    à qui il manque aussi la DLC / date d'abattage (selon son dlc_type) reste
+    'en_attente' jusqu'à saisie de la date.
+
+    Renvoie {bl, total, generes, deja_lot, restant_attente}, None si réception
+    introuvable. Lève ValueError si le n° de BL n'est pas encore saisi (préfixe
+    obligatoire du lot interne).
+    """
+    cur = await db.execute(
+        "SELECT numero_bon_livraison AS bl, date_reception FROM receptions WHERE id = ?",
+        (reception_id,),
+    )
+    rec = await cur.fetchone()
+    if not rec:
+        return None
+    bl = (rec["bl"] or "").strip()
+    if not bl:
+        raise ValueError(
+            "Saisir le n° de bon de livraison de la réception avant de générer "
+            "les lots internes."
+        )
+    date_reception = rec["date_reception"]
+
+    # Lignes de la réception + code article (catalogue ou produit interne).
+    cur2 = await db.execute(
+        """
+        SELECT rl.id, rl.numero_lot, rl.lot_interne, rl.dlc, rl.dluo,
+               rl.date_abattage, rl.dlc_type,
+               COALESCE(cf.code_article, p.code_unique) AS code_article
+        FROM reception_lignes rl
+        LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+        LEFT JOIN produits p ON p.id = rl.produit_id
+        WHERE rl.reception_id = ?
+        """,
+        (reception_id,),
+    )
+    lignes = await cur2.fetchall()
+
+    total = len(lignes)
+    generes = 0
+    deja_lot = 0
+    restant_attente = 0
+
+    for l in lignes:
+        a_lot = bool((l["numero_lot"] or "").strip()) or bool(l["lot_interne"])
+        if a_lot:
+            deja_lot += 1
+            continue
+
+        code = (l["code_article"] or "").strip()
+        if not code:
+            # Pas de code article exploitable : impossible de construire le lot.
+            restant_attente += 1
+            continue
+
+        lot = format_lot_interne_bl(bl, code, date_reception)
+        statut, attente_motif = _calc_statut_attente({
+            "numero_lot":    lot,
+            "lot_interne":   1,
+            "dlc":           l["dlc"],
+            "dluo":          l["dluo"],
+            "date_abattage": l["date_abattage"],
+            "dlc_type":      l["dlc_type"],
+        })
+        await db.execute(
+            """
+            UPDATE reception_lignes
+               SET numero_lot = ?, lot_interne = 1,
+                   statut = ?, attente_motif = ?
+             WHERE id = ?
+            """,
+            (lot, statut, attente_motif, l["id"]),
+        )
+        generes += 1
+        if statut == "en_attente":
+            restant_attente += 1
+
+    if generes:
+        await db.commit()
+
+    return {
+        "bl":              bl,
+        "total":           total,
+        "generes":         generes,
+        "deja_lot":        deja_lot,
+        "restant_attente": restant_attente,
+    }
+
+
 async def changer_produit_ligne_attente(
     db: aiosqlite.Connection,
     ligne_id: int,

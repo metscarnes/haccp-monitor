@@ -846,14 +846,12 @@ function afficherCataloguePanier() {
     if (fam && a.famille !== fam) return false;
     if (sfam && a.sous_famille !== sfam) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
-    // « Références ⭐ » et « Mes produits habituels » se cumulent en UNION (OU) :
-    // si au moins l'une est cochée, on garde l'article dès qu'il satisfait l'une
-    // d'elles (ou qu'il est déjà au panier).
-    if (refOnly || habituels) {
-      const ok = panierQte(String(a.id))
-        || (refOnly && estReference(a.id))
-        || (habituels && estProduitHabituel(a.id));
-      if (!ok) return false;
+    // « Références ⭐ » et « Mes produits habituels » se cumulent en INTERSECTION (ET) :
+    // si les deux sont cochées, l'article doit satisfaire LES DEUX critères.
+    // Un article déjà au panier reste toujours visible (pour pouvoir l'ajuster).
+    if ((refOnly || habituels) && !panierQte(String(a.id))) {
+      if (refOnly && !estReference(a.id)) return false;
+      if (habituels && !estProduitHabituel(a.id)) return false;
     }
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;

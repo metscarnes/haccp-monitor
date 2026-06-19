@@ -72,8 +72,11 @@ Extrais, article par article, les informations de traçabilité. Pour chaque art
 POINT CRITIQUE — appariement DLC ↔ article :
 Sur certains BL, le lot et la DLC d'un article sont écrits sur une LIGNE SÉPARÉE (souvent juste en dessous de l'article, parfois préfixée "lot"). Cette DLC/ce lot appartiennent à l'article AUQUEL ILS SE RAPPORTENT visuellement (le plus proche, en général juste au-dessus) — surtout PAS à l'article suivant. Vérifie l'alignement avant d'associer : ne décale jamais une DLC d'un article à l'autre. En cas de doute sur l'appariement, baisse la "confiance" de la ligne plutôt que de risquer une erreur.
 
+POINT CRITIQUE — plusieurs lots / DLC pour un même article :
+Un même article peut être livré en PLUSIEURS lots, chacun avec son propre numéro de lot et parfois sa propre DLC (par ex. "Côte de bœuf" avec lot A DLC 12/07 et lot B DLC 15/07). Dans ce cas, produis UNE LIGNE PAR COUPLE (lot, DLC) : répète la même "designation", mais mets le bon "numero_lot" et la bonne "dlc_brut"/"dluo_brut" sur chacune. Répartis aussi le poids/la quantité par lot si le BL les distingue, sinon laisse null sur les lignes où ce n'est pas précisé. Ne fusionne JAMAIS plusieurs lots dans une seule ligne et n'invente pas de lot qui n'est pas écrit.
+
 Règles générales :
-- Un article = un objet dans "lignes". N'invente jamais d'article, n'en oublie aucun.
+- Un couple (article, lot) = un objet dans "lignes". Un article à lot unique = une seule ligne ; un article à plusieurs lots = une ligne par lot. N'invente jamais de ligne, n'en oublie aucune.
 - DATES — recopie chaque date EXACTEMENT comme écrite, caractère pour caractère, dans "dlc_brut" / "dluo_brut" / "date_bl_brut". NE CONVERTIS RIEN, ne réordonne pas jour/mois. "07/12/26" → mets exactement "07/12/26". La conversion est faite ensuite par le programme.
 - Distingue DLC (consommer jusqu'au) et DLUO/DDM (à consommer de préférence avant) : ne mets jamais une DLUO dans dlc_brut.
 - Si une information est illisible ou absente, mets null. Ne devine pas.

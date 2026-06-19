@@ -212,9 +212,13 @@ function rendreGroupe(g) {
     </div>
     <span class="pa-groupe-badge">${nb} à compléter</span>
     <button class="pa-groupe-reprendre" type="button">🔍 OCR du BL</button>
+    <button class="pa-groupe-lots" type="button" title="Fournisseur sans N° de lot : génère un lot interne pour tous les produits en attente de cette réception">🏷️ Lot interne sur toute la commande</button>
   `;
   const btnOcr = tete.querySelector('.pa-groupe-reprendre');
   btnOcr.addEventListener('click', () => lancerOcrGroupe(g, btnOcr, statut));
+
+  const btnLots = tete.querySelector('.pa-groupe-lots');
+  btnLots.addEventListener('click', () => genererLotsCommande(g, btnLots, statut));
 
   const statut = document.createElement('div');
   statut.className = 'pa-groupe-statut';
@@ -520,11 +524,14 @@ async function lancerOcrGroupe(g, btn, statut) {
   statut.hidden = false;
   statut.className = 'pa-groupe-statut';
   statut.textContent = 'Analyse du bon de livraison…';
+  const barre = demarrerBarreOcr(statut);
 
   let data;
   try {
     data = await apiFetch(`/api/receptions/${g.reception_id}/ocr-bl`, { method: 'POST' });
+    barre.terminer();
   } catch (e) {
+    barre.annuler();
     btn.disabled = false;
     btn.textContent = labelInit;
     statut.className = 'pa-groupe-statut erreur';
@@ -598,6 +605,149 @@ async function lancerOcrGroupe(g, btn, statut) {
     statut.textContent = '⚠️ Articles lus mais aucun n\'a pu être rapproché des produits en attente.'
       + alerteManque + ' Saisie manuelle nécessaire.';
   }
+}
+
+// Barre de progression « estimée » pour l'OCR : l'extraction est un appel unique
+// (analyse Claude vision, ~15-30 s) dont on ne connaît pas l'avancement réel. On
+// anime donc une barre qui monte progressivement vers 90 % sur une durée typique,
+// puis se complète à 100 % à la réception de la réponse. But : donner à l'utilisateur
+// un repère « combien de temps attendre » plutôt qu'un simple ⏳ figé.
+// `ancre` : élément après lequel la barre est insérée (comme frère).
+function demarrerBarreOcr(ancre) {
+  injecterStylesBarreOcr();
+  let wrap = ancre && ancre.nextElementSibling && ancre.nextElementSibling.classList.contains('ocr-barre')
+    ? ancre.nextElementSibling : null;
+  if (!wrap && ancre && ancre.parentNode) {
+    wrap = document.createElement('div');
+    wrap.className = 'ocr-barre';
+    wrap.innerHTML = '<div class="ocr-barre-piste"><div class="ocr-barre-jauge"></div></div>'
+                   + '<div class="ocr-barre-txt">0 %</div>';
+    ancre.parentNode.insertBefore(wrap, ancre.nextSibling);
+  }
+  const jauge = wrap ? wrap.querySelector('.ocr-barre-jauge') : null;
+  const txt   = wrap ? wrap.querySelector('.ocr-barre-txt')   : null;
+
+  const DUREE_ESTIMEE = 22000;  // ms : durée typique d'un appel OCR
+  const PLAFOND = 90;           // on ne dépasse pas 90 % tant que ce n'est pas fini
+  const t0 = Date.now();
+  let timer = null;
+
+  function rendu(pct) {
+    if (jauge) jauge.style.width = pct + '%';
+    if (txt)   txt.textContent = Math.round(pct) + ' %';
+  }
+  function tick() {
+    const ecoule = Date.now() - t0;
+    const pct = PLAFOND * (1 - Math.exp(-ecoule / (DUREE_ESTIMEE / 2.3)));
+    rendu(pct);
+    timer = setTimeout(tick, 150);
+  }
+  if (wrap) { wrap.hidden = false; tick(); }
+
+  return {
+    terminer() {
+      clearTimeout(timer);
+      rendu(100);
+      if (wrap) { wrap.classList.add('ocr-barre--ok'); setTimeout(() => wrap.remove(), 600); }
+    },
+    annuler() {
+      clearTimeout(timer);
+      if (wrap) wrap.remove();
+    },
+  };
+}
+
+let _stylesBarreOcrInjectes = false;
+function injecterStylesBarreOcr() {
+  if (_stylesBarreOcrInjectes) return;
+  _stylesBarreOcrInjectes = true;
+  const st = document.createElement('style');
+  st.textContent = `
+    .ocr-barre { margin-top:.5rem; }
+    .ocr-barre-piste {
+      height:8px; border-radius:6px; background:#e5ddd4; overflow:hidden;
+    }
+    .ocr-barre-jauge {
+      height:100%; width:0%; border-radius:6px;
+      background:linear-gradient(90deg,#c8852f,#e0a64b);
+      transition:width .15s linear;
+    }
+    .ocr-barre--ok .ocr-barre-jauge { background:#3aa657; }
+    .ocr-barre-txt {
+      margin-top:.25rem; font-size:.78rem; font-weight:600; color:#5a3e28;
+      text-align:right;
+    }`;
+  document.head.appendChild(st);
+}
+
+// ── Lot interne sur toute la réception ─────────────────────
+// Fournisseur sans N° de lot : génère un lot interne {BL}-{code}-{JJMMAA} pour
+// toutes les lignes en attente de cette réception qui n'ont pas de lot. Exige le
+// n° BL (préfixe) ; s'il manque, on le demande et on l'enregistre avant.
+async function genererLotsCommande(g, btn, statut) {
+  // n° BL de la réception (porté par chaque ligne du groupe).
+  let numeroBl = ((g.lignes[0] && g.lignes[0].numero_bon_livraison) || '').trim();
+  if (!numeroBl) {
+    const saisi = window.prompt(
+      'N° du bon de livraison de cette réception (sert de préfixe aux lots internes) :',
+      ''
+    );
+    if (saisi === null) return;             // annulé
+    numeroBl = saisi.trim();
+    if (!numeroBl) {
+      statut.hidden = false;
+      statut.className = 'pa-groupe-statut erreur';
+      statut.textContent = '⚠️ N° de bon de livraison requis pour générer les lots internes.';
+      return;
+    }
+    try {
+      await apiFetch(`/api/receptions/${g.reception_id}/numero-bl`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ numero_bon_livraison: numeroBl }),
+      });
+      // Propager le BL au cache local (toutes les lignes de la réception).
+      toutesLignes.forEach(l => {
+        if (l.reception_id === g.reception_id) l.numero_bon_livraison = numeroBl;
+      });
+    } catch (e) {
+      statut.hidden = false;
+      statut.className = 'pa-groupe-statut erreur';
+      statut.textContent = 'Enregistrement du n° BL impossible : ' + e.message;
+      return;
+    }
+  }
+
+  btn.disabled = true;
+  const labelInit = btn.textContent;
+  btn.textContent = '⏳ Génération…';
+  statut.hidden = false;
+  statut.className = 'pa-groupe-statut';
+  statut.textContent = 'Génération des lots internes…';
+
+  let res;
+  try {
+    res = await apiFetch(`/api/receptions/${g.reception_id}/lots-internes`, { method: 'POST' });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = labelInit;
+    statut.className = 'pa-groupe-statut erreur';
+    statut.textContent = 'Génération impossible : ' + e.message;
+    return;
+  }
+
+  // Nettoyer le localStorage des lignes de cette réception (lot désormais en base).
+  g.lignes.forEach(l => effacerDonneesCarte(l.ligne_id));
+
+  statut.className = res.restant_attente ? 'pa-groupe-statut' : 'pa-groupe-statut ok';
+  statut.textContent =
+    `✓ ${res.generes} lot(s) interne(s) généré(s)`
+    + (res.restant_attente
+        ? ` — ⚠️ ${res.restant_attente} produit(s) encore en attente (DLC / date d'abattage à compléter).`
+        : ' — réception tracée.');
+
+  // Recharger la file : les lignes complétées (lot + date OK) disparaissent.
+  await charger();
 }
 
 // Rapprochement souple de deux désignations (insensible casse/accents/ponctuation).

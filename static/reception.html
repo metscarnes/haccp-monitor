@@ -358,6 +358,18 @@
               <input type="date" class="rec-input rec-batch-date">
             </div>
 
+            <!-- N° de lot supplémentaires : 1 ligne de réception sera créée par lot -->
+            <div class="rec-batch-champ rec-batch-lots-supp-champ">
+              <div class="rec-batch-lots-supp"></div>
+              <button type="button" class="rec-btn-add-lot rec-batch-add-lot">
+                ＋ Ajouter un autre n° de lot
+              </button>
+              <div class="rec-lots-supp-hint rec-batch-lots-supp-hint" hidden
+                   style="font-size:.8em;color:var(--color-offline);margin-top:.35rem;">
+                ℹ️ Une ligne de réception sera créée pour chaque n° de lot (mêmes critères et origine — DLC individuelle par lot).
+              </div>
+            </div>
+
             <div class="rec-batch-champ">
               <label class="rec-champ-label rec-batch-nb-colis-label">Nb de colis reçus</label>
               <input type="number" step="1" min="0" inputmode="numeric"
@@ -395,6 +407,12 @@
         <div id="rec-lignes-liste">
           <!-- Cartes injectées par JS -->
         </div>
+        <!-- Lot interne sur toute la commande (fournisseur sans N° de lot) -->
+        <button type="button" class="rec-btn-lots-commande" id="rec-btn-lots-commande" hidden>
+          🏷️ Lot interne sur toute la commande
+        </button>
+        <div class="rec-lots-commande-hint" id="rec-lots-commande-hint" hidden
+             style="font-size:.8em;margin-top:.35rem;"></div>
       </div>
 
       <!-- Formulaire ajout produit -->
