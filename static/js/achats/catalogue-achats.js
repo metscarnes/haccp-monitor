@@ -308,6 +308,7 @@ function afficherTable(liste) {
       </td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEditionModal(${a.id})">Modifier</button>
+        <button class="ach-btn ach-btn--small" onclick="ouvrirEtiquettePrix(${JSON.stringify({id: a.id, designation: a.designation, prix_unitaire_ht: a.prix_achat_ht, unite_commande: a.format_prix === 'kg' ? 'kg' : 'colis', fournisseur_nom: a.fournisseur_nom})})" title="Créer une étiquette prix">🏷️</button>
         ${a.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${a.id}, false)" title="Désactiver">✕</button>`
           : `<button class="ach-btn ach-btn--small ach-btn--ok"    onclick="toggleActif(${a.id}, true)"  title="Réactiver">↺</button>`
@@ -866,6 +867,14 @@ function fmtUnitesAutorisees(csv) {
     `<span class="ach-badge ach-badge--dlc" style="margin:1px;">${escHtml(UNITE_LABELS[u] || u)}</span>`
   ).join(' ');
 }
+function ouvrirEtiquettePrix(article) {
+  // Ouvre l'éditeur étiquettes prix avec l'article pré-sélectionné via sessionStorage
+  try {
+    sessionStorage.setItem('pe_article_import', JSON.stringify(article));
+  } catch (e) { /* ignore */ }
+  window.open('/prix-etiquettes.html', '_blank');
+}
+
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

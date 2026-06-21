@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Étiquettes Prix — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/prix-etiquettes.css">
+</head>
+<body class="pe-body">
+<script src="/static/js/core/guard.js"></script>
+
+<!-- ═══════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════ -->
+<header class="pe-header">
+  <a href="/hub.html" class="pe-retour">← Hub</a>
+  <div class="pe-header-titre">🏷️ ÉTIQUETTES PRIX</div>
+  <div class="pe-header-actions">
+    <button class="pe-btn pe-btn--outline" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
+    <button class="pe-btn pe-btn--primary" id="btn-imprimer">🖨️ Imprimer</button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════
+     BANDEAU MODÈLES
+═══════════════════════════════════════════════════ -->
+<div class="pe-modeles-bar">
+  <span class="pe-modeles-label">Modèles :</span>
+  <div class="pe-modeles-liste" id="liste-modeles">
+    <!-- injecté par JS -->
+  </div>
+  <button class="pe-btn pe-btn--sm pe-btn--outline" id="btn-nouveau-modele" title="Nouvelle étiquette vierge">+ Nouveau</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     CORPS PRINCIPAL — 2 colonnes
+═══════════════════════════════════════════════════ -->
+<main class="pe-main">
+
+  <!-- ─── COLONNE GAUCHE : paramètres ─── -->
+  <section class="pe-panneau-params" aria-label="Paramètres de l'étiquette">
+
+    <!-- Import catalogue -->
+    <div class="pe-section">
+      <div class="pe-section-titre">📦 Import article</div>
+      <div class="pe-catalogue-search">
+        <input type="text" id="catalogue-search" class="pe-input" placeholder="Rechercher un article…" autocomplete="off">
+        <div class="pe-catalogue-dropdown" id="catalogue-dropdown" hidden></div>
+      </div>
+      <div class="pe-catalogue-selectionne" id="catalogue-selectionne" hidden>
+        <span id="catalogue-nom"></span>
+        <button class="pe-btn-clear" id="catalogue-clear" title="Effacer">✕</button>
+      </div>
+    </div>
+
+    <!-- Dimensions -->
+    <div class="pe-section">
+      <div class="pe-section-titre">📐 Dimensions de l'étiquette</div>
+      <div class="pe-dimensions">
+        <label class="pe-label">
+          Largeur
+          <div class="pe-input-unit">
+            <input type="number" id="dim-largeur" class="pe-input pe-input--sm" value="10" min="1" max="62" step="0.1">
+            <span class="pe-unit">cm</span>
+          </div>
+        </label>
+        <span class="pe-dim-sep">×</span>
+        <label class="pe-label">
+          Hauteur
+          <div class="pe-input-unit">
+            <input type="number" id="dim-hauteur" class="pe-input pe-input--sm" value="7.5" min="1" max="100" step="0.1">
+            <span class="pe-unit">cm</span>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Fond -->
+    <div class="pe-section">
+      <div class="pe-section-titre">🎨 Fond</div>
+      <div class="pe-fond-choix">
+        <button class="pe-fond-btn pe-fond-btn--blanc active" id="fond-blanc" aria-pressed="true">
+          <span class="pe-fond-preview pe-fond-preview--blanc"></span>Blanc
+        </button>
+        <button class="pe-fond-btn pe-fond-btn--noir" id="fond-noir" aria-pressed="false">
+          <span class="pe-fond-preview pe-fond-preview--noir"></span>Noir
+        </button>
+      </div>
+    </div>
+
+    <!-- Lignes de texte -->
+    <div class="pe-section">
+      <div class="pe-section-titre-row">
+        <span class="pe-section-titre">✏️ Lignes de texte</span>
+        <button class="pe-btn pe-btn--sm pe-btn--outline" id="btn-ajouter-ligne">+ Ligne</button>
+      </div>
+      <div class="pe-lignes-liste" id="lignes-liste">
+        <!-- injecté par JS -->
+      </div>
+    </div>
+
+    <!-- Polices custom -->
+    <div class="pe-section">
+      <div class="pe-section-titre">🔤 Polices custom</div>
+      <div class="pe-fonts-liste" id="fonts-liste">
+        <!-- injecté par JS -->
+      </div>
+      <label class="pe-upload-label" id="label-upload-font">
+        <input type="file" id="input-upload-font" accept=".ttf,.otf" hidden>
+        ⬆ Importer une police TTF / OTF
+      </label>
+    </div>
+
+  </section>
+
+  <!-- ─── COLONNE DROITE : prévisualisation ─── -->
+  <section class="pe-panneau-preview" aria-label="Prévisualisation">
+
+    <div class="pe-preview-titre">Prévisualisation</div>
+
+    <!-- Règle graduée simulée -->
+    <div class="pe-preview-wrapper">
+      <div class="pe-preview-zone" id="preview-zone">
+        <!-- Rectangle aux vraies proportions -->
+        <div class="pe-etiquette-cadre" id="etiquette-cadre">
+          <img class="pe-etiquette-img" id="etiquette-img" alt="Aperçu étiquette">
+          <div class="pe-etiquette-placeholder" id="etiquette-placeholder">
+            <span>Aperçu</span>
+          </div>
+        </div>
+      </div>
+      <div class="pe-preview-dimensions-info" id="preview-dims-info">
+        10,0 cm × 7,5 cm — 1180 × 886 px (300 dpi)
+      </div>
+    </div>
+
+    <!-- Statut impression -->
+    <div class="pe-print-status" id="print-status" hidden></div>
+
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════
+     MODAL — Sauvegarder un modèle
+═══════════════════════════════════════════════════ -->
+<div class="pe-modal-overlay" id="modal-save" role="dialog" aria-modal="true" aria-labelledby="modal-save-titre" hidden>
+  <div class="pe-modal">
+    <div class="pe-modal-titre" id="modal-save-titre">Sauvegarder le modèle</div>
+    <label class="pe-label">
+      Nom du modèle
+      <input type="text" id="modele-nom" class="pe-input" placeholder="Ex : Prix viande, Promo semaine…" maxlength="60">
+    </label>
+    <div class="pe-modal-actions">
+      <button class="pe-btn pe-btn--outline" id="btn-save-annuler">Annuler</button>
+      <button class="pe-btn pe-btn--primary" id="btn-save-confirmer">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Template JS pour une ligne de texte -->
+<template id="tpl-ligne">
+  <div class="pe-ligne" data-index="">
+    <div class="pe-ligne-header">
+      <span class="pe-ligne-num"></span>
+      <button class="pe-ligne-suppr" title="Supprimer cette ligne">✕</button>
+    </div>
+    <div class="pe-ligne-corps">
+      <input type="text" class="pe-input pe-ligne-texte" placeholder="Texte…">
+      <div class="pe-ligne-options">
+        <label class="pe-label pe-label--sm">
+          Taille
+          <input type="number" class="pe-input pe-input--xs pe-ligne-taille" value="36" min="8" max="200">
+        </label>
+        <label class="pe-label pe-label--sm">
+          Police
+          <select class="pe-input pe-input--sm pe-ligne-police">
+            <option value="">DejaVu (défaut)</option>
+          </select>
+        </label>
+        <label class="pe-label pe-label--sm">
+          Alignement
+          <select class="pe-input pe-input--sm pe-ligne-alignement">
+            <option value="center">Centré</option>
+            <option value="left">Gauche</option>
+            <option value="right">Droite</option>
+          </select>
+        </label>
+        <label class="pe-label pe-label--sm pe-ligne-gras-wrap">
+          <input type="checkbox" class="pe-ligne-gras"> Gras
+        </label>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="/static/js/prix_etiquettes.js"></script>
+</body>
+</html>
