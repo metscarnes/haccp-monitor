@@ -95,7 +95,7 @@ function lireEtat() {
   elLignesListe.querySelectorAll('.pe-ligne').forEach(el => {
     state.lignes.push({
       texte:      el.querySelector('.pe-ligne-texte').value,
-      taille:     parseInt(el.querySelector('.pe-ligne-taille').value, 10) || 36,
+      poids:      parseFloat(el.querySelector('.pe-ligne-poids').value) || 1,
       gras:       el.querySelector('.pe-ligne-gras').checked,
       police:     el.querySelector('.pe-ligne-police').value || null,
       alignement: el.querySelector('.pe-ligne-alignement').value,
@@ -182,19 +182,26 @@ elHauteur.addEventListener('input', debbouncePreview);
 // ── Lignes de texte ──────────────────────────────────────────
 
 function creerLigneDOM(data = {}) {
-  const frag = tplLigne.content.cloneNode(true);
-  const el   = frag.querySelector('.pe-ligne');
-  const idx  = elLignesListe.children.length + 1;
+  // Cloner le template dans un div intermédiaire pour obtenir un vrai Element
+  // (DocumentFragment perd ses références après appendChild)
+  const tmp = document.createElement('div');
+  tmp.appendChild(tplLigne.content.cloneNode(true));
+  const el  = tmp.querySelector('.pe-ligne');
+  const idx = elLignesListe.children.length + 1;
 
-  el.querySelector('.pe-ligne-num').textContent = `Ligne ${idx}`;
-  el.querySelector('.pe-ligne-texte').value     = data.texte      ?? '';
-  el.querySelector('.pe-ligne-taille').value    = data.taille     ?? 36;
-  el.querySelector('.pe-ligne-gras').checked    = data.gras       ?? false;
+  el.querySelector('.pe-ligne-num').textContent  = `Ligne ${idx}`;
+  el.querySelector('.pe-ligne-texte').value      = data.texte ?? '';
+  el.querySelector('.pe-ligne-gras').checked     = data.gras  ?? false;
   el.querySelector('.pe-ligne-alignement').value = data.alignement ?? 'center';
 
-  // Peupler le select police avec les fonts dispo
-  const selectPolice = el.querySelector('.pe-ligne-police');
-  remplirSelectPolice(selectPolice, data.police ?? '');
+  // Poids relatif (remplace la taille manuelle)
+  const selPoids = el.querySelector('.pe-ligne-poids');
+  const poids    = String(data.poids ?? 1);
+  // S'assurer que l'option existe (sinon rester sur "1")
+  if ([...selPoids.options].some(o => o.value === poids)) selPoids.value = poids;
+
+  // Polices custom
+  remplirSelectPolice(el.querySelector('.pe-ligne-police'), data.police ?? '');
 
   // Suppression
   el.querySelector('.pe-ligne-suppr').addEventListener('click', () => {
@@ -203,13 +210,13 @@ function creerLigneDOM(data = {}) {
     debbouncePreview();
   });
 
-  // Changements → preview
+  // Tout changement → preview
   el.querySelectorAll('input, select').forEach(inp => {
     inp.addEventListener('input', debbouncePreview);
     inp.addEventListener('change', debbouncePreview);
   });
 
-  return frag;
+  return el;   // ← Element réel, pas DocumentFragment
 }
 
 function renuméroterLignes() {
@@ -365,7 +372,7 @@ function selectionnerArticle(article) {
 
   elLignesListe.appendChild(creerLigneDOM({
     texte: article.designation,
-    taille: 40,
+    poids: 1,
     gras: true,
     alignement: 'center',
   }));
@@ -374,13 +381,13 @@ function selectionnerArticle(article) {
     const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
     elLignesListe.appendChild(creerLigneDOM({
       texte: prix,
-      taille: 80,
+      poids: 2,
       gras: true,
       alignement: 'center',
     }));
     elLignesListe.appendChild(creerLigneDOM({
       texte: 'le kg',
-      taille: 28,
+      poids: 0.5,
       gras: false,
       alignement: 'center',
     }));

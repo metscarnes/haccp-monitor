@@ -120,57 +120,76 @@ def generer_image_prix(data: dict):
     couleur_fond  = "black" if fond_noir else "white"
     couleur_texte = "white" if fond_noir else "black"
 
-    lignes_brutes = data.get("lignes", [])
-    marge_h = round(w * 0.04)   # marge latérale 4%
-    marge_v = round(h * 0.04)   # marge verticale 4%
-    zone_w  = w - 2 * marge_h
-    inter   = round(h * 0.02)   # espacement inter-ligne = 2% de la hauteur
+    lignes_brutes = [l for l in data.get("lignes", []) if str(l.get("texte", "")).strip()]
+    if not lignes_brutes:
+        return Image.new("RGB", (w, h), color=couleur_fond)
 
-    # ── Passe 1 : charger chaque police et auto-réduire si le texte dépasse la largeur
+    marge_h   = round(w * 0.04)
+    marge_v   = round(h * 0.05)
+    zone_w    = w - 2 * marge_h
+    zone_h    = h - 2 * marge_v
+    n_lignes  = len(lignes_brutes)
+    inter     = round(h * 0.015)  # espace entre lignes
+
+    # Hauteur disponible à répartir entre les lignes (hors espacement)
+    hauteur_dispo = zone_h - inter * (n_lignes - 1)
+
+    # Poids total pour répartition proportionnelle
+    poids_total = sum(max(0.1, float(l.get("poids", 1))) for l in lignes_brutes)
+
+    # ── Passe 1 : calculer la taille de police pour chaque ligne
+    # Taille cible = hauteur allouée à cette ligne (proportionnelle au poids)
+    # Puis réduire si le texte dépasse la largeur
     lignes_rendues = []
+    tmp_img  = Image.new("RGB", (w, h))
+    tmp_draw = ImageDraw.Draw(tmp_img)
+
     for ligne in lignes_brutes:
         texte      = str(ligne.get("texte", "")).strip()
-        taille     = max(8, int(ligne.get("taille", 36)))
+        poids      = max(0.1, float(ligne.get("poids", 1)))
         gras       = bool(ligne.get("gras", False))
         police_fic = ligne.get("police") or None
         alignement = ligne.get("alignement", "center")
 
-        if not texte:
-            lignes_rendues.append(None)  # ligne vide = espacement
-            continue
+        # Hauteur allouée à cette ligne
+        hauteur_ligne = max(8, round(hauteur_dispo * poids / poids_total))
 
-        # Charger la police à la taille demandée
-        def _font(sz, _gras=gras, _police_fic=police_fic):
-            return _charger_police(_police_fic, sz, gras=_gras)
+        # Taille de départ = 85% de la hauteur allouée (laisse un peu d'espace)
+        taille = max(8, round(hauteur_ligne * 0.85))
+
+        def _font(sz):
+            return _charger_police(police_fic, sz, gras=gras)
 
         font = _font(taille)
 
-        # Auto-réduire si le texte dépasse la largeur disponible
-        tmp_draw = ImageDraw.Draw(Image.new("RGB", (w, h)))
-        bbox = tmp_draw.textbbox((0, 0), texte, font=font)
-        text_w = bbox[2] - bbox[0]
-        while text_w > zone_w and taille > 8:
-            taille -= 2
-            font    = _font(taille)
-            bbox    = tmp_draw.textbbox((0, 0), texte, font=font)
-            text_w  = bbox[2] - bbox[0]
+        # Réduire jusqu'à ce que le texte tienne en largeur ET en hauteur
+        for _ in range(60):
+            bbox   = tmp_draw.textbbox((0, 0), texte, font=font)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+            if text_w <= zone_w and text_h <= hauteur_ligne:
+                break
+            taille -= 1
+            if taille < 8:
+                taille = 8
+                font   = _font(taille)
+                break
+            font = _font(taille)
 
-        line_h = bbox[3] - bbox[1]
+        bbox   = tmp_draw.textbbox((0, 0), texte, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
         lignes_rendues.append({
-            "texte": texte, "font": font, "taille": taille,
-            "alignement": alignement, "text_w": text_w, "line_h": line_h,
+            "texte": texte, "font": font,
+            "alignement": alignement,
+            "text_w": text_w, "text_h": text_h,
+            "hauteur_ligne": hauteur_ligne,
         })
 
-    # ── Passe 2 : calculer la hauteur totale du bloc texte et centrer verticalement
-    hauteur_totale = sum(
-        (l["line_h"] + inter) if l else inter * 2
-        for l in lignes_rendues
-    )
-    # Retire le dernier inter
-    if lignes_rendues:
-        hauteur_totale -= inter
-
-    y_start = max(marge_v, (h - hauteur_totale) // 2)
+    # ── Passe 2 : centrage vertical du bloc
+    bloc_h  = sum(l["hauteur_ligne"] for l in lignes_rendues) + inter * (n_lignes - 1)
+    y_start = max(marge_v, (h - bloc_h) // 2)
 
     # ── Passe 3 : dessiner
     img  = Image.new("RGB", (w, h), color=couleur_fond)
@@ -178,9 +197,8 @@ def generer_image_prix(data: dict):
     y    = y_start
 
     for l in lignes_rendues:
-        if l is None:
-            y += inter * 2
-            continue
+        # Centrage vertical du texte dans sa hauteur allouée
+        y_texte = y + (l["hauteur_ligne"] - l["text_h"]) // 2
 
         if l["alignement"] == "center":
             x = (w - l["text_w"]) // 2
@@ -189,8 +207,8 @@ def generer_image_prix(data: dict):
         else:
             x = marge_h
 
-        draw.text((x, y), l["texte"], font=l["font"], fill=couleur_texte)
-        y += l["line_h"] + inter
+        draw.text((x, y_texte), l["texte"], font=l["font"], fill=couleur_texte)
+        y += l["hauteur_ligne"] + inter
 
     return img
 
