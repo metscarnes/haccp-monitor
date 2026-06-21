@@ -333,12 +333,13 @@ function afficherDropdownCatalogue(articles) {
     articles.forEach(a => {
       const div = document.createElement('div');
       div.className = 'pe-catalogue-item';
-      const prix = a.prix_unitaire_ht
-        ? `${parseFloat(a.prix_unitaire_ht).toFixed(2)} €/${a.unite_commande ?? 'kg'} HT`
+      const prix = a.prix_vente_ttc
+        ? `${parseFloat(a.prix_vente_ttc).toFixed(2)} € TTC`
         : 'Prix non renseigné';
+      const famille = a.famille ? ` — ${a.famille}` : '';
       div.innerHTML = `
         <span class="pe-catalogue-item-nom">${escHtml(a.designation)}</span>
-        <span class="pe-catalogue-item-prix">${escHtml(prix)} — ${escHtml(a.fournisseur_nom ?? '')}</span>
+        <span class="pe-catalogue-item-prix">${escHtml(prix)}${escHtml(famille)}</span>
       `;
       div.addEventListener('click', () => selectionnerArticle(a));
       elCatalogueDropdown.appendChild(div);
@@ -359,7 +360,7 @@ function selectionnerArticle(article) {
   elCatalogueSearch.value = '';
   fermerDropdownCatalogue();
 
-  // Pré-remplir : si aucune ligne, créer 2 lignes (article + prix)
+  // Pré-remplir : si aucune ligne, créer les lignes article + prix TTC
   if (elLignesListe.children.length === 0) {
     elLignesListe.appendChild(creerLigneDOM({
       texte: article.designation,
@@ -368,18 +369,16 @@ function selectionnerArticle(article) {
       alignement: 'center',
     }));
 
-    if (article.prix_unitaire_ht) {
-      const prix = parseFloat(article.prix_unitaire_ht).toFixed(2).replace('.', ',') + ' €';
+    if (article.prix_vente_ttc) {
+      const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
       elLignesListe.appendChild(creerLigneDOM({
         texte: prix,
         taille: 80,
         gras: true,
         alignement: 'center',
       }));
-    }
-    if (article.unite_commande) {
       elLignesListe.appendChild(creerLigneDOM({
-        texte: 'le ' + article.unite_commande,
+        texte: 'le kg',
         taille: 28,
         gras: false,
         alignement: 'center',

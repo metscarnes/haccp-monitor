@@ -191,31 +191,30 @@ async def supprimer_modele(modele_id: int):
 @router.get("/api/prix-etiquettes/catalogue")
 async def rechercher_catalogue(q: str = Query("", min_length=0)):
     """
-    Recherche dans le catalogue achats pour pré-remplir l'étiquette.
-    Retourne id, designation, prix_unitaire_ht, unite_commande, fournisseur_nom.
+    Recherche dans le catalogue vente pour pré-remplir l'étiquette prix.
+    Retourne id, nom, prix_vente_ttc, famille.
     """
     async with get_db() as db:
         sql = """
-            SELECT c.id, c.designation, c.prix_unitaire_ht, c.unite_commande,
-                   f.nom AS fournisseur_nom
-            FROM catalogue_fournisseur c
-            JOIN fournisseurs f ON f.id = c.fournisseur_id
-            WHERE f.boutique_id = 1 AND c.actif = 1
+            SELECT id, nom, prix_vente_ttc, famille, sous_famille
+            FROM catalogue_vente
+            WHERE boutique_id = 1 AND actif = 1
         """
         params = []
         if q.strip():
-            sql += " AND (c.designation LIKE ? OR c.code_article LIKE ?)"
-            params += [f"%{q}%", f"%{q}%"]
-        sql += " ORDER BY c.designation LIMIT 30"
+            sql += " AND nom LIKE ?"
+            params.append(f"%{q}%")
+        sql += " ORDER BY famille, nom LIMIT 30"
 
-        rows = await db.execute_fetchall(sql, params)
+        cur = await db.execute(sql, params)
+        rows = await cur.fetchall()
         return {"articles": [
             {
                 "id": r[0],
                 "designation": r[1],
-                "prix_unitaire_ht": r[2],
-                "unite_commande": r[3],
-                "fournisseur_nom": r[4],
+                "prix_vente_ttc": r[2],
+                "famille": r[3],
+                "sous_famille": r[4],
             }
             for r in rows
         ]}
