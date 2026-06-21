@@ -96,6 +96,7 @@ function lireEtat() {
     state.lignes.push({
       texte:      el.querySelector('.pe-ligne-texte').value,
       poids:      parseFloat(el.querySelector('.pe-ligne-poids').value) || 1,
+      taille_px:  parseInt(el.querySelector('.pe-ligne-taille-px').value, 10) || 0,
       gras:       el.querySelector('.pe-ligne-gras').checked,
       police:     el.querySelector('.pe-ligne-police').value || null,
       alignement: el.querySelector('.pe-ligne-alignement').value,
@@ -194,6 +195,7 @@ function creerLigneDOM(data = {}) {
   el.querySelector('.pe-ligne-texte').value      = data.texte ?? '';
   el.querySelector('.pe-ligne-gras').checked     = data.gras  ?? false;
   el.querySelector('.pe-ligne-alignement').value = data.alignement ?? 'center';
+  el.querySelector('.pe-ligne-taille-px').value  = data.taille_px ? data.taille_px : '';
 
   // Taille relative (= ratio "poids"). On choisit l'option la plus proche de
   // la valeur demandée — robuste aux anciens modèles (ex: poids 0.5).

@@ -39,7 +39,8 @@ TAILLE_MAX_FONT = 5 * 1024 * 1024  # 5 Mo
 
 class LigneTexte(BaseModel):
     texte: str = ""
-    poids: float = 1.0   # poids relatif : 2.0 = deux fois plus grand que 1.0
+    poids: float = 1.0   # poids relatif (mode auto) : 2.0 = deux fois plus grand
+    taille_px: int = 0   # > 0 = taille FIXE en px imposée ; 0 = auto-fit
     gras: bool = False
     police: Optional[str] = None
     alignement: str = "center"   # left | center | right

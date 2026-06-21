@@ -28,6 +28,13 @@ LABEL_W_MAX_PX = 708
 FONTS_DIR = Path(__file__).parent.parent.parent / "static" / "fonts" / "custom"
 FONTS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Polices DejaVu embarquées dans le projet (contiennent le glyphe € et le gras).
+# Garantit un rendu IDENTIQUE sur Windows (dev) et Raspberry Pi (prod) sans
+# dépendre des chemins de polices système.
+FONTS_SYSTEM_DIR = Path(__file__).parent.parent.parent / "static" / "fonts" / "system"
+DEJAVU_REGULAR = FONTS_SYSTEM_DIR / "DejaVuSans.ttf"
+DEJAVU_BOLD    = FONTS_SYSTEM_DIR / "DejaVuSans-Bold.ttf"
+
 
 def cm_to_px(cm: float) -> int:
     return max(1, round(cm * PX_PAR_CM))
@@ -38,14 +45,14 @@ def _charger_police(nom_fichier: Optional[str], taille: int, gras: bool = False)
     Charge une police TTF à la bonne taille.
     Ordre de recherche :
       1. Police custom uploadée (FONTS_DIR)
-      2. DejaVu par chemin absolu (Raspberry Pi / Linux)
-      3. Arial (Windows)
-      4. Toute autre police système via fonttools/fc-match
-      5. load_default() en dernier recours (taille fixe — à éviter)
+      2. DejaVu EMBARQUÉE dans le projet (static/fonts/system) — source unique
+         de vérité, contient le € et le gras, identique dev/prod.
+      3. DejaVu / Arial système (sécurité si l'embarquée manque)
+      4. load_default() en tout dernier recours (taille fixe — à éviter)
     """
     from PIL import ImageFont
 
-    # 1. Police custom
+    # 1. Police custom uploadée
     if nom_fichier:
         chemin = FONTS_DIR / nom_fichier
         if chemin.exists():
@@ -54,40 +61,31 @@ def _charger_police(nom_fichier: Optional[str], taille: int, gras: bool = False)
             except Exception:
                 pass
 
-    # 2. DejaVu chemin absolu (Pi/Linux — installé via apt install fonts-dejavu)
+    # 2. DejaVu embarquée dans le projet (PRIORITAIRE — règle le € et la taille)
+    embarquee = DEJAVU_BOLD if gras else DEJAVU_REGULAR
+    if embarquee.exists():
+        try:
+            return ImageFont.truetype(str(embarquee), taille)
+        except Exception:
+            pass
+
+    # 3. Polices système (filet de sécurité)
     suffixe = "-Bold" if gras else ""
-    candidats_dejavu = [
+    candidats = [
         f"/usr/share/fonts/truetype/dejavu/DejaVuSans{suffixe}.ttf",
         f"/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans{suffixe}.ttf",
-        f"DejaVuSans{suffixe}.ttf",  # si dans le PATH
-    ]
-    for chemin in candidats_dejavu:
-        try:
-            return ImageFont.truetype(chemin, taille)
-        except Exception:
-            pass
-
-    # 3. Arial (Windows)
-    candidats_windows = [
+        f"DejaVuSans{suffixe}.ttf",
         "C:/Windows/Fonts/arialbd.ttf" if gras else "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/arial.ttf",
     ]
-    for chemin in candidats_windows:
+    for chemin in candidats:
         try:
             return ImageFont.truetype(chemin, taille)
         except Exception:
             pass
 
-    # 4. Première police TTF trouvable dans le dossier custom du projet
-    for f in sorted(FONTS_DIR.iterdir()) if FONTS_DIR.exists() else []:
-        if f.suffix.lower() in (".ttf", ".otf"):
-            try:
-                return ImageFont.truetype(str(f), taille)
-            except Exception:
-                pass
-
-    # 5. Fallback — taille ignorée mais ne plante pas
-    logger.warning("Aucune police TTF trouvée — utilisation du rendu par défaut (taille fixe)")
+    # 4. Fallback — taille ignorée mais ne plante pas
+    logger.warning("Aucune police TTF trouvée — rendu par défaut (taille fixe). "
+                   "Vérifier static/fonts/system/DejaVuSans.ttf")
     return ImageFont.load_default()
 
 
@@ -160,11 +158,18 @@ def generer_image_prix(data: dict):
     tmp_draw = ImageDraw.Draw(tmp_img)
 
     # Normaliser les lignes (texte + métadonnées) une fois.
+    # taille_px > 0  →  taille FIXE imposée par l'utilisateur (mode manuel).
+    # taille_px nul  →  AUTO-FIT (la taille est calculée pour remplir l'étiquette).
     lignes = []
     for ligne in lignes_brutes:
+        try:
+            taille_px = int(float(ligne.get("taille_px") or 0))
+        except (TypeError, ValueError):
+            taille_px = 0
         lignes.append({
             "texte":      str(ligne.get("texte", "")).strip(),
             "poids":      max(0.1, float(ligne.get("poids", 1))),
+            "taille_px":  taille_px if taille_px > 0 else 0,
             "gras":       bool(ligne.get("gras", False)),
             "police":     ligne.get("police") or None,
             "alignement": ligne.get("alignement", "center"),
@@ -173,34 +178,43 @@ def generer_image_prix(data: dict):
     def _font(ligne, sz):
         return _charger_police(ligne["police"], max(6, int(sz)), gras=ligne["gras"])
 
-    # ── Recherche dichotomique du facteur d'échelle "px par unité de poids" ──
-    # Pour un facteur f donné, la taille de police de chaque ligne = f * poids.
-    # On veut le plus grand f tel que tout tienne dans zone_w × zone_h.
+    auto = [l for l in lignes if not l["taille_px"]]
+
+    # ── Auto-fit : facteur d'échelle "px par unité de poids" pour les lignes auto.
+    # Pour un facteur f, la taille des lignes auto = f * poids. On cherche le plus
+    # grand f tel que TOUTES les lignes (auto + manuelles) tiennent dans la zone.
+    def _taille(ligne, f):
+        return ligne["taille_px"] if ligne["taille_px"] else f * ligne["poids"]
+
     def _tient(f):
         total_h = inter * (n_lignes - 1)
         for ligne in lignes:
-            font = _font(ligne, f * ligne["poids"])
+            font = _font(ligne, _taille(ligne, f))
             lw, lh, _ = _mesurer(tmp_draw, ligne["texte"], font)
             if lw > zone_w:
-                return False
+                # Une ligne manuelle trop large ne doit pas bloquer l'auto-fit
+                # des autres : on ne rejette que si c'est une ligne auto.
+                if not ligne["taille_px"]:
+                    return False
             total_h += lh
         return total_h <= zone_h
 
-    lo, hi = 1.0, float(max(zone_h, zone_w))  # borne haute généreuse
-    # S'assurer que hi ne tient PAS (sinon on rate le vrai max) : déjà garanti
-    # par la borne, mais on protège contre les cas dégénérés.
-    for _ in range(40):
-        mid = (lo + hi) / 2
-        if _tient(mid):
-            lo = mid
-        else:
-            hi = mid
-    facteur = lo
+    if auto:
+        lo, hi = 1.0, float(max(zone_h, zone_w))  # borne haute généreuse
+        for _ in range(40):
+            mid = (lo + hi) / 2
+            if _tient(mid):
+                lo = mid
+            else:
+                hi = mid
+        facteur = lo
+    else:
+        facteur = 0.0  # toutes les lignes sont en taille fixe
 
-    # ── Construction finale des lignes à la taille trouvée ──
+    # ── Construction finale des lignes à la taille retenue ──
     lignes_rendues = []
     for ligne in lignes:
-        font = _font(ligne, facteur * ligne["poids"])
+        font = _font(ligne, _taille(ligne, facteur))
         lw, lh, off_y = _mesurer(tmp_draw, ligne["texte"], font)
         lignes_rendues.append({
             **ligne, "font": font,
