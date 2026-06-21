@@ -360,31 +360,32 @@ function selectionnerArticle(article) {
   elCatalogueSearch.value = '';
   fermerDropdownCatalogue();
 
-  // Pré-remplir : si aucune ligne, créer les lignes article + prix TTC
-  if (elLignesListe.children.length === 0) {
+  // Toujours remplacer les lignes existantes par celles de l'article importé
+  elLignesListe.innerHTML = '';
+
+  elLignesListe.appendChild(creerLigneDOM({
+    texte: article.designation,
+    taille: 40,
+    gras: true,
+    alignement: 'center',
+  }));
+
+  if (article.prix_vente_ttc) {
+    const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
     elLignesListe.appendChild(creerLigneDOM({
-      texte: article.designation,
-      taille: 40,
+      texte: prix,
+      taille: 80,
       gras: true,
       alignement: 'center',
     }));
-
-    if (article.prix_vente_ttc) {
-      const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
-      elLignesListe.appendChild(creerLigneDOM({
-        texte: prix,
-        taille: 80,
-        gras: true,
-        alignement: 'center',
-      }));
-      elLignesListe.appendChild(creerLigneDOM({
-        texte: 'le kg',
-        taille: 28,
-        gras: false,
-        alignement: 'center',
-      }));
-    }
+    elLignesListe.appendChild(creerLigneDOM({
+      texte: 'le kg',
+      taille: 28,
+      gras: false,
+      alignement: 'center',
+    }));
   }
+
   debbouncePreview();
 }
 

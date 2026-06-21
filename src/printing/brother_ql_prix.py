@@ -67,7 +67,7 @@ def generer_image_prix(data: dict):
           "alignement"  : str,    # "left" | "center" | "right"
         }
     """
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
 
     largeur_cm = float(data.get("largeur_cm", 10.0))
     hauteur_cm = float(data.get("hauteur_cm", 7.5))
@@ -79,56 +79,83 @@ def generer_image_prix(data: dict):
     couleur_fond  = "black" if fond_noir else "white"
     couleur_texte = "white" if fond_noir else "black"
 
-    img  = Image.new("RGB", (w, h), color=couleur_fond)
-    draw = ImageDraw.Draw(img)
+    lignes_brutes = data.get("lignes", [])
+    marge_h = round(w * 0.04)   # marge latérale 4%
+    marge_v = round(h * 0.04)   # marge verticale 4%
+    zone_w  = w - 2 * marge_h
+    inter   = round(h * 0.02)   # espacement inter-ligne = 2% de la hauteur
 
-    lignes = data.get("lignes", [])
-    marge  = round(w * 0.04)   # 4% de la largeur comme marge latérale
-    y      = marge
-
-    for ligne in lignes:
+    # ── Passe 1 : charger chaque police et auto-réduire si le texte dépasse la largeur
+    lignes_rendues = []
+    for ligne in lignes_brutes:
         texte      = str(ligne.get("texte", "")).strip()
-        taille     = int(ligne.get("taille", 36))
+        taille     = max(8, int(ligne.get("taille", 36)))
         gras       = bool(ligne.get("gras", False))
         police_fic = ligne.get("police") or None
         alignement = ligne.get("alignement", "center")
 
         if not texte:
-            y += taille // 2
+            lignes_rendues.append(None)  # ligne vide = espacement
             continue
 
-        # Sélection police
-        if gras and not police_fic:
+        # Charger la police à la taille demandée
+        def _font(sz):
+            if police_fic:
+                return _charger_police(police_fic, sz)
             try:
-                from PIL import ImageFont
-                font = ImageFont.truetype("DejaVuSans-Bold.ttf", taille)
+                nom = "DejaVuSans-Bold.ttf" if gras else "DejaVuSans.ttf"
+                return ImageFont.truetype(nom, sz)
             except Exception:
-                font = _charger_police(None, taille)
-        else:
-            font = _charger_police(police_fic, taille)
+                return ImageFont.load_default()
 
-        # Calcul position horizontale
-        bbox = draw.textbbox((0, 0), texte, font=font)
+        font = _font(taille)
+
+        # Auto-réduire si le texte dépasse la largeur disponible
+        tmp_draw = ImageDraw.Draw(Image.new("RGB", (w, h)))
+        bbox = tmp_draw.textbbox((0, 0), texte, font=font)
         text_w = bbox[2] - bbox[0]
-
-        if alignement == "center":
-            x = (w - text_w) // 2
-        elif alignement == "right":
-            x = w - marge - text_w
-        else:
-            x = marge
-
-        # Découpe si le texte dépasse
-        if text_w > (w - 2 * marge):
-            x = marge
-
-        draw.text((x, y), texte, font=font, fill=couleur_texte)
+        while text_w > zone_w and taille > 8:
+            taille -= 2
+            font    = _font(taille)
+            bbox    = tmp_draw.textbbox((0, 0), texte, font=font)
+            text_w  = bbox[2] - bbox[0]
 
         line_h = bbox[3] - bbox[1]
-        y += line_h + round(taille * 0.25)   # espacement inter-ligne = 25% de la taille
+        lignes_rendues.append({
+            "texte": texte, "font": font, "taille": taille,
+            "alignement": alignement, "text_w": text_w, "line_h": line_h,
+        })
 
-        if y >= h - marge:
-            break  # on ne sort pas des bords
+    # ── Passe 2 : calculer la hauteur totale du bloc texte et centrer verticalement
+    hauteur_totale = sum(
+        (l["line_h"] + inter) if l else inter * 2
+        for l in lignes_rendues
+    )
+    # Retire le dernier inter
+    if lignes_rendues:
+        hauteur_totale -= inter
+
+    y_start = max(marge_v, (h - hauteur_totale) // 2)
+
+    # ── Passe 3 : dessiner
+    img  = Image.new("RGB", (w, h), color=couleur_fond)
+    draw = ImageDraw.Draw(img)
+    y    = y_start
+
+    for l in lignes_rendues:
+        if l is None:
+            y += inter * 2
+            continue
+
+        if l["alignement"] == "center":
+            x = (w - l["text_w"]) // 2
+        elif l["alignement"] == "right":
+            x = w - marge_h - l["text_w"]
+        else:
+            x = marge_h
+
+        draw.text((x, y), l["texte"], font=l["font"], fill=couleur_texte)
+        y += l["line_h"] + inter
 
     return img
 
