@@ -33,10 +33,19 @@ def cm_to_px(cm: float) -> int:
     return max(1, round(cm * PX_PAR_CM))
 
 
-def _charger_police(nom_fichier: Optional[str], taille: int):
-    """Charge une police TTF custom ou retombe sur DejaVuSans."""
+def _charger_police(nom_fichier: Optional[str], taille: int, gras: bool = False):
+    """
+    Charge une police TTF à la bonne taille.
+    Ordre de recherche :
+      1. Police custom uploadée (FONTS_DIR)
+      2. DejaVu par chemin absolu (Raspberry Pi / Linux)
+      3. Arial (Windows)
+      4. Toute autre police système via fonttools/fc-match
+      5. load_default() en dernier recours (taille fixe — à éviter)
+    """
     from PIL import ImageFont
 
+    # 1. Police custom
     if nom_fichier:
         chemin = FONTS_DIR / nom_fichier
         if chemin.exists():
@@ -44,10 +53,42 @@ def _charger_police(nom_fichier: Optional[str], taille: int):
                 return ImageFont.truetype(str(chemin), taille)
             except Exception:
                 pass
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", taille)
-    except Exception:
-        return ImageFont.load_default()
+
+    # 2. DejaVu chemin absolu (Pi/Linux — installé via apt install fonts-dejavu)
+    suffixe = "-Bold" if gras else ""
+    candidats_dejavu = [
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans{suffixe}.ttf",
+        f"/usr/share/fonts/truetype/ttf-dejavu/DejaVuSans{suffixe}.ttf",
+        f"DejaVuSans{suffixe}.ttf",  # si dans le PATH
+    ]
+    for chemin in candidats_dejavu:
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except Exception:
+            pass
+
+    # 3. Arial (Windows)
+    candidats_windows = [
+        "C:/Windows/Fonts/arialbd.ttf" if gras else "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ]
+    for chemin in candidats_windows:
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except Exception:
+            pass
+
+    # 4. Première police TTF trouvable dans le dossier custom du projet
+    for f in sorted(FONTS_DIR.iterdir()) if FONTS_DIR.exists() else []:
+        if f.suffix.lower() in (".ttf", ".otf"):
+            try:
+                return ImageFont.truetype(str(f), taille)
+            except Exception:
+                pass
+
+    # 5. Fallback — taille ignorée mais ne plante pas
+    logger.warning("Aucune police TTF trouvée — utilisation du rendu par défaut (taille fixe)")
+    return ImageFont.load_default()
 
 
 def generer_image_prix(data: dict):
@@ -99,14 +140,8 @@ def generer_image_prix(data: dict):
             continue
 
         # Charger la police à la taille demandée
-        def _font(sz):
-            if police_fic:
-                return _charger_police(police_fic, sz)
-            try:
-                nom = "DejaVuSans-Bold.ttf" if gras else "DejaVuSans.ttf"
-                return ImageFont.truetype(nom, sz)
-            except Exception:
-                return ImageFont.load_default()
+        def _font(sz, _gras=gras, _police_fic=police_fic):
+            return _charger_police(_police_fic, sz, gras=_gras)
 
         font = _font(taille)
 
