@@ -48,6 +48,39 @@ const state = {
   catalogueArticle: null,  // article sélectionné depuis le catalogue
 };
 
+// Polices chargées dans le navigateur via FontFace (pour le rendu Canvas).
+// clé = nom de fichier TTF custom ; les valeurs DejaVu sont enregistrées sous
+// la famille 'DejaVu Prix' (utilisée comme défaut, identique au backend).
+const fontFamillesChargees = new Set();
+
+// Charge une police custom (TTF servi statiquement) pour le Canvas.
+async function chargerFontFace(nomFichier) {
+  if (!nomFichier || fontFamillesChargees.has(nomFichier)) return;
+  try {
+    const ff = new FontFace(`pe-font-${nomFichier}`,
+      `url('/static/fonts/custom/${encodeURIComponent(nomFichier)}')`);
+    await ff.load();
+    document.fonts.add(ff);
+    fontFamillesChargees.add(nomFichier);
+  } catch (e) {
+    console.warn('Police non chargée pour aperçu:', nomFichier, e);
+  }
+}
+
+// Charge la DejaVu embarquée comme police par défaut du Canvas (glyphe €, gras),
+// pour que l'aperçu soit identique à l'impression backend.
+async function chargerFontDefaut() {
+  try {
+    const reg  = new FontFace('DejaVu Prix', "url('/static/fonts/system/DejaVuSans.ttf')",        { weight: '400' });
+    const bold = new FontFace('DejaVu Prix', "url('/static/fonts/system/DejaVuSans-Bold.ttf')",   { weight: '700' });
+    await Promise.all([reg.load(), bold.load()]);
+    document.fonts.add(reg);
+    document.fonts.add(bold);
+  } catch (e) {
+    console.warn('DejaVu embarquée non chargée — fallback Arial pour aperçu', e);
+  }
+}
+
 // ── Constantes ───────────────────────────────────────────────
 const PX_PAR_CM = 118;
 // Rouleau continu 62mm : hauteur (= largeur du rouleau) bridée à 6,2 cm.
@@ -66,7 +99,7 @@ const elFondNoir      = $('fond-noir');
 const elLignesListe   = $('lignes-liste');
 const elBtnAjoutLigne = $('btn-ajouter-ligne');
 const elEtiquetteCadre  = $('etiquette-cadre');
-const elEtiquetteImg    = $('etiquette-img');
+const elCanvas          = $('etiquette-canvas');
 const elDimsInfo        = $('preview-dims-info');
 const elPrintStatus     = $('print-status');
 const elFontsList       = $('fonts-liste');
@@ -113,14 +146,46 @@ function configVersEtat(config) {
   state.lignes     = config.lignes     ?? [];
 }
 
-// ── Prévisualisation ─────────────────────────────────────────
+// ── Prévisualisation — rendu CANVAS 100% LOCAL (zéro réseau) ──────────
+// Miroir fidèle de l'algo backend (brother_ql_prix.generer_image_prix) :
+// auto-fit max par dichotomie + taille_px fixe, mesure via métriques de police.
+// Aucun appel serveur pendant l'édition → aucun lag réseau.
 
-function majCadreProportions() {
+const FONT_FALLBACK = "'DejaVu Prix', Arial, sans-serif";
+
+// Famille CSS à utiliser pour une ligne (police custom chargée ou défaut).
+function familleCss(police) {
+  if (police && fontFamillesChargees.has(police)) {
+    return `'pe-font-${police}', ${FONT_FALLBACK}`;
+  }
+  return FONT_FALLBACK;
+}
+
+function specFont(ligne, sizePx) {
+  const poids = ligne.gras ? '700' : '400';
+  return `${poids} ${Math.max(6, Math.round(sizePx))}px ${familleCss(ligne.police)}`;
+}
+
+// Mesure (largeur, hauteur de ligne) cohérente avec le backend :
+// hauteur = ascent+descent via les métriques de la police.
+function mesurer(ctx, texte, fontSpec) {
+  ctx.font = fontSpec;
+  const m = ctx.measureText(texte);
+  const ascent  = m.actualBoundingBoxAscent  || m.fontBoundingBoxAscent  || 0;
+  const descent = m.actualBoundingBoxDescent || m.fontBoundingBoxDescent || 0;
+  return { w: m.width, h: ascent + descent, ascent };
+}
+
+function rendrePreview() {
+  lireEtat();
+
   const w_cm = state.largeur_cm;
-  // La hauteur réelle imprimée est bridée à la largeur du rouleau (6,2 cm).
-  const h_cm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM);
-  const ratio = w_cm / h_cm;
+  const h_cm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM); // bridage rouleau 62mm
+  const w = Math.max(1, Math.round(w_cm * PX_PAR_CM));
+  const h = Math.max(1, Math.round(h_cm * PX_PAR_CM));
 
+  // Taille CSS du cadre (proportions réelles).
+  const ratio = w / h;
   let cssW, cssH;
   if (ratio >= 1) {
     cssW = Math.min(PREVIEW_MAX_W, PREVIEW_MAX_H * ratio);
@@ -129,41 +194,90 @@ function majCadreProportions() {
     cssH = Math.min(PREVIEW_MAX_H, PREVIEW_MAX_W / ratio);
     cssW = cssH * ratio;
   }
-
   elEtiquetteCadre.style.width  = Math.round(cssW) + 'px';
   elEtiquetteCadre.style.height = Math.round(cssH) + 'px';
 
-  const px_w = Math.round(w_cm * PX_PAR_CM);
-  const px_h = Math.round(h_cm * PX_PAR_CM);
+  // Le canvas est rendu à la résolution réelle (netteté), affiché à la taille CSS.
+  elCanvas.width  = w;
+  elCanvas.height = h;
+  const ctx = elCanvas.getContext('2d');
+
+  const fond  = state.fond_noir ? '#000' : '#fff';
+  const encre = state.fond_noir ? '#fff' : '#000';
+  ctx.fillStyle = fond;
+  ctx.fillRect(0, 0, w, h);
+
   elDimsInfo.textContent =
-    `${w_cm.toFixed(1).replace('.', ',')} cm × ${h_cm.toFixed(1).replace('.', ',')} cm — ${px_w} × ${px_h} px (300 dpi)`;
-}
+    `${w_cm.toFixed(1).replace('.', ',')} cm × ${h_cm.toFixed(1).replace('.', ',')} cm — ${w} × ${h} px (300 dpi)`;
 
-async function rafraichirPreview() {
-  lireEtat();
-  majCadreProportions();
+  const lignes = state.lignes
+    .filter(l => (l.texte || '').trim())
+    .map(l => ({
+      texte: l.texte.trim(),
+      poids: Math.max(0.1, parseFloat(l.poids) || 1),
+      taille_px: (parseInt(l.taille_px, 10) || 0) > 0 ? parseInt(l.taille_px, 10) : 0,
+      gras: !!l.gras,
+      police: l.police || null,
+      alignement: l.alignement || 'center',
+    }));
 
-  const payload = {
-    largeur_cm: state.largeur_cm,
-    hauteur_cm: state.hauteur_cm,
-    fond_noir:  state.fond_noir,
-    lignes:     state.lignes,
+  if (lignes.length === 0) return;
+
+  const margeH = Math.round(w * 0.05);
+  const margeV = Math.round(h * 0.06);
+  const zoneW  = Math.max(1, w - 2 * margeH);
+  const zoneH  = Math.max(1, h - 2 * margeV);
+  const inter  = Math.round(h * 0.025);
+  const n = lignes.length;
+
+  const taille = (l, f) => l.taille_px ? l.taille_px : f * l.poids;
+  const auto = lignes.some(l => !l.taille_px);
+
+  const tient = (f) => {
+    let total = inter * (n - 1);
+    for (const l of lignes) {
+      const mes = mesurer(ctx, l.texte, specFont(l, taille(l, f)));
+      if (mes.w > zoneW && !l.taille_px) return false;
+      total += mes.h;
+    }
+    return total <= zoneH;
   };
 
-  try {
-    const data = await apiFetch('/api/prix-etiquettes/preview', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    elEtiquetteImg.src = data.image;
-    elEtiquetteCadre.classList.add('has-img');
-  } catch (e) {
-    console.error('Preview:', e);
+  let facteur = 0;
+  if (auto) {
+    let lo = 1, hi = Math.max(zoneH, zoneW);
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (tient(mid)) lo = mid; else hi = mid;
+    }
+    facteur = lo;
+  }
+
+  const rendues = lignes.map(l => {
+    const spec = specFont(l, taille(l, facteur));
+    const mes = mesurer(ctx, l.texte, spec);
+    return { ...l, spec, w: mes.w, h: mes.h, ascent: mes.ascent };
+  });
+
+  const blocH = rendues.reduce((s, l) => s + l.h, 0) + inter * (n - 1);
+  let y = Math.max(margeV, Math.round((h - blocH) / 2));
+
+  ctx.fillStyle = encre;
+  ctx.textBaseline = 'alphabetic';
+  for (const l of rendues) {
+    let x;
+    if (l.alignement === 'right')      x = w - margeH - l.w;
+    else if (l.alignement === 'left')  x = margeH;
+    else                               x = Math.round((w - l.w) / 2);
+    ctx.font = l.spec;
+    ctx.fillText(l.texte, x, y + l.ascent);
+    y += l.h + inter;
   }
 }
 
-const debbouncePreview = debounce(rafraichirPreview, 180);
+// Rendu instantané à chaque modification (local, pas de debounce nécessaire,
+// mais on garde un micro-délai pour ne pas redessiner à chaque keystroke).
+const debbouncePreview = debounce(rendrePreview, 30);
 
 // ── Fond ─────────────────────────────────────────────────────
 
@@ -228,6 +342,12 @@ function creerLigneDOM(data = {}) {
     inp.addEventListener('change', debbouncePreview);
   });
 
+  // Changement de police : charger la FontFace correspondante avant de redessiner.
+  el.querySelector('.pe-ligne-police').addEventListener('change', async (e) => {
+    const nom = e.target.value;
+    if (nom) { await chargerFontFace(nom); rendrePreview(); }
+  });
+
   return el;   // ← Element réel, pas DocumentFragment
 }
 
@@ -269,6 +389,9 @@ async function chargerFonts() {
     state.fontsDispos = data.fonts ?? [];
     afficherFonts();
     majTousSelectsPolice();
+    // Charger les TTF custom pour le rendu Canvas, puis redessiner.
+    await Promise.all(state.fontsDispos.map(f => chargerFontFace(f.nom)));
+    rendrePreview();
   } catch (e) {
     console.error('Fonts:', e);
   }
@@ -466,7 +589,7 @@ function chargerModele(modele) {
   state.lignes.forEach(l => elLignesListe.appendChild(creerLigneDOM(l)));
 
   afficherModeles(); // met à jour la chip active
-  rafraichirPreview();
+  rendrePreview();
 }
 
 elBtnNouveauModele.addEventListener('click', () => {
@@ -479,7 +602,7 @@ elBtnNouveauModele.addEventListener('click', () => {
   elLargeur.value = 10;
   elHauteur.value = 7.5;
   afficherModeles();
-  rafraichirPreview();
+  rendrePreview();
 });
 
 // ── Sauvegarde modèle ────────────────────────────────────────
@@ -599,9 +722,11 @@ elHauteur.addEventListener('change', sauvegarderDimsLocal);
 
 async function init() {
   restaurerDimsLocal();
+  await chargerFontDefaut();   // DejaVu embarquée pour l'aperçu Canvas
+  rendrePreview();             // premier rendu immédiat (avant les appels réseau)
   await chargerFonts();
   await chargerModeles();
-  majCadreProportions();
+  rendrePreview();
 
   // Import article depuis catalogue achats (bouton 🏷️ du tableau catalogue)
   try {
@@ -618,7 +743,7 @@ async function init() {
     elLignesListe.appendChild(creerLigneDOM({ texte: '', taille: 48, gras: true, alignement: 'center' }));
   }
 
-  rafraichirPreview();
+  rendrePreview();
 }
 
 document.addEventListener('DOMContentLoaded', init);

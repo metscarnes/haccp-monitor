@@ -482,25 +482,10 @@
   overflow: hidden;
   /* width et height injectés par JS en px selon les proportions */
 }
-.pe-etiquette-img {
+.pe-etiquette-canvas {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-}
-.pe-etiquette-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: rgba(107,58,31,.3);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  pointer-events: none;
-}
-.pe-etiquette-cadre.has-img .pe-etiquette-placeholder {
-  display: none;
 }
 
 .pe-preview-dimensions-info {
