@@ -91,24 +91,49 @@ def _charger_police(nom_fichier: Optional[str], taille: int, gras: bool = False)
     return ImageFont.load_default()
 
 
+def _mesurer(draw, texte, font):
+    """
+    Mesure une ligne de texte avec une police donnée.
+
+    Retourne (largeur, hauteur, offset_y) où :
+      - largeur  : largeur réelle des glyphes
+      - hauteur  : hauteur de ligne basée sur les MÉTRIQUES de la police
+                   (ascent + descent), pas la bbox des glyphes — c'est ce qui
+                   garantit un dimensionnement cohérent quelle que soit la casse.
+      - offset_y : décalage du haut de la bbox réelle vs l'origine, pour pouvoir
+                   recoller le texte précisément lors du dessin.
+    """
+    ascent, descent = font.getmetrics()
+    hauteur = ascent + descent
+    bbox = draw.textbbox((0, 0), texte, font=font)
+    largeur = bbox[2] - bbox[0]
+    return largeur, hauteur, bbox[1]
+
+
 def generer_image_prix(data: dict):
     """
     Génère une image PIL pour une étiquette prix.
 
+    Principe — AUTO-FIT MAX : le texte est rendu aussi GROS que possible tout
+    en tenant dans l'étiquette. Le champ "poids" de chaque ligne n'est plus une
+    hauteur allouée mais un simple RATIO de taille relative entre lignes
+    (poids 2 = deux fois plus haut que poids 1). On cherche le facteur d'échelle
+    global maximal tel que toutes les lignes tiennent en largeur ET en hauteur.
+
     Champs attendus dans data :
-      largeur_cm      float   — largeur de l'étiquette (ex: 10.0)
-      hauteur_cm      float   — hauteur de l'étiquette (ex: 7.5)
-      fond_noir       bool    — True = fond noir, texte blanc
-      lignes          list    — liste de dicts décrivant chaque ligne de texte :
+      largeur_cm  float   — largeur de l'étiquette (ex: 10.0)
+      hauteur_cm  float   — hauteur de l'étiquette (ex: 7.5)
+      fond_noir   bool    — True = fond noir, texte blanc
+      lignes      list    — liste de dicts décrivant chaque ligne :
         {
-          "texte"       : str,
-          "taille"      : int,    # taille en pt (ex: 48)
-          "gras"        : bool,
-          "police"      : str,    # nom de fichier TTF custom (ou null)
-          "alignement"  : str,    # "left" | "center" | "right"
+          "texte"      : str,
+          "poids"      : float,   # ratio de taille relative (1=normal, 2=grand…)
+          "gras"       : bool,
+          "police"     : str,     # nom de fichier TTF custom (ou null)
+          "alignement" : str,     # "left" | "center" | "right"
         }
     """
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     largeur_cm = float(data.get("largeur_cm", 10.0))
     hauteur_cm = float(data.get("hauteur_cm", 7.5))
@@ -124,91 +149,84 @@ def generer_image_prix(data: dict):
     if not lignes_brutes:
         return Image.new("RGB", (w, h), color=couleur_fond)
 
-    marge_h   = round(w * 0.04)
-    marge_v   = round(h * 0.05)
-    zone_w    = w - 2 * marge_h
-    zone_h    = h - 2 * marge_v
-    n_lignes  = len(lignes_brutes)
-    inter     = round(h * 0.015)  # espace entre lignes
+    marge_h  = round(w * 0.05)
+    marge_v  = round(h * 0.06)
+    zone_w   = max(1, w - 2 * marge_h)
+    zone_h   = max(1, h - 2 * marge_v)
+    n_lignes = len(lignes_brutes)
+    inter    = round(h * 0.025)  # espace vertical entre lignes
 
-    # Hauteur disponible à répartir entre les lignes (hors espacement)
-    hauteur_dispo = zone_h - inter * (n_lignes - 1)
-
-    # Poids total pour répartition proportionnelle
-    poids_total = sum(max(0.1, float(l.get("poids", 1))) for l in lignes_brutes)
-
-    # ── Passe 1 : calculer la taille de police pour chaque ligne
-    # Taille cible = hauteur allouée à cette ligne (proportionnelle au poids)
-    # Puis réduire si le texte dépasse la largeur
-    lignes_rendues = []
     tmp_img  = Image.new("RGB", (w, h))
     tmp_draw = ImageDraw.Draw(tmp_img)
 
+    # Normaliser les lignes (texte + métadonnées) une fois.
+    lignes = []
     for ligne in lignes_brutes:
-        texte      = str(ligne.get("texte", "")).strip()
-        poids      = max(0.1, float(ligne.get("poids", 1)))
-        gras       = bool(ligne.get("gras", False))
-        police_fic = ligne.get("police") or None
-        alignement = ligne.get("alignement", "center")
-
-        # Hauteur allouée à cette ligne
-        hauteur_ligne = max(8, round(hauteur_dispo * poids / poids_total))
-
-        # Taille de départ = 85% de la hauteur allouée (laisse un peu d'espace)
-        taille = max(8, round(hauteur_ligne * 0.85))
-
-        def _font(sz):
-            return _charger_police(police_fic, sz, gras=gras)
-
-        font = _font(taille)
-
-        # Réduire jusqu'à ce que le texte tienne en largeur ET en hauteur
-        for _ in range(60):
-            bbox   = tmp_draw.textbbox((0, 0), texte, font=font)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
-            if text_w <= zone_w and text_h <= hauteur_ligne:
-                break
-            taille -= 1
-            if taille < 8:
-                taille = 8
-                font   = _font(taille)
-                break
-            font = _font(taille)
-
-        bbox   = tmp_draw.textbbox((0, 0), texte, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-
-        lignes_rendues.append({
-            "texte": texte, "font": font,
-            "alignement": alignement,
-            "text_w": text_w, "text_h": text_h,
-            "hauteur_ligne": hauteur_ligne,
+        lignes.append({
+            "texte":      str(ligne.get("texte", "")).strip(),
+            "poids":      max(0.1, float(ligne.get("poids", 1))),
+            "gras":       bool(ligne.get("gras", False)),
+            "police":     ligne.get("police") or None,
+            "alignement": ligne.get("alignement", "center"),
         })
 
-    # ── Passe 2 : centrage vertical du bloc
-    bloc_h  = sum(l["hauteur_ligne"] for l in lignes_rendues) + inter * (n_lignes - 1)
+    def _font(ligne, sz):
+        return _charger_police(ligne["police"], max(6, int(sz)), gras=ligne["gras"])
+
+    # ── Recherche dichotomique du facteur d'échelle "px par unité de poids" ──
+    # Pour un facteur f donné, la taille de police de chaque ligne = f * poids.
+    # On veut le plus grand f tel que tout tienne dans zone_w × zone_h.
+    def _tient(f):
+        total_h = inter * (n_lignes - 1)
+        for ligne in lignes:
+            font = _font(ligne, f * ligne["poids"])
+            lw, lh, _ = _mesurer(tmp_draw, ligne["texte"], font)
+            if lw > zone_w:
+                return False
+            total_h += lh
+        return total_h <= zone_h
+
+    lo, hi = 1.0, float(max(zone_h, zone_w))  # borne haute généreuse
+    # S'assurer que hi ne tient PAS (sinon on rate le vrai max) : déjà garanti
+    # par la borne, mais on protège contre les cas dégénérés.
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        if _tient(mid):
+            lo = mid
+        else:
+            hi = mid
+    facteur = lo
+
+    # ── Construction finale des lignes à la taille trouvée ──
+    lignes_rendues = []
+    for ligne in lignes:
+        font = _font(ligne, facteur * ligne["poids"])
+        lw, lh, off_y = _mesurer(tmp_draw, ligne["texte"], font)
+        lignes_rendues.append({
+            **ligne, "font": font,
+            "text_w": lw, "line_h": lh, "off_y": off_y,
+        })
+
+    # ── Centrage vertical du bloc ──
+    bloc_h  = sum(l["line_h"] for l in lignes_rendues) + inter * (n_lignes - 1)
     y_start = max(marge_v, (h - bloc_h) // 2)
 
-    # ── Passe 3 : dessiner
+    # ── Dessin ──
     img  = Image.new("RGB", (w, h), color=couleur_fond)
     draw = ImageDraw.Draw(img)
     y    = y_start
 
     for l in lignes_rendues:
-        # Centrage vertical du texte dans sa hauteur allouée
-        y_texte = y + (l["hauteur_ligne"] - l["text_h"]) // 2
-
-        if l["alignement"] == "center":
-            x = (w - l["text_w"]) // 2
-        elif l["alignement"] == "right":
+        if l["alignement"] == "right":
             x = w - marge_h - l["text_w"]
-        else:
+        elif l["alignement"] == "left":
             x = marge_h
+        else:
+            x = (w - l["text_w"]) // 2
 
-        draw.text((x, y_texte), l["texte"], font=l["font"], fill=couleur_texte)
-        y += l["hauteur_ligne"] + inter
+        # off_y recolle le haut réel des glyphes sur la position voulue.
+        draw.text((x, y - l["off_y"]), l["texte"], font=l["font"], fill=couleur_texte)
+        y += l["line_h"] + inter
 
     return img
 

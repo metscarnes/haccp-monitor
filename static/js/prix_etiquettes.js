@@ -153,12 +153,13 @@ async function rafraichirPreview() {
       body: JSON.stringify(payload),
     });
     elEtiquetteImg.src = data.image;
+    elEtiquetteCadre.classList.add('has-img');
   } catch (e) {
     console.error('Preview:', e);
   }
 }
 
-const debbouncePreview = debounce(rafraichirPreview, 500);
+const debbouncePreview = debounce(rafraichirPreview, 180);
 
 // ── Fond ─────────────────────────────────────────────────────
 
@@ -194,11 +195,17 @@ function creerLigneDOM(data = {}) {
   el.querySelector('.pe-ligne-gras').checked     = data.gras  ?? false;
   el.querySelector('.pe-ligne-alignement').value = data.alignement ?? 'center';
 
-  // Poids relatif (remplace la taille manuelle)
+  // Taille relative (= ratio "poids"). On choisit l'option la plus proche de
+  // la valeur demandée — robuste aux anciens modèles (ex: poids 0.5).
   const selPoids = el.querySelector('.pe-ligne-poids');
-  const poids    = String(data.poids ?? 1);
-  // S'assurer que l'option existe (sinon rester sur "1")
-  if ([...selPoids.options].some(o => o.value === poids)) selPoids.value = poids;
+  const poids    = parseFloat(data.poids ?? 1) || 1;
+  let meilleur = selPoids.options[0];
+  [...selPoids.options].forEach(o => {
+    if (Math.abs(parseFloat(o.value) - poids) < Math.abs(parseFloat(meilleur.value) - poids)) {
+      meilleur = o;
+    }
+  });
+  selPoids.value = meilleur.value;
 
   // Polices custom
   remplirSelectPolice(el.querySelector('.pe-ligne-police'), data.police ?? '');
@@ -381,13 +388,13 @@ function selectionnerArticle(article) {
     const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
     elLignesListe.appendChild(creerLigneDOM({
       texte: prix,
-      poids: 2,
+      poids: 3,
       gras: true,
       alignement: 'center',
     }));
     elLignesListe.appendChild(creerLigneDOM({
       texte: 'le kg',
-      poids: 0.5,
+      poids: 0.6,
       gras: false,
       alignement: 'center',
     }));

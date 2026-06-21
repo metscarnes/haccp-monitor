@@ -492,7 +492,7 @@
   font-weight: 600;
   pointer-events: none;
 }
-.pe-etiquette-img[src] + .pe-etiquette-placeholder {
+.pe-etiquette-cadre.has-img .pe-etiquette-placeholder {
   display: none;
 }
 
