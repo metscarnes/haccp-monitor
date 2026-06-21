@@ -50,6 +50,8 @@ const state = {
 
 // ── Constantes ───────────────────────────────────────────────
 const PX_PAR_CM = 118;
+// Rouleau continu 62mm : hauteur (= largeur du rouleau) bridée à 6,2 cm.
+const HAUTEUR_MAX_CM = 6.2;
 // Taille max du cadre de prévisualisation en pixels CSS
 const PREVIEW_MAX_W = 520;
 const PREVIEW_MAX_H = 460;
@@ -115,7 +117,8 @@ function configVersEtat(config) {
 
 function majCadreProportions() {
   const w_cm = state.largeur_cm;
-  const h_cm = state.hauteur_cm;
+  // La hauteur réelle imprimée est bridée à la largeur du rouleau (6,2 cm).
+  const h_cm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM);
   const ratio = w_cm / h_cm;
 
   let cssW, cssH;

@@ -84,10 +84,10 @@ async def imprimer_etiquette(config: ConfigEtiquette):
     """Envoie l'étiquette à l'imprimante Brother via USB."""
     from src.printing.brother_ql_prix import imprimer_etiquette_prix
     data = config.model_dump()
-    ok = imprimer_etiquette_prix(data)
+    ok, message = imprimer_etiquette_prix(data)
     if not ok:
-        raise HTTPException(status_code=503, detail="Impression échouée — imprimante indisponible")
-    return {"ok": True}
+        raise HTTPException(status_code=503, detail=message)
+    return {"ok": True, "message": message}
 
 
 # ---------------------------------------------------------------------------

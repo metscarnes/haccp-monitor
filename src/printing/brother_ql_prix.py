@@ -21,8 +21,9 @@ LABEL_TYPE = "62"
 # Résolution 300dpi : 1 cm = 118.11 px → arrondi à 118
 PX_PAR_CM = 118
 
-# Largeur physique max du rouleau 62mm = 708px
-LABEL_W_MAX_PX = 708
+# Rouleau continu 62mm : la HAUTEUR de l'étiquette (= largeur du rouleau) est
+# bridée à 62mm. La LARGEUR (le long du rouleau) est libre.
+HAUTEUR_MAX_CM = 6.2
 
 # Dossier polices custom uploadées
 FONTS_DIR = Path(__file__).parent.parent.parent / "static" / "fonts" / "custom"
@@ -137,7 +138,10 @@ def generer_image_prix(data: dict):
     hauteur_cm = float(data.get("hauteur_cm", 7.5))
     fond_noir  = bool(data.get("fond_noir", False))
 
-    w = min(cm_to_px(largeur_cm), LABEL_W_MAX_PX)
+    # La hauteur est bridée à la largeur physique du rouleau 62mm ; la largeur
+    # (le long du rouleau) reste libre.
+    hauteur_cm = min(hauteur_cm, HAUTEUR_MAX_CM)
+    w = cm_to_px(largeur_cm)
     h = cm_to_px(hauteur_cm)
 
     couleur_fond  = "black" if fond_noir else "white"
@@ -254,21 +258,38 @@ def generer_preview_base64(data: dict) -> str:
     return base64.b64encode(buf.read()).decode("utf-8")
 
 
-def imprimer_etiquette_prix(data: dict) -> bool:
+# Largeur imprimable EXACTE pour le rouleau continu 62mm à 300dpi.
+# brother_ql exige cette largeur précise pour le type "62", sinon le convert
+# échoue ("image width X doesn't match printable width 696").
+LABEL_62_PRINTABLE_W = 696
+
+
+def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
     """
     Génère et envoie l'étiquette prix à l'imprimante Brother via USB.
-    Retourne True si succès, False sinon — ne propage jamais d'exception.
+
+    Retourne (succès, message). Ne propage jamais d'exception — le message
+    décrit précisément la cause de l'échec pour l'afficher à l'utilisateur.
     """
     try:
         from brother_ql.conversion import convert
         from brother_ql.backends.helpers import send
         from brother_ql.raster import BrotherQLRaster
     except ImportError:
-        logger.warning("brother_ql non installé — impression simulée")
-        return False
+        return False, "Bibliothèque brother_ql non installée sur le serveur."
 
     try:
+        from PIL import Image
         image = generer_image_prix(data)
+
+        # Rouleau continu 62mm : la LARGEUR physique du rouleau (696px imprimables)
+        # correspond à la HAUTEUR de notre étiquette paysage. On redimensionne donc
+        # la hauteur de l'image à 696px (en gardant le ratio → la largeur, le long
+        # du rouleau, suit). brother_ql tournera l'image de 90° via rotate="auto".
+        if image.height != LABEL_62_PRINTABLE_W:
+            ratio = LABEL_62_PRINTABLE_W / image.height
+            new_w = max(1, round(image.width * ratio))
+            image = image.resize((new_w, LABEL_62_PRINTABLE_W), Image.LANCZOS)
 
         qlr = BrotherQLRaster(PRINTER_IDENTIFIER)
         instructions = convert(
@@ -290,12 +311,15 @@ def imprimer_etiquette_prix(data: dict) -> bool:
             backend_identifier="pyusb",
             blocking=True,
         )
-        logger.info("Étiquette prix imprimée — %s", data.get("lignes", [{}])[0].get("texte", ""))
-        return True
+        premier = data.get("lignes", [{}])
+        logger.info("Étiquette prix imprimée — %s",
+                    premier[0].get("texte", "") if premier else "")
+        return True, "Étiquette imprimée."
 
     except Exception as e:
-        logger.error("Erreur impression étiquette prix : %s", e)
-        return False
+        msg = str(e) or e.__class__.__name__
+        logger.error("Erreur impression étiquette prix : %s", msg, exc_info=True)
+        return False, f"Erreur imprimante : {msg}"
 
 
 def lister_polices() -> list[dict]:
