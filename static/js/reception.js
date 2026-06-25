@@ -2309,7 +2309,7 @@ function mettreEnEvidenceChampsManquants() {
   // Seule une date saisie mais invalide (DLC dans le passé) bloque l'ajout.
   // Lot/DLC vides sont autorisés (le produit partira « en attente »).
   if (elDlc.classList.contains('rec-champ-invalide')) {
-    elDlc.title = 'La DLC ne peut pas être dans le passé';
+    elDlc.title = 'La DLC ne peut pas être antérieure à la date de réception';
     premier = premier || elDlc;
   }
   if (premier) {
@@ -2683,11 +2683,11 @@ function appliquerModeDate(dlcType) {
   }
 }
 elDlc.addEventListener('input', () => {
-  // Validation « ≥ aujourd'hui » uniquement pour DLC/DLUO.
+  // Validation « ≥ date de réception » uniquement pour DLC/DLUO.
   // Une date d'abattage est par nature passée → pas de contrôle de futur.
   if (elDlc.value && dlcMode !== 'abattage') {
-    const today = new Date().toISOString().slice(0, 10);
-    if (elDlc.value < today) {
+    const dateRef = elDateReception.value || new Date().toISOString().slice(0, 10);
+    if (elDlc.value < dateRef) {
       elDlc.classList.add('rec-champ-invalide');
     } else {
       elDlc.classList.remove('rec-champ-invalide');
@@ -4161,9 +4161,9 @@ function _buildPayloadBatch(etat, paire = null) {
 
 // Valide toute la liste : POST chaque carte (sauf "Non reçu") puis passe au récap.
 async function validerBatch() {
-  // Seule garde : une DLC saisie ne doit pas être dans le passé (pas pour l'abattage).
+  // Seule garde : une DLC saisie ne doit pas être antérieure à la date de réception (pas pour l'abattage).
   // Le produit interne n'est PAS requis (article catalogue achats = source).
-  const today = new Date().toISOString().slice(0, 10);
+  const dateRef = elDateReception.value || new Date().toISOString().slice(0, 10);
   for (const etat of batchLignes) {
     if (!etat.recu) continue; // lignes "Non reçu" ignorées
 
@@ -4198,10 +4198,10 @@ async function validerBatch() {
         ...[...etat.el.querySelectorAll('.rec-batch-lot-supp-dlc')].map(el => ({ el, val: el.value })),
       ];
       for (const { el, val } of dlcs) {
-        if (val && val < today) {
+        if (val && val < dateRef) {
           el.classList.add('rec-champ-invalide');
           etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          alert('Une DLC est dans le passé.');
+          alert('Une DLC est antérieure à la date de réception.');
           return;
         }
       }
