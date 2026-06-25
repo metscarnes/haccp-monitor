@@ -90,24 +90,31 @@ async def taches_resume():
             logger.warning("hub résumé nettoyage : %s", exc)
 
         # ── 2. Nuisibles hebdomadaires ──────────────────────────
+        # Affichage seulement le lundi (jour ISO 1), pour la semaine précédente
         try:
-            rows = await db.execute_fetchall(
-                "SELECT type_id FROM nuisibles_controles "
-                "WHERE annee = ? AND semaine = ?",
-                (iso_year, iso_week),
-            )
-            types_faits = {r[0] for r in rows}
-            manquants   = [tid for tid in NUISIBLES_TYPES if tid not in types_faits]
-            if manquants:
-                noms = ", ".join(NUISIBLES_TYPES[t] for t in manquants)
-                aujourd_hui.append({
-                    "code":    "nuisibles",
-                    "libelle": "Contrôle nuisibles",
-                    "url":     "/nuisibles.html",
-                    "icone":   "🪤",
-                    "etat":    "a_faire",
-                    "detail":  f"Semaine {iso_week} — manque : {noms}",
-                })
+            day_of_week = today.isoweekday()  # 1 = lundi, 7 = dimanche
+            if day_of_week == 1:  # Lundi uniquement
+                # Semaine précédente
+                prev_week_date = today - timedelta(days=7)
+                prev_iso_year, prev_iso_week, _ = prev_week_date.isocalendar()
+
+                rows = await db.execute_fetchall(
+                    "SELECT type_id FROM nuisibles_controles "
+                    "WHERE annee = ? AND semaine = ?",
+                    (prev_iso_year, prev_iso_week),
+                )
+                types_faits = {r[0] for r in rows}
+                manquants   = [tid for tid in NUISIBLES_TYPES if tid not in types_faits]
+                if manquants:
+                    noms = ", ".join(NUISIBLES_TYPES[t] for t in manquants)
+                    aujourd_hui.append({
+                        "code":    "nuisibles",
+                        "libelle": "Contrôle nuisibles",
+                        "url":     "/nuisibles.html",
+                        "icone":   "🪤",
+                        "etat":    "a_faire",
+                        "detail":  f"Semaine {prev_iso_week} — manque : {noms}",
+                    })
         except Exception as exc:
             logger.warning("hub résumé nuisibles : %s", exc)
 
