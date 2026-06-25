@@ -1249,12 +1249,19 @@ function initBlocRefusBl(idx) {
     const file = photoInput.files[0];
     if (!file) return;
     if (refusBlList[idx].photoUrl) URL.revokeObjectURL(refusBlList[idx].photoUrl);
-    refusBlList[idx].photoFile = file; // repli avant fin de compression
+    refusBlList[idx].photoFile = file;
     refusBlList[idx].photoUrl  = URL.createObjectURL(file);
-    photoVign.src = refusBlList[idx].photoUrl;
-    photoVign.hidden = false;
-    photoIcone.textContent = '✅';
-    photoTitre.textContent = 'Photo prise';
+    const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+      photoVign.hidden = true;
+      photoIcone.textContent = '✅';
+      photoTitre.textContent = '📄 PDF';
+    } else {
+      photoVign.src = refusBlList[idx].photoUrl;
+      photoVign.hidden = false;
+      photoIcone.textContent = '✅';
+      photoTitre.textContent = 'Photo prise';
+    }
     photoZone.classList.remove('photo-requise');
     if (elErreurRefusBl) elErreurRefusBl.hidden = true;
     refusBlList[idx].photoFile = await compresserImage(file);
@@ -1472,11 +1479,21 @@ function majVignettesBloc(idx) {
     fourn.photos.forEach((p, pi) => {
       const wrap = document.createElement('div');
       wrap.className = 'rec-bl-vign-wrap';
-      const img = document.createElement('img');
-      img.src = p.url;
-      img.className = 'rec-photo-vignette rec-bl-vign';
-      img.alt = `Page ${pi + 1}`;
-      img.addEventListener('click', e => { e.stopPropagation(); ouvrirApercuPhoto(p.url); });
+      if (p.isPdf) {
+        const vign = document.createElement('div');
+        vign.className = 'rec-photo-vignette rec-bl-vign rec-bl-vign-pdf';
+        vign.title = p.file?.name || 'PDF';
+        vign.textContent = '📄 PDF';
+        vign.addEventListener('click', e => { e.stopPropagation(); window.open(p.url, '_blank'); });
+        wrap.appendChild(vign);
+      } else {
+        const img = document.createElement('img');
+        img.src = p.url;
+        img.className = 'rec-photo-vignette rec-bl-vign';
+        img.alt = `Page ${pi + 1}`;
+        img.addEventListener('click', e => { e.stopPropagation(); ouvrirApercuPhoto(p.url); });
+        wrap.appendChild(img);
+      }
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'rec-bl-vign-del';
@@ -1488,7 +1505,6 @@ function majVignettesBloc(idx) {
         fourn.photos.splice(pi, 1);
         majVignettesBloc(idx);
       });
-      wrap.appendChild(img);
       wrap.appendChild(del);
       vignRow.appendChild(wrap);
     });
@@ -1519,8 +1535,9 @@ function initBlocFourn(idx) {
     const file = inputPhoto.files[0];
     if (!file) return;
     inputPhoto.value = '';
+    const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
     const url = URL.createObjectURL(file);
-    fournisseursListe[idx].photos.push({ file, url });
+    fournisseursListe[idx].photos.push({ file, url, isPdf });
     majVignettesBloc(idx);
     const compressed = await compresserImage(file);
     const last = fournisseursListe[idx].photos.length - 1;

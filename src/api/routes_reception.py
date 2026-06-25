@@ -337,12 +337,18 @@ async def creer_reception(
         rid = await create_reception(db, data)
 
         # Photos BL (multi-pages) : page 0 → colonne existante, pages suivantes → reception_bl_pages
+        # PDF accepté : converti en 1 JPEG par page via _fichier_bl_vers_jpegs
         from datetime import datetime, timezone
         photos_bl_valides = [f for f in photo_bl if f and f.filename]
-        for page_num, upload in enumerate(photos_bl_valides):
+        jpegs_bl: List[bytes] = []
+        for upload in photos_bl_valides:
             raw = await upload.read()
-            jpeg = _compress_photo(raw)
-            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+            try:
+                jpegs_bl.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        for page_num, jpeg in enumerate(jpegs_bl):
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
             if page_num == 0:
                 filename = f"BL-{now_str}-{rid}.jpg"
                 (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
@@ -357,7 +363,7 @@ async def creer_reception(
                     "INSERT INTO reception_bl_pages (reception_id, bl_supplementaire_id, page_num, photo_filename) VALUES (?, NULL, ?, ?)",
                     (rid, page_num, filename),
                 )
-        if photos_bl_valides:
+        if jpegs_bl:
             await db.commit()
 
         # Photo NC propreté camion (optionnelle, uniquement si proprete=non_satisfaisant)
@@ -1108,12 +1114,19 @@ async def ajouter_bl_supplementaire(
         from datetime import datetime, timezone
         photos_valides = [f for f in photo if f and f.filename]
 
-        if photos_valides:
-            raw = await photos_valides[0].read()
-            jpeg = _compress_photo(raw)
+        # Convertir image(s)/PDF en JPEG (1 JPEG par page PDF)
+        jpegs_supp: List[bytes] = []
+        for upload in photos_valides:
+            raw = await upload.read()
+            try:
+                jpegs_supp.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+
+        if jpegs_supp:
             now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             photo_filename = f"BL-{now_str}-{reception_id}-supp.jpg"
-            (PHOTOS_BL_DIR / photo_filename).write_bytes(jpeg)
+            (PHOTOS_BL_DIR / photo_filename).write_bytes(jpegs_supp[0])
 
         bl_id = await add_reception_bl_supplementaire(db, reception_id, {
             "fournisseur_id":    fournisseur_id,
@@ -1122,10 +1135,8 @@ async def ajouter_bl_supplementaire(
         })
 
         # Pages supplémentaires (page_num >= 1)
-        for page_num, upload in enumerate(photos_valides[1:], start=1):
-            raw = await upload.read()
-            jpeg = _compress_photo(raw)
-            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        for page_num, jpeg in enumerate(jpegs_supp[1:], start=1):
+            now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
             filename = f"BL-{now_str}-{reception_id}-supp-p{page_num}.jpg"
             (PHOTOS_BL_DIR / filename).write_bytes(jpeg)
             await db.execute(

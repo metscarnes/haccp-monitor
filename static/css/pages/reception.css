@@ -418,6 +418,16 @@ body.rec-body {
   cursor: zoom-in;
   display: block;
 }
+.rec-bl-vign-pdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .75rem;
+  font-weight: 600;
+  background: #f0f4ff;
+  color: #3355cc;
+  cursor: pointer;
+}
 .rec-bl-vign-del {
   position: absolute;
   top: -8px;
