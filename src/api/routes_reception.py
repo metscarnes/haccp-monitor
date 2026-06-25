@@ -613,8 +613,12 @@ async def annuler_reception(reception_id: int):
     La commande liée redevient « confirmee » et donc à nouveau sélectionnable dans
     le module réception (utile pour refaire la saisie, ex. avec l'OCR du BL).
     """
-    async with get_db() as db:
-        res = await supprimer_reception(db, reception_id)
+    try:
+        async with get_db() as db:
+            res = await supprimer_reception(db, reception_id)
+    except Exception as exc:
+        logger.exception("Erreur inattendue lors de la suppression de la réception %s", reception_id)
+        raise HTTPException(500, f"Erreur interne lors de la suppression : {exc}") from exc
 
     if not res["deleted"]:
         if res.get("raison") == "introuvable":
