@@ -652,6 +652,7 @@ async def historique_receptions(
     fournisseur_id: Optional[int] = Query(None),
     fournisseur_nom: Optional[str] = Query(None, description="Filtre par nom de fournisseur (exact, insensible casse/accents)"),
     q:             Optional[str] = Query(None, description="Recherche produit ou N° de lot dans les lignes"),
+    statut:        Optional[str] = Query(None, description="Filtre par statut : 'cloturee' (défaut) ou 'en_cours'"),
     limit:         int            = Query(50, ge=1, le=500),
     offset:        int            = Query(0, ge=0),
 ):
@@ -663,6 +664,7 @@ async def historique_receptions(
             fournisseur_id=fournisseur_id,
             fournisseur_nom=fournisseur_nom,
             q=q,
+            statut=statut,
             limit=limit,
             offset=offset,
         )

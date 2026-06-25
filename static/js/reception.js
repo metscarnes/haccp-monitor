@@ -672,6 +672,9 @@ const PHOTO_MAX_SIDE = 1280;
 const PHOTO_QUALITE  = 0.8;
 
 function compresserImage(file) {
+  if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) {
+    return Promise.resolve(file);
+  }
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -1158,7 +1161,7 @@ function ajouterBlocRefusBl() {
       </div>
       <img id="rec-refus-bl-photo-vignette-${idx}" class="rec-photo-vignette" alt="Aperçu BL" hidden>
     </div>
-    <input type="file" accept="image/*" capture
+    <input type="file" accept="image/*,application/pdf"
            id="rec-refus-bl-photo-input-${idx}" hidden aria-hidden="true">
 
     <div class="rec-fourn-search-group">
@@ -1664,7 +1667,7 @@ function creerBlocFourn(idx, suppressible = true) {
     <button class="rec-photo-add-page-btn" id="rec-photo-add-page-${idx}" type="button" hidden>
       + Page
     </button>
-    <input type="file" accept="image/*" capture
+    <input type="file" accept="image/*,application/pdf"
            id="rec-input-photo-${idx}" hidden aria-hidden="true">
     <div class="rec-fourn-search-group">
       <div id="rec-fourn-sel-wrap-${idx}" hidden>

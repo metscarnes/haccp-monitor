@@ -4182,10 +4182,14 @@ async def get_receptions(
     fournisseur_id: Optional[int] = None,
     fournisseur_nom: Optional[str] = None,
     q: Optional[str] = None,
+    statut: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    conditions = ["r.statut = 'cloturee'"]
+    if statut:
+        conditions = [f"r.statut = '{statut}'"]
+    else:
+        conditions = ["r.statut = 'cloturee'"]
     params: list = []
 
     if date_debut:

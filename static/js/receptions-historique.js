@@ -22,6 +22,15 @@ const elBtnPlus    = document.getElementById('rh-btn-plus');
 const elModal      = document.getElementById('rh-modal');
 const elModalImg   = document.getElementById('rh-modal-img');
 
+// Réceptions en cours
+const elBtnEnCours       = document.getElementById('rh-btn-encours');
+const elEnCoursBandeau   = document.getElementById('rh-encours-bandeau');
+const elEnCoursListe     = document.getElementById('rh-encours-liste');
+const elEnCoursCompteur  = document.getElementById('rh-encours-compteur');
+const elEnCoursToutCocher = document.getElementById('rh-encours-tout-cocher');
+const elEnCoursBtnReprendre  = document.getElementById('rh-encours-btn-reprendre');
+const elEnCoursBtnSupprimer  = document.getElementById('rh-encours-btn-supprimer');
+
 // ── État ────────────────────────────────────────────────────
 const LIMIT          = 50;
 let offsetCourant    = 0;
@@ -925,6 +934,159 @@ elBtnReset.addEventListener('click', () => {
 
 elBtnPlus.addEventListener('click', chargerSuite);
 elBtnRetour.addEventListener('click', () => { window.location.href = '/hub.html'; });
+
+// ── Réceptions en cours ──────────────────────────────────────
+let enCoursOuvert = false;
+let enCoursData   = [];
+
+function majBoutonsEnCours() {
+  const coches = enCoursData.filter(r => r._coche);
+  const n = coches.length;
+  elEnCoursBtnSupprimer.disabled = n === 0;
+  elEnCoursBtnReprendre.disabled = n !== 1;
+  elEnCoursBtnReprendre.textContent = n === 1
+    ? '▶ Reprendre'
+    : '▶ Reprendre (sélectionner 1)';
+  elEnCoursBtnSupprimer.textContent = n > 0
+    ? `🗑 Supprimer (${n})`
+    : '🗑 Supprimer la sélection';
+  elEnCoursToutCocher.textContent =
+    coches.length === enCoursData.length && enCoursData.length > 0
+      ? 'Tout décocher'
+      : 'Tout cocher';
+}
+
+function rendreLigneEnCours(rec) {
+  const item = document.createElement('div');
+  item.className = 'rh-encours-item';
+
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!rec._coche;
+  cb.addEventListener('change', () => {
+    rec._coche = cb.checked;
+    majBoutonsEnCours();
+  });
+  item.appendChild(cb);
+
+  const info = document.createElement('div');
+  info.className = 'rh-encours-item-info';
+
+  const date = document.createElement('div');
+  date.className = 'rh-encours-item-date';
+  date.textContent = formatDateFR(rec.date_reception);
+  info.appendChild(date);
+
+  const meta = document.createElement('div');
+  meta.className = 'rh-encours-item-meta';
+  const heure = rec.heure_reception ? ` · ${rec.heure_reception}` : '';
+  const fourn = rec.fournisseur_nom ? ` · ${rec.fournisseur_nom}` : '';
+  meta.textContent = `${rec.personnel_prenom || '—'}${heure}${fourn}`;
+  info.appendChild(meta);
+
+  item.appendChild(info);
+
+  const chip = document.createElement('span');
+  if (rec.nb_lignes === 0) {
+    chip.className = 'rh-encours-item-chip rh-encours-item-chip--vide';
+    chip.textContent = 'Vide (0 produit)';
+  } else {
+    chip.className = 'rh-encours-item-chip';
+    chip.textContent = `${rec.nb_lignes} produit${rec.nb_lignes > 1 ? 's' : ''}`;
+  }
+  item.appendChild(chip);
+
+  return item;
+}
+
+function rendreLignesEnCours() {
+  elEnCoursListe.innerHTML = '';
+  elEnCoursCompteur.textContent = enCoursData.length;
+  if (enCoursData.length === 0) {
+    const vide = document.createElement('div');
+    vide.style.cssText = 'font-size:15px;color:#888;padding:4px 0;';
+    vide.textContent = 'Aucune réception en cours.';
+    elEnCoursListe.appendChild(vide);
+  } else {
+    enCoursData.forEach(rec => elEnCoursListe.appendChild(rendreLigneEnCours(rec)));
+  }
+  majBoutonsEnCours();
+}
+
+async function chargerEnCours() {
+  elEnCoursCompteur.textContent = '…';
+  elEnCoursListe.innerHTML = '<div style="font-size:14px;color:#888;padding:4px 0;">Chargement…</div>';
+  try {
+    const rows = await apiFetch('/api/receptions?statut=en_cours&limit=200');
+    enCoursData = rows.map(r => ({ ...r, _coche: false }));
+    rendreLignesEnCours();
+  } catch (err) {
+    elEnCoursListe.innerHTML = `<div style="color:var(--alerte);font-size:14px;">Erreur : ${err.message}</div>`;
+    elEnCoursCompteur.textContent = '!';
+  }
+}
+
+elBtnEnCours.addEventListener('click', () => {
+  enCoursOuvert = !enCoursOuvert;
+  elEnCoursBandeau.classList.toggle('visible', enCoursOuvert);
+  elBtnEnCours.setAttribute('aria-expanded', String(enCoursOuvert));
+  elBtnEnCours.textContent = enCoursOuvert ? '✕ Fermer en cours' : '⏳ En cours';
+  if (enCoursOuvert) chargerEnCours();
+});
+
+elEnCoursToutCocher.addEventListener('click', () => {
+  const tousCoches = enCoursData.every(r => r._coche);
+  enCoursData.forEach(r => { r._coche = !tousCoches; });
+  rendreLignesEnCours();
+});
+
+elEnCoursBtnReprendre.addEventListener('click', () => {
+  const sel = enCoursData.find(r => r._coche);
+  if (!sel) return;
+  window.location.href = `/reception.html?reprendre=${sel.id}`;
+});
+
+elEnCoursBtnSupprimer.addEventListener('click', async () => {
+  const sel = enCoursData.filter(r => r._coche);
+  if (!sel.length) return;
+
+  const noms = sel.map(r => {
+    const d = formatDateFR(r.date_reception);
+    const f = r.fournisseur_nom ? ` — ${r.fournisseur_nom}` : '';
+    return `• ${d}${f} (${r.nb_lignes} produit${r.nb_lignes > 1 ? 's' : ''})`;
+  }).join('\n');
+
+  if (!confirm(
+    `Supprimer ${sel.length} réception${sel.length > 1 ? 's' : ''} en cours ?\n\n${noms}\n\n` +
+    `Les commandes liées redeviendront sélectionnables. Cette action est irréversible.`
+  )) return;
+
+  elEnCoursBtnSupprimer.disabled = true;
+  elEnCoursBtnSupprimer.textContent = 'Suppression…';
+
+  const erreurs = [];
+  for (const rec of sel) {
+    try {
+      const res = await fetch(`/api/receptions/${rec.id}`, { method: 'DELETE', cache: 'no-store' });
+      if (res.status === 409) {
+        const txt = await res.text().catch(() => '');
+        let detail = txt;
+        try { detail = JSON.parse(txt).detail || txt; } catch (_) {}
+        erreurs.push(`Réception du ${formatDateFR(rec.date_reception)} : ${detail}`);
+      } else if (!res.ok) {
+        erreurs.push(`Réception du ${formatDateFR(rec.date_reception)} : HTTP ${res.status}`);
+      }
+    } catch (e) {
+      erreurs.push(`Réception du ${formatDateFR(rec.date_reception)} : ${e.message}`);
+    }
+  }
+
+  if (erreurs.length) {
+    alert(`Certaines suppressions ont échoué :\n\n${erreurs.join('\n')}`);
+  }
+
+  await chargerEnCours();
+});
 
 // ── Init ─────────────────────────────────────────────────────
 initDates();
