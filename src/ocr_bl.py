@@ -268,17 +268,11 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
         "OCR BL : %d ligne(s), modèle=%s, %d+%d tokens, coût≈$%.4f",
         len(data.get("lignes", [])), MODEL, u.input_tokens, u.output_tokens, cout,
     )
-    # Diag prix : montre ce que le modèle a renvoyé sur les champs prix de la 1re ligne.
-    # ('absent' = la clé n'est pas dans la réponse → schéma non pris en compte ;
-    #  None = le modèle n'a pas lu de prix sur le BL → ajuster le prompt / la photo.)
-    _l0 = (data.get("lignes") or [{}])[0]
-    logger.info(
-        "OCR BL diag prix (ligne 1) : designation=%r prix_unitaire=%r unite_prix=%r montant_ligne=%r",
-        _l0.get("designation"),
-        _l0.get("prix_unitaire", "ABSENT"),
-        _l0.get("unite_prix", "ABSENT"),
-        _l0.get("montant_ligne", "ABSENT"),
-    )
+    # Suivi qualité : combien de lignes ont un prix extrait (signale un BL/fournisseur
+    # sans prix lisible si le ratio tombe à 0 sur un BL qui devrait en avoir).
+    _lignes = data.get("lignes", [])
+    _avec_prix = sum(1 for l in _lignes if l.get("prix_unitaire") is not None)
+    logger.info("OCR BL : prix extrait sur %d/%d ligne(s)", _avec_prix, len(_lignes))
 
     # Conversion des dates côté Python (jour en premier = convention française),
     # pour éliminer toute inversion jour/mois que le modèle pourrait faire.
