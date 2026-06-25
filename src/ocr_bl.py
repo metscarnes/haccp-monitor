@@ -85,6 +85,14 @@ Sur certains BL, le lot et la DLC d'un article sont écrits sur une LIGNE SÉPAR
 POINT CRITIQUE — plusieurs lots / DLC pour un même article :
 Un même article peut être livré en PLUSIEURS lots, chacun avec son propre numéro de lot et parfois sa propre DLC (par ex. "Côte de bœuf" avec lot A DLC 12/07 et lot B DLC 15/07). Dans ce cas, produis UNE LIGNE PAR COUPLE (lot, DLC) : répète la même "designation", mais mets le bon "numero_lot" et la bonne "dlc_brut"/"dluo_brut" sur chacune. Répartis aussi le poids/la quantité par lot si le BL les distingue, sinon laisse null sur les lignes où ce n'est pas précisé. Ne fusionne JAMAIS plusieurs lots dans une seule ligne et n'invente pas de lot qui n'est pas écrit.
 
+POINT CRITIQUE — PRIX D'ACHAT (à extraire systématiquement) :
+Un bon de livraison de viande comporte presque toujours un PRIX par article — c'est une information aussi importante que le lot et la DLC, NE L'OUBLIE PAS. Pour CHAQUE ligne, cherche activement dans le tableau la colonne du prix unitaire (souvent intitulée "P.U.", "Prix U.", "Prix unitaire", "Prix HT", "P.U. HT", "€/kg", "Tarif") et la colonne du montant total de la ligne ("Montant", "Total", "Total HT", "Montant HT").
+- prix_unitaire : le prix d'UNE unité (un kilo, une pièce ou un colis selon le BL), tel qu'écrit, sans le symbole €.
+- unite_prix : à quoi se rapporte ce prix unitaire → "kg" (prix au kilo, le cas le plus fréquent en boucherie), "piece" (prix à la pièce/unité) ou "colis" (prix au colis/carton).
+- montant_ligne : le montant total HT de la ligne.
+Exemple : une ligne "ENTRECOTE VBF   12,340 kg   18,50 €/kg   228,29 €" donne prix_unitaire=18.50, unite_prix="kg", poids_kg=12.34, montant_ligne=228.29.
+Si VRAIMENT aucun prix n'est écrit pour un article (ça arrive sur certains BL), alors et seulement alors mets prix_unitaire, unite_prix et montant_ligne à null. Mais ne te contente pas de mettre null par facilité : regarde bien tout le tableau, le prix y est presque toujours.
+
 Règles générales :
 - Un couple (article, lot) = un objet dans "lignes". Un article à lot unique = une seule ligne ; un article à plusieurs lots = une ligne par lot. N'invente jamais de ligne, n'en oublie aucune.
 - DATES — recopie chaque date EXACTEMENT comme écrite, caractère pour caractère, dans "dlc_brut" / "dluo_brut" / "date_bl_brut". NE CONVERTIS RIEN, ne réordonne pas jour/mois. "07/12/26" → mets exactement "07/12/26". La conversion est faite ensuite par le programme.
@@ -259,6 +267,17 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
     logger.info(
         "OCR BL : %d ligne(s), modèle=%s, %d+%d tokens, coût≈$%.4f",
         len(data.get("lignes", [])), MODEL, u.input_tokens, u.output_tokens, cout,
+    )
+    # Diag prix : montre ce que le modèle a renvoyé sur les champs prix de la 1re ligne.
+    # ('absent' = la clé n'est pas dans la réponse → schéma non pris en compte ;
+    #  None = le modèle n'a pas lu de prix sur le BL → ajuster le prompt / la photo.)
+    _l0 = (data.get("lignes") or [{}])[0]
+    logger.info(
+        "OCR BL diag prix (ligne 1) : designation=%r prix_unitaire=%r unite_prix=%r montant_ligne=%r",
+        _l0.get("designation"),
+        _l0.get("prix_unitaire", "ABSENT"),
+        _l0.get("unite_prix", "ABSENT"),
+        _l0.get("montant_ligne", "ABSENT"),
     )
 
     # Conversion des dates côté Python (jour en premier = convention française),
