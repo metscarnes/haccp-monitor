@@ -3375,6 +3375,7 @@ async function comparerPrixCarte(etat) {
   try {
     const r = await apiFetch('/api/achats/catalogue/comparer-prix', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: [{
         catalogue_fournisseur_id: etat.catalogueId,
         prix_unitaire: prix,
@@ -3398,7 +3399,9 @@ async function comparerPrixToutesCartes() {
   }));
   try {
     const r = await apiFetch('/api/achats/catalogue/comparer-prix', {
-      method: 'POST', body: JSON.stringify({ items }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
     });
     const parId = new Map();
     (r.resultats || []).forEach(res => { if (res.trouve) parId.set(res.catalogue_fournisseur_id, res); });
@@ -4839,6 +4842,7 @@ async function afficherBandeauEcartsPrix(rid) {
       try {
         await apiFetch(`/api/achats/catalogue/${e.catalogue_fournisseur_id}/appliquer-prix`, {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ nouveau_prix_ht: e.prix_constate, reception_id: rid }),
         });
         ligne.classList.add('rec-prix-maj-done');
