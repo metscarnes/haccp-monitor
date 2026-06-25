@@ -3463,13 +3463,17 @@ async def supprimer_reception(db: aiosqlite.Connection, reception_id: int) -> di
       - {"deleted": False, "raison": "introuvable"} si la réception n'existe pas
       - {"deleted": False, "blocages": [...]} si des dépendances aval existent
     """
-    cur = await db.execute("SELECT id FROM receptions WHERE id = ?", (reception_id,))
-    if not await cur.fetchone():
+    cur = await db.execute("SELECT id, statut FROM receptions WHERE id = ?", (reception_id,))
+    row = await cur.fetchone()
+    if not row:
         return {"deleted": False, "raison": "introuvable"}
 
-    blocages = await _dependances_reception(db, reception_id)
-    if blocages:
-        return {"deleted": False, "blocages": blocages}
+    # Les réceptions en_cours n'ont jamais été clôturées : aucune donnée aval
+    # ne peut légitimement exister ; on saute la vérification des blocages.
+    if row["statut"] != "en_cours":
+        blocages = await _dependances_reception(db, reception_id)
+        if blocages:
+            return {"deleted": False, "blocages": blocages}
 
     # Commandes liées (pour les libérer) avant de casser le mapping
     cur = await db.execute(
