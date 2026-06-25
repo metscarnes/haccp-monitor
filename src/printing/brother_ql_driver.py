@@ -14,8 +14,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Identifiant USB de l'imprimante Brother QL-820NWB
-# Format : "usb://0x04f9:0x209b" — à ajuster selon le modèle exact détecté par lsusb
+# Imprimante Brother QL-820NWB (USB).
+# brother_ql distingue le MODÈLE (pour BrotherQLRaster) de l'IDENTIFIANT de
+# connexion USB (pour send). Les confondre déclenche BrotherQLUnknownModel.
+PRINTER_MODEL = os.getenv("BROTHER_QL_MODEL", "QL-820NWB")
+# Format USB : "usb://0x04f9:0x209b" — à ajuster selon le modèle exact détecté par lsusb
 PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "usb://0x04f9:0x209b")
 
 # Rouleau DK-22246 (62mm continu) — couvre le format 60mm
@@ -306,7 +309,7 @@ def imprimer_etiquette(data: dict) -> bool:
         else:
             image = generer_image_etiquette(data)
 
-        qlr = BrotherQLRaster(PRINTER_IDENTIFIER)
+        qlr = BrotherQLRaster(PRINTER_MODEL)
         instructions = convert(
             qlr=qlr,
             images=[image],

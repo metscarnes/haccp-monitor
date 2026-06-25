@@ -14,7 +14,12 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Même identifiant USB que le driver HACCP existant
+# Même identifiant USB que le driver HACCP existant.
+# IMPORTANT : brother_ql distingue deux notions —
+#   - PRINTER_MODEL : le nom du modèle (ex. "QL-820NWB"), attendu par BrotherQLRaster()
+#   - PRINTER_IDENTIFIER : l'adresse de connexion USB, attendue par send(printer_identifier=...)
+# Les confondre déclenche BrotherQLUnknownModel.
+PRINTER_MODEL = os.getenv("BROTHER_QL_MODEL", "QL-820NWB")
 PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "usb://0x04f9:0x209b")
 LABEL_TYPE = "62"
 
@@ -291,7 +296,7 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
             new_w = max(1, round(image.width * ratio))
             image = image.resize((new_w, LABEL_62_PRINTABLE_W), Image.LANCZOS)
 
-        qlr = BrotherQLRaster(PRINTER_IDENTIFIER)
+        qlr = BrotherQLRaster(PRINTER_MODEL)
         instructions = convert(
             qlr=qlr,
             images=[image],
