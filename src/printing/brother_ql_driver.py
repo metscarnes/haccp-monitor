@@ -12,6 +12,12 @@ import logging
 import os
 from typing import Optional
 
+# Compat Pillow ≥ 10 : Image.ANTIALIAS a été supprimé mais brother_ql 0.9.4
+# l'utilise encore en interne dans convert(). On rétablit l'alias vers LANCZOS.
+from PIL import Image as _PILImage
+if not hasattr(_PILImage, "ANTIALIAS"):
+    _PILImage.ANTIALIAS = _PILImage.LANCZOS
+
 logger = logging.getLogger(__name__)
 
 # Imprimante Brother QL-820NWB (USB).
