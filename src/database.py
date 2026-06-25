@@ -3417,6 +3417,53 @@ _RECEPTION_DEPENDANCES = [
 ]
 
 
+# Tables aval reliées à une réception (directement ou via ses lignes) à purger
+# AVANT de supprimer la réception elle-même, dans le cas d'une suppression forcée
+# d'une réception en_cours (qui peut traîner une facture brouillon auto, des
+# historiques de prix, etc.). (table, colonne, par_ligne)
+_RECEPTION_PURGE = [
+    ("facture_lignes",          "reception_ligne_id", True),
+    ("historique_prix_achat",   "reception_ligne_id", True),
+    ("historique_prix_achat",   "reception_id",       False),
+    ("fabrication_lots",        "reception_ligne_id", True),
+    ("cuissons",                "reception_ligne_id", True),
+    ("refroidissements",        "reception_ligne_id", True),
+    ("ouvertures",              "reception_ligne_id", True),
+    ("maturation_carcasses",    "reception_ligne_id", True),
+    ("fiches_incident",         "reception_ligne_id", True),
+    ("fiches_incident",         "reception_id",       False),
+    ("non_conformites_fournisseur", "reception_ligne_id", True),
+    ("non_conformites_fournisseur", "reception_id",       False),
+    ("factures",                "reception_id",       False),
+]
+
+
+async def _nettoyer_dependances_aval(db: aiosqlite.Connection, reception_id: int) -> None:
+    """Purge en force toutes les données aval rattachées à une réception ou à ses
+    lignes. Utilisé uniquement pour la suppression forcée d'une réception en_cours.
+    Les tables/colonnes absentes (migrations partielles) sont ignorées."""
+    cur = await db.execute(
+        "SELECT id FROM reception_lignes WHERE reception_id = ?", (reception_id,)
+    )
+    ligne_ids = [r[0] for r in await cur.fetchall()]
+
+    for table, col, par_ligne in _RECEPTION_PURGE:
+        if par_ligne:
+            if not ligne_ids:
+                continue
+            placeholders = ",".join("?" * len(ligne_ids))
+            sql = f"DELETE FROM {table} WHERE {col} IN ({placeholders})"
+            params = ligne_ids
+        else:
+            sql = f"DELETE FROM {table} WHERE {col} = ?"
+            params = [reception_id]
+        try:
+            await db.execute(sql, params)
+        except sqlite3.OperationalError:
+            # Table ou colonne absente sur cette base : rien à purger de ce côté.
+            continue
+
+
 async def _dependances_reception(db: aiosqlite.Connection, reception_id: int) -> list:
     """Retourne la liste des libellés de dépendances aval bloquant la suppression."""
     # IDs des lignes de cette réception (pour les tables liées par reception_ligne_id)
@@ -3469,8 +3516,11 @@ async def supprimer_reception(db: aiosqlite.Connection, reception_id: int) -> di
         return {"deleted": False, "raison": "introuvable"}
 
     # Les réceptions en_cours n'ont jamais été clôturées : aucune donnée aval
-    # ne peut légitimement exister ; on saute la vérification des blocages.
-    if row["statut"] != "en_cours":
+    # ne peut légitimement exister ; on saute la vérification des blocages et on
+    # nettoie en force les tables aval qui pourraient retenir une FK (ex. facture
+    # brouillon auto, historique prix) avant de supprimer les lignes.
+    forcer = row["statut"] == "en_cours"
+    if not forcer:
         blocages = await _dependances_reception(db, reception_id)
         if blocages:
             return {"deleted": False, "blocages": blocages}
@@ -3481,6 +3531,9 @@ async def supprimer_reception(db: aiosqlite.Connection, reception_id: int) -> di
         (reception_id,),
     )
     commande_ids = [r[0] for r in await cur.fetchall()]
+
+    if forcer:
+        await _nettoyer_dependances_aval(db, reception_id)
 
     # Suppression en cascade des tables filles directes (pas de dépendance aval ici)
     await db.execute("DELETE FROM commande_receptions_mapping WHERE reception_id = ?", (reception_id,))
