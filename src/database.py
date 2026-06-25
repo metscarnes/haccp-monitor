@@ -5194,7 +5194,7 @@ async def get_fifo_lots(db: aiosqlite.Connection, recette_id: int) -> list[dict]
                   AND rl.conforme = 1
                   AND r.livraison_refusee = 0
                   AND (COALESCE(rl.dlc, rl.dluo) IS NULL
-                       OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
+                       OR COALESCE(rl.dlc, rl.dluo) >= r.date_reception)
                   AND NOT EXISTS (
                       SELECT 1 FROM dlc_devenir d
                       WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
