@@ -3533,24 +3533,37 @@ async def supprimer_reception(db: aiosqlite.Connection, reception_id: int) -> di
     commande_ids = [r[0] for r in await cur.fetchall()]
 
     if forcer:
+        # Purge ciblée des tables aval connues, puis suppression FK désactivées :
+        # une réception en_cours est une fiche de test/incomplète, on garantit
+        # l'abandon quelles que soient les références aval résiduelles.
         await _nettoyer_dependances_aval(db, reception_id)
+        # PRAGMA foreign_keys ne peut changer dans une transaction → on s'assure
+        # qu'aucune n'est ouverte avant de le basculer.
+        await db.commit()
+        await db.execute("PRAGMA foreign_keys = OFF")
 
-    # Suppression en cascade des tables filles directes (pas de dépendance aval ici)
-    await db.execute("DELETE FROM commande_receptions_mapping WHERE reception_id = ?", (reception_id,))
-    await db.execute("DELETE FROM reception_bls_supplementaires WHERE reception_id = ?", (reception_id,))
-    await db.execute("DELETE FROM reception_bl_pages WHERE reception_id = ?", (reception_id,))
-    await db.execute("DELETE FROM reception_lignes WHERE reception_id = ?", (reception_id,))
-    await db.execute("DELETE FROM receptions WHERE id = ?", (reception_id,))
+    try:
+        # Suppression en cascade des tables filles directes
+        await db.execute("DELETE FROM commande_receptions_mapping WHERE reception_id = ?", (reception_id,))
+        await db.execute("DELETE FROM reception_bls_supplementaires WHERE reception_id = ?", (reception_id,))
+        await db.execute("DELETE FROM reception_bl_pages WHERE reception_id = ?", (reception_id,))
+        await db.execute("DELETE FROM reception_lignes WHERE reception_id = ?", (reception_id,))
+        await db.execute("DELETE FROM receptions WHERE id = ?", (reception_id,))
 
-    # La commande redevient « confirmee » (sélectionnable) si elle avait été
-    # passée « livree » par cette réception et n'est pas annulée.
-    for cid in commande_ids:
-        await db.execute(
-            "UPDATE commandes SET statut = 'confirmee' WHERE id = ? AND statut = 'livree'",
-            (cid,),
-        )
+        # La commande redevient « confirmee » (sélectionnable) si elle avait été
+        # passée « livree » par cette réception et n'est pas annulée.
+        for cid in commande_ids:
+            await db.execute(
+                "UPDATE commandes SET statut = 'confirmee' WHERE id = ? AND statut = 'livree'",
+                (cid,),
+            )
 
-    await db.commit()
+        await db.commit()
+    finally:
+        if forcer:
+            # Réactive les FK pour le reste de la durée de vie de la connexion.
+            await db.execute("PRAGMA foreign_keys = ON")
+
     return {"deleted": True, "commande_ids": commande_ids}
 
 
