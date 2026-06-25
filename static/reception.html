@@ -381,6 +381,14 @@
               <input type="number" step="0.01" min="0" inputmode="decimal"
                      class="rec-input rec-batch-poids" placeholder="kg">
             </div>
+
+            <div class="rec-batch-champ">
+              <label class="rec-champ-label rec-batch-prix-label">Prix d'achat HT</label>
+              <input type="number" step="0.01" min="0" inputmode="decimal"
+                     class="rec-input rec-batch-prix" placeholder="€ — lu sur le BL">
+              <!-- unité + note d'écart vs catalogue injectées par JS -->
+              <div class="rec-batch-prix-info"></div>
+            </div>
           </div>
 
           <!-- Dépliant contrôle visuel -->
@@ -780,6 +788,8 @@
       <div class="rec-confirm-titre">Réception enregistrée</div>
       <div class="rec-confirm-detail" id="rec-confirm-detail"></div>
       <div class="rec-confirm-badge conforme" id="rec-confirm-badge"></div>
+      <!-- Bandeau « prix changés vs catalogue ? » (injecté par JS si écarts) -->
+      <div class="rec-confirm-prix-ecarts" id="rec-confirm-prix-ecarts" hidden></div>
       <div class="rec-confirm-countdown" id="rec-confirm-countdown" aria-live="polite"></div>
       <button class="rec-btn-hub" id="rec-btn-hub">← Retour au menu</button>
 

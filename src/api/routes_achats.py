@@ -2208,6 +2208,121 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg, famille=None):
     return None
 
 
+def _comparer_prix_bl_catalogue(prix_bl, unite_bl, cat_format_prix, cat_prix_ht,
+                                cat_poids_colis_kg, cat_famille, seuil_pct):
+    """Compare un prix lu sur le BL au prix de référence catalogue, TOUS DEUX en €/kg.
+
+    C'est ici qu'on neutralise le piège kg/colis : on ramène le prix BL ET le prix
+    catalogue au €/kg via `_calc_prix_kg` avant de comparer. Sans ça, un prix/colis BL
+    confronté à un prix/kg catalogue donnerait un écart absurde.
+
+    Retourne un dict : prix_kg_bl, prix_kg_catalogue, ecart_kg, ecart_pct,
+    ecart_significatif (|ecart_pct| > seuil), comparable (False si on ne peut pas
+    comparer honnêtement, ex. BL au colis sur de la viande dont le €/kg n'est pas dérivable).
+    """
+    est_viande = (cat_famille or "").strip().lower() == "viande"
+
+    # €/kg du catalogue (référence) — réutilise la logique existante.
+    prix_kg_cat = _calc_prix_kg(cat_format_prix, cat_prix_ht, cat_poids_colis_kg, cat_famille)
+
+    # €/kg du BL : on applique la même normalisation, mais avec l'unité LUE sur le BL.
+    # Cas non fiable : prix BL au colis/pièce sur de la viande → _calc_prix_kg prendrait
+    # le prix tel quel (règle viande = €/kg direct), ce qui serait faux ici. On le signale.
+    comparable = True
+    prix_kg_bl = None
+    if prix_bl is not None:
+        if est_viande and unite_bl in ("colis", "piece"):
+            comparable = False  # prix BL pas au kg sur de la viande : non rapprochable sûrement
+        else:
+            # poids_colis_kg du BL inconnu → on emprunte celui du catalogue (même article).
+            prix_kg_bl = _calc_prix_kg(unite_bl or "kg", prix_bl, cat_poids_colis_kg, cat_famille)
+            if unite_bl == "colis" and not cat_poids_colis_kg:
+                comparable = False  # colis sans poids → €/kg indérivable
+
+    ecart_kg = None
+    ecart_pct = None
+    significatif = False
+    if comparable and prix_kg_bl is not None and prix_kg_cat is not None:
+        ecart_kg = round(prix_kg_bl - prix_kg_cat, 4)
+        if prix_kg_cat > 0:
+            ecart_pct = round((prix_kg_bl - prix_kg_cat) / prix_kg_cat * 100, 2)
+            significatif = abs(ecart_pct) > seuil_pct
+        elif prix_kg_bl > 0:
+            # référence à 0 € mais BL non nul : changement réel, à signaler.
+            significatif = True
+
+    return {
+        "prix_kg_bl": prix_kg_bl,
+        "prix_kg_catalogue": prix_kg_cat,
+        "ecart_kg": ecart_kg,
+        "ecart_pct": ecart_pct,
+        "ecart_significatif": significatif,
+        "comparable": comparable,
+    }
+
+
+class ComparerPrixItem(BaseModel):
+    catalogue_fournisseur_id: int
+    prix_unitaire: Optional[float] = None
+    unite_prix: Optional[str] = None         # 'kg' | 'piece' | 'colis' (issu de l'OCR)
+
+
+class ComparerPrixBody(BaseModel):
+    items: List[ComparerPrixItem]
+    seuil_pct: float = 2.0                    # écart relatif au-delà duquel on alerte
+
+
+@router.post("/catalogue/comparer-prix")
+async def comparer_prix_catalogue(body: ComparerPrixBody):
+    """Compare en lot des prix BL (réception) aux prix de référence catalogue, en €/kg.
+
+    Sert l'alerte d'écart de l'écran réception : pour chaque article du catalogue, on
+    renvoie le €/kg du BL, le €/kg de référence, l'écart et s'il est significatif.
+    En lot (une réception = N lignes) pour un seul aller-retour réseau (réseau DDNS lent).
+    """
+    if not body.items:
+        return {"resultats": [], "seuil_pct": body.seuil_pct}
+
+    ids = [it.catalogue_fournisseur_id for it in body.items]
+    placeholders = ",".join("?" for _ in ids)
+    async with get_db() as db:
+        cur = await db.execute(
+            f"""SELECT id, designation, format_prix, prix_achat_ht, poids_colis_kg, famille
+                FROM catalogue_fournisseur WHERE id IN ({placeholders})""",
+            ids,
+        )
+        cat = {r["id"]: dict(r) for r in await cur.fetchall()}
+
+    resultats = []
+    for it in body.items:
+        art = cat.get(it.catalogue_fournisseur_id)
+        if not art:
+            resultats.append({
+                "catalogue_fournisseur_id": it.catalogue_fournisseur_id,
+                "trouve": False,
+            })
+            continue
+        # unite_prix est déjà normalisée par l'OCR (_normaliser_unite_prix → kg|piece|colis).
+        # On NE passe PAS par _normaliser_format_prix ici : il écrase 'piece' en 'colis' (OK
+        # pour le catalogue, mais on a besoin de distinguer pièce/colis dans la comparaison).
+        unite_bl = (it.unite_prix or "").strip().lower() or None
+        comp = _comparer_prix_bl_catalogue(
+            it.prix_unitaire, unite_bl,
+            art["format_prix"], art["prix_achat_ht"], art["poids_colis_kg"], art["famille"],
+            body.seuil_pct,
+        )
+        resultats.append({
+            "catalogue_fournisseur_id": it.catalogue_fournisseur_id,
+            "trouve": True,
+            "designation": art["designation"],
+            "prix_achat_ht_catalogue": art["prix_achat_ht"],
+            "format_prix_catalogue": art["format_prix"],
+            **comp,
+        })
+
+    return {"resultats": resultats, "seuil_pct": body.seuil_pct}
+
+
 def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
                 unite_vente="kg", poids_piece_kg=None):
     """Marge à la volée d'un produit revendu en l'état, au kg OU à la pièce.
@@ -3534,129 +3649,341 @@ async def get_facture(facture_id: int):
         return result
 
 
+async def _generer_facture_depuis_reception(
+    db, reception_id: int, personnel_id: Optional[int] = None,
+    prix_source: str = "bl", auto_litige_seuil_pct: Optional[float] = None,
+) -> dict:
+    """Crée une facture brouillon pré-remplie depuis une réception (logique partagée).
+
+    Utilisée par l'endpoint manuel ET par le hook de clôture de réception. Ne lève
+    aucune HTTPException : renvoie un statut structuré que l'appelant interprète.
+
+    Args:
+        prix_source : 'bl' → prix facturé pré-rempli avec le prix lu sur le BL (réalité
+            constatée à la réception), à défaut le prix commande ; 'commande' → prix
+            facturé = prix négocié (comportement d'origine, le gérant ajustera).
+        auto_litige_seuil_pct : si fourni, une ligne dont l'écart prix relatif (vs prix
+            commande) dépasse ce seuil est marquée 'litige' avec un commentaire.
+
+    Returns:
+        {"ok": bool, "facture_id": int|None, "raison": str|None}
+        raison ∈ {"introuvable", "deja_facturee", "sans_fournisseur"} quand ok=False.
+    """
+    cur = await db.execute("SELECT * FROM receptions WHERE id = ?", (reception_id,))
+    reception = await cur.fetchone()
+    if not reception:
+        return {"ok": False, "facture_id": None, "raison": "introuvable"}
+
+    # Une réception = une facture (idempotent : le hook ne doit jamais doubler).
+    cur_dup = await db.execute(
+        "SELECT id FROM factures WHERE reception_id = ?", (reception_id,)
+    )
+    existante = await cur_dup.fetchone()
+    if existante:
+        return {"ok": False, "facture_id": existante["id"], "raison": "deja_facturee"}
+
+    # Commande mappée (s'il y en a une)
+    cur_map = await db.execute(
+        """SELECT commande_id FROM commande_receptions_mapping
+           WHERE reception_id = ? ORDER BY date_liaison DESC LIMIT 1""",
+        (reception_id,),
+    )
+    map_row = await cur_map.fetchone()
+    commande_id = map_row["commande_id"] if map_row else None
+
+    # Fournisseur : priorité au fournisseur de la commande, sinon réception
+    fournisseur_id = reception["fournisseur_principal_id"]
+    if commande_id:
+        cur_c = await db.execute(
+            "SELECT fournisseur_id FROM commandes WHERE id = ?", (commande_id,)
+        )
+        c_row = await cur_c.fetchone()
+        if c_row:
+            fournisseur_id = c_row["fournisseur_id"]
+    if not fournisseur_id:
+        return {"ok": False, "facture_id": None, "raison": "sans_fournisseur"}
+
+    # Lignes de réception (poids HACCP figé + prix BL indicatif) + désignation via COALESCE
+    cur_rl = await db.execute(
+        """SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
+                  rl.poids_kg AS poids_recu_kg, rl.prix_unitaire_ht AS prix_bl_ht,
+                  COALESCE(p.nom, cf.designation, rl.designation_libre) AS designation,
+                  cf.code_article AS code_article
+           FROM reception_lignes rl
+           LEFT JOIN produits p ON p.id = rl.produit_id
+           LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+           WHERE rl.reception_id = ?
+           ORDER BY rl.id""",
+        (reception_id,),
+    )
+    lignes_reception = [dict(r) for r in await cur_rl.fetchall()]
+
+    # Lignes de commande (prix négocié) pour le matching
+    lignes_commande = []
+    if commande_id:
+        cur_cl = await db.execute(
+            "SELECT * FROM commande_lignes WHERE commande_id = ?", (commande_id,)
+        )
+        lignes_commande = [dict(r) for r in await cur_cl.fetchall()]
+
+    def _trouver_commande(rl):
+        """Retrouve la ligne de commande (catalogue d'abord, puis désignation)."""
+        if rl.get("catalogue_fournisseur_id"):
+            for cl in lignes_commande:
+                if cl["catalogue_fournisseur_id"] == rl["catalogue_fournisseur_id"]:
+                    return cl
+        desig = (rl.get("designation") or "").strip().lower()
+        for cl in lignes_commande:
+            if (cl["designation"] or "").strip().lower() == desig:
+                return cl
+        return None
+
+    # Création de l'entête
+    date_fac = date.today().isoformat()
+    cur_ins = await db.execute(
+        """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
+                                 date_facture, statut, personnel_id)
+           VALUES (1, ?, ?, ?, ?, 'brouillon', ?)""",
+        (fournisseur_id, reception_id, commande_id, date_fac, personnel_id),
+    )
+    facture_id = cur_ins.lastrowid
+
+    a_un_litige = False
+    for rl in lignes_reception:
+        cl = _trouver_commande(rl)
+        prix_commande = cl["prix_unitaire_ht"] if cl else None
+        quantite_commandee = cl["quantite_commandee"] if cl else None
+        unite = (cl["unite"] if cl else None) or "kg"
+        poids_facture = rl["poids_recu_kg"]
+        # Prix facturé pré-rempli : prix BL (réalité constatée) si dispo, sinon prix commande.
+        if prix_source == "bl":
+            prix_facture = rl.get("prix_bl_ht") if rl.get("prix_bl_ht") is not None else prix_commande
+        else:
+            prix_facture = prix_commande
+        montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
+            rl["poids_recu_kg"], prix_commande, poids_facture, prix_facture
+        )
+
+        # Litige auto : écart prix relatif (vs commande) au-delà du seuil.
+        statut_ligne = "ok"
+        commentaire_litige = None
+        if (auto_litige_seuil_pct is not None and prix_commande and prix_commande > 0
+                and prix_facture is not None):
+            ecart_pct = abs(prix_facture - prix_commande) / prix_commande * 100
+            if ecart_pct > auto_litige_seuil_pct:
+                statut_ligne = "litige"
+                commentaire_litige = (
+                    f"Écart prix automatique : commande {prix_commande:.2f} € / "
+                    f"BL {prix_facture:.2f} € ({ecart_pct:+.1f} %)"
+                )
+                a_un_litige = True
+
+        await db.execute(
+            """INSERT INTO facture_lignes
+               (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
+                designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
+                poids_facture_kg, prix_facture_ht, montant_facture_ht,
+                ecart_poids_kg, ecart_prix_ht, ecart_montant_ht,
+                statut_ligne, commentaire_litige)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (facture_id, rl["catalogue_fournisseur_id"], rl["reception_ligne_id"],
+             rl["code_article"], rl["designation"] or "Article", unite,
+             rl["poids_recu_kg"], prix_commande, quantite_commandee,
+             poids_facture, prix_facture, montant, e_poids, e_prix, e_montant,
+             statut_ligne, commentaire_litige),
+        )
+
+    # Si au moins une ligne est en litige, l'entête passe en 'litige' (sinon brouillon).
+    if a_un_litige:
+        await db.execute(
+            "UPDATE factures SET statut = 'litige' WHERE id = ?", (facture_id,)
+        )
+
+    await _recalculer_totaux_facture(db, facture_id)
+    await db.commit()
+    return {"ok": True, "facture_id": facture_id, "raison": None}
+
+
 @router.post("/factures/depuis-reception/{reception_id}", status_code=201)
 async def creer_facture_depuis_reception(reception_id: int, personnel_id: Optional[int] = None):
-    """Crée une facture pré-remplie à partir d'une réception.
+    """Crée une facture pré-remplie à partir d'une réception (déclenchement manuel).
 
-    Pour chaque ligne de réception : copie le poids reçu (figé) + la désignation,
-    puis va chercher dans la commande mappée le prix négocié et la quantité commandée
-    (match sur catalogue_fournisseur_id, sinon sur la désignation). Le gérant n'a plus
-    qu'à saisir les poids/prix réellement facturés ; les écarts se calculent ensuite.
+    Pour chaque ligne de réception : copie le poids reçu (figé) + la désignation, puis
+    va chercher dans la commande mappée le prix négocié. Le prix facturé est pré-rempli
+    avec le prix lu sur le BL (à défaut, le prix commande). Le gérant ajuste ensuite.
     """
     async with get_db() as db:
-        cur = await db.execute("SELECT * FROM receptions WHERE id = ?", (reception_id,))
-        reception = await cur.fetchone()
-        if not reception:
+        res = await _generer_facture_depuis_reception(
+            db, reception_id, personnel_id, prix_source="bl",
+        )
+    if not res["ok"]:
+        if res["raison"] == "introuvable":
             raise HTTPException(404, "Réception introuvable")
-
-        # Empêcher les doublons : une réception = une facture
-        cur_dup = await db.execute(
-            "SELECT id FROM factures WHERE reception_id = ?", (reception_id,)
-        )
-        existante = await cur_dup.fetchone()
-        if existante:
+        if res["raison"] == "deja_facturee":
             raise HTTPException(
-                409, f"Une facture existe déjà pour cette réception (id={existante['id']})"
+                409, f"Une facture existe déjà pour cette réception (id={res['facture_id']})"
             )
-
-        # Commande mappée (s'il y en a une)
-        cur_map = await db.execute(
-            """SELECT commande_id FROM commande_receptions_mapping
-               WHERE reception_id = ? ORDER BY date_liaison DESC LIMIT 1""",
-            (reception_id,),
-        )
-        map_row = await cur_map.fetchone()
-        commande_id = map_row["commande_id"] if map_row else None
-
-        # Fournisseur : priorité au fournisseur de la commande, sinon réception
-        fournisseur_id = reception["fournisseur_principal_id"]
-        if commande_id:
-            cur_c = await db.execute(
-                "SELECT fournisseur_id FROM commandes WHERE id = ?", (commande_id,)
-            )
-            c_row = await cur_c.fetchone()
-            if c_row:
-                fournisseur_id = c_row["fournisseur_id"]
-        if not fournisseur_id:
+        if res["raison"] == "sans_fournisseur":
             raise HTTPException(
                 400,
                 "Aucun fournisseur identifié pour cette réception (commande ou fournisseur principal requis)",
             )
+        raise HTTPException(400, "Création de facture impossible")
+    return await get_facture(res["facture_id"])
 
-        # Lignes de réception (poids HACCP) + désignation via COALESCE
-        cur_rl = await db.execute(
-            """SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
-                      rl.poids_kg AS poids_recu_kg,
-                      COALESCE(p.nom, cf.designation, rl.designation_libre) AS designation,
-                      cf.code_article AS code_article
-               FROM reception_lignes rl
-               LEFT JOIN produits p ON p.id = rl.produit_id
-               LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
-               WHERE rl.reception_id = ?
-               ORDER BY rl.id""",
-            (reception_id,),
+
+# ───────────────────────────────────────────────────────────────────────────
+#  Historisation des prix d'achat + mise à jour semi-auto du catalogue
+# ───────────────────────────────────────────────────────────────────────────
+
+async def _historiser_prix_reception(db, reception_id: int, source: str = "bl") -> int:
+    """Enregistre dans historique_prix_achat le prix constaté de chaque ligne de la
+    réception ayant un prix + un article catalogue. N'écrase JAMAIS le prix de
+    référence : se contente d'ajouter une trace (applique_au_catalogue=0).
+
+    Le prix est normalisé en €/kg via `_calc_prix_kg`, en présumant que l'unité du
+    prix réception est celle du catalogue (format_prix) — hypothèse correcte pour la
+    viande (où _calc_prix_kg prend le prix tel quel) et cohérente sinon, faute d'unité
+    stockée sur la ligne de réception. On mémorise aussi le €/kg de référence courant
+    (prix_kg_precedent) pour afficher l'évolution.
+
+    Returns: nombre de lignes historisées.
+    """
+    cur = await db.execute(
+        """SELECT rl.id AS reception_ligne_id, rl.prix_unitaire_ht AS prix_bl,
+                  rl.catalogue_fournisseur_id AS cat_id,
+                  cf.format_prix, cf.prix_achat_ht AS prix_ref, cf.poids_colis_kg, cf.famille
+           FROM reception_lignes rl
+           JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+           WHERE rl.reception_id = ? AND rl.prix_unitaire_ht IS NOT NULL""",
+        (reception_id,),
+    )
+    lignes = [dict(r) for r in await cur.fetchall()]
+    if not lignes:
+        return 0
+
+    n = 0
+    for l in lignes:
+        prix_kg = _calc_prix_kg(l["format_prix"], l["prix_bl"], l["poids_colis_kg"], l["famille"])
+        prix_kg_ref = _calc_prix_kg(l["format_prix"], l["prix_ref"], l["poids_colis_kg"], l["famille"])
+        await db.execute(
+            """INSERT INTO historique_prix_achat
+                   (catalogue_fournisseur_id, reception_id, reception_ligne_id,
+                    prix_ht, format_prix, prix_kg, prix_kg_precedent, source, applique_au_catalogue)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+            (l["cat_id"], reception_id, l["reception_ligne_id"], l["prix_bl"],
+             l["format_prix"], prix_kg, prix_kg_ref, source),
         )
-        lignes_reception = [dict(r) for r in await cur_rl.fetchall()]
+        n += 1
+    await db.commit()
+    return n
 
-        # Lignes de commande (prix négocié) pour le matching
-        lignes_commande = []
-        if commande_id:
-            cur_cl = await db.execute(
-                "SELECT * FROM commande_lignes WHERE commande_id = ?", (commande_id,)
-            )
-            lignes_commande = [dict(r) for r in await cur_cl.fetchall()]
 
-        def _trouver_commande(rl):
-            """Retrouve la ligne de commande (catalogue d'abord, puis désignation)."""
-            if rl.get("catalogue_fournisseur_id"):
-                for cl in lignes_commande:
-                    if cl["catalogue_fournisseur_id"] == rl["catalogue_fournisseur_id"]:
-                        return cl
-            desig = (rl.get("designation") or "").strip().lower()
-            for cl in lignes_commande:
-                if (cl["designation"] or "").strip().lower() == desig:
-                    return cl
-            return None
+@router.get("/catalogue/ecarts-prix/{reception_id}")
+async def ecarts_prix_reception(reception_id: int, seuil_pct: float = Query(2.0)):
+    """Liste les articles de la réception dont le prix constaté s'écarte du prix de
+    référence catalogue au-delà du seuil — pour le bandeau « mettre à jour le catalogue ? ».
 
-        # Création de l'entête
-        date_fac = date.today().isoformat()
-        cur_ins = await db.execute(
-            """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
-                                     date_facture, statut, personnel_id)
-               VALUES (1, ?, ?, ?, ?, 'brouillon', ?)""",
-            (fournisseur_id, reception_id, commande_id, date_fac, personnel_id),
+    S'appuie sur les lignes historisées de cette réception (la plus récente par article)
+    comparées au prix de référence catalogue ACTUEL. Ne renvoie que les écarts significatifs
+    et encore non appliqués.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT h.catalogue_fournisseur_id AS cat_id,
+                   cf.designation, cf.code_article, cf.format_prix,
+                   cf.prix_achat_ht AS prix_ref_actuel,
+                   h.prix_ht AS prix_constate, h.prix_kg, h.prix_kg_precedent,
+                   h.id AS historique_id, h.applique_au_catalogue
+            FROM historique_prix_achat h
+            JOIN catalogue_fournisseur cf ON cf.id = h.catalogue_fournisseur_id
+            JOIN (
+                SELECT catalogue_fournisseur_id, MAX(id) AS max_id
+                FROM historique_prix_achat
+                WHERE reception_id = ?
+                GROUP BY catalogue_fournisseur_id
+            ) last ON last.max_id = h.id
+            WHERE h.reception_id = ?
+            ORDER BY cf.designation
+            """,
+            (reception_id, reception_id),
         )
-        facture_id = cur_ins.lastrowid
+        rows = [dict(r) for r in await cur.fetchall()]
 
-        # Lignes pré-remplies
-        for rl in lignes_reception:
-            cl = _trouver_commande(rl)
-            prix_commande = cl["prix_unitaire_ht"] if cl else None
-            quantite_commandee = cl["quantite_commandee"] if cl else None
-            unite = (cl["unite"] if cl else None) or "kg"
-            # Pré-remplissage du facturé = poids reçu + prix commande (le gérant ajuste).
-            poids_facture = rl["poids_recu_kg"]
-            prix_facture = prix_commande
-            montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
-                rl["poids_recu_kg"], prix_commande, poids_facture, prix_facture
-            )
+    ecarts = []
+    for r in rows:
+        # Écart €/kg : prix constaté vs prix de référence au moment du constat
+        # (prix_kg_precedent), tous deux déjà normalisés à l'historisation.
+        prix_kg = r["prix_kg"]
+        ref_kg = r["prix_kg_precedent"]
+        if prix_kg is None or ref_kg is None or ref_kg <= 0:
+            continue
+        ecart_pct = (prix_kg - ref_kg) / ref_kg * 100
+        if abs(ecart_pct) <= seuil_pct:
+            continue
+        # Si le prix de référence a déjà été aligné depuis (égal au constaté), plus d'écart.
+        if r["applique_au_catalogue"]:
+            continue
+        ecarts.append({
+            "catalogue_fournisseur_id": r["cat_id"],
+            "designation": r["designation"],
+            "code_article": r["code_article"],
+            "prix_ref_actuel": r["prix_ref_actuel"],
+            "prix_constate": r["prix_constate"],
+            "prix_kg_constate": round(prix_kg, 4),
+            "prix_kg_reference": round(ref_kg, 4),
+            "ecart_pct": round(ecart_pct, 2),
+            "deja_applique": bool(r["applique_au_catalogue"]),
+        })
+    return {"reception_id": reception_id, "seuil_pct": seuil_pct, "ecarts": ecarts}
+
+
+class AppliquerPrixBody(BaseModel):
+    nouveau_prix_ht: float                       # nouveau prix de référence (même format que le catalogue)
+    reception_id: Optional[int] = None           # pour marquer la ligne d'historique correspondante
+
+
+@router.post("/catalogue/{catalogue_id}/appliquer-prix")
+async def appliquer_prix_catalogue(catalogue_id: int, body: AppliquerPrixBody):
+    """Met à jour le PRIX DE RÉFÉRENCE d'un article catalogue (décision explicite de
+    l'utilisateur depuis le bandeau d'écart). Trace la décision dans l'historique
+    (applique_au_catalogue=1) pour la dernière observation de cette réception.
+    """
+    if body.nouveau_prix_ht < 0:
+        raise HTTPException(400, "Prix négatif invalide")
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, prix_achat_ht FROM catalogue_fournisseur WHERE id = ?", (catalogue_id,)
+        )
+        art = await cur.fetchone()
+        if not art:
+            raise HTTPException(404, "Article catalogue introuvable")
+        ancien = art["prix_achat_ht"]
+
+        await db.execute(
+            "UPDATE catalogue_fournisseur SET prix_achat_ht = ?, date_maj = CURRENT_TIMESTAMP WHERE id = ?",
+            (body.nouveau_prix_ht, catalogue_id),
+        )
+        # Marquer la décision dans l'historique (dernière obs. de la réception, sinon la
+        # plus récente pour cet article).
+        if body.reception_id is not None:
             await db.execute(
-                """INSERT INTO facture_lignes
-                   (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
-                    designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
-                    poids_facture_kg, prix_facture_ht, montant_facture_ht,
-                    ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (facture_id, rl["catalogue_fournisseur_id"], rl["reception_ligne_id"],
-                 rl["code_article"], rl["designation"] or "Article", unite,
-                 rl["poids_recu_kg"], prix_commande, quantite_commandee,
-                 poids_facture, prix_facture, montant, e_poids, e_prix, e_montant),
+                """UPDATE historique_prix_achat SET applique_au_catalogue = 1
+                   WHERE id = (SELECT MAX(id) FROM historique_prix_achat
+                               WHERE catalogue_fournisseur_id = ? AND reception_id = ?)""",
+                (catalogue_id, body.reception_id),
             )
-
-        await _recalculer_totaux_facture(db, facture_id)
+        else:
+            await db.execute(
+                """UPDATE historique_prix_achat SET applique_au_catalogue = 1
+                   WHERE id = (SELECT MAX(id) FROM historique_prix_achat
+                               WHERE catalogue_fournisseur_id = ?)""",
+                (catalogue_id,),
+            )
         await db.commit()
-
-        return await get_facture(facture_id)
+    return {"ok": True, "catalogue_fournisseur_id": catalogue_id,
+            "ancien_prix_ht": ancien, "nouveau_prix_ht": body.nouveau_prix_ht}
 
 
 @router.post("/factures", status_code=201)

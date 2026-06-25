@@ -75,6 +75,7 @@ async def db():
         phase2_tables = (
             # Enfants en premier (respecter les FK)
             # Module Achat — Factures & Commandes (FK vers receptions/reception_lignes/fournisseurs)
+            "historique_prix_achat",               # → catalogue_fournisseur, receptions, reception_lignes
             "facture_lignes",                      # → factures, reception_lignes, catalogue_fournisseur
             "factures",                            # → fournisseurs, receptions, commandes, personnel
             "commande_receptions_mapping",         # → commandes, receptions, personnel

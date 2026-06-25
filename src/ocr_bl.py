@@ -41,17 +41,24 @@ _SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "designation": {"type": "string"},
-                    "reference":   {"type": ["string", "null"]},
-                    "numero_lot":  {"type": ["string", "null"]},
-                    "dlc_brut":    {"type": ["string", "null"]},
-                    "dluo_brut":   {"type": ["string", "null"]},
-                    "poids_kg":    {"type": ["number", "null"]},
-                    "quantite":    {"type": ["number", "null"]},
-                    "confiance":   {"type": "string", "enum": ["haute", "moyenne", "basse"]},
+                    "designation":   {"type": "string"},
+                    "reference":     {"type": ["string", "null"]},
+                    "numero_lot":    {"type": ["string", "null"]},
+                    "dlc_brut":      {"type": ["string", "null"]},
+                    "dluo_brut":     {"type": ["string", "null"]},
+                    "poids_kg":      {"type": ["number", "null"]},
+                    "quantite":      {"type": ["number", "null"]},
+                    "prix_unitaire": {"type": ["number", "null"]},
+                    # Valeurs attendues 'kg'|'piece'|'colis' (cadrées par l'instruction).
+                    # Pas d'enum dans le schéma : éviter qu'un enum mêlant string+null soit
+                    # refusé par la validation stricte des structured outputs. Normalisé en Python.
+                    "unite_prix":    {"type": ["string", "null"]},
+                    "montant_ligne": {"type": ["number", "null"]},
+                    "confiance":     {"type": "string", "enum": ["haute", "moyenne", "basse"]},
                 },
                 "required": ["designation", "reference", "numero_lot", "dlc_brut",
-                             "dluo_brut", "poids_kg", "quantite", "confiance"],
+                             "dluo_brut", "poids_kg", "quantite",
+                             "prix_unitaire", "unite_prix", "montant_ligne", "confiance"],
                 "additionalProperties": False,
             },
         },
@@ -68,6 +75,9 @@ Extrais, article par article, les informations de traçabilité. Pour chaque art
 - dlc_brut / dluo_brut : la DLC / la DLUO (DDM) de cet article
 - poids_kg : le poids livré (en kg) de cet article
 - quantite : le nombre d'unités/pièces livrées
+- prix_unitaire : le prix unitaire HORS TAXES de cet article (un seul nombre, sans le symbole €)
+- unite_prix : l'unité à laquelle se rapporte ce prix unitaire — "kg" si c'est un prix au kilo, "piece" si c'est un prix à la pièce/à l'unité, "colis" si c'est un prix au colis/carton. C'est l'information qui dit "ce prix, c'est par quoi". Si tu ne peux pas la déterminer avec certitude, mets null.
+- montant_ligne : le montant total HORS TAXES de la ligne (prix × quantité/poids), tel qu'écrit sur le BL
 
 POINT CRITIQUE — appariement DLC ↔ article :
 Sur certains BL, le lot et la DLC d'un article sont écrits sur une LIGNE SÉPARÉE (souvent juste en dessous de l'article, parfois préfixée "lot"). Cette DLC/ce lot appartiennent à l'article AUQUEL ILS SE RAPPORTENT visuellement (le plus proche, en général juste au-dessus) — surtout PAS à l'article suivant. Vérifie l'alignement avant d'associer : ne décale jamais une DLC d'un article à l'autre. En cas de doute sur l'appariement, baisse la "confiance" de la ligne plutôt que de risquer une erreur.
@@ -79,8 +89,10 @@ Règles générales :
 - Un couple (article, lot) = un objet dans "lignes". Un article à lot unique = une seule ligne ; un article à plusieurs lots = une ligne par lot. N'invente jamais de ligne, n'en oublie aucune.
 - DATES — recopie chaque date EXACTEMENT comme écrite, caractère pour caractère, dans "dlc_brut" / "dluo_brut" / "date_bl_brut". NE CONVERTIS RIEN, ne réordonne pas jour/mois. "07/12/26" → mets exactement "07/12/26". La conversion est faite ensuite par le programme.
 - Distingue DLC (consommer jusqu'au) et DLUO/DDM (à consommer de préférence avant) : ne mets jamais une DLUO dans dlc_brut.
+- PRIX — recopie le prix unitaire et le montant TELS QU'ÉCRITS, en HORS TAXES quand le BL distingue HT et TTC (les BL de viande sont en général en HT). N'additionne pas, ne recalcule pas un prix : si seul le montant total est écrit, mets-le dans montant_ligne et laisse prix_unitaire à null. Utilise le point comme séparateur décimal (18,50 → 18.50). N'invente JAMAIS un prix : si le prix d'un article n'est pas écrit, mets prix_unitaire, unite_prix et montant_ligne à null.
+- PRIX & lots multiples — quand un même article est livré en plusieurs lots (donc plusieurs lignes), le prix unitaire est en général le même pour tous ces lots : reporte-le sur chaque ligne. Ne répartis le montant_ligne par lot que si le BL le détaille, sinon laisse-le sur la ligne qui le porte et null ailleurs.
 - Si une information est illisible ou absente, mets null. Ne devine pas.
-- "confiance" (haute/moyenne/basse) sur la lecture du lot ET de la DLC de la ligne. Sois honnête : une saisie HACCP erronée est pire qu'un champ à vérifier.
+- "confiance" (haute/moyenne/basse) sur la lecture du lot, de la DLC ET du prix de la ligne. Si l'un des trois est douteux, baisse la confiance. Sois honnête : une saisie erronée (traçabilité ou prix) est pire qu'un champ signalé à vérifier.
 - Plusieurs images = pages d'un même BL : fusionne en une seule liste d'articles.
 - Ignore les totaux, conditions de vente, mentions légales.
 
@@ -135,6 +147,52 @@ def _parse_date_fr(brut: str | None, annee_defaut: int | None = None) -> tuple[s
     except ValueError:
         return None, None         # 31/02, mois=13, etc. : date impossible
     return d.isoformat(), f"{d.day:02d}/{d.month:02d}/{d.year}"
+
+
+def _normaliser_unite_prix(valeur) -> str | None:
+    """Ramène l'unité de prix lue par l'OCR vers 'kg' | 'piece' | 'colis' | None.
+
+    L'enum n'est plus dans le schéma (cf. _SCHEMA) : on cadre ici les variantes que
+    le modèle pourrait écrire malgré l'instruction. None si vide ou non reconnu.
+    """
+    if not valeur:
+        return None
+    v = str(valeur).strip().lower()
+    import unicodedata
+    v = "".join(c for c in unicodedata.normalize("NFD", v) if unicodedata.category(c) != "Mn")
+    if v in ("kg", "kilo", "kilos", "kilogramme", "kilogrammes", "/kg", "le kg", "au kg"):
+        return "kg"
+    if v in ("piece", "pieces", "u", "unite", "unites", "pc", "pce", "/piece", "la piece"):
+        return "piece"
+    if v in ("colis", "carton", "cartons", "caisse", "caisses", "/colis", "le colis"):
+        return "colis"
+    return None
+
+
+def _verifier_coherence_prix(prix_unitaire, unite_prix, poids_kg, quantite, montant_ligne):
+    """Contrôle générique prix × base ≈ montant, indépendant du fournisseur.
+
+    Ne corrige rien : signale une ligne dont le prix unitaire et le montant ne se
+    recoupent pas (lecture probablement erronée), comme `dlc_suspecte` pour les dates.
+    La conversion en €/kg et la comparaison au catalogue se font plus tard (côté Achats),
+    car elles dépendent du poids_colis_kg du catalogue, inconnu du BL.
+
+    Returns:
+        (prix_suspect: bool, alerte_prix: str | None)
+    """
+    if prix_unitaire is None or montant_ligne is None:
+        return False, None
+    # Base = ce que multiplie le prix unitaire : le poids si prix au kg, sinon la quantité.
+    base = poids_kg if unite_prix == "kg" else quantite
+    if not base:
+        return False, None  # pas de quoi recouper sans inventer
+    attendu = prix_unitaire * base
+    if attendu <= 0:
+        return False, None
+    ecart_rel = abs(montant_ligne - attendu) / attendu
+    if ecart_rel > 0.02:  # tolérance 2 % (arrondis BL)
+        return True, "Prix × quantité ne correspond pas au montant — à vérifier"
+    return False, None
 
 
 def extraire_bl(images_jpeg: list[bytes]) -> dict:
@@ -234,6 +292,18 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
 
         ligne["dlc_suspecte"] = alerte is not None
         ligne["alerte"] = alerte
+
+        # Normalise l'unité de prix vers le vocabulaire attendu ('kg'|'piece'|'colis'),
+        # pour que l'étape de rapprochement (€/kg via _calc_prix_kg) reçoive une valeur propre.
+        ligne["unite_prix"] = _normaliser_unite_prix(ligne.get("unite_prix"))
+
+        # Contrôle de cohérence du prix (générique, ne corrige rien).
+        prix_suspect, alerte_prix = _verifier_coherence_prix(
+            ligne.get("prix_unitaire"), ligne.get("unite_prix"),
+            ligne.get("poids_kg"), ligne.get("quantite"), ligne.get("montant_ligne"),
+        )
+        ligne["prix_suspect"] = prix_suspect
+        ligne["alerte_prix"] = alerte_prix
 
     data["_meta"] = {
         "modele": MODEL,

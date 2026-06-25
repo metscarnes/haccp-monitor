@@ -198,6 +198,8 @@ class LigneCreate(BaseModel):
     dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: str = "France"
     poids_kg: Optional[float] = None
+    prix_unitaire_ht: Optional[float] = None  # prix lu sur le BL (indicatif, pas la vérité comptable)
+    montant_ht: Optional[float] = None        # montant ligne tel qu'écrit sur le BL
     nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
     temperature_coeur: Optional[float] = None
@@ -226,6 +228,8 @@ class LigneUpdate(BaseModel):
     dlc_type: Optional[str] = None          # 'dlc' | 'date_abattage' | 'no_dlc'
     origine: Optional[str] = None
     poids_kg: Optional[float] = None
+    prix_unitaire_ht: Optional[float] = None  # prix lu sur le BL (indicatif)
+    montant_ht: Optional[float] = None
     nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
     temperature_coeur: Optional[float] = None
@@ -550,9 +554,10 @@ async def maj_temperature_camion(reception_id: int, body: TempCamionBody):
 async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
+            "SELECT id, personnel_id FROM receptions WHERE id = ?", (reception_id,)
         )
-        if not await cur.fetchone():
+        rec_row = await cur.fetchone()
+        if not rec_row:
             raise HTTPException(404, "Réception non trouvée")
 
         reception = await cloturer_reception(
@@ -563,6 +568,37 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
             coeur_conformes=body.coeur_conformes,
             coeur_temperatures=body.coeur_temperatures,
         )
+
+        # Génération automatique d'une facture BROUILLON depuis la réception (sauf refus
+        # total de livraison). Pré-remplie avec le prix lu sur le BL ; les lignes dont le
+        # prix s'écarte de la commande (> 2 %) passent en litige. NON bloquant : une erreur
+        # de facturation ne doit jamais empêcher la clôture HACCP — on loggue et on continue.
+        facture_auto = None
+        if not body.livraison_refusee:
+            try:
+                from src.api.routes_achats import (
+                    _generer_facture_depuis_reception, _historiser_prix_reception,
+                )
+                res_fac = await _generer_facture_depuis_reception(
+                    db, reception_id,
+                    personnel_id=rec_row["personnel_id"],
+                    prix_source="bl",
+                    auto_litige_seuil_pct=2.0,
+                )
+                facture_auto = {
+                    "creee": res_fac["ok"],
+                    "facture_id": res_fac.get("facture_id"),
+                    "raison": res_fac.get("raison"),
+                }
+                # Historiser les prix constatés (indépendant du sort de la facture) :
+                # alimente la courbe d'évolution + prépare le bandeau « MAJ catalogue ? ».
+                await _historiser_prix_reception(db, reception_id, source="bl")
+            except Exception as e:  # pragma: no cover - filet de sécurité
+                logger.warning("Facture/historisation auto à la clôture (réception %s) échouée : %s", reception_id, e)
+                facture_auto = {"creee": False, "facture_id": None, "raison": "erreur"}
+
+    if isinstance(reception, dict):
+        reception = {**reception, "facture_auto": facture_auto}
     return reception
 
 

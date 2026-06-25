@@ -235,6 +235,11 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     date_abattage             DATE,
     origine                   TEXT    DEFAULT 'France',
     poids_kg                  REAL,
+    -- Prix lu sur le BL à la réception. RÔLE INDICATIF (aide saisie / contrôle visuel
+    -- de l'écart vs catalogue), PAS la vérité comptable : celle-ci reste la facture.
+    -- prix_unitaire_ht = tel qu'écrit (unité = celle du catalogue/BL) ; montant_ht non calculé d'office.
+    prix_unitaire_ht          REAL,
+    montant_ht                REAL,
     temperature_reception     REAL,
     temperature_conforme      INTEGER,
     temperature_coeur         REAL,
@@ -903,6 +908,37 @@ CREATE TABLE IF NOT EXISTS facture_lignes (
 CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture
     ON facture_lignes(facture_id);
 
+-- Historique des prix d'achat constatés par article du catalogue fournisseur.
+-- Chaque réception y AJOUTE une ligne (jamais d'écrasement). Sert (1) à tracer
+-- l'évolution du prix dans le temps et (2) à journaliser la décision de mettre à
+-- jour — ou non — le prix de référence catalogue (MAJ semi-auto sur validation).
+--   prix_ht / format_prix : prix constaté tel quel + son format ('kg'|'colis'), pour
+--                           pouvoir le renormaliser en €/kg comme le catalogue.
+--   prix_kg               : prix ramené au €/kg (comparable au prix de référence).
+--   source                : 'bl' | 'facture' | 'manuel' (d'où vient le prix constaté).
+--   applique_au_catalogue : 1 si l'utilisateur a accepté de mettre à jour le prix de
+--                           référence à partir de cette observation, 0 sinon.
+CREATE TABLE IF NOT EXISTS historique_prix_achat (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogue_fournisseur_id INTEGER NOT NULL,
+    reception_id             INTEGER,
+    reception_ligne_id       INTEGER,
+    prix_ht                  REAL    NOT NULL,
+    format_prix              TEXT    DEFAULT 'kg',
+    prix_kg                  REAL,
+    prix_kg_precedent        REAL,
+    source                   TEXT    DEFAULT 'bl',
+    applique_au_catalogue    INTEGER DEFAULT 0,
+    date_constat             DATE    NOT NULL DEFAULT CURRENT_DATE,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (reception_id)             REFERENCES receptions(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_historique_prix_catalogue
+    ON historique_prix_achat(catalogue_fournisseur_id, date_constat DESC);
+
 CREATE TABLE IF NOT EXISTS maturation_carcasses (
     id                     INTEGER PRIMARY KEY AUTOINCREMENT,
     reception_ligne_id     INTEGER NOT NULL,
@@ -1538,6 +1574,30 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 config_json TEXT    NOT NULL,
                 created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
             )""",
+            # v6.9 — Prix d'achat en réception (chaîne réception → facture → catalogue).
+            # reception_lignes : prix lu sur le BL (rôle INDICATIF, pas la vérité comptable).
+            "ALTER TABLE reception_lignes ADD COLUMN prix_unitaire_ht REAL",
+            "ALTER TABLE reception_lignes ADD COLUMN montant_ht REAL",
+            # Historique des prix d'achat constatés (1 ligne par réception, jamais d'écrasement)
+            # + journal de la décision de MAJ du prix de référence catalogue (semi-auto).
+            """CREATE TABLE IF NOT EXISTS historique_prix_achat (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                catalogue_fournisseur_id INTEGER NOT NULL,
+                reception_id             INTEGER,
+                reception_ligne_id       INTEGER,
+                prix_ht                  REAL    NOT NULL,
+                format_prix              TEXT    DEFAULT 'kg',
+                prix_kg                  REAL,
+                prix_kg_precedent        REAL,
+                source                   TEXT    DEFAULT 'bl',
+                applique_au_catalogue    INTEGER DEFAULT 0,
+                date_constat             DATE    NOT NULL DEFAULT CURRENT_DATE,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+                FOREIGN KEY (reception_id)             REFERENCES receptions(id),
+                FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_historique_prix_catalogue ON historique_prix_achat(catalogue_fournisseur_id, date_constat DESC)",
         ]
         for sql in migrations:
             try:
@@ -1581,6 +1641,8 @@ CREATE TABLE reception_lignes_v56 (
     designation_libre         TEXT,
     origine                   TEXT    DEFAULT 'France',
     poids_kg                  REAL,
+    prix_unitaire_ht          REAL,
+    montant_ht                REAL,
     temperature_reception     REAL,
     temperature_conforme      INTEGER,
     temperature_coeur         REAL,
@@ -1602,11 +1664,21 @@ CREATE TABLE reception_lignes_v56 (
     FOREIGN KEY (fournisseur_id)           REFERENCES fournisseurs(id)
 );
 INSERT INTO reception_lignes_v56
+    (id, reception_id, produit_id, catalogue_fournisseur_id,
+     fournisseur_id, fournisseur_nom, numero_lot, lot_interne,
+     dlc, dluo, date_abattage, dlc_type, statut, attente_motif,
+     designation_libre, origine, poids_kg, prix_unitaire_ht, montant_ht,
+     temperature_reception, temperature_conforme, temperature_coeur,
+     couleur_conforme, couleur_observation,
+     consistance_conforme, consistance_observation,
+     exsudat_conforme, exsudat_observation,
+     odeur_conforme, odeur_observation,
+     ph_valeur, ph_conforme, conforme, created_at)
     SELECT id, reception_id, produit_id, catalogue_fournisseur_id,
            fournisseur_id, fournisseur_nom, numero_lot, lot_interne,
            dlc, dluo, date_abattage, dlc_type, statut, attente_motif,
-           designation_libre, origine, poids_kg, temperature_reception,
-           temperature_conforme, temperature_coeur,
+           designation_libre, origine, poids_kg, prix_unitaire_ht, montant_ht,
+           temperature_reception, temperature_conforme, temperature_coeur,
            couleur_conforme, couleur_observation,
            consistance_conforme, consistance_observation,
            exsudat_conforme, exsudat_observation,
@@ -3200,14 +3272,14 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
         INSERT INTO reception_lignes
             (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
              date_abattage, dlc_type, statut, attente_motif, designation_libre,
-             origine, poids_kg, nb_colis, temperature_reception, temperature_conforme,
+             origine, poids_kg, prix_unitaire_ht, montant_ht, nb_colis, temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
              consistance_conforme, consistance_observation,
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme, substitution_article)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
@@ -3226,6 +3298,8 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             data.get("designation_libre"),
             data.get("origine", "France"),
             data.get("poids_kg"),
+            data.get("prix_unitaire_ht"),
+            data.get("montant_ht"),
             data.get("nb_colis"),
             temp_recep,
             temperature_conforme,
@@ -3481,7 +3555,7 @@ async def update_reception_ligne(
     # Récupérer la ligne existante (valeurs de traçabilité à conserver si non fournies)
     cur = await db.execute(
         "SELECT reception_id, produit_id, numero_lot, dlc, dluo, date_abattage, dlc_type, "
-        "catalogue_fournisseur_id "
+        "catalogue_fournisseur_id, prix_unitaire_ht, montant_ht "
         "FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     row = await cur.fetchone()
@@ -3539,6 +3613,15 @@ async def update_reception_ligne(
     date_abattage = _merge("date_abattage")
     dlc_type      = _merge("dlc_type")
 
+    # Prix (indicatif) : conserver l'existant si l'appel ne fournit pas de nouvelle valeur,
+    # pour qu'une complétion partielle (ex. saisie d'un lot manquant) n'efface pas le prix.
+    prix_unitaire_ht = data.get("prix_unitaire_ht")
+    if prix_unitaire_ht is None:
+        prix_unitaire_ht = row["prix_unitaire_ht"]
+    montant_ht = data.get("montant_ht")
+    if montant_ht is None:
+        montant_ht = row["montant_ht"]
+
     # dlc_type toujours dérivé du catalogue si la ligne ne le porte pas : un article
     # 'no_dlc' ne doit jamais rester en attente faute de dlc_type sur la ligne.
     if not dlc_type and row["catalogue_fournisseur_id"]:
@@ -3564,7 +3647,7 @@ async def update_reception_ligne(
             produit_id = ?, fournisseur_id = ?, numero_lot = ?, lot_interne = ?,
             dlc = ?, dluo = ?, date_abattage = ?, dlc_type = ?,
             statut = ?, attente_motif = ?,
-            origine = ?, poids_kg = ?, nb_colis = ?,
+            origine = ?, poids_kg = ?, prix_unitaire_ht = ?, montant_ht = ?, nb_colis = ?,
             temperature_reception = ?, temperature_conforme = ?,
             temperature_coeur = ?,
             couleur_conforme = ?, couleur_observation = ?,
@@ -3588,6 +3671,8 @@ async def update_reception_ligne(
             attente_motif,
             data.get("origine", "France"),
             data.get("poids_kg"),
+            prix_unitaire_ht,
+            montant_ht,
             data.get("nb_colis"),
             temp_recep,
             temperature_conforme,

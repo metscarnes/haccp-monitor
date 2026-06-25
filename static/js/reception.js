@@ -3306,6 +3306,8 @@ function prefillBatchDepuisOcr(lignes) {
     creerCartesDepuisOcr(lignes);
   }
   majBtnTerminerBatch();
+  // Alerte d'écart prix vs catalogue, en un seul appel (non bloquant).
+  comparerPrixToutesCartes();
 }
 
 // Normalise un libellé pour comparer deux désignations (minuscules, sans accents,
@@ -3328,6 +3330,82 @@ function _scoreLibelle(a, b) {
   return communs / Math.min(ma.size, mb.size);
 }
 
+// ── Comparaison prix BL ↔ catalogue (alerte d'écart) ──────────────────────────
+// Le calcul €/kg (et la neutralisation du piège kg/colis) est fait CÔTÉ SERVEUR par
+// /api/achats/catalogue/comparer-prix, qui connaît le format/poids_colis du catalogue.
+
+// Lit le prix saisi sur une carte (champ principal).
+function _prixCarte(etat) {
+  const v = parseFloat(etat.el.querySelector('.rec-batch-prix')?.value);
+  return isNaN(v) ? null : v;
+}
+
+// Peint l'unité + la note d'écart sous le champ prix d'une carte.
+function afficherInfoPrixCarte(etat, comp) {
+  const zone = etat.el.querySelector('.rec-batch-prix-info');
+  if (!zone) return;
+  if (!comp) { zone.innerHTML = ''; etat.el.classList.remove('rec-batch-prix-ecart'); return; }
+
+  if (comp.comparable === false || comp.ecart_pct == null) {
+    // Pas de comparaison fiable (prix au colis sans poids, viande facturée au colis…).
+    zone.innerHTML = `<span class="rec-batch-prix-note neutre">prix indicatif — écart catalogue non calculable</span>`;
+    etat.el.classList.remove('rec-batch-prix-ecart');
+    return;
+  }
+  const pct = comp.ecart_pct;
+  const ref = comp.prix_kg_catalogue != null ? `${comp.prix_kg_catalogue.toFixed(2)} €/kg` : '—';
+  const bl  = comp.prix_kg_bl != null ? `${comp.prix_kg_bl.toFixed(2)} €/kg` : '—';
+  if (comp.ecart_significatif && pct > 0) {
+    zone.innerHTML = `<span class="rec-batch-prix-note hausse">⚠️ +${pct.toFixed(1)} % vs catalogue (${ref} → ${bl})</span>`;
+    etat.el.classList.add('rec-batch-prix-ecart');
+  } else if (comp.ecart_significatif && pct < 0) {
+    zone.innerHTML = `<span class="rec-batch-prix-note baisse">✓ ${pct.toFixed(1)} % vs catalogue (${ref} → ${bl})</span>`;
+    etat.el.classList.remove('rec-batch-prix-ecart');
+  } else {
+    zone.innerHTML = `<span class="rec-batch-prix-note ok">≈ prix catalogue (${ref})</span>`;
+    etat.el.classList.remove('rec-batch-prix-ecart');
+  }
+}
+
+// Compare le prix d'UNE carte au catalogue (saisie manuelle). Sans article catalogue
+// rattaché ou sans prix, on n'affiche rien.
+async function comparerPrixCarte(etat) {
+  const prix = _prixCarte(etat);
+  if (!etat.catalogueId || prix == null) { afficherInfoPrixCarte(etat, null); return; }
+  try {
+    const r = await apiFetch('/api/achats/catalogue/comparer-prix', {
+      method: 'POST',
+      body: JSON.stringify({ items: [{
+        catalogue_fournisseur_id: etat.catalogueId,
+        prix_unitaire: prix,
+        unite_prix: etat.uniteprixOcr || 'kg',
+      }] }),
+    });
+    const comp = (r.resultats || [])[0];
+    afficherInfoPrixCarte(etat, comp && comp.trouve ? comp : null);
+  } catch (_) { /* silencieux : l'alerte d'écart est un bonus, pas bloquant */ }
+}
+
+// Compare en UN SEUL appel le prix de toutes les cartes ayant un article catalogue +
+// un prix (après OCR). Réseau DDNS lent → on évite N requêtes.
+async function comparerPrixToutesCartes() {
+  const cibles = batchLignes.filter(e => e.catalogueId && _prixCarte(e) != null);
+  if (!cibles.length) return;
+  const items = cibles.map(e => ({
+    catalogue_fournisseur_id: e.catalogueId,
+    prix_unitaire: _prixCarte(e),
+    unite_prix: e.uniteprixOcr || 'kg',
+  }));
+  try {
+    const r = await apiFetch('/api/achats/catalogue/comparer-prix', {
+      method: 'POST', body: JSON.stringify({ items }),
+    });
+    const parId = new Map();
+    (r.resultats || []).forEach(res => { if (res.trouve) parId.set(res.catalogue_fournisseur_id, res); });
+    cibles.forEach(e => afficherInfoPrixCarte(e, parId.get(e.catalogueId) || null));
+  } catch (_) { /* silencieux */ }
+}
+
 // Applique lot/DLC/poids d'une ligne OCR sur une carte batch (état existant ou neuf).
 // Si le lot principal est déjà rempli (ligne OCR précédente pour le MÊME article :
 // article livré en plusieurs lots), on AJOUTE un champ lot supplémentaire au lieu
@@ -3337,6 +3415,24 @@ function _appliquerOcrSurCarte(etat, l) {
   const inpLot   = carte.querySelector('.rec-batch-lot');
   const inpDate  = carte.querySelector('.rec-batch-date');
   const inpPoids = carte.querySelector('.rec-batch-poids');
+  const inpPrix  = carte.querySelector('.rec-batch-prix');
+
+  // Prix lu sur le BL : on ne remplit le champ que s'il est vide (jamais écraser une
+  // saisie manuelle). L'unité (kg/pièce/colis) est mémorisée pour la comparaison €/kg.
+  // Plusieurs lots d'un même article partagent en général le même prix unitaire :
+  // on garde le premier prix non nul rencontré.
+  if (inpPrix && l.prix_unitaire != null && !inpPrix.value) {
+    inpPrix.value = l.prix_unitaire;
+    etat.uniteprixOcr = l.unite_prix || 'kg';
+  }
+  // Une incohérence prix×quantité détectée par l'OCR rend la carte « à vérifier ».
+  if (l.prix_suspect && l.alerte_prix && !carte.querySelector('.rec-batch-ocr-alerte-prix')) {
+    carte.classList.add('rec-batch-ocr-suspect');
+    const note = document.createElement('div');
+    note.className = 'rec-batch-ocr-alerte rec-batch-ocr-alerte-prix';
+    note.textContent = `⚠️ ${l.alerte_prix}`;
+    carte.querySelector('.rec-batch-champs')?.before(note);
+  }
 
   // Date à appliquer selon le type paramétré de l'article :
   //  - no_dlc        → aucune date (champ masqué) ;
@@ -3555,6 +3651,7 @@ function creerCarteBatch(ligneCmd) {
     },
     lotInterne: false,
     recu: true,                    // true = reçu, false = non reçu (ligne ignorée)
+    uniteprixOcr: null,            // unité du prix lu sur le BL ('kg'|'piece'|'colis')
     criteres:     { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 },
     observations: { couleur: '', consistance: '', exsudat: '', odeur: '' },
   };
@@ -3649,6 +3746,18 @@ function creerCarteBatch(ligneCmd) {
   }
   // Le poids étant obligatoire, on retire le marquage d'erreur dès la saisie.
   elPoids.addEventListener('input', () => elPoids.classList.remove('rec-champ-invalide'));
+
+  // Prix d'achat HT (indicatif) : pré-rempli depuis l'OCR, modifiable. Une saisie
+  // manuelle relance la comparaison au catalogue (alerte d'écart).
+  const elPrix = carte.querySelector('.rec-batch-prix');
+  if (elPrix) {
+    elPrix.addEventListener('input', () => {
+      // L'utilisateur saisit un prix à la main → on suppose qu'il est au kg (cas le
+      // plus courant pour la viande) sauf si l'OCR avait détecté une autre unité.
+      if (!etat.uniteprixOcr) etat.uniteprixOcr = 'kg';
+      comparerPrixCarte(etat);
+    });
+  }
 
   // Lot interne
   const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
@@ -3995,6 +4104,23 @@ function _buildPayloadBatch(etat, paire = null) {
     ? paire.poids
     : etat.el.querySelector('.rec-batch-poids').value);
   if (!isNaN(poids)) payload.poids_kg = poids;
+
+  // Prix d'achat HT (indicatif). Le prix unitaire est identique pour tous les lots
+  // d'un même article → on le met sur chaque ligne. Le montant, lui, dépend du poids
+  // du lot : on ne l'envoie que pour une carte mono-lot (paire == null), sinon il
+  // serait faux par lot (le montant définitif vient de la facture de toute façon).
+  const prixU = parseFloat(etat.el.querySelector('.rec-batch-prix')?.value);
+  if (!isNaN(prixU)) {
+    payload.prix_unitaire_ht = prixU;
+    if (!paire) {
+      // Mono-lot : si l'OCR a fourni un montant, on l'utilise tel quel ; sinon, on le
+      // dérive prix×poids UNIQUEMENT si le prix est au kg (sûr). Au colis/pièce, on
+      // laisse le montant vide (calcul non fiable sans le poids du colis).
+      if (etat.uniteprixOcr === 'kg' && !isNaN(poids)) {
+        payload.montant_ht = Math.round(prixU * poids * 100) / 100;
+      }
+    }
+  }
 
   const nbColis = parseInt(etat.el.querySelector('.rec-batch-nb-colis')?.value, 10);
   if (!isNaN(nbColis) && nbColis > 0) payload.nb_colis = nbColis;
@@ -4653,6 +4779,8 @@ async function cloturerFiche() {
 
     allerEtape(5);
     demarrerCompteurConfirmation();
+    // Bandeau « prix changés vs catalogue ? » (non bloquant : bonus post-clôture).
+    afficherBandeauEcartsPrix(receptionId);
 
   } catch (err) {
     elErreur4.textContent = `Erreur : ${err.message}`;
@@ -4663,6 +4791,106 @@ async function cloturerFiche() {
   }
 }
 
+
+// ── Bandeau « mettre à jour le prix catalogue ? » (MAJ semi-auto) ──────────────
+// Après la clôture, on liste les articles dont le prix BL s'écarte du prix de
+// référence catalogue. L'utilisateur décide article par article : rien n'est
+// écrasé sans son clic (décision produit : MAJ semi-auto sur validation).
+async function afficherBandeauEcartsPrix(rid) {
+  const zone = document.getElementById('rec-confirm-prix-ecarts');
+  if (!zone || !rid) return;
+  let data;
+  try {
+    data = await apiFetch(`/api/achats/catalogue/ecarts-prix/${rid}`);
+  } catch (_) { return; }  // silencieux : le bandeau est un bonus
+  const ecarts = (data && data.ecarts) || [];
+  if (!ecarts.length) { zone.hidden = true; return; }
+
+  injecterStylesBandeauPrix();
+  zone.hidden = false;
+  zone.innerHTML = `
+    <div class="rec-prix-maj-titre">💶 Prix d'achat différents du catalogue</div>
+    <div class="rec-prix-maj-sous">Mettre à jour le prix de référence ? (sinon on garde l'ancien)</div>
+    <div class="rec-prix-maj-liste"></div>`;
+  const liste = zone.querySelector('.rec-prix-maj-liste');
+
+  ecarts.forEach(e => {
+    const sens = e.ecart_pct > 0 ? 'hausse' : 'baisse';
+    const signe = e.ecart_pct > 0 ? '+' : '';
+    const ligne = document.createElement('div');
+    ligne.className = 'rec-prix-maj-item';
+    ligne.innerHTML = `
+      <div class="rec-prix-maj-info">
+        <div class="rec-prix-maj-nom">${escHtml(e.designation || 'Article')}</div>
+        <div class="rec-prix-maj-chiffres ${sens}">
+          ${e.prix_kg_reference.toFixed(2)} → <strong>${e.prix_kg_constate.toFixed(2)} €/kg</strong>
+          <span class="rec-prix-maj-pct">(${signe}${e.ecart_pct.toFixed(1)} %)</span>
+        </div>
+      </div>
+      <div class="rec-prix-maj-actions">
+        <button type="button" class="rec-prix-maj-oui">Mettre à jour</button>
+        <button type="button" class="rec-prix-maj-non">Garder</button>
+      </div>`;
+
+    const btnOui = ligne.querySelector('.rec-prix-maj-oui');
+    const btnNon = ligne.querySelector('.rec-prix-maj-non');
+    btnOui.addEventListener('click', async () => {
+      btnOui.disabled = true; btnNon.disabled = true; btnOui.textContent = '⏳';
+      try {
+        await apiFetch(`/api/achats/catalogue/${e.catalogue_fournisseur_id}/appliquer-prix`, {
+          method: 'POST',
+          body: JSON.stringify({ nouveau_prix_ht: e.prix_constate, reception_id: rid }),
+        });
+        ligne.classList.add('rec-prix-maj-done');
+        ligne.querySelector('.rec-prix-maj-actions').innerHTML =
+          '<span class="rec-prix-maj-ok">✓ Catalogue mis à jour</span>';
+      } catch (err) {
+        btnOui.disabled = false; btnNon.disabled = false; btnOui.textContent = 'Mettre à jour';
+        alert(`Erreur mise à jour du prix : ${err.message}`);
+      }
+    });
+    btnNon.addEventListener('click', () => {
+      ligne.querySelector('.rec-prix-maj-actions').innerHTML =
+        '<span class="rec-prix-maj-garde">Prix conservé</span>';
+    });
+
+    liste.appendChild(ligne);
+  });
+}
+
+function injecterStylesBandeauPrix() {
+  if (document.getElementById('rec-prix-maj-styles')) return;
+  const st = document.createElement('style');
+  st.id = 'rec-prix-maj-styles';
+  st.textContent = `
+    .rec-confirm-prix-ecarts {
+      margin: 1rem auto; max-width: 520px; text-align: left;
+      background: #FFF8EC; border: 1px solid #E8C98A; border-radius: 12px; padding: .9rem 1rem;
+    }
+    .rec-prix-maj-titre { font-weight: 700; color: #8a5a12; margin-bottom: .15rem; }
+    .rec-prix-maj-sous  { font-size: .82rem; color: #9a7637; margin-bottom: .7rem; }
+    .rec-prix-maj-item {
+      display: flex; align-items: center; justify-content: space-between; gap: .6rem;
+      padding: .5rem 0; border-top: 1px solid #efe0c2;
+    }
+    .rec-prix-maj-item:first-child { border-top: none; }
+    .rec-prix-maj-nom { font-weight: 600; font-size: .9rem; }
+    .rec-prix-maj-chiffres { font-size: .82rem; color: #555; }
+    .rec-prix-maj-chiffres.hausse strong { color: #c12828; }
+    .rec-prix-maj-chiffres.baisse strong { color: #1f6b32; }
+    .rec-prix-maj-pct { color: #888; }
+    .rec-prix-maj-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+    .rec-prix-maj-oui, .rec-prix-maj-non {
+      border: none; border-radius: 8px; padding: .4rem .7rem; font-size: .8rem; font-weight: 600; cursor: pointer;
+    }
+    .rec-prix-maj-oui { background: #2f7d3a; color: #fff; }
+    .rec-prix-maj-non { background: #eee; color: #555; }
+    .rec-prix-maj-ok    { color: #1f6b32; font-weight: 600; font-size: .82rem; }
+    .rec-prix-maj-garde { color: #888; font-size: .82rem; }
+    .rec-prix-maj-done  { opacity: .75; }
+  `;
+  document.head.appendChild(st);
+}
 
 // ── CONFIRMATION ───────────────────────────────────────────
 function demarrerCompteurConfirmation() {
