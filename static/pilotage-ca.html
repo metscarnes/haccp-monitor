@@ -35,9 +35,18 @@
       padding: .7rem; font-size: var(--text-base); border: 1px solid var(--color-border, #ccc);
       border-radius: var(--radius-sm, 6px); width: 100%;
     }
-    .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-    .montant-input { font-size: 1.6rem !important; font-weight: 700; text-align: right; }
+    .sections { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .section-box { border: 1px solid var(--color-border, #e2e2e2); border-radius: var(--radius-sm, 6px);
+                   padding: var(--space-3); display: grid; gap: var(--space-2); }
+    .section-box.matin { background: #fffaf2; }
+    .section-box.soir  { background: #f5f7ff; }
+    .section-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: 4px; }
+    .section-titre small { font-weight: 400; color: #6b7280; }
+    .montant-input { font-size: 1.35rem !important; font-weight: 700; text-align: right; }
     .panier-hint { font-size: var(--text-sm); color: var(--color-text-muted, #777); min-height: 1.2em; }
+    .total-jour { font-size: var(--text-base); font-weight: 700; text-align: right;
+                  padding-top: var(--space-2); border-top: 1px dashed var(--color-border, #ddd); }
+    .total-jour b { color: var(--color-accent); font-size: 1.2rem; }
     .btn-primary {
       background: var(--color-accent); color: #fff; border: none; padding: .9rem;
       font-size: var(--text-base); font-weight: 700; border-radius: var(--radius-sm, 6px);
@@ -49,8 +58,12 @@
     .feedback.err { color: #b91c1c; }
     .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
     .stat-box { text-align: center; padding: var(--space-3); background: #f3ebdf; border-radius: var(--radius-sm, 6px); }
-    .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--color-accent); }
+    .stat-box .val { font-size: 1.3rem; font-weight: 700; color: var(--color-accent); }
     .stat-box .lbl { font-size: var(--text-sm); color: #6b7280; }
+    .repartition { display: flex; height: 26px; border-radius: var(--radius-sm,6px); overflow: hidden;
+                   margin-top: var(--space-2); font-size: var(--text-sm); font-weight: 700; color: #fff; }
+    .repartition .seg-matin { background: #d97706; display: flex; align-items: center; justify-content: center; }
+    .repartition .seg-soir  { background: #4f46e5; display: flex; align-items: center; justify-content: center; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid var(--color-border, #eee); padding: 8px; text-align: left; font-size: var(--text-sm); }
     th { color: #6b7280; font-weight: 600; }
@@ -79,17 +92,37 @@
           <label for="date-ca">Jour</label>
           <input type="date" id="date-ca">
         </div>
-        <div class="form-2col">
-          <div class="form-row">
-            <label for="montant">CA TTC (€)</label>
-            <input type="number" id="montant" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+
+        <div class="sections">
+          <div class="section-box matin">
+            <div class="section-titre">🌅 Matin <small>9h – 13h</small></div>
+            <div class="form-row">
+              <label for="montant-matin">CA TTC (€)</label>
+              <input type="number" id="montant-matin" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+            </div>
+            <div class="form-row">
+              <label for="tickets-matin">Tickets</label>
+              <input type="number" id="tickets-matin" inputmode="numeric" step="1" min="0" placeholder="—">
+            </div>
+            <div class="panier-hint" id="panier-matin"></div>
           </div>
-          <div class="form-row">
-            <label for="tickets">Nombre de tickets</label>
-            <input type="number" id="tickets" inputmode="numeric" step="1" min="0" placeholder="—">
+
+          <div class="section-box soir">
+            <div class="section-titre">🌇 Après-midi <small>16h – 19h30</small></div>
+            <div class="form-row">
+              <label for="montant-soir">CA TTC (€)</label>
+              <input type="number" id="montant-soir" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+            </div>
+            <div class="form-row">
+              <label for="tickets-soir">Tickets</label>
+              <input type="number" id="tickets-soir" inputmode="numeric" step="1" min="0" placeholder="—">
+            </div>
+            <div class="panier-hint" id="panier-soir"></div>
           </div>
         </div>
-        <div class="panier-hint" id="panier-hint"></div>
+
+        <div class="total-jour" id="total-jour">Total du jour : <b>—</b></div>
+
         <div class="form-row">
           <label for="personnel">Saisi par (optionnel)</label>
           <select id="personnel"><option value="">—</option></select>
@@ -111,6 +144,15 @@
         <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour</div></div>
         <div class="stat-box"><div class="val" id="s-panier">—</div><div class="lbl">Panier moyen</div></div>
       </div>
+      <div class="repartition" id="repartition" style="display:none">
+        <div class="seg-matin" id="seg-matin"></div>
+        <div class="seg-soir" id="seg-soir"></div>
+      </div>
+      <div class="stats-row" style="margin-top:var(--space-3)">
+        <div class="stat-box"><div class="val" id="s-panier-matin">—</div><div class="lbl">Panier moyen matin</div></div>
+        <div class="stat-box"><div class="val" id="s-panier-soir">—</div><div class="lbl">Panier moyen après-midi</div></div>
+        <div class="stat-box"><div class="val" id="s-jours">—</div><div class="lbl">Jours saisis</div></div>
+      </div>
     </section>
 
     <!-- Courbe -->
@@ -124,9 +166,9 @@
       <h2>Historique</h2>
       <table>
         <thead>
-          <tr><th>Date</th><th class="num">CA TTC</th><th class="num">Tickets</th><th class="num">Panier moyen</th><th></th></tr>
+          <tr><th>Date</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Total</th><th class="num">Tickets</th><th></th></tr>
         </thead>
-        <tbody id="histo-body"><tr><td colspan="5">Chargement…</td></tr></tbody>
+        <tbody id="histo-body"><tr><td colspan="6">Chargement…</td></tr></tbody>
       </table>
     </section>
 
@@ -140,26 +182,21 @@
 
     const fmtEur = v => v == null ? '—'
       : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
-    const fmtDateFr = iso => {
-      const [y, m, d] = iso.split('-');
-      return `${d}/${m}/${y}`;
-    };
-    const todayIso = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD local
-    const veilleIso = () => {
-      const d = new Date(); d.setDate(d.getDate() - 1);
-      return d.toLocaleDateString('sv-SE');
-    };
+    const fmtDateFr = iso => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+    const veilleIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('sv-SE'); };
+    const todayIso = () => new Date().toLocaleDateString('sv-SE');
+    const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+    const intOrNull = v => { v = (v ?? '').toString().trim(); return v === '' ? null : parseInt(v, 10); };
 
     let chart = null;
 
-    function majPanierHint() {
-      const m = parseFloat($('montant').value);
-      const t = parseInt($('tickets').value, 10);
-      if (m > 0 && t > 0) {
-        $('panier-hint').textContent = `Panier moyen : ${fmtEur(m / t)}`;
-      } else {
-        $('panier-hint').textContent = '';
-      }
+    function majPaniers() {
+      const mm = num($('montant-matin').value), tm = parseInt($('tickets-matin').value, 10);
+      const ms = num($('montant-soir').value),  ts = parseInt($('tickets-soir').value, 10);
+      $('panier-matin').textContent = (mm > 0 && tm > 0) ? `Panier : ${fmtEur(mm / tm)}` : '';
+      $('panier-soir').textContent  = (ms > 0 && ts > 0) ? `Panier : ${fmtEur(ms / ts)}` : '';
+      const total = mm + ms;
+      $('total-jour').innerHTML = `Total du jour : <b>${total > 0 ? fmtEur(total) : '—'}</b>`;
     }
 
     async function chargerPersonnel() {
@@ -175,44 +212,43 @@
       } catch (e) { console.error(e); }
     }
 
-    // Pré-remplit le formulaire avec le CA déjà saisi pour la date choisie
     async function chargerJour(iso) {
       try {
         const j = await fetch(`${API}/${iso}`).then(r => r.json());
         if (j) {
-          $('montant').value     = j.montant_ttc ?? '';
-          $('tickets').value     = j.nb_tickets ?? '';
-          $('commentaire').value = j.commentaire ?? '';
+          $('montant-matin').value = j.montant_ttc_matin ?? '';
+          $('tickets-matin').value = j.nb_tickets_matin ?? '';
+          $('montant-soir').value  = j.montant_ttc_soir ?? '';
+          $('tickets-soir').value  = j.nb_tickets_soir ?? '';
+          $('commentaire').value   = j.commentaire ?? '';
           if (j.personnel_id) $('personnel').value = j.personnel_id;
           $('form-titre').textContent = `Modifier le CA du ${fmtDateFr(iso)}`;
           $('btn-save').textContent = 'Mettre à jour';
         } else {
-          $('montant').value = '';
-          $('tickets').value = '';
-          $('commentaire').value = '';
+          ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'].forEach(id => $(id).value = '');
           $('form-titre').textContent = `Saisie du CA du ${fmtDateFr(iso)}`;
           $('btn-save').textContent = 'Enregistrer';
         }
-        majPanierHint();
+        majPaniers();
       } catch (e) { console.error(e); }
     }
 
     async function enregistrer() {
       const fb = $('feedback');
-      fb.className = 'feedback';
-      fb.textContent = '';
-      const montant = parseFloat($('montant').value);
-      if (isNaN(montant) || montant < 0) {
+      fb.className = 'feedback'; fb.textContent = '';
+      const mm = num($('montant-matin').value), ms = num($('montant-soir').value);
+      if (mm === 0 && ms === 0) {
         fb.className = 'feedback err';
-        fb.textContent = 'Saisir un montant valide.';
+        fb.textContent = 'Saisir au moins un montant (matin ou après-midi).';
         return;
       }
-      const ticketsRaw = $('tickets').value.trim();
       const persRaw = $('personnel').value;
       const body = {
         date_ca: $('date-ca').value,
-        montant_ttc: montant,
-        nb_tickets: ticketsRaw === '' ? null : parseInt(ticketsRaw, 10),
+        montant_ttc_matin: mm,
+        nb_tickets_matin: intOrNull($('tickets-matin').value),
+        montant_ttc_soir: ms,
+        nb_tickets_soir: intOrNull($('tickets-soir').value),
         commentaire: $('commentaire').value.trim() || null,
         personnel_id: persRaw === '' ? null : parseInt(persRaw, 10),
       };
@@ -243,9 +279,23 @@
       try {
         const s = await fetch(`${API}/stats/resume`).then(r => r.json());
         const mc = s.mois_courant || {};
-        $('s-total').textContent  = fmtEur(mc.total_ttc);
-        $('s-moyen').textContent  = fmtEur(mc.ca_moyen_jour);
-        $('s-panier').textContent = fmtEur(mc.panier_moyen);
+        $('s-total').textContent        = fmtEur(mc.total_ttc);
+        $('s-moyen').textContent        = fmtEur(mc.ca_moyen_jour);
+        $('s-panier').textContent       = fmtEur(mc.panier_moyen);
+        $('s-panier-matin').textContent = fmtEur(mc.panier_moyen_matin);
+        $('s-panier-soir').textContent  = fmtEur(mc.panier_moyen_soir);
+        $('s-jours').textContent        = mc.nb_jours ?? 0;
+
+        const rep = $('repartition');
+        if (mc.part_matin != null && mc.part_soir != null) {
+          rep.style.display = 'flex';
+          $('seg-matin').style.width = mc.part_matin + '%';
+          $('seg-soir').style.width  = mc.part_soir + '%';
+          $('seg-matin').textContent = mc.part_matin >= 10 ? `Matin ${mc.part_matin}%` : '';
+          $('seg-soir').textContent  = mc.part_soir  >= 10 ? `Après-midi ${mc.part_soir}%` : '';
+        } else {
+          rep.style.display = 'none';
+        }
       } catch (e) { console.error(e); }
     }
 
@@ -254,15 +304,16 @@
         const rows = await fetch(`${API}?limit=90`).then(r => r.json());
         const tbody = $('histo-body');
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="5">Aucune saisie pour le moment.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6">Aucune saisie pour le moment.</td></tr>';
         } else {
           const tj = todayIso();
           tbody.innerHTML = rows.map(r => `
             <tr class="${r.date_ca === tj ? 'is-today' : ''}">
               <td>${fmtDateFr(r.date_ca)}</td>
-              <td class="num">${fmtEur(r.montant_ttc)}</td>
+              <td class="num">${fmtEur(r.montant_ttc_matin)}</td>
+              <td class="num">${fmtEur(r.montant_ttc_soir)}</td>
+              <td class="num"><strong>${fmtEur(r.montant_ttc)}</strong></td>
               <td class="num">${r.nb_tickets ?? '—'}</td>
-              <td class="num">${fmtEur(r.panier_moyen)}</td>
               <td><span class="row-edit" data-date="${r.date_ca}">Modifier</span></td>
             </tr>`).join('');
           tbody.querySelectorAll('.row-edit').forEach(el => {
@@ -278,29 +329,36 @@
     }
 
     function majCourbe(rows) {
-      // rows = du plus récent au plus ancien → on inverse pour l'axe temporel
-      const data = [...rows].reverse();
+      const data = [...rows].reverse(); // chrono croissant
       const labels = data.map(r => fmtDateFr(r.date_ca));
-      const valeurs = data.map(r => r.montant_ttc);
       const ctx = $('chart-ca');
       if (chart) chart.destroy();
       chart = new Chart(ctx, {
         type: 'line',
         data: {
           labels,
-          datasets: [{
-            label: 'CA TTC (€)',
-            data: valeurs,
-            borderColor: '#6b2d0f',
-            backgroundColor: 'rgba(107,45,15,.12)',
-            fill: true,
-            tension: .25,
-            pointRadius: 2,
-          }],
+          datasets: [
+            {
+              label: 'Matin', data: data.map(r => r.montant_ttc_matin),
+              borderColor: '#d97706', backgroundColor: 'rgba(217,119,6,.10)',
+              fill: false, tension: .25, pointRadius: 2,
+            },
+            {
+              label: 'Après-midi', data: data.map(r => r.montant_ttc_soir),
+              borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.10)',
+              fill: false, tension: .25, pointRadius: 2,
+            },
+            {
+              label: 'Total', data: data.map(r => r.montant_ttc),
+              borderColor: '#6b2d0f', backgroundColor: 'rgba(107,45,15,.12)',
+              fill: true, tension: .25, pointRadius: 2, borderWidth: 2,
+            },
+          ],
         },
         options: {
           responsive: true,
-          plugins: { legend: { display: false } },
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: true } },
           scales: {
             y: { beginAtZero: true, ticks: { callback: v => v + ' €' } },
             x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
@@ -310,9 +368,9 @@
     }
 
     // Init
-    $('date-ca').value = veilleIso();   // défaut : la veille (saisie du matin)
-    $('montant').addEventListener('input', majPanierHint);
-    $('tickets').addEventListener('input', majPanierHint);
+    $('date-ca').value = veilleIso();
+    ['montant-matin','tickets-matin','montant-soir','tickets-soir'].forEach(id =>
+      $(id).addEventListener('input', majPaniers));
     $('date-ca').addEventListener('change', () => chargerJour($('date-ca').value));
     $('btn-save').addEventListener('click', enregistrer);
 

@@ -255,16 +255,20 @@ class FactureCreate(BaseModel):
 
 
 class CaJournalierUpsert(BaseModel):
-    """Saisie (ou correction) du chiffre d'affaires d'un jour.
+    """Saisie (ou correction) du chiffre d'affaires d'un jour, ventilé en deux
+    sections (matin 9-13h / soir 16-19h30).
 
-    Une seule ligne par date (UPSERT sur date_ca). nb_tickets facultatif →
-    sert au calcul du panier moyen quand il est renseigné.
+    Une seule ligne par date (UPSERT sur date_ca). Le total du jour est la somme
+    des deux sections (calculé côté serveur). Les tickets sont facultatifs et
+    servent au calcul du panier moyen (global et par section).
     """
-    date_ca:      str                      # YYYY-MM-DD
-    montant_ttc:  float
-    nb_tickets:   Optional[int]  = None
-    commentaire:  Optional[str]  = None
-    personnel_id: Optional[int]  = None
+    date_ca:           str                      # YYYY-MM-DD
+    montant_ttc_matin: float = 0.0
+    nb_tickets_matin:  Optional[int] = None
+    montant_ttc_soir:  float = 0.0
+    nb_tickets_soir:   Optional[int] = None
+    commentaire:       Optional[str] = None
+    personnel_id:      Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -4404,15 +4408,19 @@ async def imprimer_facture(facture_id: int):
 # PILOTAGE — Chiffre d'affaires journalier
 # ===========================================================================
 
-def _enrichir_ca(row) -> dict:
-    """Ajoute le panier moyen calculé (None si nb_tickets manquant ou nul)."""
-    d = dict(row)
-    nb = d.get("nb_tickets")
-    ttc = d.get("montant_ttc")
+def _panier(ttc, nb):
+    """Panier moyen = CA / tickets, ou None si tickets manquant/nul."""
     if nb and ttc is not None:
-        d["panier_moyen"] = round(float(ttc) / int(nb), 2)
-    else:
-        d["panier_moyen"] = None
+        return round(float(ttc) / int(nb), 2)
+    return None
+
+
+def _enrichir_ca(row) -> dict:
+    """Ajoute les paniers moyens calculés (global + par section)."""
+    d = dict(row)
+    d["panier_moyen"]       = _panier(d.get("montant_ttc"),       d.get("nb_tickets"))
+    d["panier_moyen_matin"] = _panier(d.get("montant_ttc_matin"), d.get("nb_tickets_matin"))
+    d["panier_moyen_soir"]  = _panier(d.get("montant_ttc_soir"),  d.get("nb_tickets_soir"))
     return d
 
 
@@ -4456,18 +4464,31 @@ async def get_ca_stats():
         async def _agg(depuis: str) -> dict:
             cur = await db.execute(
                 """SELECT
-                       COUNT(*)                      AS nb_jours,
-                       COALESCE(SUM(montant_ttc), 0)  AS total_ttc,
-                       COALESCE(SUM(nb_tickets), 0)   AS total_tickets
+                       COUNT(*)                             AS nb_jours,
+                       COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
+                       COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
+                       COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
+                       COALESCE(SUM(nb_tickets_matin), 0)   AS total_tickets_matin,
+                       COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir,
+                       COALESCE(SUM(nb_tickets_soir), 0)    AS total_tickets_soir
                    FROM ca_journalier
                    WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?""",
                 (depuis, today.isoformat()),
             )
             r = dict(await cur.fetchone())
             nbj = r["nb_jours"] or 0
-            r["ca_moyen_jour"] = round(r["total_ttc"] / nbj, 2) if nbj else None
-            tickets = r["total_tickets"] or 0
-            r["panier_moyen"]  = round(r["total_ttc"] / tickets, 2) if tickets else None
+            r["ca_moyen_jour"]       = round(r["total_ttc"] / nbj, 2) if nbj else None
+            r["panier_moyen"]        = _panier(r["total_ttc"],       r["total_tickets"])
+            r["panier_moyen_matin"]  = _panier(r["total_ttc_matin"], r["total_tickets_matin"])
+            r["panier_moyen_soir"]   = _panier(r["total_ttc_soir"],  r["total_tickets_soir"])
+            # Répartition du CA (part matin / soir), None si total nul
+            tot = r["total_ttc"] or 0
+            if tot > 0:
+                r["part_matin"] = round(100 * r["total_ttc_matin"] / tot, 1)
+                r["part_soir"]  = round(100 * r["total_ttc_soir"]  / tot, 1)
+            else:
+                r["part_matin"] = None
+                r["part_soir"]  = None
             return r
 
         return {
@@ -4490,23 +4511,44 @@ async def get_ca_jour(date_ca: str):
 
 @router.post("/pilotage/ca", status_code=201)
 async def upsert_ca_jour(body: CaJournalierUpsert):
-    """Enregistre ou corrige le CA d'un jour (une seule ligne par date)."""
-    if body.montant_ttc < 0:
-        raise HTTPException(400, "Le montant ne peut pas être négatif")
-    if body.nb_tickets is not None and body.nb_tickets < 0:
-        raise HTTPException(400, "Le nombre de tickets ne peut pas être négatif")
+    """Enregistre ou corrige le CA d'un jour, ventilé matin/soir.
+
+    Le total du jour (montant_ttc / nb_tickets) est la somme des deux sections.
+    """
+    for nom, val in (("matin", body.montant_ttc_matin), ("soir", body.montant_ttc_soir)):
+        if val < 0:
+            raise HTTPException(400, f"Le montant {nom} ne peut pas être négatif")
+    for nom, val in (("matin", body.nb_tickets_matin), ("soir", body.nb_tickets_soir)):
+        if val is not None and val < 0:
+            raise HTTPException(400, f"Le nombre de tickets {nom} ne peut pas être négatif")
+
+    total_ttc = round((body.montant_ttc_matin or 0) + (body.montant_ttc_soir or 0), 2)
+    # Total tickets : None seulement si aucune des deux sections n'a de tickets
+    tm, ts = body.nb_tickets_matin, body.nb_tickets_soir
+    total_tickets = (tm or 0) + (ts or 0) if (tm is not None or ts is not None) else None
+
     async with get_db() as db:
         await db.execute(
             """INSERT INTO ca_journalier
-                   (boutique_id, date_ca, montant_ttc, nb_tickets, commentaire, personnel_id)
-               VALUES (1, ?, ?, ?, ?, ?)
+                   (boutique_id, date_ca, montant_ttc, nb_tickets,
+                    montant_ttc_matin, nb_tickets_matin,
+                    montant_ttc_soir, nb_tickets_soir,
+                    commentaire, personnel_id)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
-                   montant_ttc  = excluded.montant_ttc,
-                   nb_tickets   = excluded.nb_tickets,
-                   commentaire  = excluded.commentaire,
-                   personnel_id = excluded.personnel_id,
-                   updated_at   = CURRENT_TIMESTAMP""",
-            (body.date_ca, body.montant_ttc, body.nb_tickets, body.commentaire, body.personnel_id),
+                   montant_ttc       = excluded.montant_ttc,
+                   nb_tickets        = excluded.nb_tickets,
+                   montant_ttc_matin = excluded.montant_ttc_matin,
+                   nb_tickets_matin  = excluded.nb_tickets_matin,
+                   montant_ttc_soir  = excluded.montant_ttc_soir,
+                   nb_tickets_soir   = excluded.nb_tickets_soir,
+                   commentaire       = excluded.commentaire,
+                   personnel_id      = excluded.personnel_id,
+                   updated_at        = CURRENT_TIMESTAMP""",
+            (body.date_ca, total_ttc, total_tickets,
+             body.montant_ttc_matin, body.nb_tickets_matin,
+             body.montant_ttc_soir, body.nb_tickets_soir,
+             body.commentaire, body.personnel_id),
         )
         await db.commit()
         cur = await db.execute(

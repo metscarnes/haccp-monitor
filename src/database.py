@@ -966,18 +966,25 @@ CREATE INDEX IF NOT EXISTS idx_maturation_etat
     ON maturation_carcasses(etat_controle, date_prochain_controle);
 
 -- ─── PILOTAGE : Chiffre d'affaires journalier ───────────────────────────
--- Une ligne par jour (date_ca UNIQUE par boutique). Saisie du soir / du matin
--- pour la veille. nb_tickets facultatif → panier moyen calculé à la volée.
+-- Une ligne par jour (date_ca UNIQUE par boutique). Le CA est ventilé en deux
+-- sections (boutique ouverte 9-13h et 16-19h30) : matin + soir.
+-- Le total du jour (montant_ttc / nb_tickets) = somme des deux sections,
+-- stocké en dur pour rester rétro-compatible avec les agrégats existants.
+-- Panier moyen calculé à la volée (global et par section).
 CREATE TABLE IF NOT EXISTS ca_journalier (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    boutique_id  INTEGER NOT NULL DEFAULT 1,
-    date_ca      DATE    NOT NULL,
-    montant_ttc  REAL    NOT NULL,
-    nb_tickets   INTEGER,
-    commentaire  TEXT,
-    personnel_id INTEGER,
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id       INTEGER NOT NULL DEFAULT 1,
+    date_ca           DATE    NOT NULL,
+    montant_ttc       REAL    NOT NULL DEFAULT 0,   -- total = matin + soir
+    nb_tickets        INTEGER,                      -- total = matin + soir
+    montant_ttc_matin REAL    DEFAULT 0,
+    nb_tickets_matin  INTEGER,
+    montant_ttc_soir  REAL    DEFAULT 0,
+    nb_tickets_soir   INTEGER,
+    commentaire       TEXT,
+    personnel_id      INTEGER,
+    created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (boutique_id, date_ca),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id)
 );
