@@ -71,6 +71,30 @@ async def taches_resume():
         except Exception as exc:
             logger.warning("hub résumé produits en attente : %s", exc)
 
+        # ── 0bis. Chiffre d'affaires de la veille ───────────────
+        # On rappelle de saisir le CA du jour précédent (saisie le matin
+        # pour la veille). Pas de rappel le lendemain d'un jour de fermeture
+        # impossible à deviner ici → l'utilisateur peut saisir 0 si fermé.
+        try:
+            veille = (today - timedelta(days=1)).isoformat()
+            rows = await db.execute_fetchall(
+                "SELECT 1 FROM ca_journalier "
+                "WHERE boutique_id = ? AND date_ca = ? LIMIT 1",
+                (BOUTIQUE_ID, veille),
+            )
+            if not rows:
+                d_fr = (today - timedelta(days=1)).strftime("%d/%m")
+                aujourd_hui.append({
+                    "code":    "ca_veille",
+                    "libelle": "Chiffre d'affaires",
+                    "url":     "/pilotage-ca.html",
+                    "icone":   "💶",
+                    "etat":    "a_faire",
+                    "detail":  f"Saisir le CA du {d_fr}",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé CA veille : %s", exc)
+
         # ── 1. Nettoyage quotidien ──────────────────────────────
         try:
             rows = await db.execute_fetchall(

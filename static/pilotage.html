@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Pilotage — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <style>
+    .achats-header {
+      background: var(--color-accent);
+      color: #fff;
+      padding: var(--space-3) var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      position: sticky;
+      top: 0;
+      z-index: var(--z-header);
+    }
+    .achats-header-titre {
+      flex: 1;
+      font-size: var(--text-xl);
+      font-weight: 700;
+      text-align: center;
+    }
+    .achats-retour {
+      background: rgba(255,255,255,.15);
+      color: #fff;
+      border: none;
+      padding: .6rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: var(--text-base);
+      text-decoration: none;
+      min-height: var(--btn-min-sm);
+      display: inline-flex;
+      align-items: center;
+    }
+  </style>
+</head>
+<body class="hub-body">
+<script src="/static/js/core/guard.js"></script>
+
+  <header class="achats-header">
+    <a href="/achats.html" class="achats-retour">← Achats</a>
+    <div class="achats-header-titre">📊 PILOTAGE</div>
+    <div style="width:80px"></div>
+  </header>
+
+  <main class="hub-grille" role="main" style="padding: var(--space-4);">
+
+    <!-- Chiffre d'affaires -->
+    <a class="hub-tuile" href="/pilotage-ca.html" aria-label="Suivi du chiffre d'affaires">
+      <div class="hub-tuile-icone" aria-hidden="true">💶</div>
+      <div class="hub-tuile-titre">CHIFFRE D'AFFAIRES</div>
+      <div class="hub-tuile-statut" id="stat-ca">Chargement…</div>
+    </a>
+
+  </main>
+
+  <script>
+    function fmtEur(v) {
+      if (v == null) return '—';
+      return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
+    }
+    async function chargerStats() {
+      try {
+        const stats = await fetch('/api/achats/pilotage/ca/stats/resume').then(r => r.json());
+        const mc = stats.mois_courant || {};
+        const el = document.getElementById('stat-ca');
+        if (el) {
+          el.textContent = (mc.nb_jours > 0)
+            ? `Mois en cours : ${fmtEur(mc.total_ttc)}`
+            : 'Aucune saisie ce mois-ci';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    chargerStats();
+  </script>
+</body>
+</html>

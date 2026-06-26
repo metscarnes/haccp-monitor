@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Chiffre d'affaires — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/layouts.css">
+  <style>
+    .achats-header {
+      background: var(--color-accent);
+      color: #fff;
+      padding: var(--space-3) var(--space-4);
+      display: flex; align-items: center; gap: var(--space-3);
+      position: sticky; top: 0; z-index: var(--z-header);
+    }
+    .achats-header-titre { flex: 1; font-size: var(--text-xl); font-weight: 700; text-align: center; }
+    .achats-retour {
+      background: rgba(255,255,255,.15); color: #fff; border: none;
+      padding: .6rem 1rem; border-radius: var(--radius-sm); font-size: var(--text-base);
+      text-decoration: none; min-height: var(--btn-min-sm); display: inline-flex; align-items: center;
+    }
+    .wrap { max-width: 900px; margin: 0 auto; padding: var(--space-4); display: grid; gap: var(--space-4); }
+    .card { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #e2e2e2);
+            border-radius: var(--radius-md, 10px); padding: var(--space-4); }
+    .card h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
+    .form-grid { display: grid; gap: var(--space-3); }
+    .form-row { display: flex; flex-direction: column; gap: 4px; }
+    .form-row label { font-weight: 600; font-size: var(--text-sm); }
+    .form-row input, .form-row select, .form-row textarea {
+      padding: .7rem; font-size: var(--text-base); border: 1px solid var(--color-border, #ccc);
+      border-radius: var(--radius-sm, 6px); width: 100%;
+    }
+    .form-2col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+    .montant-input { font-size: 1.6rem !important; font-weight: 700; text-align: right; }
+    .panier-hint { font-size: var(--text-sm); color: var(--color-text-muted, #777); min-height: 1.2em; }
+    .btn-primary {
+      background: var(--color-accent); color: #fff; border: none; padding: .9rem;
+      font-size: var(--text-base); font-weight: 700; border-radius: var(--radius-sm, 6px);
+      cursor: pointer; min-height: var(--btn-min, 48px);
+    }
+    .btn-primary:disabled { opacity: .5; cursor: default; }
+    .feedback { font-size: var(--text-sm); min-height: 1.2em; }
+    .feedback.ok { color: #166534; }
+    .feedback.err { color: #b91c1c; }
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+    .stat-box { text-align: center; padding: var(--space-3); background: #f3ebdf; border-radius: var(--radius-sm, 6px); }
+    .stat-box .val { font-size: 1.4rem; font-weight: 700; color: var(--color-accent); }
+    .stat-box .lbl { font-size: var(--text-sm); color: #6b7280; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid var(--color-border, #eee); padding: 8px; text-align: left; font-size: var(--text-sm); }
+    th { color: #6b7280; font-weight: 600; }
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    tr.is-today { background: #fff7ed; }
+    .row-edit { color: var(--color-accent); cursor: pointer; text-decoration: underline; font-size: var(--text-sm); }
+    canvas { max-width: 100%; }
+  </style>
+</head>
+<body>
+<script src="/static/js/core/guard.js"></script>
+
+  <header class="achats-header">
+    <a href="/pilotage.html" class="achats-retour">← Pilotage</a>
+    <div class="achats-header-titre">💶 CHIFFRE D'AFFAIRES</div>
+    <div style="width:80px"></div>
+  </header>
+
+  <main class="wrap" role="main">
+
+    <!-- Saisie -->
+    <section class="card">
+      <h2 id="form-titre">Saisie du chiffre d'affaires</h2>
+      <div class="form-grid">
+        <div class="form-row">
+          <label for="date-ca">Jour</label>
+          <input type="date" id="date-ca">
+        </div>
+        <div class="form-2col">
+          <div class="form-row">
+            <label for="montant">CA TTC (€)</label>
+            <input type="number" id="montant" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+          </div>
+          <div class="form-row">
+            <label for="tickets">Nombre de tickets</label>
+            <input type="number" id="tickets" inputmode="numeric" step="1" min="0" placeholder="—">
+          </div>
+        </div>
+        <div class="panier-hint" id="panier-hint"></div>
+        <div class="form-row">
+          <label for="personnel">Saisi par (optionnel)</label>
+          <select id="personnel"><option value="">—</option></select>
+        </div>
+        <div class="form-row">
+          <label for="commentaire">Commentaire (optionnel)</label>
+          <input type="text" id="commentaire" placeholder="Ex. fermeture exceptionnelle, marché…">
+        </div>
+        <button class="btn-primary" id="btn-save">Enregistrer</button>
+        <div class="feedback" id="feedback"></div>
+      </div>
+    </section>
+
+    <!-- Indicateurs -->
+    <section class="card">
+      <h2>Indicateurs — mois en cours</h2>
+      <div class="stats-row">
+        <div class="stat-box"><div class="val" id="s-total">—</div><div class="lbl">CA cumulé</div></div>
+        <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour</div></div>
+        <div class="stat-box"><div class="val" id="s-panier">—</div><div class="lbl">Panier moyen</div></div>
+      </div>
+    </section>
+
+    <!-- Courbe -->
+    <section class="card">
+      <h2>Évolution (90 derniers jours)</h2>
+      <canvas id="chart-ca" height="220"></canvas>
+    </section>
+
+    <!-- Historique -->
+    <section class="card">
+      <h2>Historique</h2>
+      <table>
+        <thead>
+          <tr><th>Date</th><th class="num">CA TTC</th><th class="num">Tickets</th><th class="num">Panier moyen</th><th></th></tr>
+        </thead>
+        <tbody id="histo-body"><tr><td colspan="5">Chargement…</td></tr></tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>
+  (function () {
+    const API = '/api/achats/pilotage/ca';
+    const $ = id => document.getElementById(id);
+
+    const fmtEur = v => v == null ? '—'
+      : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
+    const fmtDateFr = iso => {
+      const [y, m, d] = iso.split('-');
+      return `${d}/${m}/${y}`;
+    };
+    const todayIso = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD local
+    const veilleIso = () => {
+      const d = new Date(); d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('sv-SE');
+    };
+
+    let chart = null;
+
+    function majPanierHint() {
+      const m = parseFloat($('montant').value);
+      const t = parseInt($('tickets').value, 10);
+      if (m > 0 && t > 0) {
+        $('panier-hint').textContent = `Panier moyen : ${fmtEur(m / t)}`;
+      } else {
+        $('panier-hint').textContent = '';
+      }
+    }
+
+    async function chargerPersonnel() {
+      try {
+        const list = await fetch('/api/admin/personnel').then(r => r.json());
+        const sel = $('personnel');
+        (list || []).forEach(p => {
+          const o = document.createElement('option');
+          o.value = p.id;
+          o.textContent = p.prenom + (p.nom ? ' ' + p.nom : '');
+          sel.appendChild(o);
+        });
+      } catch (e) { console.error(e); }
+    }
+
+    // Pré-remplit le formulaire avec le CA déjà saisi pour la date choisie
+    async function chargerJour(iso) {
+      try {
+        const j = await fetch(`${API}/${iso}`).then(r => r.json());
+        if (j) {
+          $('montant').value     = j.montant_ttc ?? '';
+          $('tickets').value     = j.nb_tickets ?? '';
+          $('commentaire').value = j.commentaire ?? '';
+          if (j.personnel_id) $('personnel').value = j.personnel_id;
+          $('form-titre').textContent = `Modifier le CA du ${fmtDateFr(iso)}`;
+          $('btn-save').textContent = 'Mettre à jour';
+        } else {
+          $('montant').value = '';
+          $('tickets').value = '';
+          $('commentaire').value = '';
+          $('form-titre').textContent = `Saisie du CA du ${fmtDateFr(iso)}`;
+          $('btn-save').textContent = 'Enregistrer';
+        }
+        majPanierHint();
+      } catch (e) { console.error(e); }
+    }
+
+    async function enregistrer() {
+      const fb = $('feedback');
+      fb.className = 'feedback';
+      fb.textContent = '';
+      const montant = parseFloat($('montant').value);
+      if (isNaN(montant) || montant < 0) {
+        fb.className = 'feedback err';
+        fb.textContent = 'Saisir un montant valide.';
+        return;
+      }
+      const ticketsRaw = $('tickets').value.trim();
+      const persRaw = $('personnel').value;
+      const body = {
+        date_ca: $('date-ca').value,
+        montant_ttc: montant,
+        nb_tickets: ticketsRaw === '' ? null : parseInt(ticketsRaw, 10),
+        commentaire: $('commentaire').value.trim() || null,
+        personnel_id: persRaw === '' ? null : parseInt(persRaw, 10),
+      };
+      $('btn-save').disabled = true;
+      try {
+        const r = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || 'Erreur enregistrement');
+        }
+        fb.className = 'feedback ok';
+        fb.textContent = 'Enregistré ✓';
+        await Promise.all([chargerStats(), chargerHistorique()]);
+        await chargerJour($('date-ca').value);
+      } catch (e) {
+        fb.className = 'feedback err';
+        fb.textContent = e.message;
+      } finally {
+        $('btn-save').disabled = false;
+      }
+    }
+
+    async function chargerStats() {
+      try {
+        const s = await fetch(`${API}/stats/resume`).then(r => r.json());
+        const mc = s.mois_courant || {};
+        $('s-total').textContent  = fmtEur(mc.total_ttc);
+        $('s-moyen').textContent  = fmtEur(mc.ca_moyen_jour);
+        $('s-panier').textContent = fmtEur(mc.panier_moyen);
+      } catch (e) { console.error(e); }
+    }
+
+    async function chargerHistorique() {
+      try {
+        const rows = await fetch(`${API}?limit=90`).then(r => r.json());
+        const tbody = $('histo-body');
+        if (!rows.length) {
+          tbody.innerHTML = '<tr><td colspan="5">Aucune saisie pour le moment.</td></tr>';
+        } else {
+          const tj = todayIso();
+          tbody.innerHTML = rows.map(r => `
+            <tr class="${r.date_ca === tj ? 'is-today' : ''}">
+              <td>${fmtDateFr(r.date_ca)}</td>
+              <td class="num">${fmtEur(r.montant_ttc)}</td>
+              <td class="num">${r.nb_tickets ?? '—'}</td>
+              <td class="num">${fmtEur(r.panier_moyen)}</td>
+              <td><span class="row-edit" data-date="${r.date_ca}">Modifier</span></td>
+            </tr>`).join('');
+          tbody.querySelectorAll('.row-edit').forEach(el => {
+            el.addEventListener('click', () => {
+              $('date-ca').value = el.dataset.date;
+              chargerJour(el.dataset.date);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+          });
+        }
+        majCourbe(rows);
+      } catch (e) { console.error(e); }
+    }
+
+    function majCourbe(rows) {
+      // rows = du plus récent au plus ancien → on inverse pour l'axe temporel
+      const data = [...rows].reverse();
+      const labels = data.map(r => fmtDateFr(r.date_ca));
+      const valeurs = data.map(r => r.montant_ttc);
+      const ctx = $('chart-ca');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'CA TTC (€)',
+            data: valeurs,
+            borderColor: '#6b2d0f',
+            backgroundColor: 'rgba(107,45,15,.12)',
+            fill: true,
+            tension: .25,
+            pointRadius: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { callback: v => v + ' €' } },
+            x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
+          },
+        },
+      });
+    }
+
+    // Init
+    $('date-ca').value = veilleIso();   // défaut : la veille (saisie du matin)
+    $('montant').addEventListener('input', majPanierHint);
+    $('tickets').addEventListener('input', majPanierHint);
+    $('date-ca').addEventListener('change', () => chargerJour($('date-ca').value));
+    $('btn-save').addEventListener('click', enregistrer);
+
+    chargerPersonnel();
+    chargerJour($('date-ca').value);
+    chargerStats();
+    chargerHistorique();
+  })();
+  </script>
+</body>
+</html>

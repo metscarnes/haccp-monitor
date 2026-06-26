@@ -964,6 +964,26 @@ CREATE INDEX IF NOT EXISTS idx_maturation_reception_ligne
     ON maturation_carcasses(reception_ligne_id);
 CREATE INDEX IF NOT EXISTS idx_maturation_etat
     ON maturation_carcasses(etat_controle, date_prochain_controle);
+
+-- ─── PILOTAGE : Chiffre d'affaires journalier ───────────────────────────
+-- Une ligne par jour (date_ca UNIQUE par boutique). Saisie du soir / du matin
+-- pour la veille. nb_tickets facultatif → panier moyen calculé à la volée.
+CREATE TABLE IF NOT EXISTS ca_journalier (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    date_ca      DATE    NOT NULL,
+    montant_ttc  REAL    NOT NULL,
+    nb_tickets   INTEGER,
+    commentaire  TEXT,
+    personnel_id INTEGER,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (boutique_id, date_ca),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ca_journalier_date
+    ON ca_journalier(boutique_id, date_ca DESC);
 """
 
 SEED_SQL = """

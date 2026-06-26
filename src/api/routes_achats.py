@@ -40,6 +40,11 @@ POST   /api/achats/panier/generer                        → générer les comma
 GET    /api/achats/panier/references                     → lignes d'achat ⭐ du comparatif
 GET    /api/achats/panier/suggestions                    → suggestions (récurrence + score)
 GET    /api/achats/panier/cadencier                      → cadencier par semaine/mois
+
+GET    /api/achats/pilotage/ca                            → historique CA (filtre période)
+GET    /api/achats/pilotage/ca/{date_ca}                  → CA d'un jour (ou null)
+POST   /api/achats/pilotage/ca                            → enregistrer/corriger le CA d'un jour (upsert)
+GET    /api/achats/pilotage/ca/stats/resume               → totaux & moyennes (mois courant + 30j)
 """
 
 import io
@@ -247,6 +252,19 @@ class FactureCreate(BaseModel):
     personnel_id: Optional[int] = None
     commentaire: Optional[str] = None
     lignes: Optional[List[FactureLigneCreate]] = []
+
+
+class CaJournalierUpsert(BaseModel):
+    """Saisie (ou correction) du chiffre d'affaires d'un jour.
+
+    Une seule ligne par date (UPSERT sur date_ca). nb_tickets facultatif →
+    sert au calcul du panier moyen quand il est renseigné.
+    """
+    date_ca:      str                      # YYYY-MM-DD
+    montant_ttc:  float
+    nb_tickets:   Optional[int]  = None
+    commentaire:  Optional[str]  = None
+    personnel_id: Optional[int]  = None
 
 
 # ---------------------------------------------------------------------------
@@ -4380,3 +4398,119 @@ async def imprimer_facture(facture_id: int):
   </table>
 </body></html>"""
     return HTMLResponse(content=html)
+
+
+# ===========================================================================
+# PILOTAGE — Chiffre d'affaires journalier
+# ===========================================================================
+
+def _enrichir_ca(row) -> dict:
+    """Ajoute le panier moyen calculé (None si nb_tickets manquant ou nul)."""
+    d = dict(row)
+    nb = d.get("nb_tickets")
+    ttc = d.get("montant_ttc")
+    if nb and ttc is not None:
+        d["panier_moyen"] = round(float(ttc) / int(nb), 2)
+    else:
+        d["panier_moyen"] = None
+    return d
+
+
+@router.get("/pilotage/ca")
+async def get_ca_historique(
+    date_debut: Optional[str] = Query(None, description="YYYY-MM-DD (inclus)"),
+    date_fin:   Optional[str] = Query(None, description="YYYY-MM-DD (inclus)"),
+    limit:      int           = Query(90, ge=1, le=1000),
+):
+    """Historique du CA, du plus récent au plus ancien (filtre période optionnel)."""
+    clauses = ["boutique_id = 1"]
+    params: list = []
+    if date_debut:
+        clauses.append("date_ca >= ?")
+        params.append(date_debut)
+    if date_fin:
+        clauses.append("date_ca <= ?")
+        params.append(date_fin)
+    where = " AND ".join(clauses)
+    async with get_db() as db:
+        cur = await db.execute(
+            f"""SELECT c.*, p.prenom AS personnel_prenom
+                FROM ca_journalier c
+                LEFT JOIN personnel p ON p.id = c.personnel_id
+                WHERE {where}
+                ORDER BY c.date_ca DESC
+                LIMIT ?""",
+            (*params, limit),
+        )
+        rows = await cur.fetchall()
+        return [_enrichir_ca(r) for r in rows]
+
+
+@router.get("/pilotage/ca/stats/resume")
+async def get_ca_stats():
+    """Totaux & moyennes : mois en cours et 30 derniers jours glissants."""
+    today = date.today()
+    debut_mois = today.replace(day=1).isoformat()
+    debut_30j  = (today - timedelta(days=29)).isoformat()
+    async with get_db() as db:
+        async def _agg(depuis: str) -> dict:
+            cur = await db.execute(
+                """SELECT
+                       COUNT(*)                      AS nb_jours,
+                       COALESCE(SUM(montant_ttc), 0)  AS total_ttc,
+                       COALESCE(SUM(nb_tickets), 0)   AS total_tickets
+                   FROM ca_journalier
+                   WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?""",
+                (depuis, today.isoformat()),
+            )
+            r = dict(await cur.fetchone())
+            nbj = r["nb_jours"] or 0
+            r["ca_moyen_jour"] = round(r["total_ttc"] / nbj, 2) if nbj else None
+            tickets = r["total_tickets"] or 0
+            r["panier_moyen"]  = round(r["total_ttc"] / tickets, 2) if tickets else None
+            return r
+
+        return {
+            "mois_courant": await _agg(debut_mois),
+            "trente_jours": await _agg(debut_30j),
+        }
+
+
+@router.get("/pilotage/ca/{date_ca}")
+async def get_ca_jour(date_ca: str):
+    """CA d'un jour précis, ou null si non saisi."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT * FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ?",
+            (date_ca,),
+        )
+        row = await cur.fetchone()
+        return _enrichir_ca(row) if row else None
+
+
+@router.post("/pilotage/ca", status_code=201)
+async def upsert_ca_jour(body: CaJournalierUpsert):
+    """Enregistre ou corrige le CA d'un jour (une seule ligne par date)."""
+    if body.montant_ttc < 0:
+        raise HTTPException(400, "Le montant ne peut pas être négatif")
+    if body.nb_tickets is not None and body.nb_tickets < 0:
+        raise HTTPException(400, "Le nombre de tickets ne peut pas être négatif")
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO ca_journalier
+                   (boutique_id, date_ca, montant_ttc, nb_tickets, commentaire, personnel_id)
+               VALUES (1, ?, ?, ?, ?, ?)
+               ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
+                   montant_ttc  = excluded.montant_ttc,
+                   nb_tickets   = excluded.nb_tickets,
+                   commentaire  = excluded.commentaire,
+                   personnel_id = excluded.personnel_id,
+                   updated_at   = CURRENT_TIMESTAMP""",
+            (body.date_ca, body.montant_ttc, body.nb_tickets, body.commentaire, body.personnel_id),
+        )
+        await db.commit()
+        cur = await db.execute(
+            "SELECT * FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ?",
+            (body.date_ca,),
+        )
+        return _enrichir_ca(await cur.fetchone())
