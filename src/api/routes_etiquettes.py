@@ -320,6 +320,26 @@ class PrinterConfigUpdate(BaseModel):
     backend: Optional[str] = None
 
 
+@router.post("/impression/etiquette")
+async def imprimer_etiquette_reseau(body: dict):
+    """
+    Impression générique d'une étiquette de traçabilité sur la Brother réseau.
+
+    Le corps est un dict libre contenant au minimum `template`
+    ("fabrication" | "transforme" | "ouverture" | "simple") + les champs propres
+    au template. Ne crée AUCUN enregistrement (la traçabilité est déjà persistée
+    par les flux métier) : ce endpoint ne fait qu'imprimer.
+    """
+    from src.printing.brother_ql_driver import imprimer_etiquette
+    ok = imprimer_etiquette(body)
+    if not ok:
+        raise HTTPException(
+            status_code=502,
+            detail="Échec de l'impression — vérifiez que l'imprimante est allumée et joignable (⚙️ Imprimante).",
+        )
+    return {"ok": True}
+
+
 @router.get("/impression/config")
 async def get_config_imprimante():
     from src.printing.printer_config import get_printer_config

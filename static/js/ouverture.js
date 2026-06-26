@@ -508,11 +508,38 @@ function remplirGabaritOuverture(data) {
   document.getElementById('pol-meta').textContent   = `Par : ${personnelPrenom || '—'}`;
 }
 
-elBtnImprimer.addEventListener('click', () => {
+elBtnImprimer.addEventListener('click', async () => {
   if (!dernierSauvegardeData) return;
   clearTimeout(timerConfirmation);
-  remplirGabaritOuverture(dernierSauvegardeData);
-  setTimeout(() => window.print(), 100);
+
+  const data = dernierSauvegardeData;
+  let dateStr = '--/--/--', heureStr = '--h--';
+  try {
+    const ts = (data.timestamp || '').replace(' ', 'T');
+    const dt = new Date(ts);
+    dateStr  = `${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getFullYear()).slice(-2)}`;
+    heureStr = `${String(dt.getHours()).padStart(2,'0')}h${String(dt.getMinutes()).padStart(2,'0')}`;
+  } catch { /* valeurs par défaut */ }
+
+  elBtnImprimer.disabled = true;
+  try {
+    await apiFetch('/api/impression/etiquette', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        template:    'ouverture',
+        produit_nom: produitSelectionne.nom || '',
+        dlc:         data.dlc || '',
+        numero_lot:  data.numero_lot || '',
+        action:      `Ouvert le ${dateStr} à ${heureStr}`,
+        operateur:   personnelPrenom || '',
+      }),
+    });
+  } catch (err) {
+    alert(`Erreur impression : ${err.message}`);
+  } finally {
+    elBtnImprimer.disabled = false;
+  }
 });
 
 // ── Boutons post-confirmation ──────────────────────────────

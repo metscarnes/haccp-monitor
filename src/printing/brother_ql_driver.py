@@ -1,305 +1,438 @@
 """
-brother_ql_driver.py — Driver imprimante Brother QL-820NWB (USB → Raspberry Pi)
+brother_ql_driver.py — Driver imprimante Brother QL-820NWB (étiquettes traçabilité)
 
 Pilotage via la bibliothèque `brother_ql` + Pillow.
-Format cible : 60mm × 40mm sur rouleau DK-22246 (62mm continu).
+Rouleau DK-22246 (62mm continu). L'IP de l'imprimante est configurable depuis
+l'UI (cf. printer_config.py) — plus aucune adresse codée en dur ici.
 
-En développement/test (sans imprimante), les fonctions retournent False
-avec un message d'erreur explicite — elles ne font jamais planter l'API.
+IMPORTANT — dimensions : pour le rouleau « 62 » continu, brother_ql exige que
+l'axe correspondant à la largeur physique du rouleau fasse EXACTEMENT 696px à
+300dpi, sinon convert() échoue ("image width X doesn't match printable width 696").
+On reproduit donc le pipeline éprouvé du driver prix : on construit l'étiquette en
+PORTRAIT (largeur 62mm = 696px, hauteur libre le long du rouleau), puis on
+normalise/oriente l'image avant l'envoi.
+
+En développement/test (sans imprimante), les fonctions retournent False/erreur
+explicite — elles ne font jamais planter l'API.
 """
 
 import logging
-import os
-from typing import Optional
+from pathlib import Path
 
-# Compat Pillow ≥ 10 : Image.ANTIALIAS a été supprimé mais brother_ql 0.9.4
-# l'utilise encore en interne dans convert(). On rétablit l'alias vers LANCZOS.
+# Compat Pillow ≥ 10 : Image.ANTIALIAS supprimé mais brother_ql 0.9.4 l'utilise.
 from PIL import Image as _PILImage
 if not hasattr(_PILImage, "ANTIALIAS"):
     _PILImage.ANTIALIAS = _PILImage.LANCZOS
 
 logger = logging.getLogger(__name__)
 
-# Imprimante Brother QL-820NWB (Wi-Fi en boutique, USB possible en dev).
-# brother_ql distingue le MODÈLE (pour BrotherQLRaster), le BACKEND (network/pyusb)
-# et l'IDENTIFIANT de connexion (pour send) :
-#   network → "tcp://192.168.1.56"   |   pyusb → "usb://0x04f9:0x209b"
-# Confondre modèle et identifiant déclenche BrotherQLUnknownModel.
-# Mêmes variables d'env que brother_ql_prix.py → un seul réglage configure tout.
-PRINTER_MODEL = os.getenv("BROTHER_QL_MODEL", "QL-820NWB")
-PRINTER_BACKEND = os.getenv("BROTHER_QL_BACKEND", "network")
-PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "tcp://192.168.1.56")
-
-# Rouleau DK-22246 (62mm continu) — couvre le format 60mm
+# Rouleau DK-22246 (62mm continu).
 LABEL_TYPE = "62"
 
-# Résolution : 300 dpi
-# 60mm × 40mm à 300dpi ≈ 708 × 472 pixels
-LABEL_W_PX = 708
-LABEL_H_PX = 472
+# Largeur imprimable EXACTE du rouleau 62mm à 300dpi (axe = largeur physique).
+# Nos étiquettes sont construites en portrait : largeur image = ROLL_PX.
+ROLL_PX = 696
+
+# Rotation appliquée à l'image AVANT envoi pour orienter le texte sur le rouleau.
+# Par défaut 0 : l'étiquette est déjà construite en portrait (largeur = 696px =
+# 62mm), donc le texte sort à l'endroit, l'étiquette s'allonge le long du rouleau.
+# Si une étiquette test sort « couchée » ou à l'envers, basculer 0 → 90/180/270.
+LABEL_ROTATION_DEG = 0
+
+# Marge latérale par défaut (px).
+MARGE = 22
+
+# Polices DejaVu embarquées dans le projet (€, gras, rendu identique dev/prod).
+FONTS_SYSTEM_DIR = Path(__file__).parent.parent.parent / "static" / "fonts" / "system"
+DEJAVU_REGULAR = FONTS_SYSTEM_DIR / "DejaVuSans.ttf"
+DEJAVU_BOLD    = FONTS_SYSTEM_DIR / "DejaVuSans-Bold.ttf"
 
 
-def generer_image_etiquette(data: dict) -> "Image":
-    """
-    Génère une image PIL (RGB) de l'étiquette à partir des données.
+# ---------------------------------------------------------------------------
+# Polices & mesure
+# ---------------------------------------------------------------------------
 
-    Champs attendus dans data :
-      - produit_nom       str
-      - type_date         str  ("fabrication" | "ouverture" | "decongélation")
-      - date_etiquette    str  (YYYY-MM-DD)
-      - dlc               str  (YYYY-MM-DD)
-      - dlc_affichage     str  optionnel (JJ/MM/AA si déjà formaté)
-      - temperature_conservation  str
-      - operateur         str
-      - numero_lot        str
-      - info_complementaire  str  optionnel
-    """
-    from PIL import Image, ImageDraw, ImageFont
-    from datetime import date
-
-    img = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
-    draw = ImageDraw.Draw(img)
-
-    # Chargement des polices (fallback sur la police PIL par défaut si absentes)
-    try:
-        from PIL import ImageFont
-        font_normal = ImageFont.truetype("DejaVuSans.ttf", 22)
-        font_bold   = ImageFont.truetype("DejaVuSans-Bold.ttf", 26)
-        font_large  = ImageFont.truetype("DejaVuSans-Bold.ttf", 34)
-        font_small  = ImageFont.truetype("DejaVuSans.ttf", 18)
-    except (IOError, OSError):
-        font_normal = ImageFont.load_default()
-        font_bold   = font_normal
-        font_large  = font_normal
-        font_small  = font_normal
-
-    # Marges
-    mx, my = 12, 10
-    lh = 44  # hauteur de ligne
-    y = my
-
-    # Formatage des dates
-    def fmt_date(d_str: str) -> str:
+def _font(taille: int, gras: bool = False):
+    """Charge DejaVu (embarquée en priorité, puis système, puis défaut)."""
+    from PIL import ImageFont
+    embarquee = DEJAVU_BOLD if gras else DEJAVU_REGULAR
+    if embarquee.exists():
         try:
-            return date.fromisoformat(d_str).strftime("%d/%m/%y")
+            return ImageFont.truetype(str(embarquee), taille)
         except Exception:
-            return d_str or ""
+            pass
+    suffixe = "-Bold" if gras else ""
+    for chemin in (
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans{suffixe}.ttf",
+        f"DejaVuSans{suffixe}.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if gras else "C:/Windows/Fonts/arial.ttf",
+    ):
+        try:
+            return ImageFont.truetype(chemin, taille)
+        except Exception:
+            pass
+    logger.warning("Police TTF introuvable — rendu par défaut (taille fixe).")
+    return ImageFont.load_default()
 
-    date_affiche = fmt_date(data.get("date_etiquette", ""))
-    dlc_affiche  = data.get("dlc_affichage") or fmt_date(data.get("dlc", ""))
-    type_date    = data.get("type_date", "")
 
-    # --- Ligne 1 : Date + case type ---
-    draw.text((mx, y), f"Date : {date_affiche}", font=font_normal, fill="black")
-    # Cases à cocher simulées
-    types = [("fabrication", "Fabrication"), ("ouverture", "Ouverture"), ("decongélation", "Décongélation")]
-    x_check = 340
-    for code, label in types:
-        coche = "[x]" if type_date == code else "[ ]"
-        draw.text((x_check, y), f"{coche} {label}", font=font_small, fill="black")
-        y += 20
-        x_check = 340
-    y = my + lh
+def _text_w(draw, texte, font):
+    bbox = draw.textbbox((0, 0), texte, font=font)
+    return bbox[2] - bbox[0]
 
-    # Séparateur
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-    y += 6
 
-    # --- Ligne 2 : Produit ---
-    draw.text((mx, y), "PRODUIT :", font=font_bold, fill="black")
-    draw.text((mx + 130, y), data.get("produit_nom", ""), font=font_large, fill="black")
-    y += lh + 4
+def _line_h(font):
+    a, d = font.getmetrics()
+    return a + d
 
-    # Séparateur
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-    y += 6
 
-    # --- Ligne 3 : Opérateur ---
-    draw.text((mx, y), f"Opérateur : {data.get('operateur', '')}", font=font_normal, fill="black")
-    y += lh
+def _wrap(draw, texte, font, max_w):
+    """Découpe un texte en lignes tenant dans max_w (coupe les mots si besoin)."""
+    mots = str(texte).split()
+    if not mots:
+        return [""]
+    lignes, courante = [], ""
+    for mot in mots:
+        essai = (courante + " " + mot).strip()
+        if _text_w(draw, essai, font) <= max_w or not courante:
+            # Mot seul trop large : on le coupe caractère par caractère.
+            if _text_w(draw, essai, font) > max_w and not courante:
+                buf = ""
+                for ch in mot:
+                    if _text_w(draw, buf + ch, font) <= max_w or not buf:
+                        buf += ch
+                    else:
+                        lignes.append(buf)
+                        buf = ch
+                courante = buf
+            else:
+                courante = essai
+        else:
+            lignes.append(courante)
+            courante = mot
+    if courante:
+        lignes.append(courante)
+    return lignes
 
-    # Séparateur
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-    y += 6
 
-    # --- Ligne 4 : N° LOT ---
-    draw.text((mx, y), f"N° LOT : {data.get('numero_lot', '')}", font=font_normal, fill="black")
-    y += lh
+# ---------------------------------------------------------------------------
+# Moteur de mise en page vertical — empile des « éléments » dans une image
+# de largeur ROLL_PX, hauteur calculée dynamiquement.
+#
+# Chaque élément est un dict :
+#   {"type": "text",   "texte": str, "size": int, "gras": bool,
+#                       "align": "left|center|right", "wrap": bool}
+#   {"type": "two_col","gauche": str, "droite": str, "size": int, "gras": bool}
+#   {"type": "line"}                       — séparateur horizontal plein
+#   {"type": "dash"}                       — séparateur tireté
+#   {"type": "box_text","texte": str, "size": int, "gras": bool,
+#                       "label": str|None} — encadré centré (DLC, tag…)
+#   {"type": "space",  "px": int}
+# ---------------------------------------------------------------------------
 
-    # Séparateur
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-    y += 6
+def _rendre_pile(elements: list) -> "Image":
+    from PIL import Image, ImageDraw
 
-    # --- Ligne 5 : DLC + T°C ---
-    draw.text((mx, y), f"D.L.C : {dlc_affiche}", font=font_bold, fill="black")
-    temp = data.get("temperature_conservation", "")
-    if temp:
-        draw.text((mx + 320, y), f"T°C : {temp}", font=font_normal, fill="black")
-    y += lh
+    W = ROLL_PX
+    zone_w = W - 2 * MARGE
+    tmp = ImageDraw.Draw(Image.new("RGB", (W, 10)))
 
-    # --- Ligne 6 : Info complémentaire (optionnel) ---
-    info = data.get("info_complementaire", "")
-    if info:
-        draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-        y += 4
-        draw.text((mx, y), f"Info : {info}", font=font_small, fill="black")
+    GAP = 10  # espace vertical par défaut entre éléments
+
+    # ── Passe 1 : préparer chaque élément (lignes wrappées) + mesurer la hauteur
+    prepares = []
+    total_h = MARGE
+    for el in elements:
+        t = el.get("type", "text")
+
+        if t == "space":
+            prepares.append(("space", el.get("px", GAP)))
+            total_h += el.get("px", GAP)
+            continue
+
+        if t == "line":
+            prepares.append(("line", None))
+            total_h += 1 + GAP
+            continue
+
+        if t == "dash":
+            prepares.append(("dash", None))
+            total_h += 2 + GAP
+            continue
+
+        if t == "box_text":
+            font = _font(el["size"], el.get("gras", True))
+            label_font = _font(max(14, el["size"] // 3), False) if el.get("label") else None
+            lab_h = _line_h(label_font) if label_font else 0
+            val_h = _line_h(font)
+            pad = 10
+            h = pad + lab_h + val_h + pad
+            prepares.append(("box_text", {
+                "texte": el["texte"], "font": font,
+                "label": el.get("label"), "label_font": label_font,
+                "lab_h": lab_h, "val_h": val_h, "pad": pad,
+            }))
+            total_h += h + GAP
+            continue
+
+        if t == "two_col":
+            font = _font(el["size"], el.get("gras", False))
+            h = _line_h(font)
+            prepares.append(("two_col", {
+                "gauche": el.get("gauche", ""), "droite": el.get("droite", ""),
+                "font": font, "h": h,
+            }))
+            total_h += h + GAP
+            continue
+
+        # text (défaut)
+        font = _font(el["size"], el.get("gras", False))
+        texte = str(el.get("texte", ""))
+        if el.get("upper"):
+            texte = texte.upper()
+        lignes = _wrap(tmp, texte, font, zone_w) if el.get("wrap", True) else [texte]
+        lh = _line_h(font)
+        h = lh * len(lignes)
+        prepares.append(("text", {
+            "lignes": lignes, "font": font, "lh": lh,
+            "align": el.get("align", "left"),
+        }))
+        total_h += h + GAP
+
+    total_h += MARGE - GAP  # le dernier élément n'a pas de gap après lui
+    total_h = max(total_h, 80)
+
+    # ── Passe 2 : dessin
+    img = Image.new("RGB", (W, total_h), "white")
+    draw = ImageDraw.Draw(img)
+    y = MARGE
+
+    def _x(texte, font, align):
+        if align == "center":
+            return (W - _text_w(draw, texte, font)) // 2
+        if align == "right":
+            return W - MARGE - _text_w(draw, texte, font)
+        return MARGE
+
+    for kind, data in prepares:
+        if kind == "space":
+            y += data
+            continue
+        if kind == "line":
+            draw.line([(MARGE, y), (W - MARGE, y)], fill="black", width=2)
+            y += 1 + GAP
+            continue
+        if kind == "dash":
+            x = MARGE
+            while x < W - MARGE:
+                draw.line([(x, y), (min(x + 10, W - MARGE), y)], fill="black", width=2)
+                x += 18
+            y += 2 + GAP
+            continue
+        if kind == "box_text":
+            pad = data["pad"]
+            box_h = pad + data["lab_h"] + data["val_h"] + pad
+            draw.rectangle([(MARGE, y), (W - MARGE, y + box_h)], outline="black", width=3)
+            yy = y + pad
+            if data["label_font"]:
+                lab = data["label"]
+                draw.text((_x(lab, data["label_font"], "center"), yy), lab,
+                          font=data["label_font"], fill="black")
+                yy += data["lab_h"]
+            val = data["texte"]
+            draw.text((_x(val, data["font"], "center"), yy), val, font=data["font"], fill="black")
+            y += box_h + GAP
+            continue
+        if kind == "two_col":
+            font = data["font"]
+            draw.text((MARGE, y), data["gauche"], font=font, fill="black")
+            dr = data["droite"]
+            draw.text((W - MARGE - _text_w(draw, dr, font), y), dr, font=font, fill="black")
+            y += data["h"] + GAP
+            continue
+        # text
+        font = data["font"]
+        for ligne in data["lignes"]:
+            draw.text((_x(ligne, font, data["align"]), y), ligne, font=font, fill="black")
+            y += data["lh"]
+        y += GAP
 
     return img
+
+
+# ---------------------------------------------------------------------------
+# Helpers de formatage
+# ---------------------------------------------------------------------------
+
+def _fmt_date(d_str: str) -> str:
+    from datetime import date
+    try:
+        return date.fromisoformat(str(d_str)[:10]).strftime("%d/%m/%y")
+    except Exception:
+        return d_str or ""
+
+
+# ---------------------------------------------------------------------------
+# Templates d'étiquettes (chacun renvoie une image PIL portrait, largeur ROLL_PX)
+# ---------------------------------------------------------------------------
+
+def generer_image_etiquette(data: dict) -> "Image":
+    """Étiquette standard de traçabilité (fabrication / ouverture / décongélation)."""
+    els = []
+    date_aff = data.get("dlc_affichage_date") or _fmt_date(data.get("date_etiquette", ""))
+    type_date = (data.get("type_date") or "").capitalize()
+    els.append({"type": "two_col", "gauche": f"Date : {date_aff}",
+                "droite": type_date, "size": 24})
+    els.append({"type": "line"})
+    els.append({"type": "text", "texte": data.get("produit_nom", ""),
+                "size": 42, "gras": True, "align": "center", "upper": True})
+    els.append({"type": "line"})
+    els.append({"type": "text", "texte": f"Opérateur : {data.get('operateur', '')}", "size": 24})
+    els.append({"type": "two_col",
+                "gauche": f"N° Lot : {data.get('numero_lot', '')}",
+                "droite": "", "size": 26, "gras": True})
+    dlc_aff = data.get("dlc_affichage") or _fmt_date(data.get("dlc", ""))
+    els.append({"type": "box_text", "texte": dlc_aff, "label": "D.L.C", "size": 48})
+    temp = data.get("temperature_conservation")
+    if temp:
+        els.append({"type": "text", "texte": f"T°C : {temp}", "size": 24, "align": "center"})
+    info = data.get("info_complementaire")
+    if info:
+        els.append({"type": "line"})
+        els.append({"type": "text", "texte": f"Info : {info}", "size": 20})
+    return _rendre_pile(els)
 
 
 def generer_image_etiquette_transforme(data: dict) -> "Image":
-    """
-    Génère une image PIL (RGB) pour un produit transformé (cuisson / refroidissement
-    / fabrication). Format compact :
-
-      [TAG]
-      Produit
-      DLC : jj/mm/aa     Lot : C-42
-      <Action> le jj/mm à HHhMM
-      Par : Prénom
-
-    Champs attendus dans data :
-      - tag                 str  ("CUIT" | "REFROIDI" | "MAISON")
-      - produit_nom         str
-      - dlc                 str  (YYYY-MM-DD)
-      - numero_lot          str
-      - action_verbe        str  ("Cuit" | "Refroidi" | "Fabriqué")
-      - date_action         str  (YYYY-MM-DD)
-      - heure_action        str  ("HH:MM")
-      - operateur           str
-    """
-    from PIL import Image, ImageDraw, ImageFont
-    from datetime import date
-
-    img = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
-    draw = ImageDraw.Draw(img)
-
-    try:
-        font_tag      = ImageFont.truetype("DejaVuSans-Bold.ttf", 44)
-        font_produit  = ImageFont.truetype("DejaVuSans-Bold.ttf", 38)
-        font_dlc      = ImageFont.truetype("DejaVuSans-Bold.ttf", 32)
-        font_normal   = ImageFont.truetype("DejaVuSans.ttf", 24)
-    except (IOError, OSError):
-        font_tag = font_produit = font_dlc = font_normal = ImageFont.load_default()
-
-    def fmt_date(d_str: str) -> str:
-        try:
-            return date.fromisoformat(d_str).strftime("%d/%m/%y")
-        except Exception:
-            return d_str or ""
-
-    def fmt_heure(h_str: str) -> str:
-        if not h_str:
-            return ""
-        return h_str.replace(":", "h")
-
-    mx, my = 14, 12
-    y = my
-
-    # Tag encadré
+    """Produit transformé (cuisson / refroidissement) — tag, qté, T°, action."""
     tag = (data.get("tag") or "").upper()
-    draw.rectangle([(mx, y), (mx + 230, y + 50)], outline="black", width=3)
-    draw.text((mx + 10, y + 2), f"[{tag}]", font=font_tag, fill="black")
-    y += 60
+    els = [{"type": "box_text", "texte": f"[{tag}]", "size": 40}]
+    els.append({"type": "text", "texte": data.get("produit_nom", ""),
+                "size": 38, "gras": True, "align": "center"})
 
-    # Nom du produit
-    draw.text((mx, y), str(data.get("produit_nom", "")), font=font_produit, fill="black")
-    y += 50
+    qte = data.get("quantite")
+    unite = data.get("unite") or "kg"
+    if qte not in (None, ""):
+        els.append({"type": "text", "texte": f"Quantité : {qte} {unite}", "size": 24, "align": "center"})
 
-    # DLC + Lot
-    dlc_str = fmt_date(data.get("dlc", ""))
-    lot_str = data.get("numero_lot", "") or "—"
-    draw.text((mx, y), f"DLC : {dlc_str}", font=font_dlc, fill="black")
-    draw.text((mx + 360, y), f"Lot : {lot_str}", font=font_dlc, fill="black")
-    y += 50
+    els.append({"type": "box_text", "texte": _fmt_date(data.get("dlc", "")), "label": "DLC", "size": 44})
+    els.append({"type": "text", "texte": f"Lot : {data.get('numero_lot', '') or '—'}",
+                "size": 28, "gras": True, "align": "center"})
 
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=1)
-    y += 10
+    temp = data.get("temperature")
+    if temp not in (None, ""):
+        try:
+            temp = f"{float(temp):.1f} °C"
+        except (TypeError, ValueError):
+            temp = f"{temp} °C"
+        label = data.get("temp_label") or "T°"
+        els.append({"type": "text", "texte": f"{label} : {temp}", "size": 24, "align": "center"})
 
-    # Ligne action
-    verbe   = data.get("action_verbe", "Préparé")
-    date_a  = fmt_date(data.get("date_action", ""))
-    heure_a = fmt_heure(data.get("heure_action", ""))
-    ligne_action = f"{verbe} le {date_a}"
-    if heure_a:
-        ligne_action += f" à {heure_a}"
-    draw.text((mx, y), ligne_action, font=font_normal, fill="black")
-    y += 36
+    els.append({"type": "line"})
+    verbe = data.get("action_verbe", "Préparé")
+    date_a = _fmt_date(data.get("date_action", ""))
+    heure_a = (data.get("heure_action") or "").replace(":", "h")
+    ligne = f"{verbe} le {date_a}" + (f" à {heure_a}" if heure_a else "")
+    els.append({"type": "text", "texte": ligne, "size": 24, "align": "center"})
+    if data.get("operateur"):
+        els.append({"type": "text", "texte": f"Par : {data['operateur']}", "size": 24, "align": "center"})
+    return _rendre_pile(els)
 
-    # Opérateur
-    op = data.get("operateur", "")
-    if op:
-        draw.text((mx, y), f"Par : {op}", font=font_normal, fill="black")
 
-    return img
+def generer_image_etiquette_ouverture(data: dict) -> "Image":
+    """Étiquette d'ouverture de produit (DLC secondaire après ouverture)."""
+    els = [{"type": "box_text", "texte": "[OUVERT]", "size": 38}]
+    els.append({"type": "text", "texte": data.get("produit_nom", ""),
+                "size": 40, "gras": True, "align": "center", "upper": True})
+    els.append({"type": "box_text", "texte": _fmt_date(data.get("dlc", "")), "label": "DLC", "size": 44})
+    els.append({"type": "text", "texte": f"Lot : {data.get('numero_lot', '') or '—'}",
+                "size": 28, "gras": True, "align": "center"})
+    action = data.get("action") or "Ouvert"
+    els.append({"type": "line"})
+    els.append({"type": "text", "texte": action, "size": 24, "align": "center"})
+    if data.get("operateur"):
+        els.append({"type": "text", "texte": f"Par : {data['operateur']}", "size": 24, "align": "center"})
+    return _rendre_pile(els)
 
 
 def generer_image_etiquette_simple(data: dict) -> "Image":
     """
-    Étiquette minimaliste pour réimpression depuis le calendrier DLC :
-
-      PRODUIT
-      <Nom du produit>             (gros)
-      ─────────────────────────────
-      N° LOT : ...     DLC : jj/mm/aa
-
-    Champs attendus dans data :
-      - produit_nom   str
-      - numero_lot    str
-      - dlc           str  (YYYY-MM-DD)
+    Étiquette minimale (réimpression DLC / inventaire) :
+    tag optionnel, PRODUIT, lot + DLC, ligne d'origine optionnelle.
     """
-    from PIL import Image, ImageDraw, ImageFont
-    from datetime import date
+    els = []
+    tag = data.get("tag")
+    if tag:
+        els.append({"type": "box_text", "texte": f"[{str(tag).upper()}]", "size": 34})
+    els.append({"type": "text", "texte": "PRODUIT", "size": 22})
+    els.append({"type": "text", "texte": data.get("produit_nom", "") or "",
+                "size": 50, "gras": True, "align": "left"})
+    els.append({"type": "line"})
+    els.append({"type": "two_col",
+                "gauche": f"N° Lot : {data.get('numero_lot', '') or '—'}",
+                "droite": f"DLC : {_fmt_date(data.get('dlc', ''))}",
+                "size": 28, "gras": True})
+    origine = data.get("ligne_origine")
+    if origine:
+        els.append({"type": "text", "texte": origine, "size": 20})
+    return _rendre_pile(els)
 
-    img = Image.new("RGB", (LABEL_W_PX, LABEL_H_PX), color="white")
-    draw = ImageDraw.Draw(img)
 
-    try:
-        font_label   = ImageFont.truetype("DejaVuSans.ttf", 24)
-        font_produit = ImageFont.truetype("DejaVuSans-Bold.ttf", 56)
-        font_value   = ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
-    except (IOError, OSError):
-        font_label = font_produit = font_value = ImageFont.load_default()
+def generer_image_etiquette_fabrication(data: dict) -> "Image":
+    """
+    Étiquette de fabrication riche : nom, poids, DLC encadrée, lot, liste
+    complète des ingrédients (qté/nom/lot/DLC), pied de page.
 
-    def fmt_date(d_str: str) -> str:
-        try:
-            return date.fromisoformat(d_str).strftime("%d/%m/%y")
-        except Exception:
-            return d_str or ""
+    Champs attendus :
+      produit_nom, poids (str affiché), dlc (YYYY-MM-DD ou affichage),
+      numero_lot, meta (str pied de page),
+      ingredients : liste de str déjà formatées (ex. "1.2kg Bœuf (L:42 | DLC:01/02/25)")
+    """
+    els = []
+    els.append({"type": "text", "texte": data.get("produit_nom", ""),
+                "size": 44, "gras": True, "align": "center", "upper": True})
+    poids = data.get("poids")
+    if poids:
+        els.append({"type": "text", "texte": poids, "size": 24, "align": "center"})
+    els.append({"type": "line"})
 
-    mx, my = 18, 18
-    y = my
+    dlc_aff = data.get("dlc_affichage") or _fmt_date(data.get("dlc", ""))
+    els.append({"type": "box_text", "texte": dlc_aff, "label": "DLC", "size": 50})
 
-    draw.text((mx, y), "PRODUIT", font=font_label, fill="black")
-    y += 32
-    draw.text((mx, y), str(data.get("produit_nom", "") or ""), font=font_produit, fill="black")
-    y += 80
+    els.append({"type": "box_text", "texte": f"Lot : {data.get('numero_lot', '') or '—'}", "size": 26})
 
-    draw.line([(mx, y), (LABEL_W_PX - mx, y)], fill="black", width=2)
-    y += 18
+    ingredients = data.get("ingredients") or []
+    if ingredients:
+        els.append({"type": "text", "texte": "Ingrédients & Lots :", "size": 20, "gras": True})
+        for ing in ingredients:
+            els.append({"type": "text", "texte": f"• {ing}", "size": 19, "align": "left"})
 
-    lot = data.get("numero_lot", "") or "—"
-    dlc = fmt_date(data.get("dlc", ""))
-    draw.text((mx, y), "N° LOT", font=font_label, fill="black")
-    draw.text((mx + 360, y), "DLC", font=font_label, fill="black")
-    y += 32
-    draw.text((mx, y), str(lot), font=font_value, fill="black")
-    draw.text((mx + 360, y), dlc, font=font_value, fill="black")
+    meta = data.get("meta")
+    if meta:
+        els.append({"type": "line"})
+        els.append({"type": "text", "texte": meta, "size": 18, "align": "center"})
+    return _rendre_pile(els)
 
-    return img
+
+# ---------------------------------------------------------------------------
+# Impression — pipeline calqué sur le driver prix (éprouvé en production)
+# ---------------------------------------------------------------------------
+
+_TEMPLATES = {
+    "transforme":  generer_image_etiquette_transforme,
+    "simple":      generer_image_etiquette_simple,
+    "ouverture":   generer_image_etiquette_ouverture,
+    "fabrication": generer_image_etiquette_fabrication,
+}
 
 
 def imprimer_etiquette(data: dict) -> bool:
     """
-    Génère et envoie l'étiquette à l'imprimante Brother QL via USB.
+    Génère et envoie une étiquette de traçabilité à l'imprimante Brother QL
+    (réseau ou USB selon printer_config). Retourne True si succès, False sinon.
+    Ne propage jamais d'exception.
 
-    Retourne True si succès, False si erreur.
-    Ne propage jamais d'exception — l'API reste disponible même sans imprimante.
-
-    Si data["template"] == "transforme", utilise le rendu compact pour produit
-    transformé (cuisson / refroidissement / fabrication).
-    Si data["template"] == "simple", utilise le rendu minimal (nom / lot / DLC)
-    pour réimpression depuis le calendrier DLC.
+    data["template"] sélectionne le rendu :
+      "fabrication" | "transforme" | "ouverture" | "simple" | (défaut: standard)
     """
     try:
         from brother_ql.conversion import convert
@@ -310,17 +443,26 @@ def imprimer_etiquette(data: dict) -> bool:
         return False
 
     try:
+        from PIL import Image
         from src.printing.printer_config import get_printer_config
+
+        generateur = _TEMPLATES.get(data.get("template"), generer_image_etiquette)
+        image = generateur(data)
+
+        # Normalisation 62mm : on porte l'axe « largeur du rouleau » à 696px.
+        # L'étiquette est construite en portrait (largeur = ROLL_PX) ; on la
+        # tourne pour présenter une image dont la hauteur vaut 696px, comme le
+        # fait le driver prix (rotate="auto" attend cette géométrie).
+        if image.width != ROLL_PX:
+            ratio = ROLL_PX / image.width
+            image = image.resize((ROLL_PX, max(1, round(image.height * ratio))), Image.LANCZOS)
+        if LABEL_ROTATION_DEG:
+            image = image.rotate(-LABEL_ROTATION_DEG, expand=True)
+
+        # Seuillage binaire (noir pur / blanc pur) pour un rendu thermique net.
+        image = image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
+
         cfg = get_printer_config()
-
-        template = data.get("template")
-        if template == "transforme":
-            image = generer_image_etiquette_transforme(data)
-        elif template == "simple":
-            image = generer_image_etiquette_simple(data)
-        else:
-            image = generer_image_etiquette(data)
-
         qlr = BrotherQLRaster(cfg["model"])
         instructions = convert(
             qlr=qlr,
@@ -341,20 +483,22 @@ def imprimer_etiquette(data: dict) -> bool:
             backend_identifier=cfg["backend"],
             blocking=True,
         )
-        logger.info("Étiquette imprimée : %s — lot %s", data.get("produit_nom"), data.get("numero_lot"))
+        logger.info("Étiquette imprimée (%s) : %s — lot %s",
+                    data.get("template") or "standard",
+                    data.get("produit_nom"), data.get("numero_lot"))
         return True
 
     except Exception as e:
-        logger.error("Erreur impression : %s", e)
+        logger.error("Erreur impression : %s", e, exc_info=True)
         return False
 
 
 def verifier_imprimante() -> dict:
     """
-    Vérifie que l'imprimante est accessible, selon le backend configuré.
+    Vérifie que l'imprimante est accessible selon le backend configuré.
     - network : test d'ouverture TCP sur le port d'impression (9100).
     - pyusb   : détection du périphérique Brother (vendor 0x04f9) sur le bus USB.
-    Retourne un dict {"disponible": bool, "message": str}.
+    Retourne {"disponible": bool, "message": str}.
     """
     from src.printing.printer_config import get_printer_config
     cfg = get_printer_config()
@@ -372,7 +516,6 @@ def verifier_imprimante() -> dict:
 
     try:
         import usb.core
-        # Vendor ID Brother = 0x04f9
         devices = list(usb.core.find(find_all=True, idVendor=0x04f9))
         if devices:
             return {"disponible": True, "message": f"{len(devices)} imprimante(s) Brother détectée(s)"}

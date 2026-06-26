@@ -661,34 +661,29 @@ function fermerEditModal() {
 }
 
 // ── Impression étiquette simple (nom / lot / DLC [+ fab]) ───
-// Remplit le gabarit caché #print-label-inv puis lance window.print().
-// Même pattern que cuisson / refroidissement / DLC.
-function imprimerEtiquetteInv(it) {
+// Impression réseau directe sur la Brother QL (via /api/impression/etiquette).
+async function imprimerEtiquetteInv(it) {
   if (!it) return;
-
-  $('pinv-nom').textContent = it.produit_nom || '—';
-  $('pinv-lot').textContent = `N° Lot : ${it.numero_lot || '—'}`;
-  $('pinv-dlc').textContent = `DLC : ${formatDateLabelInv(it.dlc)}`;
-
-  const elTag = $('pinv-tag');
-  const tag = tagFromSourceTypeInv(it.source_type);
-  if (tag) {
-    elTag.textContent = `[${tag}]`;
-    elTag.hidden = false;
-  } else {
-    elTag.hidden = true;
+  try {
+    const res = await fetch('/api/impression/etiquette', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        template:      'simple',
+        produit_nom:   it.produit_nom || '',
+        numero_lot:    it.numero_lot || '',
+        dlc:           it.dlc || '',
+        tag:           tagFromSourceTypeInv(it.source_type) || null,
+        ligne_origine: construireLigneOrigineInv(it) || null,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+  } catch (e) {
+    alert(`Erreur impression : ${e.message}`);
   }
-
-  const elFab = $('pinv-fab');
-  const ligneOrigine = construireLigneOrigineInv(it);
-  if (ligneOrigine) {
-    elFab.textContent = ligneOrigine;
-    elFab.hidden = false;
-  } else {
-    elFab.hidden = true;
-  }
-
-  setTimeout(() => window.print(), 100);
 }
 
 function tagFromSourceTypeInv(srcType) {

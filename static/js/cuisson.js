@@ -616,9 +616,12 @@ elChoixEtiquette.addEventListener('click', async () => {
         personnel_id: Number(operateur.id),
       }),
     });
-    remplirGabaritEtiquette(res);
+    await apiFetch('/api/impression/etiquette', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ template: 'transforme', ...res }),
+    });
     afficherToast(`✓ Étiquette envoyée à l'imprimante (Lot ${res.numero_lot})`, true);
-    setTimeout(() => window.print(), 100);
   } catch (err) {
     afficherToast(`Erreur impression : ${err.message}`, false);
   } finally {
