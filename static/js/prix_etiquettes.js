@@ -734,6 +734,7 @@ elBtnImprimerNav.addEventListener('click', () => {
        onload="window.focus(); window.print();">
 </body></html>`);
   win.document.close();
+  win.addEventListener('afterprint', () => win.close());
   afficherStatut('Aperçu ouvert — choisissez l\'imprimante dans la fenêtre.', 'ok');
 });
 
@@ -1092,6 +1093,7 @@ $('masse-btn-navigateur').addEventListener('click', async () => {
 ${pages.join('\n')}
 </body></html>`);
   win.document.close();
+  win.addEventListener('afterprint', () => win.close());
   masseStatut(`Aperçu de ${pages.length} étiquette(s) ouvert.`, 'ok');
 });
 

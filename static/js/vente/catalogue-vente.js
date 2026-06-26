@@ -694,6 +694,7 @@ async function _etiqImprimerRapide() {
   <img src="${data.image}" alt="Étiquette" onload="window.focus(); window.print();">
 </body></html>`);
     win.document.close();
+    win.addEventListener('afterprint', () => win.close());
   } catch (e) {
     errEl.textContent = 'Erreur : ' + e.message;
     errEl.hidden = false;
