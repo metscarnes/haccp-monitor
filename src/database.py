@@ -981,6 +981,7 @@ CREATE TABLE IF NOT EXISTS ca_journalier (
     nb_tickets_matin  INTEGER,
     montant_ttc_soir  REAL    DEFAULT 0,
     nb_tickets_soir   INTEGER,
+    meteo             TEXT,   -- 'soleil' | 'pluie' | NULL (non renseigné)
     commentaire       TEXT,
     personnel_id      INTEGER,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,

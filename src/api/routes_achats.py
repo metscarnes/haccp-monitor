@@ -269,6 +269,7 @@ class CaJournalierUpsert(BaseModel):
     nb_tickets_matin:  Optional[int] = None
     montant_ttc_soir:  float = 0.0
     nb_tickets_soir:   Optional[int] = None
+    meteo:             Optional[str] = None   # 'soleil' | 'pluie' | None
     commentaire:       Optional[str] = None
     personnel_id:      Optional[int] = None
 
