@@ -287,6 +287,11 @@ def formater_prix(valeur) -> str:
         return ""
 
 
+def _capitaliser(texte: str) -> str:
+    """Première lettre en majuscule, reste inchangé ('andouille' → 'Andouille')."""
+    return texte[:1].upper() + texte[1:] if texte else texte
+
+
 def appliquer_variables(config: dict, produit: dict) -> dict:
     """
     Retourne une COPIE de la config d'un modèle où les variables des textes de
@@ -294,11 +299,16 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
 
     Variables reconnues (insensibles aux valeurs manquantes → chaîne vide) :
       {nom} {prix} {prix_kg} {famille} {sous_famille}
+    Variantes de casse pour le nom (unifie l'affichage sans toucher au catalogue) :
+      {Nom} = Première lettre majuscule    {NOM} = TOUT EN MAJUSCULES
     Un modèle sans variable est renvoyé tel quel (texte littéral conservé).
     """
     prix = formater_prix(produit.get("prix_vente_ttc"))
+    nom = str(produit.get("nom") or produit.get("designation") or "")
     remplacements = {
-        "{nom}":          str(produit.get("nom") or produit.get("designation") or ""),
+        "{nom}":          nom,
+        "{Nom}":          _capitaliser(nom),
+        "{NOM}":          nom.upper(),
         "{prix}":         prix,
         "{prix_kg}":      (prix + " / kg") if prix else "",
         "{famille}":      str(produit.get("famille") or ""),

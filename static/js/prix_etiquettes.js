@@ -862,7 +862,7 @@ const elMasseAvert    = $('masse-avert');
 const elMasseAvertTxt = $('masse-avert-txt');
 const elMasseConvertir = $('masse-convertir');
 
-const RE_VARIABLE = /\{(nom|prix|prix_kg|famille|sous_famille)\}/;
+const RE_VARIABLE = /\{(nom|Nom|NOM|prix|prix_kg|famille|sous_famille)\}/;
 
 // Un modèle "à variables" contient au moins une {variable} dans ses lignes.
 function modeleAVariables(config) {
@@ -899,10 +899,12 @@ function masseConvertirModele() {
     if (!prixFait && estPrix(l.texte)) { l.texte = '{prix}'; prixFait = true; }
   }
   // Nom : première ligne non encore convertie qui a du texte (hors "le kg" courts).
+  // {Nom} = première lettre en majuscule → unifie la casse des désignations
+  // catalogue (souvent en vrac) sans modifier le catalogue.
   for (const l of lignes) {
     if (!nomFait && l.texte !== '{prix}' && (l.texte || '').trim().length > 3
         && !/^le\s+kg$/i.test((l.texte || '').trim())) {
-      l.texte = '{nom}'; nomFait = true;
+      l.texte = '{Nom}'; nomFait = true;
     }
   }
 
