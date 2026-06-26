@@ -215,6 +215,7 @@ function afficherTable(liste) {
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
+        <button class="ach-btn ach-btn--small" onclick="ouvrirEtiquettePrix(${JSON.stringify({id: p.id, nom: p.nom, prix_vente_ttc: p.prix_vente_ttc, unite_vente: p.unite_vente, famille: p.famille, sous_famille: p.sous_famille})})" title="Imprimer étiquette prix">🏷️</button>
         ${p.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${p.id}, false)" title="Désactiver">✕</button>`
           : `<button class="ach-btn ach-btn--small ach-btn--ok" onclick="toggleActif(${p.id}, true)" title="Réactiver">↺</button>`
@@ -586,3 +587,121 @@ function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Impression rapide étiquette prix ─────────────────────────
+
+let _etiqProduitCourant = null;
+
+async function ouvrirEtiquettePrix(produit) {
+  _etiqProduitCourant = produit;
+  document.getElementById('etiq-produit-nom').textContent = produit.nom || '';
+  document.getElementById('etiq-erreur').hidden = true;
+
+  const sel = document.getElementById('etiq-modele-select');
+  sel.innerHTML = '<option value="">Chargement…</option>';
+  sel._modeles = [];
+  try {
+    const token = localStorage.getItem('admin_token');
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
+    const res = await fetch('/api/prix-etiquettes/modeles', { cache: 'no-store', headers });
+    const data = await res.json();
+    const modeles = data.modeles ?? [];
+    if (!modeles.length) {
+      sel.innerHTML = '<option value="">Aucun modèle sauvegardé</option>';
+    } else {
+      sel.innerHTML = modeles.map(m => `<option value="${m.id}">${escHtml(m.nom)}</option>`).join('');
+      sel._modeles = modeles;
+    }
+  } catch (e) {
+    sel.innerHTML = '<option value="">Erreur chargement</option>';
+  }
+
+  document.getElementById('modal-etiquette-prix').hidden = false;
+}
+
+function _etiqSubstituer(texte, produit) {
+  const nom = produit.nom || '';
+  const prixVal = parseFloat(produit.prix_vente_ttc);
+  const prix = isNaN(prixVal) ? '' : prixVal.toFixed(2).replace('.', ',') + ' €';
+  const unite = String(produit.unite_vente || 'kg').toLowerCase() === 'piece' ? 'pièce' : 'kg';
+  const articleUnite = unite === 'pièce' ? 'la pièce' : 'le kg';
+  const prixUnite = prix ? (prix + ' / ' + unite) : '';
+  const nom1 = nom ? (nom.toLowerCase()[0].toUpperCase() + nom.toLowerCase().slice(1)) : '';
+  return texte
+    .replace(/\{nom\}/g, nom)
+    .replace(/\{Nom\}/g, nom1)
+    .replace(/\{NOM\}/g, nom.toUpperCase())
+    .replace(/\{prix\}/g, prix)
+    .replace(/\{prix_kg\}/g, prixUnite)
+    .replace(/\{prix_unite\}/g, prixUnite)
+    .replace(/\{unite\}/g, unite)
+    .replace(/\{article_unite\}/g, articleUnite)
+    .replace(/\{famille\}/g, produit.famille || '')
+    .replace(/\{sous_famille\}/g, produit.sous_famille || '');
+}
+
+async function _etiqImprimerRapide() {
+  const errEl = document.getElementById('etiq-erreur');
+  errEl.hidden = true;
+
+  const sel = document.getElementById('etiq-modele-select');
+  const modeles = sel._modeles || [];
+  const modele = modeles.find(m => String(m.id) === sel.value);
+  if (!modele) { errEl.textContent = 'Choisissez un modèle.'; errEl.hidden = false; return; }
+
+  const produit = _etiqProduitCourant;
+  const btnImp = document.getElementById('etiq-imprimer');
+  btnImp.disabled = true;
+  btnImp.textContent = 'Génération…';
+
+  try {
+    const config = JSON.parse(JSON.stringify(modele.config));
+    config.lignes = (config.lignes || []).map(l => ({
+      ...l,
+      texte: _etiqSubstituer(l.texte || '', produit),
+    }));
+
+    const token = localStorage.getItem('admin_token');
+    const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) };
+    const res = await fetch('/api/prix-etiquettes/preview', {
+      method: 'POST', headers, cache: 'no-store',
+      body: JSON.stringify(config),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const lCm = config.largeur_cm || 10;
+    const hCm = Math.min(config.hauteur_cm || 6, 6.2);
+
+    document.getElementById('modal-etiquette-prix').hidden = true;
+
+    const win = window.open('', '_blank');
+    if (!win) { errEl.textContent = 'Pop-up bloquée — autorisez les pop-ups.'; errEl.hidden = false; return; }
+    win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Étiquette prix</title>
+<style>
+  @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  img { display: block; width: ${lCm}cm; height: ${hCm}cm; }
+</style></head>
+<body>
+  <img src="${data.image}" alt="Étiquette" onload="window.focus(); window.print();">
+</body></html>`);
+    win.document.close();
+  } catch (e) {
+    errEl.textContent = 'Erreur : ' + e.message;
+    errEl.hidden = false;
+  } finally {
+    btnImp.disabled = false;
+    btnImp.textContent = '🖨️ Imprimer';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('etiq-fermer').addEventListener('click', () => {
+    document.getElementById('modal-etiquette-prix').hidden = true;
+  });
+  document.getElementById('etiq-annuler').addEventListener('click', () => {
+    document.getElementById('modal-etiquette-prix').hidden = true;
+  });
+  document.getElementById('etiq-imprimer').addEventListener('click', _etiqImprimerRapide);
+});
