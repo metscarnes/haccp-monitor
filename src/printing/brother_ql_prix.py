@@ -382,6 +382,11 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
             new_w = max(1, round(image.width * ratio))
             image = image.resize((new_w, LABEL_62_PRINTABLE_W), Image.LANCZOS)
 
+        # Seuillage binaire : convertit chaque pixel en noir pur ou blanc pur
+        # avant d'envoyer à brother_ql. Évite le gris dû à l'anticrénelage du
+        # texte, indépendamment du paramètre demi-ton du driver.
+        image = image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
+
         qlr = BrotherQLRaster(PRINTER_MODEL)
         instructions = convert(
             qlr=qlr,
