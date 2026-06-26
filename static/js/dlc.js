@@ -837,28 +837,32 @@ async function supprimerProduitDlc(cible) {
 }
 
 // ── Impression étiquette simple (nom / lot / DLC) ───────
-// Impression réseau directe sur la Brother QL (via /api/impression/etiquette).
-async function imprimerEtiquetteDlc(cible) {
-  try {
-    const res = await fetch('/api/impression/etiquette', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        template:      'simple',
-        produit_nom:   cible.produit_nom || '',
-        numero_lot:    cible.numero_lot || '',
-        dlc:           cible.dlc || '',
-        tag:           tagFromSourceType(cible.source_type) || null,
-        ligne_origine: construireLigneOrigine(cible) || null,
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `HTTP ${res.status}`);
-    }
-  } catch (e) {
-    alert(`Erreur impression : ${e.message}`);
+// Remplit le gabarit caché #print-label-dlc puis lance window.print().
+// Même pattern que cuisson / refroidissement (impression côté navigateur).
+function imprimerEtiquetteDlc(cible) {
+  $('pdlc-nom').textContent = cible.produit_nom || '—';
+  $('pdlc-lot').textContent = `N° Lot : ${cible.numero_lot || '—'}`;
+  $('pdlc-dlc').textContent = `DLC : ${formatDateLabel(cible.dlc)}`;
+
+  const elTag = $('pdlc-tag');
+  const tag = tagFromSourceType(cible.source_type);
+  if (tag) {
+    elTag.textContent = `[${tag}]`;
+    elTag.hidden = false;
+  } else {
+    elTag.hidden = true;
   }
+
+  const elFab = $('pdlc-fab');
+  const ligneOrigine = construireLigneOrigine(cible);
+  if (ligneOrigine) {
+    elFab.textContent = ligneOrigine;
+    elFab.hidden = false;
+  } else {
+    elFab.hidden = true;
+  }
+
+  setTimeout(() => window.print(), 100);
 }
 
 function tagFromSourceType(srcType) {

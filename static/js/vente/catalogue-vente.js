@@ -670,16 +670,31 @@ async function _etiqImprimerRapide() {
 
     const token = localStorage.getItem('admin_token');
     const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) };
-    // Impression réseau directe sur la Brother QL (même chemin que la page Étiquettes Prix).
-    const res = await fetch('/api/prix-etiquettes/imprimer', {
+    const res = await fetch('/api/prix-etiquettes/preview', {
       method: 'POST', headers, cache: 'no-store',
       body: JSON.stringify(config),
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || ('HTTP ' + res.status));
-    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const lCm = config.largeur_cm || 10;
+    const hCm = Math.min(config.hauteur_cm || 6, 6.2);
+
     document.getElementById('modal-etiquette-prix').hidden = true;
+
+    const win = window.open('', '_blank');
+    if (!win) { errEl.textContent = 'Pop-up bloquée — autorisez les pop-ups.'; errEl.hidden = false; return; }
+    win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Étiquette prix</title>
+<style>
+  @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  img { display: block; width: ${lCm}cm; height: ${hCm}cm; }
+</style></head>
+<body>
+  <img src="${data.image}" alt="Étiquette" onload="window.focus(); window.print();">
+</body></html>`);
+    win.document.close();
+    win.addEventListener('afterprint', () => win.close());
   } catch (e) {
     errEl.textContent = 'Erreur : ' + e.message;
     errEl.hidden = false;

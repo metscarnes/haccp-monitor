@@ -1199,26 +1199,41 @@ function fabExtraireBase(instructions) {
   return { base, unite: m[2] || 'kg' };
 }
 
-async function fabReimprimer(fab) {
+function fabReimprimer(fab) {
   const dlcFormatee = fab.dlc_finale
     ? fab.dlc_finale.split('-').reverse().join('/')
     : '--/--/----';
 
-  // Poids réellement fabriqué (stocké en BDD)
-  let poids = '';
+  document.getElementById('print-nom').textContent = fab.recette_nom || '—';
+
+  // Afficher le poids réellement fabriqué (stocké en BDD)
+  const elPoids = document.getElementById('print-poids');
   if (fab.poids_fabrique != null && fab.poids_fabrique > 0) {
     const { unite } = fabExtraireBase(fab.recette_instructions);
-    poids = `${fab.poids_fabrique} ${unite} fabriqués`;
+    elPoids.textContent = `${fab.poids_fabrique} ${unite} fabriqués`;
+    elPoids.hidden = false;
   } else if (fab.info_complementaire) {
-    poids = fab.info_complementaire;
+    elPoids.textContent = fab.info_complementaire;
+    elPoids.hidden = false;
+  } else {
+    elPoids.textContent = '';
+    elPoids.hidden = true;
   }
+
+  document.getElementById('print-dlc').textContent = dlcFormatee;
+  document.getElementById('print-lot').textContent = `Lot : ${fab.lot_interne || '—'}`;
+  document.getElementById('print-meta').textContent =
+    `Fabriqué le ${formatDateFR(fab.date)} par ${fab.personnel_prenom || '—'}`;
 
   // Calcul du multiplicateur pour remettre à l'échelle les quantités d'ingrédients
   const { base: baseKg } = fabExtraireBase(fab.recette_instructions);
-  const poidsKg = fab.poids_fabrique ?? 0;
-  const multiplicateur = (baseKg && baseKg > 0 && poidsKg > 0) ? (poidsKg / baseKg) : 1;
+  const poids = fab.poids_fabrique ?? 0;
+  const multiplicateur = (baseKg && baseKg > 0 && poids > 0) ? (poids / baseKg) : 1;
 
-  const ingredients = (fab.ingredients || []).map(ing => {
+  const ul = document.getElementById('print-ingredients');
+  ul.innerHTML = '';
+  (fab.ingredients || []).forEach(ing => {
+    const li     = document.createElement('li');
     const nom    = ing.produit_nom || '?';
     const lot    = ing.numero_lot || 'N/A';
     const dlcIng = ing.dlc
@@ -1231,26 +1246,11 @@ async function fabReimprimer(fab) {
         : ing.quantite_base;
       qteTexte = `${qteScalee}${ing.unite || ''} `;
     }
-    return `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng})`;
+    li.textContent = `${qteTexte}${nom} (L:${lot} | DLC:${dlcIng})`;
+    ul.appendChild(li);
   });
 
-  try {
-    await apiFetch('/api/impression/etiquette', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        template:      'fabrication',
-        produit_nom:   fab.recette_nom || '—',
-        poids,
-        dlc_affichage: dlcFormatee,
-        numero_lot:    fab.lot_interne || '',
-        meta:          `Fabriqué le ${formatDateFR(fab.date)} par ${fab.personnel_prenom || '—'}`,
-        ingredients,
-      }),
-    });
-  } catch (err) {
-    alert(`Erreur impression : ${err.message}`);
-  }
+  setTimeout(() => window.print(), 100);
 }
 
 // ── Boutons fabrications ─────────────────────────────────────

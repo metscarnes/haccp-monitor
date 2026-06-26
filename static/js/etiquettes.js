@@ -1046,13 +1046,27 @@ elBtnGenerer.addEventListener('click', async () => {
     elSucces.hidden = false;
     demarrerCompteurSucces();
 
-    // ── Impression réseau (Brother QL via API) ───────────────
+    // ── Remplissage du gabarit d'impression ──────────────────
     const dlcFormatee = state.dlcFinale
       ? state.dlcFinale.split('-').reverse().join('/')
       : '--/--/----';
     const operateurNom = elOperateur.options[elOperateur.selectedIndex]?.text ?? '';
 
-    const ingredients = (state.fifoLots ?? []).map(lot => {
+    document.getElementById('print-nom').textContent = state.recetteNom ?? '';
+    document.getElementById('print-poids').textContent = state.productionCiblee > 0
+      ? `${state.productionCiblee} ${state.rendementUnite} fabriqués`
+      : '— fabriqués';
+    document.getElementById('print-dlc').textContent = dlcFormatee;
+    document.getElementById('print-lot').textContent = result.lot_interne
+      ? `Lot : ${result.lot_interne}`
+      : 'Lot : —';
+    document.getElementById('print-meta').textContent =
+      `Fabriqué le ${new Date().toLocaleDateString('fr-FR')} par ${operateurNom}`;
+
+    const ulIngredients = document.getElementById('print-ingredients');
+    ulIngredients.innerHTML = '';
+    (state.fifoLots ?? []).forEach(lot => {
+      const li = document.createElement('li');
       const nom    = lot.produit_nom ?? lot.ingredient_nom ?? '?';
       const numLot = lot.lot_fifo?.numero_lot ?? 'N/A';
 
@@ -1073,30 +1087,12 @@ elBtnGenerer.addEventListener('click', async () => {
 
       const origStr = (typeof origineCode === 'function' && lot.lot_fifo?.origine)
         ? ` | Orig:${origineCode(lot.lot_fifo.origine)}` : '';
-      return `${qteTexte}${nom} (L:${numLot} | DLC:${dlcIng}${origStr})`;
+      li.textContent = `${qteTexte}${nom} (L:${numLot} | DLC:${dlcIng}${origStr})`;
+      ulIngredients.appendChild(li);
     });
 
-    try {
-      await apiFetch('/api/impression/etiquette', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          template:    'fabrication',
-          produit_nom: state.recetteNom ?? '',
-          poids:       state.productionCiblee > 0
-            ? `${state.productionCiblee} ${state.rendementUnite} fabriqués` : '',
-          dlc_affichage: dlcFormatee,
-          numero_lot:  result.lot_interne || '',
-          meta:        `Fabriqué le ${new Date().toLocaleDateString('fr-FR')} par ${operateurNom}`,
-          ingredients,
-        }),
-      });
-    } catch (errImp) {
-      // L'enregistrement est déjà sauvegardé : on signale l'échec d'impression
-      // sans bloquer le succès de la fabrication (réimpression possible plus tard).
-      elErreur.textContent = `Fabrication enregistrée, mais impression échouée : ${errImp.message}`;
-      elErreur.hidden = false;
-    }
+    // ── Déclenchement impression (léger délai pour rendu DOM) ─
+    setTimeout(() => window.print(), 100);
   } catch (err) {
     elErreur.textContent = `Erreur : ${err.message}`;
     elErreur.hidden = false;
