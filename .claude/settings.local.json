@@ -164,7 +164,8 @@
       "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; & $git status --short; \"----- LOG -----\"; & $git log --oneline -6)",
       "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"=== origin/master vs local ===\"; & $git rev-parse --short HEAD; & $git rev-parse --short origin/master 2>$null; \"=== commits depuis e8d7cee \\(avec fichiers\\) ===\"; & $git log --stat --oneline e8d7cee..HEAD)",
       "PowerShell(python _tmp_dump.py)",
-      "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"############ routes_etiquettes.py ############\"; & $git show a142747 -- src/api/routes_etiquettes.py; \"############ brother_ql_prix.py ############\"; & $git show a142747 -- src/printing/brother_ql_prix.py)"
+      "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"############ routes_etiquettes.py ############\"; & $git show a142747 -- src/api/routes_etiquettes.py; \"############ brother_ql_prix.py ############\"; & $git show a142747 -- src/printing/brother_ql_prix.py)",
+      "PowerShell(python scripts\\\\fix_fk_reception_lignes_old.py)"
     ]
   }
 }

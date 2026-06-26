@@ -2155,6 +2155,57 @@ PRAGMA foreign_keys=ON;
         except Exception as e:
             logger.warning("Migration v3.0 etalonnages : %s", e)
 
+        # ------------------------------------------------------------------
+        # Auto-réparation : clés étrangères « fantômes » vers des tables
+        # « *_old » disparues.
+        #
+        # Cause : d'anciennes migrations recréaient une table via
+        #   ALTER TABLE x RENAME TO x_old ; CREATE TABLE x ... ; DROP TABLE x_old
+        # Avec PRAGMA legacy_alter_table = OFF (défaut SQLite ≥ 3.25), le RENAME
+        # réécrit AUTOMATIQUEMENT les FK des tables dépendantes pour pointer vers
+        # « x_old ». Une fois « x_old » supprimée, ces FK pendouillent.
+        # Symptôme : « no such table: main.reception_lignes_old » au moindre
+        # INSERT dans fabrication_lots / cuissons / … dès que foreign_keys=ON.
+        #
+        # Idempotent : ne corrige QUE les références à des tables _old absentes.
+        try:
+            import re
+            cur_tbl = await db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            existing = {r[0] for r in await cur_tbl.fetchall()}
+            cur_sql = await db.execute(
+                "SELECT name, sql FROM sqlite_master WHERE type='table' AND sql LIKE '%\\_old%' ESCAPE '\\'"
+            )
+            to_fix = []
+            for name, sql in await cur_sql.fetchall():
+                if not sql:
+                    continue
+                dangling = {
+                    ref for ref in re.findall(r'REFERENCES\s+"?([A-Za-z0-9_]+_old)"?', sql)
+                    if ref not in existing
+                }
+                if dangling:
+                    to_fix.append((name, sql, dangling))
+            if to_fix:
+                await db.execute("PRAGMA foreign_keys = OFF")
+                await db.execute("PRAGMA writable_schema = ON")
+                for name, sql, dangling in to_fix:
+                    new_sql = sql
+                    for ref in dangling:
+                        new_sql = new_sql.replace(ref, ref[:-4])  # retire le suffixe « _old »
+                    await db.execute(
+                        "UPDATE sqlite_master SET sql = ? WHERE type='table' AND name = ?",
+                        (new_sql, name),
+                    )
+                    logger.warning(
+                        "Auto-réparation : FK fantôme corrigée dans « %s » (%s)",
+                        name, ", ".join(sorted(dangling)),
+                    )
+                await db.execute("PRAGMA writable_schema = OFF")
+                await db.commit()
+                await db.execute("PRAGMA foreign_keys = ON")
+        except Exception as e:
+            logger.warning("Auto-réparation FK _old : %s", e)
+
         await db.commit()
     logger.info("Base de données initialisée : %s", DB_PATH)
 
