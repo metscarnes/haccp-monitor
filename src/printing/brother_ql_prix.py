@@ -288,8 +288,17 @@ def formater_prix(valeur) -> str:
 
 
 def _capitaliser(texte: str) -> str:
-    """Première lettre en majuscule, reste inchangé ('andouille' → 'Andouille')."""
-    return texte[:1].upper() + texte[1:] if texte else texte
+    """
+    Normalise la casse : tout en minuscules puis 1re lettre en majuscule.
+    Unifie des désignations catalogue incohérentes, qu'elles soient saisies
+    TOUT EN MAJUSCULES ou en casse normale.
+      'ARAIGNÉE A LA PROVENÇAL' → 'Araignée a la provençal'
+      'cordon bleu'            → 'Cordon bleu'
+    """
+    if not texte:
+        return texte
+    bas = texte.lower()
+    return bas[:1].upper() + bas[1:]
 
 
 def appliquer_variables(config: dict, produit: dict) -> dict:
