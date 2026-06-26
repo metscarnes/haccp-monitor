@@ -19,11 +19,34 @@ function escHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Jeton valide uniquement s'il n'est pas expiré (durée de session = 8 h côté
+// serveur). Évite d'envoyer un jeton périmé qui provoquerait un 401.
+function getAdminToken() {
+  const exp = Number(localStorage.getItem('admin_token_expires') || 0);
+  if (exp && Date.now() > exp) return null;
+  return localStorage.getItem('admin_token');
+}
+
+// Session expirée/invalide → on nettoie et on renvoie vers la connexion en
+// mémorisant la page pour y revenir après reconnexion (même logique que guard.js).
+function redirigerVersConnexion() {
+  try { sessionStorage.setItem('auth_redirect', window.location.pathname); } catch (e) { /* noop */ }
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_token_expires');
+  window.location.replace('/login.html');
+}
+
 async function apiFetch(url, options = {}) {
-  const token = localStorage.getItem('admin_token');
+  const token = getAdminToken();
+  if (!token) { redirigerVersConnexion(); throw new Error('Session expirée'); }
   const headers = { ...(options.headers || {}) };
-  if (token) headers['Authorization'] = 'Bearer ' + token;
+  headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(url, { cache: 'no-store', ...options, headers });
+  if (res.status === 401) {
+    // Jeton refusé par le serveur (expiré entre-temps) → reconnexion.
+    redirigerVersConnexion();
+    throw new Error('Session expirée');
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`HTTP ${res.status} — ${txt || url}`);
