@@ -45,6 +45,8 @@ GET    /api/achats/pilotage/ca                            → historique CA (fil
 GET    /api/achats/pilotage/ca/{date_ca}                  → CA d'un jour (ou null)
 POST   /api/achats/pilotage/ca                            → enregistrer/corriger le CA d'un jour (upsert)
 GET    /api/achats/pilotage/ca/stats/resume               → totaux & moyennes (mois courant + 30j)
+GET    /api/achats/pilotage/ca/stats/comparatif            → période vs période décalée (j/s/m/a × n)
+GET    /api/achats/pilotage/ca/stats/comparer-dates        → comparaison de deux jours précis
 """
 
 import io
@@ -4424,6 +4426,52 @@ def _enrichir_ca(row) -> dict:
     return d
 
 
+async def _agg_periode(db, debut: str, fin: str) -> dict:
+    """Agrège le CA d'une période [debut, fin] (dates ISO incluses).
+
+    Renvoie totaux, moyennes, paniers (global/matin/soir) et répartition %.
+    """
+    cur = await db.execute(
+        """SELECT
+               COUNT(*)                             AS nb_jours,
+               COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
+               COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
+               COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
+               COALESCE(SUM(nb_tickets_matin), 0)   AS total_tickets_matin,
+               COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir,
+               COALESCE(SUM(nb_tickets_soir), 0)    AS total_tickets_soir
+           FROM ca_journalier
+           WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?""",
+        (debut, fin),
+    )
+    r = dict(await cur.fetchone())
+    nbj = r["nb_jours"] or 0
+    r["date_debut"]          = debut
+    r["date_fin"]            = fin
+    r["ca_moyen_jour"]       = round(r["total_ttc"] / nbj, 2) if nbj else None
+    r["panier_moyen"]        = _panier(r["total_ttc"],       r["total_tickets"])
+    r["panier_moyen_matin"]  = _panier(r["total_ttc_matin"], r["total_tickets_matin"])
+    r["panier_moyen_soir"]   = _panier(r["total_ttc_soir"],  r["total_tickets_soir"])
+    tot = r["total_ttc"] or 0
+    if tot > 0:
+        r["part_matin"] = round(100 * r["total_ttc_matin"] / tot, 1)
+        r["part_soir"]  = round(100 * r["total_ttc_soir"]  / tot, 1)
+    else:
+        r["part_matin"] = None
+        r["part_soir"]  = None
+    return r
+
+
+def _evolution(courant: float, reference: float) -> dict:
+    """Écart absolu et relatif (%) entre période courante et référence.
+
+    pct = None si la référence est nulle (évolution non calculable).
+    """
+    delta = round((courant or 0) - (reference or 0), 2)
+    pct = round(100 * delta / reference, 1) if reference else None
+    return {"delta": delta, "pct": pct}
+
+
 @router.get("/pilotage/ca")
 async def get_ca_historique(
     date_debut: Optional[str] = Query(None, description="YYYY-MM-DD (inclus)"),
@@ -4458,43 +4506,119 @@ async def get_ca_historique(
 async def get_ca_stats():
     """Totaux & moyennes : mois en cours et 30 derniers jours glissants."""
     today = date.today()
-    debut_mois = today.replace(day=1).isoformat()
-    debut_30j  = (today - timedelta(days=29)).isoformat()
+    fin = today.isoformat()
     async with get_db() as db:
-        async def _agg(depuis: str) -> dict:
-            cur = await db.execute(
-                """SELECT
-                       COUNT(*)                             AS nb_jours,
-                       COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
-                       COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
-                       COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
-                       COALESCE(SUM(nb_tickets_matin), 0)   AS total_tickets_matin,
-                       COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir,
-                       COALESCE(SUM(nb_tickets_soir), 0)    AS total_tickets_soir
-                   FROM ca_journalier
-                   WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?""",
-                (depuis, today.isoformat()),
-            )
-            r = dict(await cur.fetchone())
-            nbj = r["nb_jours"] or 0
-            r["ca_moyen_jour"]       = round(r["total_ttc"] / nbj, 2) if nbj else None
-            r["panier_moyen"]        = _panier(r["total_ttc"],       r["total_tickets"])
-            r["panier_moyen_matin"]  = _panier(r["total_ttc_matin"], r["total_tickets_matin"])
-            r["panier_moyen_soir"]   = _panier(r["total_ttc_soir"],  r["total_tickets_soir"])
-            # Répartition du CA (part matin / soir), None si total nul
-            tot = r["total_ttc"] or 0
-            if tot > 0:
-                r["part_matin"] = round(100 * r["total_ttc_matin"] / tot, 1)
-                r["part_soir"]  = round(100 * r["total_ttc_soir"]  / tot, 1)
-            else:
-                r["part_matin"] = None
-                r["part_soir"]  = None
-            return r
-
         return {
-            "mois_courant": await _agg(debut_mois),
-            "trente_jours": await _agg(debut_30j),
+            "mois_courant": await _agg_periode(db, today.replace(day=1).isoformat(), fin),
+            "trente_jours": await _agg_periode(db, (today - timedelta(days=29)).isoformat(), fin),
         }
+
+
+# Préréglages de décalage pour le comparatif "période vs période décalée".
+# Chaque entrée décale la période courante d'un nombre de jours fixe (j/s)
+# ou via un recul calendaire (mois/année).
+_COMPARATIF_PRESETS = {"j-1", "s-1", "m-1", "a-1"}
+
+
+def _decaler(d: date, preset: str, n: int) -> date:
+    """Recule une date selon le préréglage (j=jour, s=semaine, m=mois, a=an)."""
+    unite = preset[0]
+    if unite == "j":
+        return d - timedelta(days=n)
+    if unite == "s":
+        return d - timedelta(weeks=n)
+    if unite == "m":
+        mois = d.month - 1 - n
+        annee = d.year + mois // 12
+        mois = mois % 12 + 1
+        # clamp du jour pour les mois plus courts (28/30/31)
+        import calendar
+        jour = min(d.day, calendar.monthrange(annee, mois)[1])
+        return date(annee, mois, jour)
+    if unite == "a":
+        try:
+            return d.replace(year=d.year - n)
+        except ValueError:           # 29 février → 28
+            return d.replace(year=d.year - n, day=28)
+    raise ValueError(f"préréglage inconnu : {preset}")
+
+
+@router.get("/pilotage/ca/stats/comparatif")
+async def get_ca_comparatif(
+    date_debut: str = Query(..., description="Début période courante (YYYY-MM-DD)"),
+    date_fin:   str = Query(..., description="Fin période courante (YYYY-MM-DD)"),
+    preset:     str = Query("j-1", description="Décalage : j-1 | s-1 | m-1 | a-1"),
+    n:          int = Query(1, ge=1, le=520, description="Nombre d'unités de recul (X)"),
+):
+    """Compare une période courante à la même période décalée (J/S/M/A × n).
+
+    Renvoie l'agrégat courant, l'agrégat de référence, et l'évolution (€ et %)
+    sur le CA total et chaque section matin/soir.
+    """
+    preset = preset.lower().strip()
+    if preset not in _COMPARATIF_PRESETS:
+        raise HTTPException(400, f"preset invalide (attendu : {', '.join(sorted(_COMPARATIF_PRESETS))})")
+    try:
+        d1 = date.fromisoformat(date_debut)
+        d2 = date.fromisoformat(date_fin)
+    except ValueError:
+        raise HTTPException(400, "dates invalides (format YYYY-MM-DD)")
+    if d2 < d1:
+        raise HTTPException(400, "date_fin doit être ≥ date_debut")
+
+    ref_debut = _decaler(d1, preset, n)
+    ref_fin   = _decaler(d2, preset, n)
+
+    async with get_db() as db:
+        courant   = await _agg_periode(db, d1.isoformat(), d2.isoformat())
+        reference = await _agg_periode(db, ref_debut.isoformat(), ref_fin.isoformat())
+
+    return {
+        "preset":    preset,
+        "n":         n,
+        "courant":   courant,
+        "reference": reference,
+        "evolution": {
+            "total_ttc":       _evolution(courant["total_ttc"],       reference["total_ttc"]),
+            "total_ttc_matin": _evolution(courant["total_ttc_matin"], reference["total_ttc_matin"]),
+            "total_ttc_soir":  _evolution(courant["total_ttc_soir"],  reference["total_ttc_soir"]),
+        },
+    }
+
+
+@router.get("/pilotage/ca/stats/comparer-dates")
+async def get_ca_comparer_dates(
+    date_a: str = Query(..., description="Première date (YYYY-MM-DD)"),
+    date_b: str = Query(..., description="Seconde date (YYYY-MM-DD)"),
+):
+    """Compare deux jours précis (A vs B), détail matin/soir + évolution."""
+    async with get_db() as db:
+        async def _jour(d: str) -> dict:
+            cur = await db.execute(
+                "SELECT * FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ?", (d,)
+            )
+            row = await cur.fetchone()
+            if row:
+                return _enrichir_ca(row)
+            # Jour non saisi → zéros (pour comparer quand même)
+            return {
+                "date_ca": d, "montant_ttc": 0, "nb_tickets": None,
+                "montant_ttc_matin": 0, "montant_ttc_soir": 0,
+                "panier_moyen": None, "panier_moyen_matin": None, "panier_moyen_soir": None,
+                "saisi": False,
+            }
+        a = await _jour(date_a)
+        b = await _jour(date_b)
+    a.setdefault("saisi", True)
+    b.setdefault("saisi", True)
+    return {
+        "a": a, "b": b,
+        "evolution": {
+            "total_ttc":       _evolution(a["montant_ttc"],       b["montant_ttc"]),
+            "total_ttc_matin": _evolution(a["montant_ttc_matin"], b["montant_ttc_matin"]),
+            "total_ttc_soir":  _evolution(a["montant_ttc_soir"],  b["montant_ttc_soir"]),
+        },
+    }
 
 
 @router.get("/pilotage/ca/{date_ca}")

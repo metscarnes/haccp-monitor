@@ -71,6 +71,30 @@
     tr.is-today { background: #fff7ed; }
     .row-edit { color: var(--color-accent); cursor: pointer; text-decoration: underline; font-size: var(--text-sm); }
     canvas { max-width: 100%; }
+
+    /* Comparaison */
+    .cmp-tabs { display: flex; gap: 4px; margin-bottom: var(--space-3); border-bottom: 2px solid var(--color-border,#eee); }
+    .cmp-tab { background: none; border: none; padding: .6rem 1rem; font-size: var(--text-base); cursor: pointer;
+               color: #6b7280; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+    .cmp-tab.active { color: var(--color-accent); font-weight: 700; border-bottom-color: var(--color-accent); }
+    .cmp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--space-3); }
+    .chip { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
+            padding: .45rem .9rem; font-size: var(--text-sm); cursor: pointer; min-height: var(--btn-min-sm,40px); }
+    .chip.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+    .cmp-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); align-items: end; }
+    .cmp-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: var(--space-3) 0; font-size: var(--text-sm); }
+    .cmp-custom select, .cmp-custom input { padding: .5rem; border: 1px solid var(--color-border,#ccc); border-radius: var(--radius-sm,6px); }
+    .cmp-result { margin-top: var(--space-3); }
+    .cmp-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 1px; background: var(--color-border,#eee);
+                border: 1px solid var(--color-border,#eee); border-radius: var(--radius-sm,6px); overflow: hidden; }
+    .cmp-grid > div { background: #fff; padding: 8px 10px; font-size: var(--text-sm); }
+    .cmp-grid .head { background: #6b2d0f; color: #fff; font-weight: 600; }
+    .cmp-grid .lbl { font-weight: 600; }
+    .cmp-grid .num { text-align: right; white-space: nowrap; }
+    .evo-up { color: #166534; font-weight: 700; }
+    .evo-down { color: #b91c1c; font-weight: 700; }
+    .evo-flat { color: #6b7280; }
+    .cmp-periodes { font-size: var(--text-sm); color: #6b7280; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -152,6 +176,66 @@
         <div class="stat-box"><div class="val" id="s-panier-matin">—</div><div class="lbl">Panier moyen matin</div></div>
         <div class="stat-box"><div class="val" id="s-panier-soir">—</div><div class="lbl">Panier moyen après-midi</div></div>
         <div class="stat-box"><div class="val" id="s-jours">—</div><div class="lbl">Jours saisis</div></div>
+      </div>
+    </section>
+
+    <!-- Comparaison -->
+    <section class="card">
+      <h2>Comparaison</h2>
+      <div class="cmp-tabs">
+        <button class="cmp-tab active" data-mode="periode">Période vs décalage</button>
+        <button class="cmp-tab" data-mode="dates">Comparer 2 dates</button>
+      </div>
+
+      <!-- Mode période -->
+      <div id="cmp-periode">
+        <div class="cmp-chips" id="cmp-chips">
+          <button class="chip" data-preset="j-1" data-n="1">Jour préc. (J-1)</button>
+          <button class="chip" data-preset="s-1" data-n="1">Semaine -1 (S-1)</button>
+          <button class="chip" data-preset="m-1" data-n="1">Mois -1 (M-1)</button>
+          <button class="chip" data-preset="a-1" data-n="1">Année -1 (A-1)</button>
+        </div>
+        <div class="cmp-row">
+          <div class="form-row">
+            <label for="cmp-debut">Période — du</label>
+            <input type="date" id="cmp-debut">
+          </div>
+          <div class="form-row">
+            <label for="cmp-fin">au</label>
+            <input type="date" id="cmp-fin">
+          </div>
+        </div>
+        <div class="cmp-custom">
+          <span>Comparer à :</span>
+          <select id="cmp-unite">
+            <option value="j-1">Jour(s)</option>
+            <option value="s-1">Semaine(s)</option>
+            <option value="m-1">Mois</option>
+            <option value="a-1">Année(s)</option>
+          </select>
+          <span>en arrière ×</span>
+          <input type="number" id="cmp-n" min="1" max="520" value="1" style="width:80px">
+          <button class="btn-primary" id="cmp-go" style="min-height:auto;padding:.6rem 1rem">Comparer</button>
+        </div>
+        <div id="cmp-result-periode" class="cmp-result"></div>
+      </div>
+
+      <!-- Mode 2 dates -->
+      <div id="cmp-dates" style="display:none">
+        <div class="cmp-row">
+          <div class="form-row">
+            <label for="cmp-date-a">Date A</label>
+            <input type="date" id="cmp-date-a">
+          </div>
+          <div class="form-row">
+            <label for="cmp-date-b">Date B (référence)</label>
+            <input type="date" id="cmp-date-b">
+          </div>
+          <div class="form-row" style="justify-content:flex-end">
+            <button class="btn-primary" id="cmp-dates-go" style="min-height:auto;padding:.6rem 1rem">Comparer</button>
+          </div>
+        </div>
+        <div id="cmp-result-dates" class="cmp-result"></div>
       </div>
     </section>
 
@@ -367,6 +451,109 @@
       });
     }
 
+    // ─── Comparaison ───────────────────────────────────────────
+    const evoSpan = (evo) => {
+      if (evo.pct == null) {
+        return `<span class="evo-flat">${evo.delta >= 0 ? '+' : ''}${fmtEur(evo.delta)}</span>`;
+      }
+      const cls = evo.pct > 0 ? 'evo-up' : (evo.pct < 0 ? 'evo-down' : 'evo-flat');
+      const fleche = evo.pct > 0 ? '▲' : (evo.pct < 0 ? '▼' : '=');
+      const signe = evo.delta >= 0 ? '+' : '';
+      return `<span class="${cls}">${fleche} ${signe}${fmtEur(evo.delta)} (${signe}${evo.pct}%)</span>`;
+    };
+
+    function rendreComparatif(elId, titreA, titreB, vals, evo) {
+      // vals : { total:{a,b}, matin:{a,b}, soir:{a,b} }
+      $(elId).innerHTML = `
+        <div class="cmp-grid">
+          <div class="head"></div><div class="head num">${titreA}</div><div class="head num">${titreB}</div><div class="head num">Évolution</div>
+          <div class="lbl">CA total</div><div class="num">${fmtEur(vals.total.a)}</div><div class="num">${fmtEur(vals.total.b)}</div><div class="num">${evoSpan(evo.total_ttc)}</div>
+          <div class="lbl">🌅 Matin</div><div class="num">${fmtEur(vals.matin.a)}</div><div class="num">${fmtEur(vals.matin.b)}</div><div class="num">${evoSpan(evo.total_ttc_matin)}</div>
+          <div class="lbl">🌇 Après-midi</div><div class="num">${fmtEur(vals.soir.a)}</div><div class="num">${fmtEur(vals.soir.b)}</div><div class="num">${evoSpan(evo.total_ttc_soir)}</div>
+        </div>`;
+    }
+
+    async function lancerComparatifPeriode() {
+      const debut = $('cmp-debut').value, fin = $('cmp-fin').value;
+      if (!debut || !fin) return;
+      const preset = $('cmp-unite').value;
+      const n = Math.max(1, parseInt($('cmp-n').value, 10) || 1);
+      try {
+        const url = `${API}/stats/comparatif?date_debut=${debut}&date_fin=${fin}&preset=${preset}&n=${n}`;
+        const r = await fetch(url).then(x => x.json());
+        const c = r.courant, ref = r.reference;
+        const fmtP = p => p.date_debut === p.date_fin ? fmtDateFr(p.date_debut) : `${fmtDateFr(p.date_debut)} → ${fmtDateFr(p.date_fin)}`;
+        $('cmp-result-periode').innerHTML =
+          `<div class="cmp-periodes">Courante : <b>${fmtP(c)}</b> &nbsp;·&nbsp; Référence : <b>${fmtP(ref)}</b></div>`;
+        const tmp = document.createElement('div'); tmp.id = '_cmp_tmp';
+        $('cmp-result-periode').appendChild(tmp);
+        rendreComparatif('_cmp_tmp', 'Courante', 'Référence',
+          { total: { a: c.total_ttc, b: ref.total_ttc },
+            matin: { a: c.total_ttc_matin, b: ref.total_ttc_matin },
+            soir:  { a: c.total_ttc_soir,  b: ref.total_ttc_soir } },
+          r.evolution);
+      } catch (e) { console.error(e); }
+    }
+
+    async function lancerComparerDates() {
+      const da = $('cmp-date-a').value, db = $('cmp-date-b').value;
+      if (!da || !db) return;
+      try {
+        const r = await fetch(`${API}/stats/comparer-dates?date_a=${da}&date_b=${db}`).then(x => x.json());
+        const a = r.a, b = r.b;
+        rendreComparatif('cmp-result-dates', fmtDateFr(da), fmtDateFr(db),
+          { total: { a: a.montant_ttc, b: b.montant_ttc },
+            matin: { a: a.montant_ttc_matin, b: b.montant_ttc_matin },
+            soir:  { a: a.montant_ttc_soir,  b: b.montant_ttc_soir } },
+          r.evolution);
+      } catch (e) { console.error(e); }
+    }
+
+    function setChipActif(preset) {
+      document.querySelectorAll('#cmp-chips .chip').forEach(c =>
+        c.classList.toggle('active', c.dataset.preset === preset));
+    }
+
+    function initComparaison() {
+      // Onglets
+      document.querySelectorAll('.cmp-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.cmp-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          const mode = tab.dataset.mode;
+          $('cmp-periode').style.display = mode === 'periode' ? '' : 'none';
+          $('cmp-dates').style.display   = mode === 'dates'   ? '' : 'none';
+        });
+      });
+      // Tags rapides : règlent l'unité + n, puis relancent
+      document.querySelectorAll('#cmp-chips .chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          $('cmp-unite').value = chip.dataset.preset;
+          $('cmp-n').value = chip.dataset.n;
+          setChipActif(chip.dataset.preset);
+          lancerComparatifPeriode();
+        });
+      });
+      // Période courante par défaut : la veille (un seul jour)
+      const v = veilleIso();
+      $('cmp-debut').value = v;
+      $('cmp-fin').value = v;
+      $('cmp-go').addEventListener('click', () => { setChipActif(null); lancerComparatifPeriode(); });
+      // Régler manuellement l'unité/le nombre désélectionne les tags rapides
+      $('cmp-unite').addEventListener('change', () => setChipActif(null));
+      $('cmp-n').addEventListener('input', () => setChipActif(null));
+
+      // Mode 2 dates : hier vs avant-hier par défaut
+      const ah = new Date(); ah.setDate(ah.getDate() - 2);
+      $('cmp-date-a').value = v;
+      $('cmp-date-b').value = ah.toLocaleDateString('sv-SE');
+      $('cmp-dates-go').addEventListener('click', lancerComparerDates);
+
+      // Premier rendu : J-1 vs J-2
+      setChipActif('j-1');
+      lancerComparatifPeriode();
+    }
+
     // Init
     $('date-ca').value = veilleIso();
     ['montant-matin','tickets-matin','montant-soir','tickets-soir'].forEach(id =>
@@ -378,6 +565,7 @@
     chargerJour($('date-ca').value);
     chargerStats();
     chargerHistorique();
+    initComparaison();
   })();
   </script>
 </body>
