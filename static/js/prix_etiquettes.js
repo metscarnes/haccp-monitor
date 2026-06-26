@@ -858,6 +858,69 @@ function masseRemplirModeles() {
   });
 }
 
+const elMasseAvert    = $('masse-avert');
+const elMasseAvertTxt = $('masse-avert-txt');
+const elMasseConvertir = $('masse-convertir');
+
+const RE_VARIABLE = /\{(nom|prix|prix_kg|famille|sous_famille)\}/;
+
+// Un modèle "à variables" contient au moins une {variable} dans ses lignes.
+function modeleAVariables(config) {
+  return (config?.lignes ?? []).some(l => RE_VARIABLE.test(l.texte || ''));
+}
+
+// Vérifie le modèle sélectionné et affiche/masque l'avertissement + bouton.
+function masseVerifierModele() {
+  const modele = state.modeles.find(m => m.id === parseInt(elMasseModele.value, 10));
+  if (!modele || modeleAVariables(modele.config)) {
+    elMasseAvert.hidden = true;
+    return;
+  }
+  elMasseAvert.hidden = false;
+  elMasseAvertTxt.textContent =
+    '⚠️ Ce modèle ne contient aucune variable — toutes les étiquettes seront identiques. ';
+  elMasseConvertir.hidden = false;
+}
+
+// Convertit un modèle "texte dur" en modèle à variables :
+//   - une ligne contenant € (ou un nombre type prix) → {prix}
+//   - la première ligne texte restante (la plus grande) → {nom}
+// Les autres lignes (ex. "le kg") sont conservées.
+function masseConvertirModele() {
+  const modele = state.modeles.find(m => m.id === parseInt(elMasseModele.value, 10));
+  if (!modele) return;
+  const lignes = (modele.config.lignes ?? []).map(l => ({ ...l }));
+
+  const estPrix = t => /€|\d+[.,]\d{2}/.test(t || '');
+  let prixFait = false, nomFait = false;
+
+  // Prix : première ligne qui ressemble à un prix.
+  for (const l of lignes) {
+    if (!prixFait && estPrix(l.texte)) { l.texte = '{prix}'; prixFait = true; }
+  }
+  // Nom : première ligne non encore convertie qui a du texte (hors "le kg" courts).
+  for (const l of lignes) {
+    if (!nomFait && l.texte !== '{prix}' && (l.texte || '').trim().length > 3
+        && !/^le\s+kg$/i.test((l.texte || '').trim())) {
+      l.texte = '{nom}'; nomFait = true;
+    }
+  }
+
+  modele.config = { ...modele.config, lignes };
+
+  // Persister la mise à jour du modèle.
+  apiFetch(`/api/prix-etiquettes/modeles/${modele.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nom: modele.nom, config: modele.config }),
+  }).then(() => {
+    masseStatut('✓ Modèle converti : ' +
+      (nomFait ? '{nom} ' : '') + (prixFait ? '{prix}' : '') +
+      (!nomFait && !prixFait ? 'aucune ligne reconnue — éditez à la main.' : ''), 'ok');
+    masseVerifierModele();
+  }).catch(e => masseStatut('Erreur conversion : ' + e.message, 'err'));
+}
+
 function masseRemplirFamilles() {
   elMasseFamille.innerHTML = '<option value="">Toutes les familles</option>';
   masseState.familles.forEach(f => {
@@ -901,6 +964,7 @@ async function masseOuvrir() {
   }
   masseRendreTable();
   masseMajCompteur();
+  masseVerifierModele();
 }
 
 function masseFermer() { elMasseModal.hidden = true; }
@@ -909,6 +973,9 @@ function masseFermer() { elMasseModal.hidden = true; }
 $('btn-impression-masse').addEventListener('click', masseOuvrir);
 $('btn-masse-fermer').addEventListener('click', masseFermer);
 elMasseModal.addEventListener('click', e => { if (e.target === elMasseModal) masseFermer(); });
+
+elMasseModele.addEventListener('change', masseVerifierModele);
+elMasseConvertir.addEventListener('click', masseConvertirModele);
 
 elMasseSearch.addEventListener('input', () => { masseRendreTable(); });
 elMasseFamille.addEventListener('change', () => { masseRendreTable(); });
