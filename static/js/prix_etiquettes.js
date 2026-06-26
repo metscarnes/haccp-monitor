@@ -609,7 +609,8 @@ elBtnNouveauModele.addEventListener('click', () => {
 // ── Sauvegarde modèle ────────────────────────────────────────
 
 elBtnSauvegarder.addEventListener('click', () => {
-  elModelNom.value = '';
+  const modeleActif = state.modeles.find(m => m.id === state.modeleActifId);
+  elModelNom.value = modeleActif ? modeleActif.nom : '';
   elModalSave.hidden = false;
   elModelNom.focus();
 });
