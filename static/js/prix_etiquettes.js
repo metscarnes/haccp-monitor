@@ -113,6 +113,7 @@ const elListeModeles    = $('liste-modeles');
 const elBtnNouveauModele = $('btn-nouveau-modele');
 const elBtnSauvegarder  = $('btn-sauvegarder-modele');
 const elBtnImprimer     = $('btn-imprimer');
+const elBtnImprimerNav  = $('btn-imprimer-navigateur');
 const elModalSave       = $('modal-save');
 const elModelNom        = $('modele-nom');
 const elBtnSaveConfirmer = $('btn-save-confirmer');
@@ -694,6 +695,45 @@ elBtnImprimer.addEventListener('click', async () => {
   } finally {
     elBtnImprimer.disabled = false;
   }
+});
+
+// ── Impression via le navigateur (Wi-Fi / sans USB serveur) ──
+// Imprime le canvas d'aperçu tel quel, dimensionné à la taille physique
+// réelle de l'étiquette. Sert au test hors boutique et de secours :
+// l'utilisateur choisit l'imprimante dans la boîte de dialogue du navigateur.
+elBtnImprimerNav.addEventListener('click', () => {
+  lireEtat();
+  if (state.lignes.length === 0 || state.lignes.every(l => !l.texte.trim())) {
+    afficherStatut('Ajoutez au moins une ligne de texte avant d\'imprimer.', 'err');
+    return;
+  }
+
+  // Le canvas est déjà rendu à la résolution réelle par l'aperçu live.
+  // On reprend EXACTEMENT ses dimensions, hauteur bridée comme dans
+  // rendrePreview() (rouleau 62mm), pour que l'impression colle au canvas.
+  const dataUrl = elCanvas.toDataURL('image/png');
+  const lCm = state.largeur_cm;
+  const hCm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM);
+
+  const win = window.open('', '_blank');
+  if (!win) {
+    afficherStatut('Fenêtre d\'impression bloquée par le navigateur (autorisez les pop-ups).', 'err');
+    return;
+  }
+
+  win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Étiquette prix</title>
+<style>
+  @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  img { display: block; width: ${lCm}cm; height: ${hCm}cm; }
+</style></head>
+<body>
+  <img src="${dataUrl}" alt="Étiquette prix"
+       onload="window.focus(); window.print();">
+</body></html>`);
+  win.document.close();
+  afficherStatut('Aperçu ouvert — choisissez l\'imprimante dans la fenêtre.', 'ok');
 });
 
 // ── Persistance locale des dimensions ────────────────────────
