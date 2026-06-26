@@ -1626,6 +1626,13 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_historique_prix_catalogue ON historique_prix_achat(catalogue_fournisseur_id, date_constat DESC)",
+            # Pilotage CA — ventilation matin/soir + météo (ajoutées après la v1
+            # de la table qui ne stockait que le total + commentaire).
+            "ALTER TABLE ca_journalier ADD COLUMN montant_ttc_matin REAL DEFAULT 0",
+            "ALTER TABLE ca_journalier ADD COLUMN nb_tickets_matin  INTEGER",
+            "ALTER TABLE ca_journalier ADD COLUMN montant_ttc_soir  REAL DEFAULT 0",
+            "ALTER TABLE ca_journalier ADD COLUMN nb_tickets_soir   INTEGER",
+            "ALTER TABLE ca_journalier ADD COLUMN meteo             TEXT",
         ]
         for sql in migrations:
             try:
