@@ -3855,9 +3855,11 @@ async def _historiser_prix_reception(db, reception_id: int, source: str = "bl") 
     cur = await db.execute(
         """SELECT rl.id AS reception_ligne_id, rl.prix_unitaire_ht AS prix_bl,
                   rl.catalogue_fournisseur_id AS cat_id,
-                  cf.format_prix, cf.prix_achat_ht AS prix_ref, cf.poids_colis_kg, cf.famille
+                  cf.format_prix, cf.prix_achat_ht AS prix_ref, cf.poids_colis_kg, cf.famille,
+                  r.date_reception AS date_reception
            FROM reception_lignes rl
            JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+           JOIN receptions r ON r.id = rl.reception_id
            WHERE rl.reception_id = ? AND rl.prix_unitaire_ht IS NOT NULL""",
         (reception_id,),
     )
@@ -3865,17 +3867,21 @@ async def _historiser_prix_reception(db, reception_id: int, source: str = "bl") 
     if not lignes:
         return 0
 
+    # La date du constat = date de réception (quand la marchandise et son prix sont
+    # arrivés), pas la date de clôture — plus juste pour la courbe en cas de saisie différée.
     n = 0
     for l in lignes:
         prix_kg = _calc_prix_kg(l["format_prix"], l["prix_bl"], l["poids_colis_kg"], l["famille"])
         prix_kg_ref = _calc_prix_kg(l["format_prix"], l["prix_ref"], l["poids_colis_kg"], l["famille"])
+        date_constat = l.get("date_reception") or date.today().isoformat()
         await db.execute(
             """INSERT INTO historique_prix_achat
                    (catalogue_fournisseur_id, reception_id, reception_ligne_id,
-                    prix_ht, format_prix, prix_kg, prix_kg_precedent, source, applique_au_catalogue)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+                    prix_ht, format_prix, prix_kg, prix_kg_precedent, source,
+                    applique_au_catalogue, date_constat)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
             (l["cat_id"], reception_id, l["reception_ligne_id"], l["prix_bl"],
-             l["format_prix"], prix_kg, prix_kg_ref, source),
+             l["format_prix"], prix_kg, prix_kg_ref, source, date_constat),
         )
         n += 1
     await db.commit()
@@ -3987,6 +3993,44 @@ async def appliquer_prix_catalogue(catalogue_id: int, body: AppliquerPrixBody):
         await db.commit()
     return {"ok": True, "catalogue_fournisseur_id": catalogue_id,
             "ancien_prix_ht": ancien, "nouveau_prix_ht": body.nouveau_prix_ht}
+
+
+@router.get("/catalogue/{catalogue_id}/historique-prix")
+async def historique_prix_catalogue(catalogue_id: int, limit: int = Query(60, ge=1, le=500)):
+    """Courbe d'évolution du prix d'achat (€/kg) d'un article, depuis historique_prix_achat.
+
+    Renvoie les points constatés (à chaque réception), triés du plus ancien au plus récent,
+    plus le prix de référence actuel du catalogue pour tracer la ligne de comparaison.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT designation, prix_achat_ht, format_prix, poids_colis_kg, famille "
+            "FROM catalogue_fournisseur WHERE id = ?",
+            (catalogue_id,),
+        )
+        art = await cur.fetchone()
+        if not art:
+            raise HTTPException(404, "Article introuvable")
+
+        cur2 = await db.execute(
+            """SELECT date_constat, prix_kg, prix_ht, source, applique_au_catalogue
+               FROM historique_prix_achat
+               WHERE catalogue_fournisseur_id = ?
+               ORDER BY date_constat ASC, id ASC
+               LIMIT ?""",
+            (catalogue_id, limit),
+        )
+        points = [dict(r) for r in await cur2.fetchall()]
+
+    prix_ref_kg = _calc_prix_kg(
+        art["format_prix"], art["prix_achat_ht"], art["poids_colis_kg"], art["famille"]
+    )
+    return {
+        "catalogue_fournisseur_id": catalogue_id,
+        "designation": art["designation"],
+        "prix_reference_kg": prix_ref_kg,
+        "points": points,
+    }
 
 
 @router.post("/factures", status_code=201)

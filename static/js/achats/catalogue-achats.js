@@ -563,6 +563,8 @@ function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouvel article';
   document.getElementById('btn-supprimer-article').hidden = true;
+  const hp = document.getElementById('hist-prix');
+  if (hp) hp.hidden = true;  // pas d'historique pour un nouvel article
   viderForm();
   document.getElementById('modal-article').hidden = false;
   document.getElementById('a-code').focus();
@@ -591,6 +593,90 @@ function ouvrirEditionModal(id) {
   document.getElementById('btn-supprimer-article').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
+  chargerHistoriquePrix(a.id);
+}
+
+// Charge et dessine la courbe d'évolution du prix d'achat (€/kg) d'un article.
+// Sparkline SVG inline (pas de lib : léger pour le Pi ARM). Masqué si < 2 points.
+async function chargerHistoriquePrix(id) {
+  const bloc = document.getElementById('hist-prix');
+  const contenu = document.getElementById('hist-prix-contenu');
+  if (!bloc || !contenu) return;
+  bloc.hidden = true;
+  contenu.innerHTML = '';
+  try {
+    const r = await fetch(`${API_CAT}/${id}/historique-prix`);
+    if (!r.ok) return;
+    const data = await r.json();
+    const pts = (data.points || []).filter(p => p.prix_kg != null);
+    if (pts.length < 2) return;  // une seule observation = pas de courbe utile
+    contenu.innerHTML = dessinerSparklinePrix(pts, data.prix_reference_kg);
+    bloc.hidden = false;
+  } catch (_) { /* silencieux : la courbe est un bonus */ }
+}
+
+// Construit un sparkline SVG : ligne du prix €/kg dans le temps + ligne de référence
+// (prix catalogue actuel, pointillés) + points (cercle plein = appliqué au catalogue).
+function dessinerSparklinePrix(points, prixRef) {
+  const W = 460, H = 130, PAD = 28;
+  const prix = points.map(p => p.prix_kg);
+  const valeurs = prixRef != null ? prix.concat([prixRef]) : prix;
+  let min = Math.min(...valeurs), max = Math.max(...valeurs);
+  if (min === max) { min -= 1; max += 1; }       // évite division par zéro
+  const marge = (max - min) * 0.12 || 0.5;
+  min -= marge; max += marge;
+
+  const n = points.length;
+  const x = i => PAD + (n === 1 ? (W - 2 * PAD) / 2 : i * (W - 2 * PAD) / (n - 1));
+  const y = v => H - PAD - (v - min) / (max - min) * (H - 2 * PAD);
+
+  // Ligne du prix
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.prix_kg).toFixed(1)}`).join(' ');
+
+  // Ligne de référence (prix catalogue actuel)
+  let refLine = '';
+  if (prixRef != null) {
+    const yr = y(prixRef).toFixed(1);
+    refLine = `<line x1="${PAD}" y1="${yr}" x2="${W - PAD}" y2="${yr}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="4 3"/>`
+            + `<text x="${W - PAD}" y="${(parseFloat(yr) - 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#6b7280">réf ${prixRef.toFixed(2)} €/kg</text>`;
+  }
+
+  // Points + info-bulles natives (title) avec date + prix
+  const cercles = points.map((p, i) => {
+    const applique = p.applique_au_catalogue ? '#2f7d3a' : '#fff';
+    const stroke = p.applique_au_catalogue ? '#2f7d3a' : '#c1452c';
+    const dateFr = _dateFr(p.date_constat);
+    return `<circle cx="${x(i).toFixed(1)}" cy="${y(p.prix_kg).toFixed(1)}" r="3.5" fill="${applique}" stroke="${stroke}" stroke-width="1.5">`
+         + `<title>${dateFr} — ${p.prix_kg.toFixed(2)} €/kg${p.applique_au_catalogue ? ' (appliqué au catalogue)' : ''}</title></circle>`;
+  }).join('');
+
+  // Synthèse : premier → dernier + évolution en %
+  const dernier = prix[prix.length - 1];
+  const premier = prix[0];
+  const evol = premier > 0 ? ((dernier - premier) / premier * 100) : 0;
+  const evolTxt = evol === 0 ? 'stable'
+    : (evol > 0 ? `▲ +${evol.toFixed(1)} %` : `▼ ${evol.toFixed(1)} %`);
+  const evolCol = evol > 0 ? '#c1452c' : (evol < 0 ? '#2f7d3a' : '#6b7280');
+
+  return `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;display:block;">
+      ${refLine}
+      <path d="${d}" fill="none" stroke="#2563eb" stroke-width="2"/>
+      ${cercles}
+      <text x="${PAD}" y="14" font-size="11" fill="#374151">${_dateFr(points[0].date_constat)}</text>
+      <text x="${W - PAD}" y="14" text-anchor="end" font-size="11" fill="#374151">${_dateFr(points[n - 1].date_constat)}</text>
+    </svg>
+    <div class="ach-hist-prix-resume">
+      ${n} relevé(s) — de ${premier.toFixed(2)} à <strong>${dernier.toFixed(2)} €/kg</strong>
+      <span style="color:${evolCol};font-weight:600;margin-left:.4rem;">${evolTxt}</span>
+    </div>`;
+}
+
+// Formate une date ISO 'YYYY-MM-DD' en 'JJ/MM/AA' (compact pour le graphe).
+function _dateFr(iso) {
+  if (!iso) return '';
+  const [a, m, j] = String(iso).slice(0, 10).split('-');
+  return j && m && a ? `${j}/${m}/${a.slice(2)}` : iso;
 }
 
 // Sous-famille du formulaire : peuplée selon la famille choisie.

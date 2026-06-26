@@ -599,6 +599,27 @@
   font-size: var(--text-sm);
   border: 1px solid #fca5a5;
 }
+
+/* Courbe d'évolution du prix d'achat dans la modale article */
+.ach-hist-prix {
+  grid-column: 1 / -1;
+  margin-top: .4rem;
+  padding: .75rem .85rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+}
+.ach-hist-prix-titre {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: .5rem;
+}
+.ach-hist-prix-resume {
+  margin-top: .35rem;
+  font-size: var(--text-sm);
+  color: #475569;
+}
 .ach-form-ok {
   grid-column: 1 / -1;
   background: #dcfce7;
