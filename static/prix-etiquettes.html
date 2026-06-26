@@ -183,9 +183,11 @@
       <p class="pe-masse-aide">
         Variables utilisables dans le modèle :
         <code>{nom}</code> <code>{Nom}</code> <code>{NOM}</code>
-        <code>{prix}</code> <code>{prix_kg}</code>
+        <code>{prix}</code> <code>{prix_unite}</code> <code>{article_unite}</code>
         <code>{famille}</code> <code>{sous_famille}</code>
-        <br><span style="opacity:.8">{Nom} = première lettre en majuscule · {NOM} = tout en majuscules</span>
+        <br><span style="opacity:.8">{Nom} = 1ʳᵉ lettre majuscule · {NOM} = majuscules ·
+        {article_unite} = « le kg » / « la pièce » selon le catalogue ·
+        {prix_unite} = « 9,90 € / kg » ou « / pièce »</span>
       </p>
       <div class="pe-masse-avert" id="masse-avert" hidden>
         <span id="masse-avert-txt"></span>

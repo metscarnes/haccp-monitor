@@ -203,7 +203,7 @@ async def rechercher_catalogue(
     """
     async with get_db() as db:
         sql = """
-            SELECT id, nom, prix_vente_ttc, famille, sous_famille
+            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
             FROM catalogue_vente
             WHERE boutique_id = 1 AND actif = 1
         """
@@ -224,6 +224,7 @@ async def rechercher_catalogue(
                 "prix_vente_ttc": r[2],
                 "famille": r[3],
                 "sous_famille": r[4],
+                "unite_vente": r[5],
             }
             for r in rows
         ]}
@@ -266,7 +267,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
     async with get_db() as db:
         cur = await db.execute(
             f"""
-            SELECT id, nom, prix_vente_ttc, famille, sous_famille
+            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
             FROM catalogue_vente
             WHERE boutique_id = 1 AND actif = 1 AND id IN ({placeholders})
             """,
@@ -280,6 +281,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
             "prix_vente_ttc": r[2],
             "famille": r[3],
             "sous_famille": r[4],
+            "unite_vente": r[5],
         }
         for r in rows
     }

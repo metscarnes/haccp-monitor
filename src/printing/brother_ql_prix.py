@@ -298,19 +298,31 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
     lignes sont remplacées à partir d'un produit du catalogue de vente.
 
     Variables reconnues (insensibles aux valeurs manquantes → chaîne vide) :
-      {nom} {prix} {prix_kg} {famille} {sous_famille}
+      {nom} {prix} {prix_kg} {prix_unite} {unite} {famille} {sous_famille}
     Variantes de casse pour le nom (unifie l'affichage sans toucher au catalogue) :
       {Nom} = Première lettre majuscule    {NOM} = TOUT EN MAJUSCULES
+    L'unité ({unite}, {prix_unite}, {prix_kg}) s'adapte à unite_vente du
+    catalogue de vente : 'kg' → « kg » / « le kg », 'piece' → « pièce » / « la pièce ».
     Un modèle sans variable est renvoyé tel quel (texte littéral conservé).
     """
     prix = formater_prix(produit.get("prix_vente_ttc"))
     nom = str(produit.get("nom") or produit.get("designation") or "")
+
+    # Unité de vente : 'kg' (défaut) ou 'piece'.
+    a_la_piece = str(produit.get("unite_vente") or "kg").lower() == "piece"
+    unite = "pièce" if a_la_piece else "kg"
+    article_unite = "la pièce" if a_la_piece else "le kg"          # ex. "le kg"
+    prix_unite = (prix + " / " + unite) if prix else ""           # ex. "49,90 € / pièce"
+
     remplacements = {
         "{nom}":          nom,
         "{Nom}":          _capitaliser(nom),
         "{NOM}":          nom.upper(),
         "{prix}":         prix,
-        "{prix_kg}":      (prix + " / kg") if prix else "",
+        "{prix_kg}":      prix_unite,        # rétro-compat : suit désormais l'unité réelle
+        "{prix_unite}":   prix_unite,        # alias explicite
+        "{unite}":        unite,             # "kg" / "pièce"
+        "{article_unite}": article_unite,    # "le kg" / "la pièce"
         "{famille}":      str(produit.get("famille") or ""),
         "{sous_famille}": str(produit.get("sous_famille") or ""),
     }
