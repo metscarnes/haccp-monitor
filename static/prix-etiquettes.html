@@ -23,6 +23,7 @@
   <div class="pe-header-titre">🏷️ ÉTIQUETTES PRIX</div>
   <div class="pe-header-actions">
     <button class="pe-btn pe-btn--outline" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
+    <button class="pe-btn pe-btn--outline" id="btn-impression-masse">🏷️ Impression de masse</button>
     <button class="pe-btn pe-btn--outline" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
     <button class="pe-btn pe-btn--primary" id="btn-imprimer">🖨️ Imprimer</button>
   </div>
@@ -160,6 +161,67 @@
       <button class="pe-btn pe-btn--outline" id="btn-save-annuler">Annuler</button>
       <button class="pe-btn pe-btn--primary" id="btn-save-confirmer">Sauvegarder</button>
     </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     MODAL — Impression de masse (catalogue de vente)
+═══════════════════════════════════════════════════ -->
+<div class="pe-modal-overlay" id="modal-masse" role="dialog" aria-modal="true" aria-labelledby="modal-masse-titre" hidden>
+  <div class="pe-modal pe-modal--large">
+    <div class="pe-masse-header">
+      <div class="pe-modal-titre" id="modal-masse-titre">🏷️ Impression de masse</div>
+      <button class="pe-btn-clear" id="btn-masse-fermer" title="Fermer">✕</button>
+    </div>
+
+    <!-- Choix du modèle + aide variables -->
+    <div class="pe-masse-modele">
+      <label class="pe-label pe-label--sm">
+        Modèle à appliquer
+        <select class="pe-input" id="masse-modele"></select>
+      </label>
+      <p class="pe-masse-aide">
+        Variables utilisables dans le modèle :
+        <code>{nom}</code> <code>{prix}</code> <code>{prix_kg}</code>
+        <code>{famille}</code> <code>{sous_famille}</code>
+      </p>
+    </div>
+
+    <!-- Barre d'outils : recherche, famille, tout sélectionner, compteur -->
+    <div class="pe-masse-toolbar">
+      <input type="text" id="masse-search" class="pe-input pe-input--sm" placeholder="Rechercher…" autocomplete="off">
+      <select id="masse-filtre-famille" class="pe-input pe-input--sm">
+        <option value="">Toutes les familles</option>
+      </select>
+      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-select">Tout sélectionner</button>
+      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-deselect">Tout désélectionner</button>
+      <span class="pe-masse-compteur" id="masse-compteur">0 sélectionné</span>
+    </div>
+
+    <!-- Tableau -->
+    <div class="pe-masse-table-wrap">
+      <table class="pe-masse-table">
+        <thead>
+          <tr>
+            <th class="pe-masse-col-check"><input type="checkbox" id="masse-check-all" title="Tout cocher (visible)"></th>
+            <th data-tri="nom" class="pe-masse-th-tri">Nom</th>
+            <th data-tri="prix_vente_ttc" class="pe-masse-th-tri">Prix</th>
+            <th data-tri="famille" class="pe-masse-th-tri">Famille</th>
+            <th data-tri="sous_famille" class="pe-masse-th-tri">Sous-famille</th>
+            <th class="pe-masse-col-qte">Qté</th>
+          </tr>
+        </thead>
+        <tbody id="masse-tbody"><!-- injecté par JS --></tbody>
+      </table>
+      <div class="pe-masse-vide" id="masse-vide" hidden>Aucun produit.</div>
+    </div>
+
+    <!-- Pied : actions -->
+    <div class="pe-modal-actions">
+      <button class="pe-btn pe-btn--outline" id="masse-btn-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
+      <button class="pe-btn pe-btn--primary" id="masse-btn-wifi">🖨️ Imprimer la sélection (Wi-Fi)</button>
+    </div>
+    <div class="pe-print-status" id="masse-status" hidden></div>
   </div>
 </div>
 

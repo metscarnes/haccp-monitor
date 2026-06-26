@@ -736,6 +736,288 @@ elBtnImprimerNav.addEventListener('click', () => {
   afficherStatut('Aperçu ouvert — choisissez l\'imprimante dans la fenêtre.', 'ok');
 });
 
+// ── Impression de masse (série depuis le catalogue de vente) ─────────
+
+const masseState = {
+  produits: [],                 // catalogue complet chargé une fois
+  familles: [],
+  tri: { col: 'nom', sens: 1 }, // 1 = asc, -1 = desc
+  selection: new Map(),         // id -> quantité
+};
+
+const elMasseModal     = $('modal-masse');
+const elMasseModele    = $('masse-modele');
+const elMasseSearch    = $('masse-search');
+const elMasseFamille   = $('masse-filtre-famille');
+const elMasseTbody     = $('masse-tbody');
+const elMasseVide      = $('masse-vide');
+const elMasseCompteur  = $('masse-compteur');
+const elMasseCheckAll  = $('masse-check-all');
+const elMasseStatus    = $('masse-status');
+
+function masseStatut(msg, type) {
+  elMasseStatus.textContent = msg;
+  elMasseStatus.className = `pe-print-status pe-print-status--${type}`;
+  elMasseStatus.hidden = false;
+  if (type === 'ok') setTimeout(() => { elMasseStatus.hidden = true; }, 5000);
+}
+
+// Liste filtrée + triée selon l'état courant.
+function masseProduitsVisibles() {
+  const q = elMasseSearch.value.trim().toLowerCase();
+  const fam = elMasseFamille.value;
+  let liste = masseState.produits.filter(p => {
+    if (fam && (p.famille || '') !== fam) return false;
+    if (q && !(p.nom || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const { col, sens } = masseState.tri;
+  liste.sort((a, b) => {
+    let va = a[col], vb = b[col];
+    if (col === 'prix_vente_ttc') { va = va ?? -1; vb = vb ?? -1; return (va - vb) * sens; }
+    return String(va ?? '').localeCompare(String(vb ?? ''), 'fr') * sens;
+  });
+  return liste;
+}
+
+function masseMajCompteur() {
+  let total = 0;
+  masseState.selection.forEach(q => { total += q; });
+  const nbProduits = masseState.selection.size;
+  elMasseCompteur.textContent =
+    `${nbProduits} produit${nbProduits > 1 ? 's' : ''} — ${total} étiquette${total > 1 ? 's' : ''}`;
+}
+
+function masseRendreTable() {
+  const liste = masseProduitsVisibles();
+  elMasseTbody.innerHTML = '';
+  elMasseVide.hidden = liste.length > 0;
+
+  liste.forEach(p => {
+    const tr = document.createElement('tr');
+    const sel = masseState.selection.has(p.id);
+    const qte = masseState.selection.get(p.id) ?? 1;
+    const prix = p.prix_vente_ttc != null
+      ? `${parseFloat(p.prix_vente_ttc).toFixed(2).replace('.', ',')} €` : '—';
+    tr.innerHTML = `
+      <td class="pe-masse-col-check"><input type="checkbox" data-id="${p.id}" ${sel ? 'checked' : ''}></td>
+      <td>${escHtml(p.nom)}</td>
+      <td>${escHtml(prix)}</td>
+      <td>${escHtml(p.famille || '')}</td>
+      <td>${escHtml(p.sous_famille || '')}</td>
+      <td class="pe-masse-col-qte">
+        <input type="number" class="pe-input pe-input--sm pe-masse-qte" data-id="${p.id}"
+               min="1" max="99" value="${qte}" ${sel ? '' : 'disabled'}>
+      </td>`;
+
+    const chk = tr.querySelector('input[type="checkbox"]');
+    const qInput = tr.querySelector('.pe-masse-qte');
+    chk.addEventListener('change', () => {
+      if (chk.checked) {
+        masseState.selection.set(p.id, parseInt(qInput.value, 10) || 1);
+        qInput.disabled = false;
+      } else {
+        masseState.selection.delete(p.id);
+        qInput.disabled = true;
+      }
+      masseMajCompteur();
+      masseMajCheckAll();
+    });
+    qInput.addEventListener('input', () => {
+      if (masseState.selection.has(p.id)) {
+        masseState.selection.set(p.id, Math.max(1, parseInt(qInput.value, 10) || 1));
+        masseMajCompteur();
+      }
+    });
+    elMasseTbody.appendChild(tr);
+  });
+
+  masseMajCheckAll();
+}
+
+// Coche "tout" reflète l'état des lignes visibles.
+function masseMajCheckAll() {
+  const visibles = masseProduitsVisibles();
+  if (visibles.length === 0) { elMasseCheckAll.checked = false; elMasseCheckAll.indeterminate = false; return; }
+  const selCount = visibles.filter(p => masseState.selection.has(p.id)).length;
+  elMasseCheckAll.checked = selCount === visibles.length;
+  elMasseCheckAll.indeterminate = selCount > 0 && selCount < visibles.length;
+}
+
+function masseRemplirModeles() {
+  elMasseModele.innerHTML = '';
+  if (state.modeles.length === 0) {
+    elMasseModele.innerHTML = '<option value="">— Aucun modèle sauvegardé —</option>';
+    return;
+  }
+  state.modeles.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.nom;
+    elMasseModele.appendChild(opt);
+  });
+}
+
+function masseRemplirFamilles() {
+  elMasseFamille.innerHTML = '<option value="">Toutes les familles</option>';
+  masseState.familles.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f;
+    elMasseFamille.appendChild(opt);
+  });
+}
+
+async function masseChargerCatalogue() {
+  try {
+    const [cat, fam] = await Promise.all([
+      apiFetch('/api/prix-etiquettes/catalogue?limit=2000'),
+      apiFetch('/api/prix-etiquettes/catalogue/familles'),
+    ]);
+    masseState.produits = cat.articles ?? [];
+    masseState.familles = fam.familles ?? [];
+  } catch (e) {
+    masseStatut('Erreur chargement catalogue : ' + e.message, 'err');
+  }
+}
+
+// Construit le payload {config, produits} à partir du modèle choisi + sélection.
+function masseConstruirePayload() {
+  const modeleId = parseInt(elMasseModele.value, 10);
+  const modele = state.modeles.find(m => m.id === modeleId);
+  if (!modele) { masseStatut('Choisissez un modèle à appliquer.', 'err'); return null; }
+  if (masseState.selection.size === 0) { masseStatut('Sélectionnez au moins un produit.', 'err'); return null; }
+  const produits = [...masseState.selection.entries()].map(([produit_id, quantite]) => ({ produit_id, quantite }));
+  return { config: modele.config, produits };
+}
+
+async function masseOuvrir() {
+  masseRemplirModeles();
+  elMasseModal.hidden = false;
+  if (masseState.produits.length === 0) {
+    masseStatut('Chargement du catalogue…', 'loading');
+    await masseChargerCatalogue();
+    elMasseStatus.hidden = true;
+    masseRemplirFamilles();
+  }
+  masseRendreTable();
+  masseMajCompteur();
+}
+
+function masseFermer() { elMasseModal.hidden = true; }
+
+// — Événements modal de masse —
+$('btn-impression-masse').addEventListener('click', masseOuvrir);
+$('btn-masse-fermer').addEventListener('click', masseFermer);
+elMasseModal.addEventListener('click', e => { if (e.target === elMasseModal) masseFermer(); });
+
+elMasseSearch.addEventListener('input', () => { masseRendreTable(); });
+elMasseFamille.addEventListener('change', () => { masseRendreTable(); });
+
+elMasseCheckAll.addEventListener('change', () => {
+  const visibles = masseProduitsVisibles();
+  if (elMasseCheckAll.checked) {
+    visibles.forEach(p => { if (!masseState.selection.has(p.id)) masseState.selection.set(p.id, 1); });
+  } else {
+    visibles.forEach(p => masseState.selection.delete(p.id));
+  }
+  masseRendreTable();
+  masseMajCompteur();
+});
+
+$('masse-tout-select').addEventListener('click', () => {
+  masseProduitsVisibles().forEach(p => { if (!masseState.selection.has(p.id)) masseState.selection.set(p.id, 1); });
+  masseRendreTable(); masseMajCompteur();
+});
+$('masse-tout-deselect').addEventListener('click', () => {
+  masseState.selection.clear();
+  masseRendreTable(); masseMajCompteur();
+});
+
+// Tri par clic sur en-tête.
+document.querySelectorAll('.pe-masse-th-tri').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.tri;
+    if (masseState.tri.col === col) masseState.tri.sens *= -1;
+    else masseState.tri = { col, sens: 1 };
+    document.querySelectorAll('.pe-masse-th-tri').forEach(t => t.classList.remove('tri-asc', 'tri-desc'));
+    th.classList.add(masseState.tri.sens === 1 ? 'tri-asc' : 'tri-desc');
+    masseRendreTable();
+  });
+});
+
+// — Impression Wi-Fi serveur —
+$('masse-btn-wifi').addEventListener('click', async () => {
+  const payload = masseConstruirePayload();
+  if (!payload) return;
+  const btn = $('masse-btn-wifi');
+  btn.disabled = true;
+  masseStatut('Envoi à l\'imprimante…', 'loading');
+  try {
+    const res = await apiFetch('/api/prix-etiquettes/imprimer-masse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.erreurs && res.erreurs.length) {
+      masseStatut(`✓ ${res.imprimees} imprimée(s), ${res.erreurs.length} erreur(s) : ${res.erreurs[0]}`, 'err');
+    } else {
+      masseStatut(`✓ ${res.imprimees} étiquette(s) imprimée(s).`, 'ok');
+    }
+  } catch (e) {
+    masseStatut('Erreur impression : ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// — Aperçu / impression navigateur (empile N pages) —
+$('masse-btn-navigateur').addEventListener('click', async () => {
+  const payload = masseConstruirePayload();
+  if (!payload) return;
+  const modele = state.modeles.find(m => m.id === parseInt(elMasseModele.value, 10));
+  const lCm = modele.config.largeur_cm ?? 10;
+  const hCm = Math.min(modele.config.hauteur_cm ?? 6, HAUTEUR_MAX_CM);
+
+  masseStatut('Génération des aperçus…', 'loading');
+  let etiquettes;
+  try {
+    const res = await apiFetch('/api/prix-etiquettes/preview-masse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    etiquettes = res.etiquettes ?? [];
+  } catch (e) {
+    masseStatut('Erreur génération : ' + e.message, 'err');
+    return;
+  }
+  if (etiquettes.length === 0) { masseStatut('Aucune étiquette générée.', 'err'); return; }
+
+  // Une page par exemplaire (quantité respectée).
+  const pages = [];
+  etiquettes.forEach(et => {
+    for (let i = 0; i < (et.quantite || 1); i++) {
+      pages.push(`<img src="${et.image}" alt="${escHtml(et.nom)}">`);
+    }
+  });
+
+  const win = window.open('', '_blank');
+  if (!win) { masseStatut('Pop-ups bloquées — autorisez-les pour imprimer.', 'err'); return; }
+  win.document.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Étiquettes prix (série)</title>
+<style>
+  @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  img { display: block; width: ${lCm}cm; height: ${hCm}cm; page-break-after: always; }
+  img:last-child { page-break-after: auto; }
+</style></head>
+<body onload="window.focus(); window.print();">
+${pages.join('\n')}
+</body></html>`);
+  win.document.close();
+  masseStatut(`Aperçu de ${pages.length} étiquette(s) ouvert.`, 'ok');
+});
+
 // ── Persistance locale des dimensions ────────────────────────
 
 function sauvegarderDimsLocal() {

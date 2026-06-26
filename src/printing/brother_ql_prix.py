@@ -273,6 +273,51 @@ def generer_preview_base64(data: dict) -> str:
     return base64.b64encode(buf.read()).decode("utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Substitution de variables — impression de masse depuis le catalogue de vente
+# ---------------------------------------------------------------------------
+
+def formater_prix(valeur) -> str:
+    """Formate un prix en '26,90 €' (virgule décimale). Vide si non renseigné."""
+    if valeur is None or valeur == "":
+        return ""
+    try:
+        return f"{float(valeur):.2f}".replace(".", ",") + " €"
+    except (TypeError, ValueError):
+        return ""
+
+
+def appliquer_variables(config: dict, produit: dict) -> dict:
+    """
+    Retourne une COPIE de la config d'un modèle où les variables des textes de
+    lignes sont remplacées à partir d'un produit du catalogue de vente.
+
+    Variables reconnues (insensibles aux valeurs manquantes → chaîne vide) :
+      {nom} {prix} {prix_kg} {famille} {sous_famille}
+    Un modèle sans variable est renvoyé tel quel (texte littéral conservé).
+    """
+    prix = formater_prix(produit.get("prix_vente_ttc"))
+    remplacements = {
+        "{nom}":          str(produit.get("nom") or produit.get("designation") or ""),
+        "{prix}":         prix,
+        "{prix_kg}":      (prix + " / kg") if prix else "",
+        "{famille}":      str(produit.get("famille") or ""),
+        "{sous_famille}": str(produit.get("sous_famille") or ""),
+    }
+
+    def substituer(texte: str) -> str:
+        for cle, val in remplacements.items():
+            texte = texte.replace(cle, val)
+        return texte
+
+    nouvelle = dict(config)
+    nouvelle["lignes"] = [
+        {**ligne, "texte": substituer(ligne.get("texte", ""))}
+        for ligne in config.get("lignes", [])
+    ]
+    return nouvelle
+
+
 # Largeur imprimable EXACTE pour le rouleau continu 62mm à 300dpi.
 # brother_ql exige cette largeur précise pour le type "62", sinon le convert
 # échoue ("image width X doesn't match printable width 696").

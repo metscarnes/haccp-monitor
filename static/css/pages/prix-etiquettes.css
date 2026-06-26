@@ -563,6 +563,87 @@
   color: #fff;
 }
 
+/* ── Modal Impression de masse ── */
+.pe-modal--large {
+  max-width: 960px;
+  max-height: 90vh;
+}
+.pe-masse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pe-masse-modele {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.pe-masse-aide {
+  font-size: var(--text-xs);
+  color: var(--color-offline);
+  margin: 0;
+}
+.pe-masse-aide code {
+  background: rgba(107,58,31,.08);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  margin-right: 4px;
+  font-size: .85em;
+}
+.pe-masse-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.pe-masse-toolbar #masse-search { flex: 1 1 180px; }
+.pe-masse-compteur {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+.pe-masse-table-wrap {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  border: 1px solid rgba(107,58,31,.14);
+  border-radius: var(--radius-sm);
+  min-height: 200px;
+}
+.pe-masse-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.pe-masse-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-card);
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 2px solid rgba(107,58,31,.18);
+  color: var(--color-accent);
+  z-index: 1;
+}
+.pe-masse-th-tri { cursor: pointer; user-select: none; }
+.pe-masse-th-tri:hover { background: rgba(107,58,31,.06); }
+.pe-masse-th-tri.tri-asc::after  { content: ' ▲'; font-size: .7em; }
+.pe-masse-th-tri.tri-desc::after { content: ' ▼'; font-size: .7em; }
+.pe-masse-table tbody td {
+  padding: var(--space-2);
+  border-bottom: 1px solid rgba(107,58,31,.08);
+}
+.pe-masse-table tbody tr:hover { background: rgba(107,58,31,.04); }
+.pe-masse-col-check { width: 36px; text-align: center; }
+.pe-masse-col-qte   { width: 70px; }
+.pe-masse-qte { width: 56px; text-align: center; }
+.pe-masse-vide {
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--color-offline);
+}
+
 /* ── Responsive : tablette portrait ── */
 @media (max-width: 900px) {
   .pe-main {
