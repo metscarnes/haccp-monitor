@@ -158,7 +158,13 @@
       "PowerShell(if \\($?\\) { \"OK - aucune erreur de syntaxe\" })",
       "PowerShell(python -m py_compile \"src/printing/brother_ql_prix.py\")",
       "PowerShell(if \\($?\\) { \"OK - compile sans erreur\" })",
-      "PowerShell(Get-ChildItem -Directory | Where-Object { $_.Name -match 'venv|env|\\\\.venv' } | Select-Object -ExpandProperty Name; if \\(Test-Path \".venv/Scripts/python.exe\"\\) { \".venv ok\" }; if \\(Test-Path \"venv/Scripts/python.exe\"\\) { \"venv ok\" }; python -c \"import PIL\" 2>$null; pip show pillow 2>$null | Select-String \"Version\")"
+      "PowerShell(Get-ChildItem -Directory | Where-Object { $_.Name -match 'venv|env|\\\\.venv' } | Select-Object -ExpandProperty Name; if \\(Test-Path \".venv/Scripts/python.exe\"\\) { \".venv ok\" }; if \\(Test-Path \"venv/Scripts/python.exe\"\\) { \"venv ok\" }; python -c \"import PIL\" 2>$null; pip show pillow 2>$null | Select-String \"Version\")",
+      "PowerShell(\"----- LOG -----\")",
+      "PowerShell(python _inspect_db.py)",
+      "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; & $git status --short; \"----- LOG -----\"; & $git log --oneline -6)",
+      "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"=== origin/master vs local ===\"; & $git rev-parse --short HEAD; & $git rev-parse --short origin/master 2>$null; \"=== commits depuis e8d7cee \\(avec fichiers\\) ===\"; & $git log --stat --oneline e8d7cee..HEAD)",
+      "PowerShell(python _tmp_dump.py)",
+      "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"############ routes_etiquettes.py ############\"; & $git show a142747 -- src/api/routes_etiquettes.py; \"############ brother_ql_prix.py ############\"; & $git show a142747 -- src/printing/brother_ql_prix.py)"
     ]
   }
 }
