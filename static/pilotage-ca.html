@@ -110,6 +110,30 @@
     .evo-down { color: #b91c1c; font-weight: 700; }
     .evo-flat { color: #6b7280; }
     .cmp-periodes { font-size: var(--text-sm); color: #6b7280; margin-bottom: 8px; }
+
+    /* Sections repliables */
+    .card > h2.collapsible { cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
+    .card > h2.collapsible::before { content: '▾'; font-size: .9em; transition: transform .15s; color: var(--color-accent); }
+    .card.collapsed > h2.collapsible::before { transform: rotate(-90deg); }
+    .card.collapsed > :not(h2) { display: none !important; }
+
+    /* Onglets périodes (réutilise le style chips/tabs) */
+    .periode-tabs { display: flex; gap: 4px; margin-bottom: var(--space-3); }
+    .periode-tab { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
+                   padding: .45rem 1.1rem; font-size: var(--text-sm); cursor: pointer; min-height: var(--btn-min-sm,40px); }
+    .periode-tab.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+
+    /* Zoom courbe */
+    .zoom-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+    .zoom-tab { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
+                padding: .35rem .9rem; font-size: var(--text-sm); cursor: pointer; }
+    .zoom-tab.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+
+    /* Profil par jour de semaine */
+    .profil-banner { background: #f3ebdf; border-radius: var(--radius-sm,6px); padding: var(--space-3);
+                     margin-bottom: var(--space-3); font-size: var(--text-base); }
+    .profil-banner b { color: var(--color-accent); }
+    .mini { font-size: var(--text-sm); color: #6b7280; }
   </style>
 </head>
 <body>
@@ -188,8 +212,8 @@
     </section>
 
     <!-- Indicateurs -->
-    <section class="card">
-      <h2>Indicateurs — mois en cours</h2>
+    <section class="card" data-section>
+      <h2 class="collapsible">Indicateurs — mois en cours</h2>
       <div class="stats-row">
         <div class="stat-box"><div class="val" id="s-total">—</div><div class="lbl">CA cumulé</div></div>
         <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour</div></div>
@@ -206,9 +230,37 @@
       </div>
     </section>
 
+    <!-- Profil par jour de semaine -->
+    <section class="card collapsed" data-section>
+      <h2 class="collapsible">Profil par jour de semaine</h2>
+      <div class="profil-banner" id="profil-banner">Chargement…</div>
+      <table>
+        <thead>
+          <tr><th>Jour</th><th class="num">CA moyen</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Occurrences</th></tr>
+        </thead>
+        <tbody id="profil-body"><tr><td colspan="5">Chargement…</td></tr></tbody>
+      </table>
+    </section>
+
+    <!-- Tableau par période -->
+    <section class="card collapsed" data-section>
+      <h2 class="collapsible">CA par période</h2>
+      <div class="periode-tabs">
+        <button class="periode-tab active" data-gran="jour">Jour</button>
+        <button class="periode-tab" data-gran="semaine">Semaine</button>
+        <button class="periode-tab" data-gran="mois">Mois</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th id="per-col-periode">Jour</th><th class="num">Total</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets</th><th class="num">Panier</th><th class="num">Évol.</th></tr>
+        </thead>
+        <tbody id="periode-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
+      </table>
+    </section>
+
     <!-- Comparaison -->
-    <section class="card">
-      <h2>Comparaison</h2>
+    <section class="card collapsed" data-section>
+      <h2 class="collapsible">Comparaison</h2>
       <div class="cmp-tabs">
         <button class="cmp-tab active" data-mode="periode">Période vs décalage</button>
         <button class="cmp-tab" data-mode="dates">Comparer 2 dates</button>
@@ -267,14 +319,21 @@
     </section>
 
     <!-- Courbe -->
-    <section class="card">
-      <h2>Évolution (90 derniers jours)</h2>
+    <section class="card" data-section>
+      <h2 class="collapsible">Évolution</h2>
+      <div class="zoom-tabs" id="zoom-tabs">
+        <button class="zoom-tab" data-jours="7">7 j</button>
+        <button class="zoom-tab" data-jours="30">30 j</button>
+        <button class="zoom-tab active" data-jours="90">90 j</button>
+        <button class="zoom-tab" data-jours="365">1 an</button>
+        <button class="zoom-tab" data-jours="0">Tout</button>
+      </div>
       <canvas id="chart-ca" height="220"></canvas>
     </section>
 
     <!-- Historique -->
-    <section class="card">
-      <h2>Historique</h2>
+    <section class="card collapsed" data-section>
+      <h2 class="collapsible">Historique</h2>
       <table>
         <thead>
           <tr><th>Date</th><th></th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Total</th><th class="num">Tickets</th><th></th></tr>
@@ -313,6 +372,8 @@
 
     let chart = null;
     let meteoSel = null;   // null | 'soleil' | 'pluie'
+    let histoRows = [];    // historique complet (desc) mis en cache pour le graphe
+    let zoomJours = 90;    // fenêtre du graphe en jours (0 = tout)
 
     function setMeteo(val) {
       // Re-cliquer la valeur active la désélectionne
@@ -411,7 +472,7 @@
         }
         fb.className = 'feedback ok';
         fb.textContent = 'Enregistré ✓';
-        await Promise.all([chargerStats(), chargerHistorique()]);
+        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(), chargerPeriode(granActive)]);
         await chargerJour($('date-ca').value);
       } catch (e) {
         fb.className = 'feedback err';
@@ -447,13 +508,17 @@
 
     async function chargerHistorique() {
       try {
-        const rows = await fetch(`${API}?limit=90`).then(r => r.json());
+        // On récupère un large historique (1000 j) : sert l'historique tableau
+        // (limité à 90 lignes affichées) ET le graphe (filtré par zoom).
+        const rows = await fetch(`${API}?limit=1000`).then(r => r.json());
+        histoRows = rows;
         const tbody = $('histo-body');
-        if (!rows.length) {
+        const affiches = rows.slice(0, 90);
+        if (!affiches.length) {
           tbody.innerHTML = '<tr><td colspan="7">Aucune saisie pour le moment.</td></tr>';
         } else {
           const tj = todayIso();
-          tbody.innerHTML = rows.map(r => `
+          tbody.innerHTML = affiches.map(r => `
             <tr class="${r.date_ca === tj ? 'is-today' : ''}">
               <td>${fmtDateFr(r.date_ca)}</td>
               <td>${r.meteo === 'soleil' ? '☀️' : (r.meteo === 'pluie' ? '🌧️' : '')}</td>
@@ -465,17 +530,22 @@
             </tr>`).join('');
           tbody.querySelectorAll('.row-edit').forEach(el => {
             el.addEventListener('click', () => {
-              $('date-ca').value = el.dataset.date;
-              chargerJour(el.dataset.date);
+              setDate(el.dataset.date);
               window.scrollTo({ top: 0, behavior: 'smooth' });
             });
           });
         }
-        majCourbe(rows);
+        majCourbe();
       } catch (e) { console.error(e); }
     }
 
-    function majCourbe(rows) {
+    // Filtre les données du graphe selon le zoom actif (0 = tout)
+    function majCourbe() {
+      let rows = histoRows;
+      if (zoomJours > 0) {
+        const limite = decalerIso(todayIso(), -zoomJours);
+        rows = histoRows.filter(r => r.date_ca >= limite);
+      }
       const data = [...rows].reverse(); // chrono croissant
       const labels = data.map(r => fmtDateFr(r.date_ca));
       const ctx = $('chart-ca');
@@ -511,6 +581,90 @@
             x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
           },
         },
+      });
+    }
+
+    // ─── Profil par jour de semaine + moyennes glissantes ──────
+    async function chargerProfilSemaine() {
+      try {
+        const p = await fetch(`${API}/stats/profil-semaine`).then(r => r.json());
+        // Bannière : dernier jour vs son jour-type + glissantes
+        const dv = p.dernier_vs_jour_type;
+        let banner = '';
+        if (dv && dv.moyenne_jour_type != null) {
+          banner = `Dernier jour saisi (${dv.jour_nom} ${fmtDateFr(dv.date_ca)}) : `
+            + `<b>${fmtEur(dv.montant_ttc)}</b> vs moyenne des ${dv.jour_nom.toLowerCase()}s `
+            + `<b>${fmtEur(dv.moyenne_jour_type)}</b> → ${evoSpan({ delta: dv.evolution.delta, pct: dv.evolution.pct })}`;
+        } else {
+          banner = 'Pas encore assez de données pour comparer au jour-type.';
+        }
+        banner += `<div class="mini" style="margin-top:6px">Moyenne glissante : `
+          + `7 j = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 j = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
+        $('profil-banner').innerHTML = banner;
+
+        const tj_dow = new Date().getDay(); // pour surligner le jour courant
+        $('profil-body').innerHTML = p.jours.map(j => `
+          <tr class="${j.dow === tj_dow ? 'is-today' : ''}">
+            <td>${j.nom}</td>
+            <td class="num">${fmtEur(j.ca_moyen)}</td>
+            <td class="num">${fmtEur(j.ca_moyen_matin)}</td>
+            <td class="num">${fmtEur(j.ca_moyen_soir)}</td>
+            <td class="num">${j.nb}</td>
+          </tr>`).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    // ─── Tableau CA par période (jour / semaine / mois) ────────
+    let granActive = 'jour';
+    const labelGran = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' };
+    function fmtPeriode(l, gran) {
+      if (gran === 'jour')    return fmtDateFr(l.periode);
+      if (gran === 'semaine') return l.periode.replace('-S', ' · sem. ');  // 2026-S26 → 2026 · sem. 26
+      if (gran === 'mois') {
+        const [y, m] = l.periode.split('-');
+        return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      }
+      return l.periode;
+    }
+    async function chargerPeriode(gran) {
+      granActive = gran;
+      $('per-col-periode').textContent = labelGran[gran];
+      try {
+        const res = await fetch(`${API}/stats/par-periode?granularite=${gran}&limit=60`).then(r => r.json());
+        const tbody = $('periode-body');
+        if (!res.lignes.length) {
+          tbody.innerHTML = '<tr><td colspan="7">Aucune donnée.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = res.lignes.map(l => `
+          <tr style="text-transform:capitalize">
+            <td>${fmtPeriode(l, gran)}</td>
+            <td class="num"><strong>${fmtEur(l.total_ttc)}</strong></td>
+            <td class="num">${fmtEur(l.total_ttc_matin)}</td>
+            <td class="num">${fmtEur(l.total_ttc_soir)}</td>
+            <td class="num">${l.total_tickets || '—'}</td>
+            <td class="num">${fmtEur(l.panier_moyen)}</td>
+            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>
+          </tr>`).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    // ─── Sections repliables ───────────────────────────────────
+    function initRepliable() {
+      document.querySelectorAll('.card[data-section] > h2.collapsible').forEach(h2 => {
+        h2.addEventListener('click', () => h2.parentElement.classList.toggle('collapsed'));
+      });
+    }
+
+    // ─── Zoom de la courbe ─────────────────────────────────────
+    function initZoom() {
+      document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          zoomJours = parseInt(btn.dataset.jours, 10);
+          majCourbe();
+        });
       });
     }
 
@@ -633,10 +787,24 @@
     });
     $('date-ca').addEventListener('change', () => setDate($('date-ca').value));
 
+    // Onglets du tableau par période
+    document.querySelectorAll('.periode-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.periode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        chargerPeriode(tab.dataset.gran);
+      });
+    });
+
+    initRepliable();
+    initZoom();
+
     chargerPersonnel();
     setDate(veilleIso());   // jour par défaut : la veille (saisie du matin)
     chargerStats();
     chargerHistorique();
+    chargerProfilSemaine();
+    chargerPeriode('jour');
     initComparaison();
   })();
   </script>

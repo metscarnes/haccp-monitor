@@ -47,6 +47,8 @@ POST   /api/achats/pilotage/ca                            → enregistrer/corrig
 GET    /api/achats/pilotage/ca/stats/resume               → totaux & moyennes (mois courant + 30j)
 GET    /api/achats/pilotage/ca/stats/comparatif            → période vs période décalée (j/s/m/a × n)
 GET    /api/achats/pilotage/ca/stats/comparer-dates        → comparaison de deux jours précis
+GET    /api/achats/pilotage/ca/stats/par-periode           → CA agrégé jour/semaine/mois + évolution
+GET    /api/achats/pilotage/ca/stats/profil-semaine        → moyenne par jour de semaine + glissantes 7/30j
 """
 
 import io
@@ -4619,6 +4621,133 @@ async def get_ca_comparer_dates(
             "total_ttc_matin": _evolution(a["montant_ttc_matin"], b["montant_ttc_matin"]),
             "total_ttc_soir":  _evolution(a["montant_ttc_soir"],  b["montant_ttc_soir"]),
         },
+    }
+
+
+# Granularité → expression SQLite qui calcule la clé de période depuis date_ca.
+# jour   : la date elle-même (YYYY-MM-DD)
+# semaine: année + n° de semaine ISO (%G-S%V) — lundi comme premier jour
+# mois   : année-mois (YYYY-MM)
+_GRANULARITES = {
+    "jour":    "date_ca",
+    "semaine": "strftime('%G-S%V', date_ca)",
+    "mois":    "strftime('%Y-%m', date_ca)",
+}
+
+
+@router.get("/pilotage/ca/stats/par-periode")
+async def get_ca_par_periode(
+    granularite: str = Query("jour", description="jour | semaine | mois"),
+    limit:       int = Query(60, ge=1, le=1000),
+):
+    """CA agrégé par période, du plus récent au plus ancien, avec évolution
+    vs la période précédente (sur le total)."""
+    gran = granularite.lower().strip()
+    if gran not in _GRANULARITES:
+        raise HTTPException(400, "granularite doit valoir jour, semaine ou mois")
+    expr = _GRANULARITES[gran]
+
+    async with get_db() as db:
+        cur = await db.execute(
+            f"""SELECT
+                    {expr}                               AS periode,
+                    MIN(date_ca)                         AS date_debut,
+                    MAX(date_ca)                         AS date_fin,
+                    COUNT(*)                             AS nb_jours,
+                    COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
+                    COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
+                    COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
+                    COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir
+                FROM ca_journalier
+                WHERE boutique_id = 1
+                GROUP BY periode
+                ORDER BY periode DESC
+                LIMIT ?""",
+            (limit,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+
+    # Évolution vs période précédente : les lignes sont triées desc, donc la
+    # période précédente d'une ligne est la ligne suivante dans la liste.
+    for i, r in enumerate(rows):
+        r["panier_moyen"] = _panier(r["total_ttc"], r["total_tickets"])
+        precedent = rows[i + 1]["total_ttc"] if i + 1 < len(rows) else None
+        r["evolution"] = _evolution(r["total_ttc"], precedent) if precedent is not None else {"delta": None, "pct": None}
+    return {"granularite": gran, "lignes": rows}
+
+
+@router.get("/pilotage/ca/stats/profil-semaine")
+async def get_ca_profil_semaine():
+    """Profil par jour de semaine (moyenne CA lundi→dimanche) + moyennes
+    glissantes 7 / 30 derniers jours, et position du dernier jour saisi."""
+    async with get_db() as db:
+        # Moyenne par jour de semaine. strftime('%w') : 0=dimanche … 6=samedi
+        cur = await db.execute(
+            """SELECT
+                   CAST(strftime('%w', date_ca) AS INTEGER) AS dow,
+                   COUNT(*)            AS nb,
+                   AVG(montant_ttc)    AS ca_moyen,
+                   AVG(montant_ttc_matin) AS ca_moyen_matin,
+                   AVG(montant_ttc_soir)  AS ca_moyen_soir
+               FROM ca_journalier
+               WHERE boutique_id = 1
+               GROUP BY dow"""
+        )
+        par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
+
+        # Dernier jour saisi + sa valeur
+        cur = await db.execute(
+            "SELECT date_ca, montant_ttc, CAST(strftime('%w', date_ca) AS INTEGER) AS dow "
+            "FROM ca_journalier WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
+        )
+        dernier = await cur.fetchone()
+        dernier = dict(dernier) if dernier else None
+
+        # Moyennes glissantes : 7 et 30 derniers jours calendaires
+        async def _moy(jours: int):
+            cur = await db.execute(
+                "SELECT AVG(montant_ttc) AS m FROM ca_journalier "
+                "WHERE boutique_id = 1 AND date_ca >= date('now', ?)",
+                (f"-{jours} days",),
+            )
+            row = await cur.fetchone()
+            return round(row["m"], 2) if row and row["m"] is not None else None
+
+        moy_7j  = await _moy(7)
+        moy_30j = await _moy(30)
+
+    # Ordonne lundi(1)→dimanche(0→7) pour l'affichage FR
+    ordre = [1, 2, 3, 4, 5, 6, 0]
+    noms = {1: "Lundi", 2: "Mardi", 3: "Mercredi", 4: "Jeudi", 5: "Vendredi", 6: "Samedi", 0: "Dimanche"}
+    jours = []
+    for dow in ordre:
+        d = par_dow.get(dow)
+        jours.append({
+            "dow": dow,
+            "nom": noms[dow],
+            "nb": d["nb"] if d else 0,
+            "ca_moyen": round(d["ca_moyen"], 2) if d and d["ca_moyen"] is not None else None,
+            "ca_moyen_matin": round(d["ca_moyen_matin"], 2) if d and d["ca_moyen_matin"] is not None else None,
+            "ca_moyen_soir": round(d["ca_moyen_soir"], 2) if d and d["ca_moyen_soir"] is not None else None,
+        })
+
+    # Position du dernier jour vs la moyenne de son jour de semaine
+    dernier_vs_dow = None
+    if dernier:
+        moy_dow = par_dow.get(dernier["dow"], {}).get("ca_moyen")
+        dernier_vs_dow = {
+            "date_ca": dernier["date_ca"],
+            "jour_nom": noms[dernier["dow"]],
+            "montant_ttc": dernier["montant_ttc"],
+            "moyenne_jour_type": round(moy_dow, 2) if moy_dow is not None else None,
+            "evolution": _evolution(dernier["montant_ttc"], moy_dow) if moy_dow else {"delta": None, "pct": None},
+        }
+
+    return {
+        "jours": jours,
+        "moyenne_glissante_7j": moy_7j,
+        "moyenne_glissante_30j": moy_30j,
+        "dernier_vs_jour_type": dernier_vs_dow,
     }
 
 
