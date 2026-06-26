@@ -215,13 +215,19 @@ function afficherTable(liste) {
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
-        <button class="ach-btn ach-btn--small" onclick="ouvrirEtiquettePrix(${JSON.stringify({id: p.id, nom: p.nom, prix_vente_ttc: p.prix_vente_ttc, unite_vente: p.unite_vente, famille: p.famille, sous_famille: p.sous_famille})})" title="Imprimer étiquette prix">🏷️</button>
+        <button class="ach-btn ach-btn--small btn-etiq-prix" data-id="${p.id}" title="Imprimer étiquette prix">🏷️</button>
         ${p.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${p.id}, false)" title="Désactiver">✕</button>`
           : `<button class="ach-btn ach-btn--small ach-btn--ok" onclick="toggleActif(${p.id}, true)" title="Réactiver">↺</button>`
         }
       </td>
     </tr>`).join('');
+
+  // Stocker les données produit pour les boutons étiquette
+  liste.forEach(p => { _etiqMap.set(p.id, p); });
+  document.querySelectorAll('.btn-etiq-prix').forEach(btn => {
+    btn.addEventListener('click', () => ouvrirEtiquettePrix(_etiqMap.get(parseInt(btn.dataset.id))));
+  });
 
   document.getElementById('chk-tout').checked = false;
 }
@@ -590,6 +596,7 @@ function escHtml(str) {
 
 // ── Impression rapide étiquette prix ─────────────────────────
 
+const _etiqMap = new Map();
 let _etiqProduitCourant = null;
 
 async function ouvrirEtiquettePrix(produit) {
