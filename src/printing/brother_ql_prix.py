@@ -360,8 +360,10 @@ LABEL_62_PRINTABLE_W = 696
 # 300 dpi donne une étiquette deux fois trop courte ; on la calcule donc à
 # 600 dpi pour que la largeur demandée (ex. 10 cm) corresponde au réel.
 # ⚠️ Si la longueur imprimée reste fausse, ajuster CETTE valeur (mesurer puis
-# multiplier : nouvelle_valeur = 600 × longueur_demandée / longueur_mesurée).
-FEED_DPI = 600
+# multiplier : nouvelle_valeur = FEED_DPI_actuel × longueur_demandée / longueur_mesurée).
+# Calibration boutique : demandé 10 cm → mesuré 6,5 cm avec FEED_DPI=600,
+# donc 600 × 10 / 6,5 ≈ 923.
+FEED_DPI = 923
 CM_PAR_POUCE = 2.54
 
 
