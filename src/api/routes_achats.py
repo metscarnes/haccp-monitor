@@ -1373,11 +1373,14 @@ async def delete_ligne(commande_id: int, ligne_id: int):
 
 @router.delete("/commandes/{commande_id}", status_code=204)
 async def delete_commande(commande_id: int):
-    """Supprime une commande et toutes ses lignes."""
+    """Supprime une commande et toutes ses lignes (sauf si livrée)."""
     async with get_db() as db:
-        row = await db.execute("SELECT id FROM commandes WHERE id = ?", (commande_id,))
-        if not await row.fetchone():
+        cur = await db.execute("SELECT id, statut FROM commandes WHERE id = ?", (commande_id,))
+        row = await cur.fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="Commande introuvable")
+        if row["statut"] == "livree":
+            raise HTTPException(status_code=409, detail="Impossible de supprimer une commande déjà livrée")
         await db.execute("DELETE FROM commande_lignes WHERE commande_id = ?", (commande_id,))
         await db.execute("DELETE FROM commande_receptions_mapping WHERE commande_id = ?", (commande_id,))
         await db.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))

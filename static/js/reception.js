@@ -532,6 +532,11 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
       <div class="rec-commande-resume-titre">
         📝 ${escHtml(cmd.numero_commande)} — ${escHtml(cmd.fournisseur_nom)}
         <span class="rec-commande-prefill-badge">Auto-remplissage activé</span>
+        <button type="button" class="rec-cmd-delete-btn" data-cmd-id="${cmd.id}"
+          data-cmd-num="${escHtml(cmd.numero_commande)}" data-cmd-fourn="${escHtml(cmd.fournisseur_nom)}"
+          data-cmd-nb-lignes="${(cmd.lignes || []).length}"
+          aria-label="Supprimer définitivement cette commande"
+          title="Supprimer définitivement">🗑</button>
       </div>
       ${(cmd.lignes || []).map(l => `
         <div class="rec-commande-resume-ligne">
@@ -540,6 +545,18 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
         </div>
       `).join('')}
     `;
+    resumeEl.querySelector('.rec-cmd-delete-btn')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
+      const rowEl = elCommandesListe?.children[rowIdx] || null;
+      supprimerCommandeDefinitivement(
+        parseInt(btn.dataset.cmdId),
+        btn.dataset.cmdNum,
+        btn.dataset.cmdFourn,
+        parseInt(btn.dataset.cmdNbLignes),
+        rowIdx,
+        rowEl
+      );
+    });
 
     // Créer le bloc BL si nécessaire (rowIdx > 0 = nouveau bloc à injecter)
     if (rowIdx > 0 && !document.getElementById(`rec-fourn-bloc-${rowIdx}`)) {
@@ -560,6 +577,58 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
   } catch(e) {
     resumeEl.innerHTML = '<div style="color:#991b1b;">Erreur de chargement de la commande</div>';
     resumeEl.hidden = false;
+  }
+}
+
+async function supprimerCommandeDefinitivement(cmdId, cmdNum, cmdFourn, nbLignes, rowIdx, rowEl) {
+  // Popup de confirmation
+  const msg = `Supprimer définitivement la commande ${cmdNum} (${cmdFourn}) ?\n\n`
+    + `${nbLignes} ligne${nbLignes > 1 ? 's' : ''} sera${nbLignes > 1 ? 'ont' : ''} supprimée${nbLignes > 1 ? 's' : ''}.\n`
+    + `Cette action est irréversible.`;
+  if (!confirm(msg)) return;
+
+  try {
+    const res = await fetch(`/api/achats/commandes/${cmdId}`, { method: 'DELETE', cache: 'no-store' });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      let detail = txt;
+      try { detail = JSON.parse(txt)?.detail || txt; } catch(_) {}
+      throw Object.assign(new Error(detail), { detail });
+    }
+
+    // Retirer du state local
+    commandeIds.splice(rowIdx, 1);
+    // Retirer du cache
+    const cacheIdx = toutesCommandes.findIndex(c => c.id === cmdId);
+    if (cacheIdx !== -1) toutesCommandes.splice(cacheIdx, 1);
+
+    // Supprimer la ligne DOM + renuméroter
+    if (rowEl) {
+      rowEl.remove();
+      Array.from(elCommandesListe?.children || []).forEach((r, i) => { r.dataset.rowIdx = i; });
+    }
+
+    // Supprimer le bloc fournisseur correspondant
+    if (rowIdx > 0) {
+      const bloc = document.getElementById(`rec-fourn-bloc-${rowIdx}`);
+      if (bloc) { fournisseursListe.splice(rowIdx, 1); bloc.remove(); }
+    } else {
+      viderFournisseurBloc(0);
+    }
+
+    commandeLignes = construireLignesCommandes();
+    syncModeFournisseur();
+    majSelectorFournisseur();
+
+    // Toast discret
+    const toast = document.createElement('div');
+    toast.textContent = `Commande ${cmdNum} supprimée.`;
+    toast.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:.6rem 1.2rem;border-radius:.5rem;font-size:.875rem;z-index:9999;';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  } catch(e) {
+    const detail = e?.detail || e?.message || 'Erreur inconnue';
+    alert(`Impossible de supprimer la commande : ${detail}`);
   }
 }
 
