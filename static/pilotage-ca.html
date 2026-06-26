@@ -43,6 +43,11 @@
     .section-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: 4px; }
     .section-titre small { font-weight: 400; color: #6b7280; }
     .montant-input { font-size: 1.35rem !important; font-weight: 700; text-align: right; }
+    .meteo-toggle { display: flex; gap: 8px; }
+    .meteo-btn { flex: 1; background: #f3ebdf; border: 2px solid var(--color-border,#ddd);
+                 border-radius: var(--radius-sm,6px); padding: .7rem; font-size: var(--text-base);
+                 cursor: pointer; min-height: var(--btn-min-sm,44px); }
+    .meteo-btn.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
     .panier-hint { font-size: var(--text-sm); color: var(--color-text-muted, #777); min-height: 1.2em; }
     .total-jour { font-size: var(--text-base); font-weight: 700; text-align: right;
                   padding-top: var(--space-2); border-top: 1px dashed var(--color-border, #ddd); }
@@ -152,6 +157,13 @@
           <select id="personnel"><option value="">—</option></select>
         </div>
         <div class="form-row">
+          <label>Météo (optionnel)</label>
+          <div class="meteo-toggle">
+            <button type="button" class="meteo-btn" data-meteo="soleil">☀️ Soleil</button>
+            <button type="button" class="meteo-btn" data-meteo="pluie">🌧️ Pluie</button>
+          </div>
+        </div>
+        <div class="form-row">
           <label for="commentaire">Commentaire (optionnel)</label>
           <input type="text" id="commentaire" placeholder="Ex. fermeture exceptionnelle, marché…">
         </div>
@@ -250,9 +262,9 @@
       <h2>Historique</h2>
       <table>
         <thead>
-          <tr><th>Date</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Total</th><th class="num">Tickets</th><th></th></tr>
+          <tr><th>Date</th><th></th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Total</th><th class="num">Tickets</th><th></th></tr>
         </thead>
-        <tbody id="histo-body"><tr><td colspan="6">Chargement…</td></tr></tbody>
+        <tbody id="histo-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
       </table>
     </section>
 
@@ -273,6 +285,19 @@
     const intOrNull = v => { v = (v ?? '').toString().trim(); return v === '' ? null : parseInt(v, 10); };
 
     let chart = null;
+    let meteoSel = null;   // null | 'soleil' | 'pluie'
+
+    function setMeteo(val) {
+      // Re-cliquer la valeur active la désélectionne
+      meteoSel = (meteoSel === val) ? null : val;
+      document.querySelectorAll('.meteo-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.meteo === meteoSel));
+    }
+    function appliquerMeteo(val) {
+      meteoSel = val || null;
+      document.querySelectorAll('.meteo-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.meteo === meteoSel));
+    }
 
     function majPaniers() {
       const mm = num($('montant-matin').value), tm = parseInt($('tickets-matin').value, 10);
@@ -306,10 +331,12 @@
           $('tickets-soir').value  = j.nb_tickets_soir ?? '';
           $('commentaire').value   = j.commentaire ?? '';
           if (j.personnel_id) $('personnel').value = j.personnel_id;
+          appliquerMeteo(j.meteo);
           $('form-titre').textContent = `Modifier le CA du ${fmtDateFr(iso)}`;
           $('btn-save').textContent = 'Mettre à jour';
         } else {
           ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'].forEach(id => $(id).value = '');
+          appliquerMeteo(null);
           $('form-titre').textContent = `Saisie du CA du ${fmtDateFr(iso)}`;
           $('btn-save').textContent = 'Enregistrer';
         }
@@ -333,6 +360,7 @@
         nb_tickets_matin: intOrNull($('tickets-matin').value),
         montant_ttc_soir: ms,
         nb_tickets_soir: intOrNull($('tickets-soir').value),
+        meteo: meteoSel,
         commentaire: $('commentaire').value.trim() || null,
         personnel_id: persRaw === '' ? null : parseInt(persRaw, 10),
       };
@@ -388,12 +416,13 @@
         const rows = await fetch(`${API}?limit=90`).then(r => r.json());
         const tbody = $('histo-body');
         if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="6">Aucune saisie pour le moment.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7">Aucune saisie pour le moment.</td></tr>';
         } else {
           const tj = todayIso();
           tbody.innerHTML = rows.map(r => `
             <tr class="${r.date_ca === tj ? 'is-today' : ''}">
               <td>${fmtDateFr(r.date_ca)}</td>
+              <td>${r.meteo === 'soleil' ? '☀️' : (r.meteo === 'pluie' ? '🌧️' : '')}</td>
               <td class="num">${fmtEur(r.montant_ttc_matin)}</td>
               <td class="num">${fmtEur(r.montant_ttc_soir)}</td>
               <td class="num"><strong>${fmtEur(r.montant_ttc)}</strong></td>
@@ -560,6 +589,8 @@
       $(id).addEventListener('input', majPaniers));
     $('date-ca').addEventListener('change', () => chargerJour($('date-ca').value));
     $('btn-save').addEventListener('click', enregistrer);
+    document.querySelectorAll('.meteo-btn').forEach(b =>
+      b.addEventListener('click', () => setMeteo(b.dataset.meteo)));
 
     chargerPersonnel();
     chargerJour($('date-ca').value);

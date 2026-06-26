@@ -4646,6 +4646,9 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
     for nom, val in (("matin", body.nb_tickets_matin), ("soir", body.nb_tickets_soir)):
         if val is not None and val < 0:
             raise HTTPException(400, f"Le nombre de tickets {nom} ne peut pas être négatif")
+    meteo = (body.meteo or "").strip().lower() or None
+    if meteo is not None and meteo not in ("soleil", "pluie"):
+        raise HTTPException(400, "meteo doit valoir 'soleil', 'pluie' ou être vide")
 
     total_ttc = round((body.montant_ttc_matin or 0) + (body.montant_ttc_soir or 0), 2)
     # Total tickets : None seulement si aucune des deux sections n'a de tickets
@@ -4658,8 +4661,8 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
                    (boutique_id, date_ca, montant_ttc, nb_tickets,
                     montant_ttc_matin, nb_tickets_matin,
                     montant_ttc_soir, nb_tickets_soir,
-                    commentaire, personnel_id)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    meteo, commentaire, personnel_id)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
                    montant_ttc       = excluded.montant_ttc,
                    nb_tickets        = excluded.nb_tickets,
@@ -4667,13 +4670,14 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
                    nb_tickets_matin  = excluded.nb_tickets_matin,
                    montant_ttc_soir  = excluded.montant_ttc_soir,
                    nb_tickets_soir   = excluded.nb_tickets_soir,
+                   meteo             = excluded.meteo,
                    commentaire       = excluded.commentaire,
                    personnel_id      = excluded.personnel_id,
                    updated_at        = CURRENT_TIMESTAMP""",
             (body.date_ca, total_ttc, total_tickets,
              body.montant_ttc_matin, body.nb_tickets_matin,
              body.montant_ttc_soir, body.nb_tickets_soir,
-             body.commentaire, body.personnel_id),
+             meteo, body.commentaire, body.personnel_id),
         )
         await db.commit()
         cur = await db.execute(
