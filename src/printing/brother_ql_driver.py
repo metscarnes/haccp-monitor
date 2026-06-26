@@ -20,12 +20,15 @@ if not hasattr(_PILImage, "ANTIALIAS"):
 
 logger = logging.getLogger(__name__)
 
-# Imprimante Brother QL-820NWB (USB).
-# brother_ql distingue le MODÈLE (pour BrotherQLRaster) de l'IDENTIFIANT de
-# connexion USB (pour send). Les confondre déclenche BrotherQLUnknownModel.
+# Imprimante Brother QL-820NWB (Wi-Fi en boutique, USB possible en dev).
+# brother_ql distingue le MODÈLE (pour BrotherQLRaster), le BACKEND (network/pyusb)
+# et l'IDENTIFIANT de connexion (pour send) :
+#   network → "tcp://192.168.1.56"   |   pyusb → "usb://0x04f9:0x209b"
+# Confondre modèle et identifiant déclenche BrotherQLUnknownModel.
+# Mêmes variables d'env que brother_ql_prix.py → un seul réglage configure tout.
 PRINTER_MODEL = os.getenv("BROTHER_QL_MODEL", "QL-820NWB")
-# Format USB : "usb://0x04f9:0x209b" — à ajuster selon le modèle exact détecté par lsusb
-PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "usb://0x04f9:0x209b")
+PRINTER_BACKEND = os.getenv("BROTHER_QL_BACKEND", "network")
+PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "tcp://192.168.1.56")
 
 # Rouleau DK-22246 (62mm continu) — couvre le format 60mm
 LABEL_TYPE = "62"
@@ -332,7 +335,7 @@ def imprimer_etiquette(data: dict) -> bool:
         send(
             instructions=instructions,
             printer_identifier=PRINTER_IDENTIFIER,
-            backend_identifier="pyusb",
+            backend_identifier=PRINTER_BACKEND,
             blocking=True,
         )
         logger.info("Étiquette imprimée : %s — lot %s", data.get("produit_nom"), data.get("numero_lot"))
@@ -345,9 +348,23 @@ def imprimer_etiquette(data: dict) -> bool:
 
 def verifier_imprimante() -> dict:
     """
-    Vérifie que l'imprimante est détectée et accessible via USB.
+    Vérifie que l'imprimante est accessible, selon le backend configuré.
+    - network : test d'ouverture TCP sur le port d'impression (9100).
+    - pyusb   : détection du périphérique Brother (vendor 0x04f9) sur le bus USB.
     Retourne un dict {"disponible": bool, "message": str}.
     """
+    if PRINTER_BACKEND == "network":
+        # PRINTER_IDENTIFIER = "tcp://192.168.1.56[:9100]"
+        import socket
+        hostport = PRINTER_IDENTIFIER.replace("tcp://", "", 1)
+        host, _, port = hostport.partition(":")
+        port = int(port) if port else 9100
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return {"disponible": True, "message": f"Imprimante joignable sur {host}:{port}"}
+        except OSError as e:
+            return {"disponible": False, "message": f"Imprimante injoignable sur {host}:{port} ({e})"}
+
     try:
         import usb.core
         # Vendor ID Brother = 0x04f9

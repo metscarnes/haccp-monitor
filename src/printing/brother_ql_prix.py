@@ -1,7 +1,7 @@
 """
 brother_ql_prix.py — Impression d'étiquettes prix sur Brother QL-820NWBc
 
-Même connexion USB que brother_ql_driver.py (PRINTER_IDENTIFIER / pyusb).
+Même connexion que brother_ql_driver.py (Wi-Fi réseau par défaut, USB possible).
 Dimensions paramétrables (cm → px à 300dpi). Polices TTF custom supportées.
 """
 
@@ -20,13 +20,17 @@ if not hasattr(_PILImage, "ANTIALIAS"):
 
 logger = logging.getLogger(__name__)
 
-# Même identifiant USB que le driver HACCP existant.
-# IMPORTANT : brother_ql distingue deux notions —
+# brother_ql distingue trois notions —
 #   - PRINTER_MODEL : le nom du modèle (ex. "QL-820NWB"), attendu par BrotherQLRaster()
-#   - PRINTER_IDENTIFIER : l'adresse de connexion USB, attendue par send(printer_identifier=...)
-# Les confondre déclenche BrotherQLUnknownModel.
+#   - PRINTER_BACKEND : "network" (Wi-Fi/Ethernet) ou "pyusb" (USB direct sur le Pi)
+#   - PRINTER_IDENTIFIER : l'adresse de connexion, format selon le backend :
+#       network → "tcp://192.168.1.56"   |   pyusb → "usb://0x04f9:0x209b"
+# Confondre modèle et identifiant déclenche BrotherQLUnknownModel.
+#
+# Cible boutique : imprimante en Wi-Fi sur la box (pas d'USB, tablette mobile).
 PRINTER_MODEL = os.getenv("BROTHER_QL_MODEL", "QL-820NWB")
-PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "usb://0x04f9:0x209b")
+PRINTER_BACKEND = os.getenv("BROTHER_QL_BACKEND", "network")
+PRINTER_IDENTIFIER = os.getenv("BROTHER_QL_PRINTER", "tcp://192.168.1.56")
 LABEL_TYPE = "62"
 
 # Résolution 300dpi : 1 cm = 118.11 px → arrondi à 118
@@ -319,7 +323,7 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
         send(
             instructions=instructions,
             printer_identifier=PRINTER_IDENTIFIER,
-            backend_identifier="pyusb",
+            backend_identifier=PRINTER_BACKEND,
             blocking=True,
         )
         premier = data.get("lignes", [{}])
