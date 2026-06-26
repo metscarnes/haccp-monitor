@@ -4480,13 +4480,13 @@ async def get_ca_historique(
     limit:      int           = Query(90, ge=1, le=1000),
 ):
     """Historique du CA, du plus récent au plus ancien (filtre période optionnel)."""
-    clauses = ["boutique_id = 1"]
+    clauses = ["c.boutique_id = 1"]
     params: list = []
     if date_debut:
-        clauses.append("date_ca >= ?")
+        clauses.append("c.date_ca >= ?")
         params.append(date_debut)
     if date_fin:
-        clauses.append("date_ca <= ?")
+        clauses.append("c.date_ca <= ?")
         params.append(date_fin)
     where = " AND ".join(clauses)
     async with get_db() as db:

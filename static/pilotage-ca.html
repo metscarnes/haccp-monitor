@@ -43,6 +43,16 @@
     .section-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: 4px; }
     .section-titre small { font-weight: 400; color: #6b7280; }
     .montant-input { font-size: 1.35rem !important; font-weight: 700; text-align: right; }
+    .date-nav { display: flex; align-items: center; gap: 8px; }
+    .date-arrow { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: var(--radius-sm,6px);
+                  font-size: 1.2rem; line-height: 1; padding: 0 1rem; cursor: pointer;
+                  min-height: var(--btn-min,48px); min-width: 52px; color: var(--color-accent); }
+    .date-arrow:hover { background: #e9dcc7; }
+    .date-label { flex: 1; background: #fff; border: 1px solid var(--color-border,#ccc); border-radius: var(--radius-sm,6px);
+                  padding: .7rem; font-size: var(--text-base); font-weight: 600; cursor: pointer;
+                  min-height: var(--btn-min,48px); text-align: center; text-transform: capitalize; }
+    .date-label:hover { border-color: var(--color-accent); }
+    .date-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
     .meteo-toggle { display: flex; gap: 8px; }
     .meteo-btn { flex: 1; background: #f3ebdf; border: 2px solid var(--color-border,#ddd);
                  border-radius: var(--radius-sm,6px); padding: .7rem; font-size: var(--text-base);
@@ -118,8 +128,13 @@
       <h2 id="form-titre">Saisie du chiffre d'affaires</h2>
       <div class="form-grid">
         <div class="form-row">
-          <label for="date-ca">Jour</label>
-          <input type="date" id="date-ca">
+          <label>Jour</label>
+          <div class="date-nav">
+            <button type="button" class="date-arrow" id="jour-prec" aria-label="Jour précédent">◀</button>
+            <button type="button" class="date-label" id="date-label">—</button>
+            <button type="button" class="date-arrow" id="jour-suiv" aria-label="Jour suivant">▶</button>
+            <input type="date" id="date-ca" class="date-hidden">
+          </div>
         </div>
 
         <div class="sections">
@@ -279,6 +294,18 @@
     const fmtEur = v => v == null ? '—'
       : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
     const fmtDateFr = iso => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+    // Date longue : « jeudi 26 juin 2026 » (à partir d'un ISO YYYY-MM-DD)
+    const fmtDateLongue = iso => {
+      const [y, m, d] = iso.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('fr-FR',
+        { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    };
+    // Décale un ISO de n jours (sans dérive de fuseau)
+    const decalerIso = (iso, n) => {
+      const [y, m, d] = iso.split('-').map(Number);
+      const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n);
+      return dt.toLocaleDateString('sv-SE');
+    };
     const veilleIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('sv-SE'); };
     const todayIso = () => new Date().toLocaleDateString('sv-SE');
     const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
@@ -332,16 +359,23 @@
           $('commentaire').value   = j.commentaire ?? '';
           if (j.personnel_id) $('personnel').value = j.personnel_id;
           appliquerMeteo(j.meteo);
-          $('form-titre').textContent = `Modifier le CA du ${fmtDateFr(iso)}`;
+          $('form-titre').textContent = `Modifier le CA — ${fmtDateLongue(iso)}`;
           $('btn-save').textContent = 'Mettre à jour';
         } else {
           ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'].forEach(id => $(id).value = '');
           appliquerMeteo(null);
-          $('form-titre').textContent = `Saisie du CA du ${fmtDateFr(iso)}`;
+          $('form-titre').textContent = `Saisie du CA — ${fmtDateLongue(iso)}`;
           $('btn-save').textContent = 'Enregistrer';
         }
         majPaniers();
       } catch (e) { console.error(e); }
+    }
+
+    // Change le jour courant : met à jour l'input, le libellé long, et recharge
+    function setDate(iso) {
+      $('date-ca').value = iso;
+      $('date-label').textContent = fmtDateLongue(iso);
+      chargerJour(iso);
     }
 
     async function enregistrer() {
@@ -584,16 +618,23 @@
     }
 
     // Init
-    $('date-ca').value = veilleIso();
     ['montant-matin','tickets-matin','montant-soir','tickets-soir'].forEach(id =>
       $(id).addEventListener('input', majPaniers));
-    $('date-ca').addEventListener('change', () => chargerJour($('date-ca').value));
     $('btn-save').addEventListener('click', enregistrer);
     document.querySelectorAll('.meteo-btn').forEach(b =>
       b.addEventListener('click', () => setMeteo(b.dataset.meteo)));
 
+    // Navigation jour : flèches préc/suivant + libellé cliquable (sélecteur natif)
+    $('jour-prec').addEventListener('click', () => setDate(decalerIso($('date-ca').value, -1)));
+    $('jour-suiv').addEventListener('click', () => setDate(decalerIso($('date-ca').value, +1)));
+    $('date-label').addEventListener('click', () => {
+      const inp = $('date-ca');
+      if (inp.showPicker) inp.showPicker(); else inp.focus();
+    });
+    $('date-ca').addEventListener('change', () => setDate($('date-ca').value));
+
     chargerPersonnel();
-    chargerJour($('date-ca').value);
+    setDate(veilleIso());   // jour par défaut : la veille (saisie du matin)
     chargerStats();
     chargerHistorique();
     initComparaison();
