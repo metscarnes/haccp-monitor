@@ -305,10 +305,35 @@ async def alertes_dlc(jours_seuil: int = 2):
 
 
 # ---------------------------------------------------------------------------
-# Statut imprimante
+# Statut & configuration imprimante
 # ---------------------------------------------------------------------------
 
 @router.get("/impression/status")
 async def statut_imprimante():
     from src.printing.brother_ql_driver import verifier_imprimante
     return verifier_imprimante()
+
+
+class PrinterConfigUpdate(BaseModel):
+    identifier: str          # ex. "tcp://192.168.1.42"
+    model: Optional[str] = None
+    backend: Optional[str] = None
+
+
+@router.get("/impression/config")
+async def get_config_imprimante():
+    from src.printing.printer_config import get_printer_config
+    return get_printer_config()
+
+
+@router.post("/impression/config")
+async def set_config_imprimante(body: PrinterConfigUpdate):
+    from src.printing.printer_config import save_printer_config
+    if not body.identifier.strip():
+        raise HTTPException(status_code=422, detail="L'adresse de l'imprimante ne peut pas être vide.")
+    cfg = save_printer_config(
+        identifier=body.identifier,
+        model=body.model,
+        backend=body.backend,
+    )
+    return {"ok": True, "config": cfg}

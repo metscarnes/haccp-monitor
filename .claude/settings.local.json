@@ -150,7 +150,9 @@
       "Bash(python -m pytest tests/test_stock.py::test_stock_inclut_les_4_sources -x -q)",
       "Bash(python -c \"import src.database; print\\('OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('src/database.py', encoding='utf-8'\\).read\\(\\)\\); ast.parse\\(open\\('src/api/routes_fabrication.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
-      "Bash(ssh campiglia@ulyssetest.ddns.net)"
+      "Bash(ssh campiglia@ulyssetest.ddns.net)",
+      "PowerShell(\\(Get-Content \"c:\\\\Users\\\\Ulysse\\\\OneDrive\\\\Création d'entreprise\\\\Boucherie\\\\SoftWare\\\\haccp-monitor\\\\static\\\\prix-etiquettes.html\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(\\(Get-Content \"c:\\\\Users\\\\Ulysse\\\\OneDrive\\\\Création d'entreprise\\\\Boucherie\\\\SoftWare\\\\haccp-monitor\\\\static\\\\js\\\\prix_etiquettes.js\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }

@@ -467,7 +467,14 @@
   <header class="fab-header">
     <button id="fab-btn-retour" class="fab-btn-retour" aria-label="Retour">←</button>
     <div class="fab-header-titre">FABRICATION</div>
-    <div id="fab-horloge" class="fab-horloge" aria-live="polite"></div>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <button id="fab-btn-config-imprimante"
+              style="background:transparent;border:1.5px solid rgba(255,255,255,.4);
+                     color:#fff;border-radius:8px;padding:.35rem .7rem;font-size:.85rem;
+                     cursor:pointer;font-family:inherit;white-space:nowrap"
+              title="Paramètres imprimante">⚙️</button>
+      <div id="fab-horloge" class="fab-horloge" aria-live="polite"></div>
+    </div>
   </header>
 
   <!-- ── Barre de progression + bandeau recette ── -->
@@ -673,6 +680,142 @@
       </button>
     </div>
   </div>
+
+  <!-- ── Modale Configuration Imprimante ── -->
+  <div id="printer-modal-overlay"
+       style="display:none;position:fixed;inset:0;z-index:9999;
+              background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+    <div style="background:#F5ECD7;color:#3D2008;border-radius:1.1rem;padding:1.75rem 1.5rem;
+                max-width:420px;width:94%;box-shadow:0 8px 40px rgba(0,0,0,.45)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem">
+        <h3 style="margin:0;font-size:1.15rem;font-weight:800">⚙️ Paramètres imprimante</h3>
+        <button id="printer-modal-close"
+                style="background:transparent;border:none;font-size:1.4rem;cursor:pointer;
+                       color:#6B3A1F;line-height:1;padding:.2rem .5rem;border-radius:6px">✕</button>
+      </div>
+
+      <label style="display:block;font-size:.85rem;font-weight:700;margin-bottom:.35rem">
+        Adresse IP de l'imprimante
+      </label>
+      <input id="printer-ip-input" type="text" placeholder="ex: 192.168.1.42"
+             style="width:100%;box-sizing:border-box;padding:.75rem 1rem;border-radius:8px;
+                    border:1.5px solid #d8c9b2;background:#fff;font-size:1rem;font-family:inherit;
+                    color:#3D2008;margin-bottom:.5rem">
+      <p style="font-size:.78rem;color:#6B3A1F;margin:0 0 1rem;opacity:.8">
+        Entrez uniquement l'IP (ex: <code>192.168.1.42</code>) — le préfixe <code>tcp://</code> est ajouté automatiquement.
+      </p>
+
+      <div id="printer-status-msg"
+           style="display:none;padding:.6rem .9rem;border-radius:8px;font-size:.88rem;
+                  margin-bottom:.85rem;font-weight:600"></div>
+
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+        <button id="printer-btn-test"
+                style="flex:1;min-width:120px;padding:.8rem .5rem;border:1.5px solid #6B3A1F;
+                       background:transparent;color:#6B3A1F;border-radius:8px;font-size:.95rem;
+                       font-weight:700;cursor:pointer;font-family:inherit">
+          🔍 Tester
+        </button>
+        <button id="printer-btn-save"
+                style="flex:2;min-width:140px;padding:.8rem 1rem;border:none;
+                       background:#6B3A1F;color:#fff;border-radius:8px;font-size:.95rem;
+                       font-weight:700;cursor:pointer;font-family:inherit">
+          ✅ Enregistrer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ── Modale configuration imprimante ──
+  (function () {
+    const overlay = document.getElementById('printer-modal-overlay');
+    const input   = document.getElementById('printer-ip-input');
+    const msgEl   = document.getElementById('printer-status-msg');
+    const btnOpen = document.getElementById('fab-btn-config-imprimante');
+    const btnClose= document.getElementById('printer-modal-close');
+    const btnTest = document.getElementById('printer-btn-test');
+    const btnSave = document.getElementById('printer-btn-save');
+
+    function showMsg(text, ok) {
+      msgEl.textContent = text;
+      msgEl.style.background = ok ? '#d1fae5' : '#fee2e2';
+      msgEl.style.color       = ok ? '#065f46' : '#991b1b';
+      msgEl.style.display     = 'block';
+    }
+
+    function ipToIdentifier(raw) {
+      raw = raw.trim();
+      if (!raw) return '';
+      if (raw.startsWith('tcp://')) return raw;
+      return 'tcp://' + raw;
+    }
+
+    async function openModal() {
+      msgEl.style.display = 'none';
+      try {
+        const res  = await fetch('/api/impression/config');
+        const data = await res.json();
+        const id   = data.identifier || '';
+        input.value = id.replace('tcp://', '');
+      } catch (_) {}
+      overlay.style.display = 'flex';
+      input.focus();
+    }
+
+    function closeModal() { overlay.style.display = 'none'; }
+
+    btnOpen  && btnOpen.addEventListener('click', openModal);
+    btnClose && btnClose.addEventListener('click', closeModal);
+    overlay  && overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+    btnTest && btnTest.addEventListener('click', async () => {
+      const id = ipToIdentifier(input.value);
+      if (!id) { showMsg('Entrez une adresse IP.', false); return; }
+      btnTest.disabled = true;
+      btnTest.textContent = '…';
+      try {
+        await fetch('/api/impression/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: id }),
+        });
+        const res  = await fetch('/api/impression/status');
+        const data = await res.json();
+        showMsg(data.message || (data.disponible ? 'Joignable ✓' : 'Injoignable ✗'), data.disponible);
+      } catch (e) {
+        showMsg('Erreur réseau.', false);
+      } finally {
+        btnTest.disabled = false;
+        btnTest.textContent = '🔍 Tester';
+      }
+    });
+
+    btnSave && btnSave.addEventListener('click', async () => {
+      const id = ipToIdentifier(input.value);
+      if (!id) { showMsg('Entrez une adresse IP.', false); return; }
+      btnSave.disabled = true;
+      try {
+        const res  = await fetch('/api/impression/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: id }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showMsg('Configuration enregistrée ✓', true);
+          setTimeout(closeModal, 1200);
+        } else {
+          showMsg('Erreur lors de l\'enregistrement.', false);
+        }
+      } catch (_) {
+        showMsg('Erreur réseau.', false);
+      } finally {
+        btnSave.disabled = false;
+      }
+    });
+  })();
+  </script>
 
   <script src="/static/js/core/origine.js"></script>
   <script src="/static/js/etiquettes.js"></script>

@@ -387,7 +387,10 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
         # texte, indépendamment du paramètre demi-ton du driver.
         image = image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
 
-        qlr = BrotherQLRaster(PRINTER_MODEL)
+        from src.printing.printer_config import get_printer_config
+        cfg = get_printer_config()
+
+        qlr = BrotherQLRaster(cfg["model"])
         instructions = convert(
             qlr=qlr,
             images=[image],
@@ -403,8 +406,8 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
         )
         send(
             instructions=instructions,
-            printer_identifier=PRINTER_IDENTIFIER,
-            backend_identifier=PRINTER_BACKEND,
+            printer_identifier=cfg["identifier"],
+            backend_identifier=cfg["backend"],
             blocking=True,
         )
         premier = data.get("lignes", [{}])

@@ -310,6 +310,9 @@ def imprimer_etiquette(data: dict) -> bool:
         return False
 
     try:
+        from src.printing.printer_config import get_printer_config
+        cfg = get_printer_config()
+
         template = data.get("template")
         if template == "transforme":
             image = generer_image_etiquette_transforme(data)
@@ -318,7 +321,7 @@ def imprimer_etiquette(data: dict) -> bool:
         else:
             image = generer_image_etiquette(data)
 
-        qlr = BrotherQLRaster(PRINTER_MODEL)
+        qlr = BrotherQLRaster(cfg["model"])
         instructions = convert(
             qlr=qlr,
             images=[image],
@@ -334,8 +337,8 @@ def imprimer_etiquette(data: dict) -> bool:
         )
         send(
             instructions=instructions,
-            printer_identifier=PRINTER_IDENTIFIER,
-            backend_identifier=PRINTER_BACKEND,
+            printer_identifier=cfg["identifier"],
+            backend_identifier=cfg["backend"],
             blocking=True,
         )
         logger.info("Étiquette imprimée : %s — lot %s", data.get("produit_nom"), data.get("numero_lot"))
@@ -353,10 +356,12 @@ def verifier_imprimante() -> dict:
     - pyusb   : détection du périphérique Brother (vendor 0x04f9) sur le bus USB.
     Retourne un dict {"disponible": bool, "message": str}.
     """
-    if PRINTER_BACKEND == "network":
-        # PRINTER_IDENTIFIER = "tcp://192.168.1.56[:9100]"
+    from src.printing.printer_config import get_printer_config
+    cfg = get_printer_config()
+
+    if cfg["backend"] == "network":
         import socket
-        hostport = PRINTER_IDENTIFIER.replace("tcp://", "", 1)
+        hostport = cfg["identifier"].replace("tcp://", "", 1)
         host, _, port = hostport.partition(":")
         port = int(port) if port else 9100
         try:

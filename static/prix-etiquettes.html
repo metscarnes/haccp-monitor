@@ -25,6 +25,7 @@
     <button class="pe-btn pe-btn--outline" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
     <button class="pe-btn pe-btn--outline" id="btn-impression-masse">🏷️ Impression de masse</button>
     <button class="pe-btn pe-btn--outline" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
+    <button class="pe-btn pe-btn--outline" id="btn-config-imprimante" title="Paramètres imprimante">⚙️ Imprimante</button>
     <button class="pe-btn pe-btn--primary" id="btn-imprimer">🖨️ Imprimer</button>
   </div>
 </header>
@@ -279,6 +280,53 @@
     </div>
   </div>
 </template>
+
+<!-- ═══════════════════════════════════════════════════
+     MODALE CONFIGURATION IMPRIMANTE
+═══════════════════════════════════════════════════ -->
+<div id="printer-modal-overlay"
+     style="display:none;position:fixed;inset:0;z-index:9999;
+            background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div style="background:#F5ECD7;color:#3D2008;border-radius:1.1rem;padding:1.75rem 1.5rem;
+              max-width:420px;width:94%;box-shadow:0 8px 40px rgba(0,0,0,.45)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.1rem">
+      <h3 style="margin:0;font-size:1.15rem;font-weight:800">⚙️ Paramètres imprimante</h3>
+      <button id="printer-modal-close"
+              style="background:transparent;border:none;font-size:1.4rem;cursor:pointer;
+                     color:#6B3A1F;line-height:1;padding:.2rem .5rem;border-radius:6px">✕</button>
+    </div>
+
+    <label style="display:block;font-size:.85rem;font-weight:700;margin-bottom:.35rem">
+      Adresse IP de l'imprimante
+    </label>
+    <input id="printer-ip-input" type="text" placeholder="ex: 192.168.1.42"
+           style="width:100%;box-sizing:border-box;padding:.75rem 1rem;border-radius:8px;
+                  border:1.5px solid #d8c9b2;background:#fff;font-size:1rem;font-family:inherit;
+                  color:#3D2008;margin-bottom:.5rem">
+    <p style="font-size:.78rem;color:#6B3A1F;margin:0 0 1rem;opacity:.8">
+      Entrez uniquement l'IP (ex: <code>192.168.1.42</code>) — le préfixe <code>tcp://</code> est ajouté automatiquement.
+    </p>
+
+    <div id="printer-status-msg"
+         style="display:none;padding:.6rem .9rem;border-radius:8px;font-size:.88rem;
+                margin-bottom:.85rem;font-weight:600"></div>
+
+    <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+      <button id="printer-btn-test"
+              style="flex:1;min-width:120px;padding:.8rem .5rem;border:1.5px solid #6B3A1F;
+                     background:transparent;color:#6B3A1F;border-radius:8px;font-size:.95rem;
+                     font-weight:700;cursor:pointer;font-family:inherit">
+        🔍 Tester
+      </button>
+      <button id="printer-btn-save"
+              style="flex:2;min-width:140px;padding:.8rem 1rem;border:none;
+                     background:#6B3A1F;color:#fff;border-radius:8px;font-size:.95rem;
+                     font-weight:700;cursor:pointer;font-family:inherit">
+        ✅ Enregistrer
+      </button>
+    </div>
+  </div>
+</div>
 
 <script src="/static/js/prix_etiquettes.js"></script>
 </body>
