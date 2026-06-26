@@ -1148,3 +1148,90 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ── Modale configuration imprimante ──────────────────────────
+
+(function () {
+  const overlay = document.getElementById('printer-modal-overlay');
+  const input   = document.getElementById('printer-ip-input');
+  const msgEl   = document.getElementById('printer-status-msg');
+  const btnOpen = document.getElementById('btn-config-imprimante');
+  const btnClose= document.getElementById('printer-modal-close');
+  const btnTest = document.getElementById('printer-btn-test');
+  const btnSave = document.getElementById('printer-btn-save');
+  if (!overlay) return;
+
+  function showMsg(text, ok) {
+    msgEl.textContent = text;
+    msgEl.style.background = ok ? '#d1fae5' : '#fee2e2';
+    msgEl.style.color       = ok ? '#065f46' : '#991b1b';
+    msgEl.style.display     = 'block';
+  }
+
+  function ipToIdentifier(raw) {
+    raw = (raw || '').trim();
+    if (!raw) return '';
+    return raw.startsWith('tcp://') ? raw : 'tcp://' + raw;
+  }
+
+  async function openModal() {
+    msgEl.style.display = 'none';
+    try {
+      const res  = await apiFetch('/api/impression/config');
+      const id   = res.identifier || '';
+      input.value = id.replace('tcp://', '');
+    } catch (_) {}
+    overlay.style.display = 'flex';
+    input.focus();
+  }
+
+  function closeModal() { overlay.style.display = 'none'; }
+
+  btnOpen  && btnOpen.addEventListener('click', openModal);
+  btnClose && btnClose.addEventListener('click', closeModal);
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+
+  btnTest.addEventListener('click', async () => {
+    const id = ipToIdentifier(input.value);
+    if (!id) { showMsg('Entrez une adresse IP.', false); return; }
+    btnTest.disabled = true;
+    btnTest.textContent = '…';
+    try {
+      await apiFetch('/api/impression/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: id }),
+      });
+      const data = await apiFetch('/api/impression/status');
+      showMsg(data.message || (data.disponible ? 'Joignable ✓' : 'Injoignable ✗'), data.disponible);
+    } catch (e) {
+      showMsg('Erreur réseau : ' + e.message, false);
+    } finally {
+      btnTest.disabled = false;
+      btnTest.textContent = '🔍 Tester';
+    }
+  });
+
+  btnSave.addEventListener('click', async () => {
+    const id = ipToIdentifier(input.value);
+    if (!id) { showMsg('Entrez une adresse IP.', false); return; }
+    btnSave.disabled = true;
+    try {
+      const data = await apiFetch('/api/impression/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: id }),
+      });
+      if (data.ok) {
+        showMsg('Configuration enregistrée ✓', true);
+        setTimeout(closeModal, 1200);
+      } else {
+        showMsg('Erreur lors de l\'enregistrement.', false);
+      }
+    } catch (_) {
+      showMsg('Erreur réseau.', false);
+    } finally {
+      btnSave.disabled = false;
+    }
+  });
+})();
