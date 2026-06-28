@@ -49,6 +49,7 @@ GET    /api/achats/pilotage/ca/stats/comparatif            → période vs péri
 GET    /api/achats/pilotage/ca/stats/comparer-dates        → comparaison de deux jours précis
 GET    /api/achats/pilotage/ca/stats/par-periode           → CA agrégé jour/semaine/mois + évolution
 GET    /api/achats/pilotage/ca/stats/profil-semaine        → moyenne par jour de semaine + glissantes 7/30j
+GET    /api/achats/pilotage/ca/stats/prochain-a-saisir      → jour à saisir par défaut (dernier non saisi)
 """
 
 import io
@@ -4674,18 +4675,24 @@ async def get_ca_par_periode(
         # Évolution vs le MÊME JOUR la semaine précédente (date - 7 jours).
         # On indexe par date pour gérer les jours manquants : un mardi se
         # compare au mardi d'avant, pas à la ligne précédente de la liste.
-        par_date = {r["periode"]: r["total_ttc"] for r in rows}
+        par_date = {r["periode"]: r for r in rows}
         for r in rows:
             d = date.fromisoformat(r["periode"])
             ref = par_date.get((d - timedelta(days=7)).isoformat())
-            r["evolution"] = _evolution(r["total_ttc"], ref) if ref is not None else {"delta": None, "pct": None}
-            r["evolution_label"] = "vs S-1"
+            ref_ca     = ref["total_ttc"] if ref else None
+            ref_panier = ref["panier_moyen"] if ref else None
+            r["evolution"]        = _evolution(r["total_ttc"], ref_ca) if ref_ca is not None else {"delta": None, "pct": None}
+            r["evolution_panier"] = _evolution(r["panier_moyen"], ref_panier) if (r["panier_moyen"] is not None and ref_panier is not None) else {"delta": None, "pct": None}
+            r["evolution_label"]  = "vs S-1"
     else:
         # Semaine/Mois : vs période précédente (ligne suivante car tri desc).
         for i, r in enumerate(rows):
-            precedent = rows[i + 1]["total_ttc"] if i + 1 < len(rows) else None
-            r["evolution"] = _evolution(r["total_ttc"], precedent) if precedent is not None else {"delta": None, "pct": None}
-            r["evolution_label"] = "vs préc."
+            prec = rows[i + 1] if i + 1 < len(rows) else None
+            prec_ca     = prec["total_ttc"] if prec else None
+            prec_panier = prec["panier_moyen"] if prec else None
+            r["evolution"]        = _evolution(r["total_ttc"], prec_ca) if prec_ca is not None else {"delta": None, "pct": None}
+            r["evolution_panier"] = _evolution(r["panier_moyen"], prec_panier) if (r["panier_moyen"] is not None and prec_panier is not None) else {"delta": None, "pct": None}
+            r["evolution_label"]  = "vs préc."
 
     return {"granularite": gran, "lignes": rows}
 
@@ -4714,11 +4721,24 @@ async def get_ca_profil_semaine():
 
         # Dernier jour saisi + sa valeur
         cur = await db.execute(
-            "SELECT date_ca, montant_ttc, CAST(strftime('%w', date_ca) AS INTEGER) AS dow "
+            "SELECT date_ca, montant_ttc, nb_tickets, "
+            "CAST(strftime('%w', date_ca) AS INTEGER) AS dow "
             "FROM ca_journalier WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
         )
         dernier = await cur.fetchone()
         dernier = dict(dernier) if dernier else None
+
+        # Même jour la semaine précédente (date du dernier jour - 7)
+        semaine_prec = None
+        if dernier:
+            ref_date = (date.fromisoformat(dernier["date_ca"]) - timedelta(days=7)).isoformat()
+            cur = await db.execute(
+                "SELECT montant_ttc, nb_tickets FROM ca_journalier "
+                "WHERE boutique_id = 1 AND date_ca = ?",
+                (ref_date,),
+            )
+            row = await cur.fetchone()
+            semaine_prec = dict(row) if row else None
 
         # Moyennes glissantes : 7 et 30 derniers jours calendaires
         async def _moy(jours: int):
@@ -4751,16 +4771,37 @@ async def get_ca_profil_semaine():
             "panier_moyen": _panier(d["somme_ttc"], d["somme_tickets"]) if d else None,
         })
 
-    # Position du dernier jour vs la moyenne de son jour de semaine
+    # Analyse du dernier jour saisi : CA et panier, vs S-1 et vs moyenne jour-type
     dernier_vs_dow = None
     if dernier:
-        moy_dow = par_dow.get(dernier["dow"], {}).get("ca_moyen")
+        d_info = par_dow.get(dernier["dow"], {})
+        moy_dow_ca     = d_info.get("ca_moyen")
+        moy_dow_panier = _panier(d_info.get("somme_ttc"), d_info.get("somme_tickets"))
+
+        ca_jour     = dernier["montant_ttc"]
+        panier_jour = _panier(dernier["montant_ttc"], dernier["nb_tickets"])
+
+        ca_s1      = semaine_prec["montant_ttc"] if semaine_prec else None
+        panier_s1  = _panier(semaine_prec["montant_ttc"], semaine_prec["nb_tickets"]) if semaine_prec else None
+
         dernier_vs_dow = {
-            "date_ca": dernier["date_ca"],
+            "date_ca":  dernier["date_ca"],
+            "dow":      dernier["dow"],
             "jour_nom": noms[dernier["dow"]],
-            "montant_ttc": dernier["montant_ttc"],
-            "moyenne_jour_type": round(moy_dow, 2) if moy_dow is not None else None,
-            "evolution": _evolution(dernier["montant_ttc"], moy_dow) if moy_dow else {"delta": None, "pct": None},
+            "ca": {
+                "valeur":            ca_jour,
+                "s1":                ca_s1,
+                "moyenne_jour_type": round(moy_dow_ca, 2) if moy_dow_ca is not None else None,
+                "evo_s1":            _evolution(ca_jour, ca_s1) if ca_s1 is not None else {"delta": None, "pct": None},
+                "evo_moyenne":       _evolution(ca_jour, moy_dow_ca) if moy_dow_ca else {"delta": None, "pct": None},
+            },
+            "panier": {
+                "valeur":            panier_jour,
+                "s1":                panier_s1,
+                "moyenne_jour_type": moy_dow_panier,
+                "evo_s1":            _evolution(panier_jour, panier_s1) if (panier_jour is not None and panier_s1 is not None) else {"delta": None, "pct": None},
+                "evo_moyenne":       _evolution(panier_jour, moy_dow_panier) if (panier_jour is not None and moy_dow_panier) else {"delta": None, "pct": None},
+            },
         }
 
     return {
@@ -4769,6 +4810,31 @@ async def get_ca_profil_semaine():
         "moyenne_glissante_30j": moy_30j,
         "dernier_vs_jour_type": dernier_vs_dow,
     }
+
+
+@router.get("/pilotage/ca/stats/prochain-a-saisir")
+async def get_ca_prochain_a_saisir():
+    """Jour sur lequel ouvrir la saisie par défaut : le jour le plus récent
+    non encore saisi, en partant d'hier et en remontant (max 60 jours).
+
+    Renvoie hier si tout est à jour récemment, ou le dernier trou trouvé.
+    """
+    today = date.today()
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT date_ca FROM ca_journalier WHERE boutique_id = 1 "
+            "AND date_ca >= ? ",
+            ((today - timedelta(days=60)).isoformat(),),
+        )
+        saisis = {r["date_ca"] for r in await cur.fetchall()}
+
+    # On part d'hier et on remonte jusqu'à trouver un jour non saisi.
+    for i in range(1, 61):
+        jour = today - timedelta(days=i)
+        if jour.isoformat() not in saisis:
+            return {"date": jour.isoformat()}
+    # Tout est saisi sur 60 j → on propose quand même hier
+    return {"date": (today - timedelta(days=1)).isoformat()}
 
 
 @router.get("/pilotage/ca/{date_ca}")

@@ -131,8 +131,15 @@
 
     /* Profil par jour de semaine */
     .profil-banner { background: #f3ebdf; border-radius: var(--radius-sm,6px); padding: var(--space-3);
-                     margin-bottom: var(--space-3); font-size: var(--text-base); }
+                     margin-bottom: var(--space-3); }
     .profil-banner b { color: var(--color-accent); }
+    .pb-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: var(--space-2); }
+    .pb-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 14px; align-items: baseline; font-size: var(--text-sm); }
+    .pb-grid .pb-metric { font-weight: 600; }
+    .pb-grid .pb-val { font-size: var(--text-base); font-weight: 700; }
+    .pb-grid .pb-head { color: #6b7280; font-weight: 600; font-size: var(--text-xs, .75rem); text-transform: uppercase; letter-spacing: .03em; }
+    .pb-glissante { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px dashed #d4c5af;
+                    font-size: var(--text-sm); color: #6b7280; }
     .mini { font-size: var(--text-sm); color: #6b7280; }
     tr.row-highlight { background: #fef3c7; box-shadow: inset 3px 0 0 var(--color-accent); }
     tr.row-jour:hover { background: #faf5ec; }
@@ -587,22 +594,45 @@
     }
 
     // ─── Profil par jour de semaine + moyennes glissantes ──────
+    // Cellule d'évolution courte : « ▲ +20% » (pour la grille de la bannière)
+    const evoCourt = (evo) => {
+      if (!evo || evo.pct == null) return '<span class="evo-flat">—</span>';
+      const cls = evo.pct > 0 ? 'evo-up' : (evo.pct < 0 ? 'evo-down' : 'evo-flat');
+      const fl = evo.pct > 0 ? '▲' : (evo.pct < 0 ? '▼' : '=');
+      const s = evo.pct >= 0 ? '+' : '';
+      return `<span class="${cls}">${fl} ${s}${evo.pct}%</span>`;
+    };
+
+    function rendreBanniereProfil(p) {
+      const dv = p.dernier_vs_jour_type;
+      let html = '';
+      if (dv) {
+        const jt = dv.jour_nom.toLowerCase() + 's';   // « samedis »
+        html = `<div class="pb-titre">📅 ${dv.jour_nom} ${fmtDateLongue(dv.date_ca)}</div>`
+          + `<div class="pb-grid">`
+          + `<div></div><div class="pb-head">vs S-1</div><div class="pb-head">vs moy. ${jt}</div>`
+          // Ligne CA
+          + `<div class="pb-metric">CA <span class="pb-val">${fmtEur(dv.ca.valeur)}</span></div>`
+          + `<div>${evoCourt(dv.ca.evo_s1)} <span class="mini">(${fmtEur(dv.ca.s1)})</span></div>`
+          + `<div>${evoCourt(dv.ca.evo_moyenne)} <span class="mini">(${fmtEur(dv.ca.moyenne_jour_type)})</span></div>`
+          // Ligne Panier
+          + `<div class="pb-metric">Panier <span class="pb-val">${fmtEur(dv.panier.valeur)}</span></div>`
+          + `<div>${evoCourt(dv.panier.evo_s1)} <span class="mini">(${fmtEur(dv.panier.s1)})</span></div>`
+          + `<div>${evoCourt(dv.panier.evo_moyenne)} <span class="mini">(${fmtEur(dv.panier.moyenne_jour_type)})</span></div>`
+          + `</div>`;
+      } else {
+        html = 'Pas encore de données à analyser.';
+      }
+      html += `<div class="pb-glissante">Moyenne glissante du CA : `
+        + `7 j = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 j = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
+      return html;
+    }
+
     async function chargerProfilSemaine() {
       try {
         const p = await fetch(`${API}/stats/profil-semaine`).then(r => r.json());
         // Bannière : dernier jour vs son jour-type + glissantes
-        const dv = p.dernier_vs_jour_type;
-        let banner = '';
-        if (dv && dv.moyenne_jour_type != null) {
-          banner = `Dernier jour saisi (${dv.jour_nom} ${fmtDateFr(dv.date_ca)}) : `
-            + `<b>${fmtEur(dv.montant_ttc)}</b> vs moyenne des ${dv.jour_nom.toLowerCase()}s `
-            + `<b>${fmtEur(dv.moyenne_jour_type)}</b> → ${evoSpan({ delta: dv.evolution.delta, pct: dv.evolution.pct })}`;
-        } else {
-          banner = 'Pas encore assez de données pour comparer au jour-type.';
-        }
-        banner += `<div class="mini" style="margin-top:6px">Moyenne glissante : `
-          + `7 j = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 j = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
-        $('profil-banner').innerHTML = banner;
+        $('profil-banner').innerHTML = rendreBanniereProfil(p);
 
         const tj_dow = new Date().getDay(); // pour surligner le jour courant
         $('profil-body').innerHTML = p.jours.map(j => `
@@ -655,7 +685,7 @@
             <td class="num">${fmtEur(l.total_ttc_matin)}</td>
             <td class="num">${fmtEur(l.total_ttc_soir)}</td>
             <td class="num">${l.total_tickets || '—'}</td>
-            <td class="num">${fmtEur(l.panier_moyen)}</td>
+            <td class="num">${fmtEur(l.panier_moyen)}<br><span class="mini">${l.evolution_panier && l.evolution_panier.pct != null ? evoCourt(l.evolution_panier) : ''}</span></td>
             <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>
           </tr>`).join('');
         // En mode jour, cliquer une ligne ouvre le profil et surligne le jour-type
@@ -831,7 +861,11 @@
     initZoom();
 
     chargerPersonnel();
-    setDate(veilleIso());   // jour par défaut : la veille (saisie du matin)
+    // Jour par défaut : le dernier jour non saisi (sinon la veille en secours)
+    setDate(veilleIso());   // affichage immédiat le temps que l'appel réponde
+    fetch(`${API}/stats/prochain-a-saisir`).then(r => r.json())
+      .then(d => { if (d && d.date) setDate(d.date); })
+      .catch(() => {});
     chargerStats();
     chargerHistorique();
     chargerProfilSemaine();
