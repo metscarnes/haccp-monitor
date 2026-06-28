@@ -134,6 +134,8 @@
                      margin-bottom: var(--space-3); }
     .profil-banner b { color: var(--color-accent); }
     .pb-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: var(--space-2); }
+    .pb-badge { display: inline-block; background: #d97706; color: #fff; font-size: var(--text-xs,.72rem);
+                font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
     .pb-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 14px; align-items: baseline; font-size: var(--text-sm); }
     .pb-grid .pb-metric { font-weight: 600; }
     .pb-grid .pb-val { font-size: var(--text-base); font-weight: 700; }
@@ -608,11 +610,18 @@
       let html = '';
       if (dv) {
         const jt = dv.jour_nom.toLowerCase() + 's';   // « samedis »
-        html = `<div class="pb-titre">📅 ${dv.jour_nom} ${fmtDateLongue(dv.date_ca)}</div>`
+        const enCours = dv.perimetre === 'matin';
+        // En journée en cours : on compare le MATIN seul, à périmètre égal
+        const badge = enCours
+          ? `<span class="pb-badge">🌅 Journée en cours — matin seul</span>`
+          : '';
+        const labelCA = enCours ? 'CA matin' : 'CA';
+        const colMoy  = enCours ? `vs moy. matins (${jt})` : `vs moy. ${jt}`;
+        html = `<div class="pb-titre">📅 ${dv.jour_nom} ${fmtDateLongue(dv.date_ca)} ${badge}</div>`
           + `<div class="pb-grid">`
-          + `<div></div><div class="pb-head">vs S-1</div><div class="pb-head">vs moy. ${jt}</div>`
+          + `<div></div><div class="pb-head">vs S-1</div><div class="pb-head">${colMoy}</div>`
           // Ligne CA
-          + `<div class="pb-metric">CA <span class="pb-val">${fmtEur(dv.ca.valeur)}</span></div>`
+          + `<div class="pb-metric">${labelCA} <span class="pb-val">${fmtEur(dv.ca.valeur)}</span></div>`
           + `<div>${evoCourt(dv.ca.evo_s1)} <span class="mini">(${fmtEur(dv.ca.s1)})</span></div>`
           + `<div>${evoCourt(dv.ca.evo_moyenne)} <span class="mini">(${fmtEur(dv.ca.moyenne_jour_type)})</span></div>`
           // Ligne Panier

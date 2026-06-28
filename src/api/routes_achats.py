@@ -4718,16 +4718,20 @@ async def get_ca_profil_semaine():
                    AVG(CASE WHEN montant_ttc_soir  > 0 THEN montant_ttc_soir  END) AS ca_moyen_soir,
                    AVG(nb_tickets)        AS tickets_moyen,
                    SUM(montant_ttc)       AS somme_ttc,
-                   SUM(nb_tickets)        AS somme_tickets
+                   SUM(nb_tickets)        AS somme_tickets,
+                   -- Sommes matin (jours matin > 0) pour le panier matin du jour-type
+                   SUM(CASE WHEN montant_ttc_matin > 0 THEN montant_ttc_matin END) AS somme_ttc_matin,
+                   SUM(CASE WHEN montant_ttc_matin > 0 THEN nb_tickets_matin END)  AS somme_tickets_matin
                FROM ca_journalier
                WHERE boutique_id = 1
                GROUP BY dow"""
         )
         par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
 
-        # Dernier jour saisi + sa valeur
+        # Dernier jour saisi + sa valeur (avec ventilation matin/soir)
         cur = await db.execute(
             "SELECT date_ca, montant_ttc, nb_tickets, "
+            "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir, "
             "CAST(strftime('%w', date_ca) AS INTEGER) AS dow "
             "FROM ca_journalier WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
         )
@@ -4739,8 +4743,9 @@ async def get_ca_profil_semaine():
         if dernier:
             ref_date = (date.fromisoformat(dernier["date_ca"]) - timedelta(days=7)).isoformat()
             cur = await db.execute(
-                "SELECT montant_ttc, nb_tickets FROM ca_journalier "
-                "WHERE boutique_id = 1 AND date_ca = ?",
+                "SELECT montant_ttc, nb_tickets, "
+                "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir "
+                "FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ?",
                 (ref_date,),
             )
             row = await cur.fetchone()
@@ -4777,29 +4782,53 @@ async def get_ca_profil_semaine():
             "panier_moyen": _panier(d["somme_ttc"], d["somme_tickets"]) if d else None,
         })
 
-    # Analyse du dernier jour saisi : CA et panier, vs S-1 et vs moyenne jour-type
+    # Analyse du dernier jour saisi : CA et panier, vs S-1 et vs moyenne jour-type.
+    #
+    # Comparaison à périmètre égal : si le dernier jour saisi est AUJOURD'HUI et
+    # que la journée est encore « en cours » (avant l'ouverture de l'après-midi,
+    # ou après-midi pas encore saisi), on ne compare pas un total partiel à une
+    # journée complète → on bascule en mode MATIN : matin vs moyenne des matins
+    # du jour-type, et matin vs matin S-1.
+    HEURE_OUVERTURE_APREM = 16   # la boutique rouvre à 16h
     dernier_vs_dow = None
     if dernier:
+        now = datetime.now()
         d_info = par_dow.get(dernier["dow"], {})
-        moy_dow_ca     = d_info.get("ca_moyen")
-        moy_dow_panier = _panier(d_info.get("somme_ttc"), d_info.get("somme_tickets"))
 
-        ca_jour     = dernier["montant_ttc"]
-        panier_jour = _panier(dernier["montant_ttc"], dernier["nb_tickets"])
+        est_aujourdhui = dernier["date_ca"] == now.date().isoformat()
+        aprem_saisi    = (dernier["montant_ttc_soir"] or 0) > 0
+        en_cours = est_aujourdhui and (now.hour < HEURE_OUVERTURE_APREM or not aprem_saisi)
 
-        ca_s1      = semaine_prec["montant_ttc"] if semaine_prec else None
-        panier_s1  = _panier(semaine_prec["montant_ttc"], semaine_prec["nb_tickets"]) if semaine_prec else None
+        if en_cours:
+            # ── Mode MATIN (journée en cours) ───────────────────────
+            valeur_ca     = dernier["montant_ttc_matin"] or 0
+            moy_dow_ca    = d_info.get("ca_moyen_matin")
+            ca_s1         = semaine_prec["montant_ttc_matin"] if semaine_prec else None
+            panier_jour   = _panier(dernier["montant_ttc_matin"], dernier["nb_tickets_matin"])
+            moy_dow_panier = _panier(d_info.get("somme_ttc_matin"), d_info.get("somme_tickets_matin"))
+            panier_s1     = _panier(semaine_prec["montant_ttc_matin"], semaine_prec["nb_tickets_matin"]) if semaine_prec else None
+            perimetre     = "matin"
+        else:
+            # ── Mode JOURNÉE complète ───────────────────────────────
+            valeur_ca     = dernier["montant_ttc"]
+            moy_dow_ca    = d_info.get("ca_moyen")
+            ca_s1         = semaine_prec["montant_ttc"] if semaine_prec else None
+            panier_jour   = _panier(dernier["montant_ttc"], dernier["nb_tickets"])
+            moy_dow_panier = _panier(d_info.get("somme_ttc"), d_info.get("somme_tickets"))
+            panier_s1     = _panier(semaine_prec["montant_ttc"], semaine_prec["nb_tickets"]) if semaine_prec else None
+            perimetre     = "journee"
 
         dernier_vs_dow = {
-            "date_ca":  dernier["date_ca"],
-            "dow":      dernier["dow"],
-            "jour_nom": noms[dernier["dow"]],
+            "date_ca":   dernier["date_ca"],
+            "dow":       dernier["dow"],
+            "jour_nom":  noms[dernier["dow"]],
+            "perimetre": perimetre,   # 'matin' (journée en cours) | 'journee'
             "ca": {
-                "valeur":            ca_jour,
+                "valeur":            valeur_ca,
                 "s1":                ca_s1,
                 "moyenne_jour_type": round(moy_dow_ca, 2) if moy_dow_ca is not None else None,
-                "evo_s1":            _evolution(ca_jour, ca_s1) if ca_s1 is not None else {"delta": None, "pct": None},
-                "evo_moyenne":       _evolution(ca_jour, moy_dow_ca) if moy_dow_ca else {"delta": None, "pct": None},
+                "evo_s1":            _evolution(valeur_ca, ca_s1) if ca_s1 is not None else {"delta": None, "pct": None},
+                "evo_moyenne":       _evolution(valeur_ca, moy_dow_ca) if moy_dow_ca else {"delta": None, "pct": None},
             },
             "panier": {
                 "valeur":            panier_jour,
