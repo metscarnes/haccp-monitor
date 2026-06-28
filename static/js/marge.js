@@ -126,10 +126,10 @@ function rendre() {
   } else {
     let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul auto)`;
     if (a.nb_non_valorisees > 0) sub += ` · ⚠️ ${a.nb_non_valorisees} sans valeur`;
-    if (!a.saisie_possible) sub += ' · saisie réelle = période d\'un mois entier';
+    if (!a.saisie_possible) sub += ' · saisie réelle = période dans un seul mois';
     $('d-achats-sub').textContent = sub;
   }
-  // Le crayon achats n'a de sens que sur un mois entier
+  // Le crayon achats n'a de sens que si la période tient dans un seul mois civil.
   $('edit-achats').style.display = a.saisie_possible ? '' : 'none';
 
   if (d.stock_initial) {

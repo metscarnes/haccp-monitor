@@ -441,10 +441,28 @@ async def test_achats_reels_priment_sur_calcul(app_client, db):
 
 
 @pytest.mark.anyio
-async def test_achats_reels_periode_non_mensuelle(app_client, db):
-    """Période à cheval (pas un mois entier) → saisie réelle non applicable."""
+async def test_achats_reels_mois_partiel_et_a_cheval(app_client, db):
+    """Mois PARTIEL (11→30 juin, démarrage) = saisie possible rattachée au mois.
+    Période À CHEVAL sur 2 mois = saisie non applicable."""
+    # Mois partiel : démarrage le 11 juin → toujours rattaché à 2026-06
     r = await app_client.get("/api/inventaire/marge",
                              params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
+    d = r.json()
+    assert d["achats"]["saisie_possible"] is True
+    assert d["achats"]["annee_mois"] == "2026-06"
+
+    # Je peux saisir les achats réels et ils priment sur cette période partielle
+    r = await app_client.put("/api/inventaire/marge/achats-reels",
+                             json={"annee_mois": "2026-06", "montant_ht": 250.0})
+    assert r.status_code == 200
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
+    assert r.json()["achats"]["source"] == "reel"
+    assert r.json()["achats"]["ht"] == pytest.approx(250.0)
+
+    # Période à cheval sur juin/juillet → pas de rattachement mois → calcul auto
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-15", "date_fin": "2026-07-15"})
     d = r.json()
     assert d["achats"]["saisie_possible"] is False
     assert d["achats"]["annee_mois"] is None

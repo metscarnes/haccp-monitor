@@ -716,9 +716,12 @@ async def ajuster_ca_periode(body: CaAjustementBody):
 
 
 def _mois_calendaire(debut, fin):
-    """Retourne 'YYYY-MM' si [debut, fin] = un mois calendaire entier, sinon None.
+    """Retourne 'YYYY-MM' si [debut, fin] tient dans UN SEUL mois civil, sinon None.
 
-    Un mois entier = du 1er jour au dernier jour du même mois/année.
+    On accepte un mois PARTIEL (ex. 11→30 juin pour un démarrage d'activité le 11) :
+    le seul critère est que début et fin soient dans le même mois/année. La saisie des
+    achats réels est rattachée à ce mois. Si la période est à cheval sur deux mois, on
+    ne peut pas rattacher proprement → None (retour au calcul auto).
     """
     try:
         d1 = date.fromisoformat(debut)
@@ -726,12 +729,6 @@ def _mois_calendaire(debut, fin):
     except (ValueError, TypeError):
         return None
     if d1.year != d2.year or d1.month != d2.month:
-        return None
-    if d1.day != 1:
-        return None
-    import calendar
-    dernier = calendar.monthrange(d1.year, d1.month)[1]
-    if d2.day != dernier:
         return None
     return f"{d1.year:04d}-{d1.month:02d}"
 
