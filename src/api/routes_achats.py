@@ -4708,8 +4708,14 @@ async def get_ca_profil_semaine():
                    CAST(strftime('%w', date_ca) AS INTEGER) AS dow,
                    COUNT(*)               AS nb,
                    AVG(montant_ttc)       AS ca_moyen,
-                   AVG(montant_ttc_matin) AS ca_moyen_matin,
-                   AVG(montant_ttc_soir)  AS ca_moyen_soir,
+                   -- Moyennes par section : on ignore les jours où la section
+                   -- vaut 0 (= non travaillée / non ventilée). CASE→NULL, et
+                   -- AVG ignore les NULL. Ainsi le dimanche (après-midi = 0)
+                   -- ne dilue pas la moyenne après-midi des autres jours, et
+                   -- les anciens jours « tout en après-midi » ne plombent pas
+                   -- la moyenne matin.
+                   AVG(CASE WHEN montant_ttc_matin > 0 THEN montant_ttc_matin END) AS ca_moyen_matin,
+                   AVG(CASE WHEN montant_ttc_soir  > 0 THEN montant_ttc_soir  END) AS ca_moyen_soir,
                    AVG(nb_tickets)        AS tickets_moyen,
                    SUM(montant_ttc)       AS somme_ttc,
                    SUM(nb_tickets)        AS somme_tickets
