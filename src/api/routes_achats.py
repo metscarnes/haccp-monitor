@@ -4685,10 +4685,13 @@ async def get_ca_profil_semaine():
         cur = await db.execute(
             """SELECT
                    CAST(strftime('%w', date_ca) AS INTEGER) AS dow,
-                   COUNT(*)            AS nb,
-                   AVG(montant_ttc)    AS ca_moyen,
+                   COUNT(*)               AS nb,
+                   AVG(montant_ttc)       AS ca_moyen,
                    AVG(montant_ttc_matin) AS ca_moyen_matin,
-                   AVG(montant_ttc_soir)  AS ca_moyen_soir
+                   AVG(montant_ttc_soir)  AS ca_moyen_soir,
+                   AVG(nb_tickets)        AS tickets_moyen,
+                   SUM(montant_ttc)       AS somme_ttc,
+                   SUM(nb_tickets)        AS somme_tickets
                FROM ca_journalier
                WHERE boutique_id = 1
                GROUP BY dow"""
@@ -4729,6 +4732,9 @@ async def get_ca_profil_semaine():
             "ca_moyen": round(d["ca_moyen"], 2) if d and d["ca_moyen"] is not None else None,
             "ca_moyen_matin": round(d["ca_moyen_matin"], 2) if d and d["ca_moyen_matin"] is not None else None,
             "ca_moyen_soir": round(d["ca_moyen_soir"], 2) if d and d["ca_moyen_soir"] is not None else None,
+            "tickets_moyen": round(d["tickets_moyen"]) if d and d["tickets_moyen"] is not None else None,
+            # Panier moyen du jour-type = somme CA / somme tickets (pondéré, pas moyenne de paniers)
+            "panier_moyen": _panier(d["somme_ttc"], d["somme_tickets"]) if d else None,
         })
 
     # Position du dernier jour vs la moyenne de son jour de semaine

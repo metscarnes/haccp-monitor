@@ -134,6 +134,8 @@
                      margin-bottom: var(--space-3); font-size: var(--text-base); }
     .profil-banner b { color: var(--color-accent); }
     .mini { font-size: var(--text-sm); color: #6b7280; }
+    tr.row-highlight { background: #fef3c7; box-shadow: inset 3px 0 0 var(--color-accent); }
+    tr.row-jour:hover { background: #faf5ec; }
   </style>
 </head>
 <body>
@@ -236,9 +238,9 @@
       <div class="profil-banner" id="profil-banner">Chargement…</div>
       <table>
         <thead>
-          <tr><th>Jour</th><th class="num">CA moyen</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Occurrences</th></tr>
+          <tr><th>Jour</th><th class="num">CA moyen</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets moy.</th><th class="num">Panier moy.</th><th class="num">Occur.</th></tr>
         </thead>
-        <tbody id="profil-body"><tr><td colspan="5">Chargement…</td></tr></tbody>
+        <tbody id="profil-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
       </table>
     </section>
 
@@ -604,11 +606,13 @@
 
         const tj_dow = new Date().getDay(); // pour surligner le jour courant
         $('profil-body').innerHTML = p.jours.map(j => `
-          <tr class="${j.dow === tj_dow ? 'is-today' : ''}">
+          <tr data-dow="${j.dow}" class="${j.dow === tj_dow ? 'is-today' : ''}">
             <td>${j.nom}</td>
-            <td class="num">${fmtEur(j.ca_moyen)}</td>
+            <td class="num"><strong>${fmtEur(j.ca_moyen)}</strong></td>
             <td class="num">${fmtEur(j.ca_moyen_matin)}</td>
             <td class="num">${fmtEur(j.ca_moyen_soir)}</td>
+            <td class="num">${j.tickets_moyen ?? '—'}</td>
+            <td class="num">${fmtEur(j.panier_moyen)}</td>
             <td class="num">${j.nb}</td>
           </tr>`).join('');
       } catch (e) { console.error(e); }
@@ -617,8 +621,14 @@
     // ─── Tableau CA par période (jour / semaine / mois) ────────
     let granActive = 'jour';
     const labelGran = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' };
+    // Jour abrégé + date : « lun. 28/06 »
+    const fmtJourCourt = iso => {
+      const [y, m, d] = iso.split('-').map(Number);
+      const jour = new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'short' });
+      return `${jour} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+    };
     function fmtPeriode(l, gran) {
-      if (gran === 'jour')    return fmtDateFr(l.periode);
+      if (gran === 'jour')    return fmtJourCourt(l.periode);
       if (gran === 'semaine') return l.periode.replace('-S', ' · sem. ');  // 2026-S26 → 2026 · sem. 26
       if (gran === 'mois') {
         const [y, m] = l.periode.split('-');
@@ -636,8 +646,9 @@
           tbody.innerHTML = '<tr><td colspan="7">Aucune donnée.</td></tr>';
           return;
         }
+        const cliquable = gran === 'jour';
         tbody.innerHTML = res.lignes.map(l => `
-          <tr style="text-transform:capitalize">
+          <tr style="text-transform:capitalize" ${cliquable ? `class="row-jour" data-date="${l.periode}"` : ''}>
             <td>${fmtPeriode(l, gran)}</td>
             <td class="num"><strong>${fmtEur(l.total_ttc)}</strong></td>
             <td class="num">${fmtEur(l.total_ttc_matin)}</td>
@@ -646,7 +657,26 @@
             <td class="num">${fmtEur(l.panier_moyen)}</td>
             <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>
           </tr>`).join('');
+        // En mode jour, cliquer une ligne ouvre le profil et surligne le jour-type
+        if (cliquable) {
+          tbody.querySelectorAll('.row-jour').forEach(tr => {
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('click', () => focusProfilJour(tr.dataset.date));
+          });
+        }
       } catch (e) { console.error(e); }
+    }
+
+    // Ouvre le bloc Profil, surligne le jour de semaine correspondant à une date, scrolle
+    function focusProfilJour(iso) {
+      const [y, m, d] = iso.split('-').map(Number);
+      const dow = new Date(y, m - 1, d).getDay();      // 0=dim … 6=sam
+      const carte = $('profil-body').closest('.card');
+      carte.classList.remove('collapsed');             // déplie le profil
+      $('profil-body').querySelectorAll('tr').forEach(tr => {
+        tr.classList.toggle('row-highlight', Number(tr.dataset.dow) === dow);
+      });
+      carte.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     // ─── Sections repliables ───────────────────────────────────
