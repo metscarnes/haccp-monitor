@@ -132,6 +132,13 @@
                 padding: .35rem .9rem; font-size: var(--text-sm); cursor: pointer; }
     .zoom-tab.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
 
+    /* Carte d'analyse du jour (en tête) */
+    .card-analyse { border: 2px solid var(--color-accent); }
+    .analyse-nav { display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-3); }
+    .analyse-nav .date-label { flex: 1; }
+    .an-suivre { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-2);
+                 font-size: var(--text-sm); color: #6b7280; cursor: pointer; }
+
     /* Profil par jour de semaine */
     .profil-banner { background: #f3ebdf; border-radius: var(--radius-sm,6px); padding: var(--space-3);
                      margin-bottom: var(--space-3); }
@@ -160,6 +167,17 @@
   </header>
 
   <main class="wrap" role="main">
+
+    <!-- Analyse du jour (toujours visible, en tête) -->
+    <section class="card card-analyse">
+      <div class="analyse-nav">
+        <button type="button" class="date-arrow" id="an-prec" aria-label="Jour précédent">◀</button>
+        <button type="button" class="date-label" id="an-label">—</button>
+        <button type="button" class="date-arrow" id="an-suiv" aria-label="Jour suivant">▶</button>
+      </div>
+      <div class="profil-banner" id="profil-banner">Chargement…</div>
+      <label class="an-suivre"><input type="checkbox" id="an-suivre" checked> Suivre le jour de saisie</label>
+    </section>
 
     <!-- Saisie -->
     <section class="card">
@@ -248,7 +266,6 @@
     <!-- Profil par jour de semaine -->
     <section class="card collapsed" data-section>
       <h2 class="collapsible">Profil par jour de semaine</h2>
-      <div class="profil-banner" id="profil-banner">Chargement…</div>
       <table>
         <thead>
           <tr><th>Jour</th><th class="num">CA moyen</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets moy.</th><th class="num">Panier moy.</th><th class="num">Occur.</th></tr>
@@ -389,6 +406,8 @@
     let meteoSel = null;   // null | 'soleil' | 'pluie'
     let histoRows = [];    // historique complet (desc) mis en cache pour le graphe
     let zoomJours = 90;    // fenêtre du graphe en jours (0 = tout)
+    let analyseDate = null;   // jour analysé par l'encart du haut
+    let analyseSuit = true;   // l'encart suit-il le jour de saisie ?
 
     function setMeteo(val) {
       // Re-cliquer la valeur active la désélectionne
@@ -467,6 +486,15 @@
       $('date-ca').value = iso;
       $('date-label').textContent = fmtDateLongue(iso);
       chargerJour(iso);
+      // L'encart d'analyse suit le jour de saisie (si la case est cochée)
+      if (analyseSuit) setAnalyse(iso);
+    }
+
+    // Change le jour analysé par l'encart du haut
+    function setAnalyse(iso) {
+      analyseDate = iso;
+      $('an-label').textContent = fmtDateLongue(iso);
+      chargerProfilSemaine(iso);
     }
 
     async function enregistrer() {
@@ -502,7 +530,7 @@
         }
         fb.className = 'feedback ok';
         fb.textContent = 'Enregistré ✓';
-        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(), chargerPeriode(granActive)]);
+        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(analyseDate), chargerPeriode(granActive)]);
         await chargerJour($('date-ca').value);
       } catch (e) {
         fb.className = 'feedback err';
@@ -627,16 +655,20 @@
     function rendreBanniereProfil(p) {
       const dv = p.dernier_vs_jour_type;
       let html = '';
-      if (dv) {
+      if (dv && dv.non_saisi) {
+        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)}</div>`
+          + `<div class="mini">Aucune saisie pour ce jour.</div>`;
+      } else if (dv) {
         const jt = dv.jour_nom.toLowerCase() + 's';   // « samedis »
-        const enCours = dv.perimetre === 'matin';
-        // En journée en cours : on compare le MATIN seul, à périmètre égal
-        const badge = enCours
+        const modeMatin = dv.perimetre === 'matin';
+        // Badge « journée en cours » seulement si c'est réellement aujourd'hui non fini
+        const badge = dv.en_cours
           ? `<span class="pb-badge">🌅 Journée en cours — matin seul</span>`
-          : '';
-        const labelCA = enCours ? 'CA matin' : 'CA';
-        const colMoy  = enCours ? `vs moy. matins (${jt})` : `vs moy. ${jt}`;
-        html = `<div class="pb-titre">📅 ${dv.jour_nom} ${fmtDateLongue(dv.date_ca)} ${badge}</div>`
+          : (modeMatin ? `<span class="pb-badge">🌅 Matin seul</span>` : '');
+        const labelCA = modeMatin ? 'CA matin' : 'CA';
+        const colMoy  = modeMatin ? `vs moy. matins (${jt})` : `vs moy. ${jt}`;
+        // fmtDateLongue inclut déjà le jour de semaine → pas de doublon
+        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)} ${badge}</div>`
           + `<div class="pb-grid">`
           + `<div></div><div class="pb-head">vs S-1</div><div class="pb-head">${colMoy}</div>`
           // Ligne CA
@@ -656,10 +688,17 @@
       return html;
     }
 
-    async function chargerProfilSemaine() {
+    async function chargerProfilSemaine(jour) {
       try {
-        const p = await fetch(`${API}/stats/profil-semaine`).then(r => r.json());
-        // Bannière : dernier jour vs son jour-type + glissantes
+        const url = jour
+          ? `${API}/stats/profil-semaine?jour=${jour}`
+          : `${API}/stats/profil-semaine`;
+        const p = await fetch(url).then(r => r.json());
+        // Met à jour le libellé de date de la carte analyse
+        if (p.dernier_vs_jour_type) {
+          analyseDate = p.dernier_vs_jour_type.date_ca;
+          $('an-label').textContent = fmtDateLongue(analyseDate);
+        }
         $('profil-banner').innerHTML = rendreBanniereProfil(p);
 
         const tj_dow = new Date().getDay(); // pour surligner le jour courant
@@ -880,6 +919,19 @@
     });
     $('date-ca').addEventListener('change', () => setDate($('date-ca').value));
 
+    // Encart analyse : navigation propre (détache automatiquement le suivi)
+    $('an-prec').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, -1)); });
+    $('an-suiv').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, +1)); });
+    $('an-label').addEventListener('click', () => {
+      // Réutilise le sélecteur de saisie : on copie sa valeur puis on détache
+      const inp = $('date-ca');
+      if (inp.showPicker) inp.showPicker(); else inp.focus();
+    });
+    $('an-suivre').addEventListener('change', (e) => {
+      analyseSuit = e.target.checked;
+      if (analyseSuit) setAnalyse($('date-ca').value);   // resynchronise sur la saisie
+    });
+
     // Onglets du tableau par période
     document.querySelectorAll('.periode-tab').forEach(tab => {
       tab.addEventListener('click', () => {
@@ -900,7 +952,7 @@
       .catch(() => {});
     chargerStats();
     chargerHistorique();
-    chargerProfilSemaine();
+    // L'encart analyse est rafraîchi par setDate (il suit la saisie au démarrage)
     chargerPeriode('jour');
     initComparaison();
   })();

@@ -4698,9 +4698,12 @@ async def get_ca_par_periode(
 
 
 @router.get("/pilotage/ca/stats/profil-semaine")
-async def get_ca_profil_semaine():
+async def get_ca_profil_semaine(
+    jour: Optional[str] = Query(None, description="Jour à analyser (YYYY-MM-DD). Défaut : dernier saisi."),
+):
     """Profil par jour de semaine (moyenne CA lundi→dimanche) + moyennes
-    glissantes 7 / 30 derniers jours, et position du dernier jour saisi."""
+    glissantes 7 / 30 derniers jours, et analyse d'un jour (le dernier saisi
+    par défaut, ou `jour` si fourni)."""
     async with get_db() as db:
         # Moyenne par jour de semaine. strftime('%w') : 0=dimanche … 6=samedi
         cur = await db.execute(
@@ -4728,15 +4731,35 @@ async def get_ca_profil_semaine():
         )
         par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
 
-        # Dernier jour saisi + sa valeur (avec ventilation matin/soir)
-        cur = await db.execute(
-            "SELECT date_ca, montant_ttc, nb_tickets, "
-            "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir, "
-            "CAST(strftime('%w', date_ca) AS INTEGER) AS dow "
-            "FROM ca_journalier WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
-        )
-        dernier = await cur.fetchone()
-        dernier = dict(dernier) if dernier else None
+        # Jour analysé : celui demandé (`jour`) ou le dernier saisi par défaut.
+        cols_jour = ("date_ca, montant_ttc, nb_tickets, "
+                     "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir, "
+                     "CAST(strftime('%w', date_ca) AS INTEGER) AS dow")
+        if jour:
+            cur = await db.execute(
+                f"SELECT {cols_jour} FROM ca_journalier "
+                "WHERE boutique_id = 1 AND date_ca = ?",
+                (jour,),
+            )
+            dernier = await cur.fetchone()
+            dernier = dict(dernier) if dernier else None
+            # Jour demandé mais non saisi → on renvoie un squelette à zéro pour
+            # que l'encart s'affiche quand même (valeurs nulles, evo « — »).
+            if dernier is None:
+                d = date.fromisoformat(jour)
+                dernier = {
+                    "date_ca": jour, "montant_ttc": 0, "nb_tickets": None,
+                    "montant_ttc_matin": 0, "nb_tickets_matin": None,
+                    "montant_ttc_soir": 0, "nb_tickets_soir": None,
+                    "dow": int(d.strftime("%w")), "_non_saisi": True,
+                }
+        else:
+            cur = await db.execute(
+                f"SELECT {cols_jour} FROM ca_journalier "
+                "WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
+            )
+            dernier = await cur.fetchone()
+            dernier = dict(dernier) if dernier else None
 
         # Même jour la semaine précédente (date du dernier jour - 7)
         semaine_prec = None
@@ -4797,9 +4820,14 @@ async def get_ca_profil_semaine():
 
         est_aujourdhui = dernier["date_ca"] == now.date().isoformat()
         aprem_saisi    = (dernier["montant_ttc_soir"] or 0) > 0
+        matin_saisi    = (dernier["montant_ttc_matin"] or 0) > 0
+        # Journée en cours : aujourd'hui avant 16h ou après-midi pas encore saisi.
         en_cours = est_aujourdhui and (now.hour < HEURE_OUVERTURE_APREM or not aprem_saisi)
+        # Périmètre matin : journée en cours, OU jour (passé) sans après-midi mais
+        # avec un matin (dimanche, jour de fermeture après-midi). Sinon journée complète.
+        mode_matin = en_cours or (not aprem_saisi and matin_saisi)
 
-        if en_cours:
+        if mode_matin:
             # ── Mode MATIN (journée en cours) ───────────────────────
             valeur_ca     = dernier["montant_ttc_matin"] or 0
             moy_dow_ca    = d_info.get("ca_moyen_matin")
@@ -4822,7 +4850,9 @@ async def get_ca_profil_semaine():
             "date_ca":   dernier["date_ca"],
             "dow":       dernier["dow"],
             "jour_nom":  noms[dernier["dow"]],
-            "perimetre": perimetre,   # 'matin' (journée en cours) | 'journee'
+            "perimetre": perimetre,   # 'matin' | 'journee'
+            "en_cours":  en_cours,    # True seulement si journée d'aujourd'hui non finie
+            "non_saisi": dernier.get("_non_saisi", False),
             "ca": {
                 "valeur":            valeur_ca,
                 "s1":                ca_s1,
