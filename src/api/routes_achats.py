@@ -4815,9 +4815,11 @@ async def get_ca_profil_semaine():
 @router.get("/pilotage/ca/stats/prochain-a-saisir")
 async def get_ca_prochain_a_saisir():
     """Jour sur lequel ouvrir la saisie par défaut : le LENDEMAIN de la
-    dernière saisie (sans dépasser aujourd'hui). On ignore les trous anciens :
-    on suit la continuité de la saisie, pas le premier jour manquant.
+    dernière saisie. On ignore les trous anciens : on suit la continuité de la
+    saisie, pas le premier jour manquant.
 
+    On autorise J+1 même futur proche (on prépare la saisie du lendemain),
+    plafonné à demain pour éviter de partir loin si une date est aberrante.
     Aucune saisie encore → on propose hier.
     """
     today = date.today()
@@ -4832,8 +4834,9 @@ async def get_ca_prochain_a_saisir():
         return {"date": (today - timedelta(days=1)).isoformat()}
 
     suivant = date.fromisoformat(derniere) + timedelta(days=1)
-    if suivant > today:
-        suivant = today
+    demain = today + timedelta(days=1)
+    if suivant > demain:
+        suivant = demain
     return {"date": suivant.isoformat()}
 
 
