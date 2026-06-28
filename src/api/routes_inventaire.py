@@ -21,15 +21,24 @@ DELETE /api/inventaire/lignes/{id}                 → supprimer une ligne
 
 GET    /api/inventaire/catalogue-recherche?q=      → autocomplete article + €/kg pré-calculé
 GET    /api/inventaire/familles                    → familles/sous-familles (navigation rayon)
+
+GET    /api/inventaire/marge?date_debut=&date_fin= → tableau de bord marge (CA−CMV)
+GET    /api/inventaire/marge/tva                   → taux TVA paramétré (CA TTC→HT)
+PUT    /api/inventaire/marge/tva                   → modifier le taux TVA
 """
 import logging
+from datetime import date, timedelta
 from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from src.database import get_db
+from src.database import get_db, get_parametre, set_parametre
 from src.api.routes_achats import _calc_prix_kg
+
+# Taux de TVA par défaut pour convertir le CA TTC → HT (boucherie = 5,5 %).
+TVA_DEFAUT_PCT = 5.5
+CLE_TVA = "marge_tva_ca_pct"
 
 logger = logging.getLogger(__name__)
 
@@ -496,3 +505,185 @@ async def liste_familles():
         if r["sous_famille"]:
             familles[fam]["sous_familles"].append({"nom": r["sous_famille"], "nb": r["nb"]})
     return {"familles": list(familles.values())}
+
+
+# ---------------------------------------------------------------------------
+# Tableau de bord MARGE  —  CA HT − (Achats HT + Stock Initial − Stock Final)
+# ---------------------------------------------------------------------------
+
+class TvaUpdate(BaseModel):
+    tva_pct: float
+
+
+async def _get_tva_pct(db):
+    val = await get_parametre(db, BOUTIQUE_ID, CLE_TVA, str(TVA_DEFAUT_PCT))
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return TVA_DEFAUT_PCT
+
+
+@router.get("/marge/tva")
+async def get_tva():
+    async with get_db() as db:
+        return {"tva_pct": await _get_tva_pct(db)}
+
+
+@router.put("/marge/tva")
+async def set_tva(data: TvaUpdate):
+    if data.tva_pct < 0 or data.tva_pct > 100:
+        raise HTTPException(422, "tva_pct doit être entre 0 et 100")
+    async with get_db() as db:
+        await set_parametre(db, BOUTIQUE_ID, CLE_TVA, str(data.tva_pct))
+        return {"ok": True, "tva_pct": data.tva_pct}
+
+
+async def _ca_periode_ht(db, debut, fin, tva_pct):
+    """CA HT de la période = somme TTC ca_journalier [debut, fin] / (1 + tva/100)."""
+    async with db.execute(
+        """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc, COUNT(*) AS nb_jours
+           FROM ca_journalier
+           WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?""",
+        (BOUTIQUE_ID, debut, fin),
+    ) as cur:
+        row = await cur.fetchone()
+    ttc = float(row["ttc"] or 0)
+    ht = round(ttc / (1 + tva_pct / 100), 2) if tva_pct >= 0 else ttc
+    return {"ttc": round(ttc, 2), "ht": ht, "nb_jours": row["nb_jours"]}
+
+
+async def _achats_periode_ht(db, debut, fin):
+    """Achats HT = réceptions CLÔTURÉES sur [debut, fin], valorisées poids × €/kg catalogue.
+
+    Même logique que l'inventaire : on ne compte que ce qu'on sait valoriser honnêtement
+    (poids ET prix catalogue présents). nb_non_valorisees signale les lignes ignorées.
+    """
+    async with db.execute(
+        """SELECT rl.poids_kg,
+                  c.format_prix, c.prix_achat_ht, c.poids_colis_kg, c.famille
+           FROM reception_lignes rl
+           JOIN receptions r ON r.id = rl.reception_id
+           LEFT JOIN catalogue_fournisseur c ON c.id = rl.catalogue_fournisseur_id
+           WHERE r.statut = 'cloturee'
+             AND r.date_reception >= ? AND r.date_reception <= ?""",
+        (debut, fin),
+    ) as cur:
+        lignes = [dict(r) for r in await cur.fetchall()]
+
+    total = 0.0
+    nb = 0
+    nb_non_valo = 0
+    for l in lignes:
+        nb += 1
+        prix_kg = _calc_prix_kg(l.get("format_prix"), l.get("prix_achat_ht"),
+                                l.get("poids_colis_kg"), l.get("famille"))
+        poids = l.get("poids_kg")
+        if prix_kg is not None and poids is not None:
+            total += float(poids) * prix_kg
+        else:
+            nb_non_valo += 1
+    return {"ht": round(total, 2), "nb_lignes": nb, "nb_non_valorisees": nb_non_valo}
+
+
+async def _inventaire_proche(db, cible, sens):
+    """Inventaire CLÔTURÉ le plus proche d'une date.
+
+    sens='avant' : dernier clôturé dont date_inventaire <= cible (Stock Initial).
+    sens='apres' : dernier clôturé dont date_inventaire <= cible également (Stock Final
+    = la photo la plus récente jusqu'à la fin de période incluse).
+    Retourne le dict session ou None.
+    """
+    async with db.execute(
+        """SELECT id, date_inventaire, libelle, valeur_totale_ht
+           FROM inventaires
+           WHERE boutique_id = ? AND statut = 'cloture' AND date_inventaire <= ?
+           ORDER BY date_inventaire DESC, id DESC
+           LIMIT 1""",
+        (BOUTIQUE_ID, cible),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+@router.get("/marge")
+async def tableau_marge(
+    date_debut: str = Query(..., description="YYYY-MM-DD (inclus)"),
+    date_fin: str = Query(..., description="YYYY-MM-DD (inclus)"),
+    stock_initial_id: Optional[int] = Query(None, description="override inventaire Stock Initial"),
+    stock_final_id: Optional[int] = Query(None, description="override inventaire Stock Final"),
+):
+    """Calcule la marge brute de la période.
+
+        Marge = CA HT − CMV
+        CMV   = Achats HT période + Stock Initial − Stock Final
+
+    Stock Initial/Final : par défaut, l'inventaire clôturé le plus proche AVANT le début
+    (≤ date_debut) et le plus proche jusqu'à la fin (≤ date_fin). L'utilisateur peut forcer
+    une autre photo via stock_initial_id / stock_final_id. La liste de tous les inventaires
+    clôturés est renvoyée pour permettre la correction côté UI.
+    """
+    if date_debut > date_fin:
+        raise HTTPException(422, "date_debut doit précéder date_fin")
+
+    async with get_db() as db:
+        tva_pct = await _get_tva_pct(db)
+        ca = await _ca_periode_ht(db, date_debut, date_fin, tva_pct)
+        achats = await _achats_periode_ht(db, date_debut, date_fin)
+
+        # Stock Initial : photo ≤ veille du début (l'inventaire de DÉBUT de période).
+        # On cible la veille pour capter la photo prise avant la période, mais on tolère
+        # une photo prise le jour même du début (cas fréquent : inventaire le 1er du mois).
+        async def _charger_override(inv_id):
+            async with db.execute(
+                """SELECT id, date_inventaire, libelle, valeur_totale_ht
+                   FROM inventaires WHERE id = ? AND boutique_id = ? AND statut = 'cloture'""",
+                (inv_id, BOUTIQUE_ID),
+            ) as cur:
+                row = await cur.fetchone()
+            return dict(row) if row else None
+
+        if stock_initial_id:
+            inv_init = await _charger_override(stock_initial_id)
+        else:
+            inv_init = await _inventaire_proche(db, date_debut, "avant")
+
+        if stock_final_id:
+            inv_final = await _charger_override(stock_final_id)
+        else:
+            inv_final = await _inventaire_proche(db, date_fin, "apres")
+
+        # Liste de tous les inventaires clôturés (pour le sélecteur de correction côté UI).
+        async with db.execute(
+            """SELECT id, date_inventaire, libelle, valeur_totale_ht
+               FROM inventaires
+               WHERE boutique_id = ? AND statut = 'cloture'
+               ORDER BY date_inventaire DESC, id DESC""",
+            (BOUTIQUE_ID,),
+        ) as cur:
+            inventaires = [dict(r) for r in await cur.fetchall()]
+
+    si = float(inv_init["valeur_totale_ht"]) if inv_init else None
+    sf = float(inv_final["valeur_totale_ht"]) if inv_final else None
+
+    # CMV = Achats + Stock Initial − Stock Final. Les stocks absents comptent 0 mais on
+    # le signale (marge_fiable=False) pour ne pas laisser croire à un calcul complet.
+    variation_stock = (si or 0) - (sf or 0)   # Stock Initial − Stock Final
+    cmv = round(achats["ht"] + variation_stock, 2)
+    marge = round(ca["ht"] - cmv, 2)
+    marge_pct = round(100 * marge / ca["ht"], 1) if ca["ht"] else None
+    marge_fiable = (si is not None) and (sf is not None)
+
+    return {
+        "periode": {"debut": date_debut, "fin": date_fin},
+        "tva_pct": tva_pct,
+        "ca": ca,                       # {ttc, ht, nb_jours}
+        "achats": achats,               # {ht, nb_lignes, nb_non_valorisees}
+        "stock_initial": inv_init,      # session ou None
+        "stock_final": inv_final,       # session ou None
+        "variation_stock": round(variation_stock, 2),
+        "cmv": cmv,
+        "marge_brute_ht": marge,
+        "marge_pct": marge_pct,
+        "marge_fiable": marge_fiable,
+        "inventaires_clotures": inventaires,
+    }

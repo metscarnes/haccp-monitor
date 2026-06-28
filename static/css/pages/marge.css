@@ -1,0 +1,128 @@
+/* ============================================================
+   marge.css — Tableau de bord MARGE (CA − CMV)
+   Thème clair (écran d'analyse gestion), cohérent hub/pilotage.
+   ============================================================ */
+
+.marge-body { background: var(--color-bg); color: var(--color-text); min-height: 100vh; }
+
+.marge-header {
+  background: var(--color-accent); color: #fff;
+  padding: var(--space-3) var(--space-4);
+  display: flex; align-items: center; gap: var(--space-3);
+  position: sticky; top: 0; z-index: var(--z-header);
+}
+.marge-header-titre { flex: 1; font-size: var(--text-xl); font-weight: 700; text-align: center; }
+.marge-retour {
+  background: rgba(255,255,255,.15); color: #fff; border: none;
+  padding: .6rem 1rem; border-radius: var(--radius-sm); text-decoration: none;
+  min-height: var(--btn-min-sm); display: inline-flex; align-items: center;
+}
+.marge-tva-btn {
+  background: rgba(255,255,255,.15); color: #fff; border: none;
+  padding: .6rem .9rem; border-radius: var(--radius-sm); cursor: pointer;
+  min-height: var(--btn-min-sm); font-weight: 600;
+}
+
+.marge-main { max-width: 720px; margin: 0 auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+.marge-section-titre { font-size: var(--text-lg); margin: 0 0 var(--space-2); }
+
+/* Période */
+.marge-periode {
+  background: var(--color-card); border-radius: var(--radius);
+  padding: var(--space-3); box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; gap: var(--space-3);
+}
+.marge-periode-presets { display: flex; flex-wrap: wrap; gap: .5rem; }
+.marge-preset-btn {
+  min-height: 44px; padding: 0 .9rem; border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-secondary); background: #fff; color: var(--color-accent);
+  font-weight: 600; cursor: pointer;
+}
+.marge-preset-btn[aria-pressed="true"] { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.marge-periode-dates { display: flex; flex-wrap: wrap; gap: .7rem; align-items: end; }
+.marge-periode-dates label { display: flex; flex-direction: column; gap: .2rem; font-size: var(--text-sm); }
+.marge-periode-dates input {
+  min-height: 48px; padding: 0 .7rem; border: 1.5px solid var(--color-secondary);
+  border-radius: var(--radius-sm); font-size: var(--text-base); background: #fff;
+}
+.marge-btn-calc {
+  min-height: 48px; padding: 0 1.4rem; border: none; border-radius: var(--radius-sm);
+  background: var(--color-ok); color: #fff; font-weight: 700; font-size: var(--text-base); cursor: pointer;
+}
+
+/* Carte résultat */
+.marge-result {
+  background: var(--color-accent); color: #fff; border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-4); text-align: center; box-shadow: var(--shadow-tile);
+}
+.marge-result-lbl { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: .05em; opacity: .85; }
+.marge-result-val { font-size: var(--text-3xl); font-weight: 900; margin: .3rem 0; }
+.marge-result-pct { font-size: var(--text-lg); font-weight: 700; opacity: .95; }
+.marge-result-note {
+  margin-top: var(--space-3); font-size: var(--text-sm); font-weight: 600;
+  background: rgba(255,255,255,.15); border-radius: var(--radius-sm); padding: .5rem .8rem;
+}
+.marge-result--na .marge-result-val { color: #FFE08A; }
+
+/* Formule détaillée */
+.marge-formule, .marge-stocks {
+  background: var(--color-card); border-radius: var(--radius);
+  padding: var(--space-4); box-shadow: var(--shadow-card);
+}
+.marge-ligne {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: .55rem 0; font-size: var(--text-base);
+}
+.marge-ligne-lbl { color: var(--color-text); }
+.marge-ligne-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.marge-ligne--plus .marge-ligne-val { color: var(--color-ok); }
+.marge-ligne--moins .marge-ligne-val { color: var(--color-alert); }
+.marge-ligne--total {
+  border-top: 2px solid var(--color-secondary); margin-top: .4rem; padding-top: .8rem;
+  font-size: var(--text-lg); font-weight: 800;
+}
+.marge-ligne--total .marge-ligne-val { color: var(--color-accent); }
+.marge-ligne-sub { font-size: var(--text-xs); color: var(--color-offline); margin: -.4rem 0 .3rem; }
+.marge-cmv-note { margin: .8rem 0 0; font-size: var(--text-sm); color: var(--color-text); opacity: .85; }
+
+/* Stocks pickers */
+.marge-stocks-aide { font-size: var(--text-sm); color: var(--color-offline); margin: 0 0 var(--space-3); }
+.marge-stock-pickers { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.marge-stock-picker { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: .3rem; font-size: var(--text-sm); font-weight: 600; }
+.marge-stock-picker select {
+  min-height: 48px; padding: 0 .7rem; border: 1.5px solid var(--color-secondary);
+  border-radius: var(--radius-sm); font-size: var(--text-base); background: #fff;
+}
+
+/* Modale TVA */
+.marge-modal { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; }
+.marge-modal[hidden] { display: none; }
+.marge-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+.marge-modal-panel {
+  position: relative; background: #fff; border-radius: var(--radius-lg);
+  padding: var(--space-6) var(--space-4); width: min(380px, 92vw);
+  box-shadow: 0 8px 30px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: var(--space-3);
+}
+.marge-modal-panel h2 { margin: 0; }
+.marge-modal-panel p { margin: 0; font-size: var(--text-sm); color: var(--color-offline); }
+.marge-modal-panel input {
+  min-height: 56px; padding: 0 .9rem; border: 1.5px solid var(--color-secondary);
+  border-radius: var(--radius-sm); font-size: var(--text-xl); font-weight: 700; text-align: center;
+}
+.marge-modal-suffix { position: absolute; right: 2.5rem; top: 7.6rem; font-size: var(--text-lg); color: var(--color-offline); }
+.marge-modal-btns { display: flex; gap: .7rem; }
+.marge-modal-btns > * { flex: 1; }
+.marge-btn-sec {
+  min-height: 48px; border: 1.5px solid var(--color-secondary); border-radius: var(--radius-sm);
+  background: #fff; color: var(--color-text); font-weight: 600; cursor: pointer;
+}
+
+/* Toast */
+.marge-toast {
+  position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%);
+  z-index: 10000; background: var(--color-accent); color: #fff;
+  border-radius: var(--radius-sm); padding: .8rem 1.2rem; font-weight: 600;
+  box-shadow: 0 6px 24px rgba(0,0,0,.3);
+}
+.marge-toast[hidden] { display: none; }
+.marge-toast--err { background: var(--color-alert); }

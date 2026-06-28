@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#3D2008">
+  <title>Marge — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/base.css">
+  <link rel="stylesheet" href="/static/css/components.css">
+  <link rel="stylesheet" href="/static/css/pages/marge.css">
+</head>
+<body class="marge-body">
+<script src="/static/js/core/guard.js"></script>
+
+  <header class="marge-header">
+    <a href="/pilotage.html" class="marge-retour">← Pilotage</a>
+    <div class="marge-header-titre">📈 Marge brute</div>
+    <button type="button" id="marge-btn-tva" class="marge-tva-btn">TVA <span id="marge-tva-val">—</span></button>
+  </header>
+
+  <main class="marge-main">
+
+    <!-- Sélecteur de période -->
+    <section class="marge-periode">
+      <div class="marge-periode-presets" id="marge-presets"></div>
+      <div class="marge-periode-dates">
+        <label>Du <input type="date" id="marge-debut"></label>
+        <label>au <input type="date" id="marge-fin"></label>
+        <button type="button" id="marge-calc" class="marge-btn-calc">Calculer</button>
+      </div>
+    </section>
+
+    <!-- Carte résultat marge (toujours visible en tête) -->
+    <section class="marge-result" id="marge-result" aria-live="polite">
+      <div class="marge-result-lbl">Marge brute HT</div>
+      <div class="marge-result-val" id="marge-val">—</div>
+      <div class="marge-result-pct" id="marge-pct"></div>
+      <div class="marge-result-note" id="marge-note" hidden></div>
+    </section>
+
+    <!-- Décomposition de la formule -->
+    <section class="marge-formule">
+      <h2 class="marge-section-titre">Détail du calcul</h2>
+      <div class="marge-ligne marge-ligne--plus">
+        <span class="marge-ligne-lbl">Chiffre d'affaires HT</span>
+        <span class="marge-ligne-val" id="d-ca">—</span>
+      </div>
+      <div class="marge-ligne-sub" id="d-ca-sub">—</div>
+
+      <div class="marge-ligne marge-ligne--moins">
+        <span class="marge-ligne-lbl">− Achats HT de la période</span>
+        <span class="marge-ligne-val" id="d-achats">—</span>
+      </div>
+      <div class="marge-ligne-sub" id="d-achats-sub">—</div>
+
+      <div class="marge-ligne marge-ligne--moins">
+        <span class="marge-ligne-lbl">− Stock initial</span>
+        <span class="marge-ligne-val" id="d-si">—</span>
+      </div>
+      <div class="marge-ligne marge-ligne--plus">
+        <span class="marge-ligne-lbl">+ Stock final</span>
+        <span class="marge-ligne-val" id="d-sf">—</span>
+      </div>
+
+      <div class="marge-ligne marge-ligne--total">
+        <span class="marge-ligne-lbl">= Marge brute HT</span>
+        <span class="marge-ligne-val" id="d-marge">—</span>
+      </div>
+      <p class="marge-cmv-note">
+        Coût des marchandises vendues (CMV) = Achats + Stock initial − Stock final =
+        <strong id="d-cmv">—</strong>
+      </p>
+    </section>
+
+    <!-- Photos de stock (sélection / correction) -->
+    <section class="marge-stocks">
+      <h2 class="marge-section-titre">Photos d'inventaire utilisées</h2>
+      <p class="marge-stocks-aide">
+        Choisies automatiquement (les plus proches des bornes). Tu peux corriger.
+      </p>
+      <div class="marge-stock-pickers">
+        <label class="marge-stock-picker">
+          <span>Stock initial</span>
+          <select id="pick-si"></select>
+        </label>
+        <label class="marge-stock-picker">
+          <span>Stock final</span>
+          <select id="pick-sf"></select>
+        </label>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Modale TVA -->
+  <div id="marge-modal-tva" class="marge-modal" hidden role="dialog" aria-modal="true">
+    <div class="marge-modal-backdrop" data-close></div>
+    <div class="marge-modal-panel">
+      <h2>Taux de TVA</h2>
+      <p>Sert à convertir le CA (saisi en TTC) en HT pour le calcul de marge.</p>
+      <input type="number" id="marge-modal-tva-input" step="0.1" min="0" max="100" inputmode="decimal">
+      <span class="marge-modal-suffix">%</span>
+      <div class="marge-modal-btns">
+        <button type="button" data-close class="marge-btn-sec">Annuler</button>
+        <button type="button" id="marge-modal-tva-ok" class="marge-btn-calc">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="marge-toast" class="marge-toast" hidden></div>
+
+  <script src="/static/js/marge.js"></script>
+</body>
+</html>
