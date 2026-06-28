@@ -4667,12 +4667,26 @@ async def get_ca_par_periode(
         )
         rows = [dict(r) for r in await cur.fetchall()]
 
-    # Évolution vs période précédente : les lignes sont triées desc, donc la
-    # période précédente d'une ligne est la ligne suivante dans la liste.
-    for i, r in enumerate(rows):
+    for r in rows:
         r["panier_moyen"] = _panier(r["total_ttc"], r["total_tickets"])
-        precedent = rows[i + 1]["total_ttc"] if i + 1 < len(rows) else None
-        r["evolution"] = _evolution(r["total_ttc"], precedent) if precedent is not None else {"delta": None, "pct": None}
+
+    if gran == "jour":
+        # Évolution vs le MÊME JOUR la semaine précédente (date - 7 jours).
+        # On indexe par date pour gérer les jours manquants : un mardi se
+        # compare au mardi d'avant, pas à la ligne précédente de la liste.
+        par_date = {r["periode"]: r["total_ttc"] for r in rows}
+        for r in rows:
+            d = date.fromisoformat(r["periode"])
+            ref = par_date.get((d - timedelta(days=7)).isoformat())
+            r["evolution"] = _evolution(r["total_ttc"], ref) if ref is not None else {"delta": None, "pct": None}
+            r["evolution_label"] = "vs S-1"
+    else:
+        # Semaine/Mois : vs période précédente (ligne suivante car tri desc).
+        for i, r in enumerate(rows):
+            precedent = rows[i + 1]["total_ttc"] if i + 1 < len(rows) else None
+            r["evolution"] = _evolution(r["total_ttc"], precedent) if precedent is not None else {"delta": None, "pct": None}
+            r["evolution_label"] = "vs préc."
+
     return {"granularite": gran, "lignes": rows}
 
 

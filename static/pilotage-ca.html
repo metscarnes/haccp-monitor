@@ -254,7 +254,7 @@
       </div>
       <table>
         <thead>
-          <tr><th id="per-col-periode">Jour</th><th class="num">Total</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets</th><th class="num">Panier</th><th class="num">Évol.</th></tr>
+          <tr><th id="per-col-periode">Jour</th><th class="num">Total</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets</th><th class="num">Panier</th><th class="num" id="per-col-evol">Évol. S-1</th></tr>
         </thead>
         <tbody id="periode-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
       </table>
@@ -639,6 +639,7 @@
     async function chargerPeriode(gran) {
       granActive = gran;
       $('per-col-periode').textContent = labelGran[gran];
+      $('per-col-evol').textContent = gran === 'jour' ? 'Évol. S-1' : 'Évol. préc.';
       try {
         const res = await fetch(`${API}/stats/par-periode?granularite=${gran}&limit=60`).then(r => r.json());
         const tbody = $('periode-body');
