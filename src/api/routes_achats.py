@@ -4814,27 +4814,27 @@ async def get_ca_profil_semaine():
 
 @router.get("/pilotage/ca/stats/prochain-a-saisir")
 async def get_ca_prochain_a_saisir():
-    """Jour sur lequel ouvrir la saisie par défaut : le jour le plus récent
-    non encore saisi, en partant d'hier et en remontant (max 60 jours).
+    """Jour sur lequel ouvrir la saisie par défaut : le LENDEMAIN de la
+    dernière saisie (sans dépasser aujourd'hui). On ignore les trous anciens :
+    on suit la continuité de la saisie, pas le premier jour manquant.
 
-    Renvoie hier si tout est à jour récemment, ou le dernier trou trouvé.
+    Aucune saisie encore → on propose hier.
     """
     today = date.today()
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT date_ca FROM ca_journalier WHERE boutique_id = 1 "
-            "AND date_ca >= ? ",
-            ((today - timedelta(days=60)).isoformat(),),
+            "SELECT MAX(date_ca) AS d FROM ca_journalier WHERE boutique_id = 1"
         )
-        saisis = {r["date_ca"] for r in await cur.fetchall()}
+        row = await cur.fetchone()
+        derniere = row["d"] if row else None
 
-    # On part d'hier et on remonte jusqu'à trouver un jour non saisi.
-    for i in range(1, 61):
-        jour = today - timedelta(days=i)
-        if jour.isoformat() not in saisis:
-            return {"date": jour.isoformat()}
-    # Tout est saisi sur 60 j → on propose quand même hier
-    return {"date": (today - timedelta(days=1)).isoformat()}
+    if not derniere:
+        return {"date": (today - timedelta(days=1)).isoformat()}
+
+    suivant = date.fromisoformat(derniere) + timedelta(days=1)
+    if suivant > today:
+        suivant = today
+    return {"date": suivant.isoformat()}
 
 
 @router.get("/pilotage/ca/{date_ca}")
