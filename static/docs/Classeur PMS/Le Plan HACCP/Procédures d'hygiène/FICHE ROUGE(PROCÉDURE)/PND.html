@@ -460,21 +460,26 @@
     .legend { display: none !important; }
     .info-bar { display: none !important; }
 
+    html, body { height: 100%; }
+
     .container {
       max-width: none;
       padding: 0;
       margin: 0;
+      height: 100%;
     }
 
-    /* Chaque onglet = 1 page A4 paysage */
-    .tab-panel {
-      display: block !important;
-      page-break-after: always;
+    /* On n'imprime QUE l'onglet affiché à l'écran, sur 1 seule page A4 paysage */
+    .tab-panel { display: none !important; }
+    .tab-panel.active {
+      display: flex !important;
+      flex-direction: column;
+      height: 100%;
+      page-break-after: auto;
       page-break-inside: avoid;
       margin: 0;
       padding: 0;
     }
-    .tab-panel:last-child { page-break-after: auto; }
 
     /* En-tête de page (logo + titre) - répété sur chaque page */
     .panel-header {
@@ -518,17 +523,24 @@
       line-height: 1.4;
     }
 
-    /* Tableau compact pour tenir sur 1 page */
+    /* En-tête de page : hauteur fixe, ne s'étire pas */
+    .panel-header { flex: 0 0 auto; }
+
+    /* Le tableau occupe TOUTE la hauteur restante de la page */
     .table-wrap {
       border: 0.5pt solid #d9cfc0 !important;
       border-radius: 0;
       box-shadow: none !important;
+      flex: 1 1 auto;
+      display: flex;
+      min-height: 0;
     }
-    .table-scroll { overflow: visible !important; }
+    .table-scroll { overflow: visible !important; flex: 1 1 auto; display: flex; }
 
     table {
       min-width: auto !important;
       width: 100%;
+      height: 100%;          /* étire le tableau sur toute la hauteur dispo */
       font-size: 7pt !important;
     }
 
@@ -546,6 +558,7 @@
       line-height: 1.1 !important;
     }
 
+    tbody { height: 100%; }
     tbody td {
       padding: 1pt 2.5pt !important;
       vertical-align: middle;
@@ -553,6 +566,7 @@
       border-bottom: 0.3pt solid #ebe3d5 !important;
       line-height: 1.15 !important;
     }
+    /* Les lignes se répartissent sur toute la hauteur de la page */
     tbody tr { height: auto !important; }
     tbody tr:hover { background: transparent !important; }
     tbody tr.special-row {
