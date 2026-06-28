@@ -992,6 +992,39 @@ CREATE TABLE IF NOT EXISTS ca_journalier (
 
 CREATE INDEX IF NOT EXISTS idx_ca_journalier_date
     ON ca_journalier(boutique_id, date_ca DESC);
+
+-- Inventaire VALORISÉ (stock comptable en €) — voir migration v7.0 pour le détail.
+CREATE TABLE IF NOT EXISTS inventaires (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id      INTEGER NOT NULL DEFAULT 1,
+    date_inventaire  DATE    NOT NULL DEFAULT CURRENT_DATE,
+    libelle          TEXT,
+    statut           TEXT    NOT NULL DEFAULT 'en_cours',
+    valeur_totale_ht REAL    DEFAULT 0.0,
+    personnel_id     INTEGER,
+    created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+    cloture_at       DATETIME,
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
+
+CREATE TABLE IF NOT EXISTS inventaire_lignes (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    inventaire_id            INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,
+    designation_libre        TEXT,
+    quantite                 REAL    NOT NULL,
+    unite_saisie             TEXT    NOT NULL DEFAULT 'kg',
+    prix_kg_fige             REAL,
+    poids_kg_calcule         REAL,
+    valeur_ht                REAL,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inventaire_id)            REFERENCES inventaires(id) ON DELETE CASCADE,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv
+    ON inventaire_lignes(inventaire_id);
 """
 
 SEED_SQL = """
@@ -1633,6 +1666,43 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE ca_journalier ADD COLUMN montant_ttc_soir  REAL DEFAULT 0",
             "ALTER TABLE ca_journalier ADD COLUMN nb_tickets_soir   INTEGER",
             "ALTER TABLE ca_journalier ADD COLUMN meteo             TEXT",
+            # v7.0 — Inventaire VALORISÉ (stock comptable en €). Brique distincte du
+            # stock FIFO traçabilité (qui suit les lots/DLC). Ici : une « photo » datée
+            # du stock physique, chaque ligne valorisée au prix d'achat €/kg figé à la
+            # saisie (via _calc_prix_kg). La somme des lignes = stock comptable à l'instant T.
+            # Sert au calcul de marge : CA HT − (Achats HT + Stock Initial − Stock Final).
+            """CREATE TABLE IF NOT EXISTS inventaires (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id      INTEGER NOT NULL DEFAULT 1,
+                date_inventaire  DATE    NOT NULL DEFAULT CURRENT_DATE,
+                libelle          TEXT,
+                statut           TEXT    NOT NULL DEFAULT 'en_cours',  -- en_cours | cloture
+                valeur_totale_ht REAL    DEFAULT 0.0,   -- figée à la clôture
+                personnel_id     INTEGER,
+                created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cloture_at       DATETIME,
+                FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+                FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+            )""",
+            # Une ligne = un article compté. prix_kg_fige + poids_kg_calcule + valeur_ht
+            # sont figés au moment de la saisie : la photo reste juste même si le prix
+            # catalogue évolue ensuite. catalogue_fournisseur_id = article de référence
+            # (NULL toléré pour un article hors catalogue, identifié par designation_libre).
+            """CREATE TABLE IF NOT EXISTS inventaire_lignes (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                inventaire_id            INTEGER NOT NULL,
+                catalogue_fournisseur_id INTEGER,
+                designation_libre        TEXT,
+                quantite                 REAL    NOT NULL,
+                unite_saisie             TEXT    NOT NULL DEFAULT 'kg',  -- kg | piece | colis
+                prix_kg_fige             REAL,           -- €/kg figé (NULL si non valorisable)
+                poids_kg_calcule         REAL,           -- quantité ramenée en kg
+                valeur_ht                REAL,           -- poids_kg_calcule × prix_kg_fige
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (inventaire_id)            REFERENCES inventaires(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv ON inventaire_lignes(inventaire_id)",
         ]
         for sql in migrations:
             try:

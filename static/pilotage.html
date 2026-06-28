@@ -61,6 +61,13 @@
       <div class="hub-tuile-statut" id="stat-ca">Chargement…</div>
     </a>
 
+    <!-- Inventaire valorisé (stock comptable) -->
+    <a class="hub-tuile" href="/inventaire-valorise.html" aria-label="Inventaire valorisé">
+      <div class="hub-tuile-icone" aria-hidden="true">💰</div>
+      <div class="hub-tuile-titre">INVENTAIRE VALORISÉ</div>
+      <div class="hub-tuile-statut" id="stat-inv">Chargement…</div>
+    </a>
+
   </main>
 
   <script>
@@ -82,7 +89,23 @@
         console.error(e);
       }
     }
+    async function chargerInv() {
+      try {
+        const d = await fetch('/api/inventaire/sessions?limit=1').then(r => r.json());
+        const el = document.getElementById('stat-inv');
+        if (!el) return;
+        const s = (d.sessions || [])[0];
+        if (!s) { el.textContent = 'Aucun inventaire'; return; }
+        const date = new Date(s.date_inventaire).toLocaleDateString('fr-FR');
+        el.textContent = (s.statut === 'cloture')
+          ? `${date} : ${fmtEur(s.valeur_totale_ht)}`
+          : `${date} : en cours…`;
+      } catch (e) {
+        console.error(e);
+      }
+    }
     chargerStats();
+    chargerInv();
   </script>
 </body>
 </html>

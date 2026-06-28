@@ -53,6 +53,7 @@ from src.api.routes_achats          import router as router_achats
 from src.api.routes_vente           import router as router_vente
 from src.api.routes_attente         import router as router_attente
 from src.api.routes_prix_etiquettes import router as router_prix_etiquettes
+from src.api.routes_inventaire      import router as router_inventaire
 
 load_dotenv()
 
@@ -275,6 +276,9 @@ app.include_router(router_attente)
 
 # Routes API — Étiquettes prix (éditeur visuel, Brother QL-820NWBc)
 app.include_router(router_prix_etiquettes)
+
+# Routes API — Inventaire valorisé (stock comptable en €, calcul de marge)
+app.include_router(router_inventaire)
 
 
 # ---------------------------------------------------------------------------

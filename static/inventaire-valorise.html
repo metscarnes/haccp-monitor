@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0B1622">
+  <title>Inventaire valorisé — Au Comptoir des Lilas</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="stylesheet" href="/static/css/reset.css">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/pages/inventaire-valorise.css">
+</head>
+<body class="invv-body">
+<script src="/static/js/core/guard.js"></script>
+
+  <!-- ════════ En-tête ════════ -->
+  <header class="invv-bar">
+    <a href="/pilotage.html" class="invv-retour" aria-label="Retour pilotage">←</a>
+    <div class="invv-bar-titre">💰 Inventaire valorisé</div>
+    <button type="button" id="invv-btn-sessions" class="invv-bar-btn">📅 Sessions</button>
+  </header>
+
+  <!-- ════════ Écran 1 : choix / création de session ════════ -->
+  <section id="invv-ecran-sessions" class="invv-ecran">
+    <div class="invv-sessions-head">
+      <h2>Inventaires</h2>
+      <button type="button" id="invv-btn-nouveau" class="invv-btn-primary">➕ Nouvel inventaire</button>
+    </div>
+    <div id="invv-sessions-liste" class="invv-sessions-liste">
+      <div class="invv-vide">Chargement…</div>
+    </div>
+  </section>
+
+  <!-- ════════ Écran 2 : saisie d'un inventaire ════════ -->
+  <section id="invv-ecran-saisie" class="invv-ecran" hidden>
+
+    <!-- Bandeau session -->
+    <div class="invv-session-bandeau">
+      <div class="invv-session-info">
+        <span id="invv-session-libelle" class="invv-session-libelle">—</span>
+        <span id="invv-session-date" class="invv-session-date">—</span>
+      </div>
+      <span id="invv-session-statut" class="invv-badge">en cours</span>
+    </div>
+
+    <!-- Recherche géante -->
+    <div class="invv-search-zone">
+      <input type="search" id="invv-search" class="invv-search"
+             placeholder="🔍 Rechercher un article…"
+             autocomplete="off" inputmode="search" aria-label="Rechercher un article">
+      <button type="button" id="invv-search-clear" class="invv-search-clear" hidden aria-label="Effacer">✕</button>
+    </div>
+
+    <!-- Navigation familles (gros boutons) -->
+    <div id="invv-familles" class="invv-familles"></div>
+    <div id="invv-sous-familles" class="invv-sous-familles" hidden></div>
+
+    <!-- Résultats articles (gros boutons tactiles) -->
+    <div id="invv-articles" class="invv-articles"></div>
+
+    <!-- Lignes déjà saisies -->
+    <div class="invv-lignes-head">
+      <span>Articles comptés</span>
+      <span id="invv-nb-lignes" class="invv-nb-lignes">0</span>
+    </div>
+    <div id="invv-lignes" class="invv-lignes"></div>
+
+    <!-- Total sticky + clôture -->
+    <div class="invv-total-bar">
+      <div class="invv-total-bloc">
+        <span class="invv-total-lbl">Stock valorisé HT</span>
+        <span id="invv-total" class="invv-total-val">—</span>
+      </div>
+      <button type="button" id="invv-btn-cloturer" class="invv-btn-cloturer">✓ Clôturer</button>
+    </div>
+    <div id="invv-non-valo" class="invv-non-valo" hidden></div>
+  </section>
+
+  <!-- ════════ Modale : saisie quantité d'un article ════════ -->
+  <div id="invv-modal-qte" class="invv-modal" hidden role="dialog" aria-modal="true">
+    <div class="invv-modal-backdrop" data-close></div>
+    <div class="invv-modal-panel">
+      <button type="button" class="invv-modal-close" data-close aria-label="Fermer">✕</button>
+      <div id="invv-modal-nom" class="invv-modal-nom">—</div>
+      <div id="invv-modal-prixkg" class="invv-modal-prixkg">—</div>
+
+      <!-- Toggle unité (gros, neutre) -->
+      <div class="invv-unite-toggle" role="group" aria-label="Unité de saisie">
+        <button type="button" class="invv-unite-btn" data-unite="kg">kg</button>
+        <button type="button" class="invv-unite-btn" data-unite="piece">pièce</button>
+        <button type="button" class="invv-unite-btn" data-unite="colis">colis</button>
+      </div>
+
+      <!-- Quantité -->
+      <label class="invv-modal-label" for="invv-modal-qte-input">Quantité</label>
+      <input type="number" id="invv-modal-qte-input" class="invv-modal-input"
+             inputmode="decimal" step="0.001" min="0" placeholder="0">
+
+      <!-- Poids pièce (affiché si pièce sans poids connu) -->
+      <div id="invv-modal-poids-piece" hidden>
+        <label class="invv-modal-label" for="invv-modal-poids-input">
+          Poids d'une pièce (kg) <span class="invv-modal-hint">— mémorisé pour la prochaine fois</span>
+        </label>
+        <input type="number" id="invv-modal-poids-input" class="invv-modal-input"
+               inputmode="decimal" step="0.001" min="0" placeholder="Ex : 0.250">
+      </div>
+
+      <div id="invv-modal-apercu" class="invv-modal-apercu">—</div>
+
+      <button type="button" id="invv-modal-valider" class="invv-btn-primary invv-modal-valider">
+        ➕ Ajouter au stock
+      </button>
+    </div>
+  </div>
+
+  <!-- ════════ Toast ════════ -->
+  <div id="invv-toast" class="invv-toast" hidden></div>
+
+  <script src="/static/js/inventaire-valorise.js"></script>
+</body>
+</html>

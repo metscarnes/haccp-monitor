@@ -74,6 +74,9 @@ async def db():
         # Vider toutes les tables pour isolation totale entre tests
         phase2_tables = (
             # Enfants en premier (respecter les FK)
+            # Inventaire valorisé (FK vers inventaires, catalogue_fournisseur)
+            "inventaire_lignes",                   # → inventaires, catalogue_fournisseur
+            "inventaires",                         # → boutiques, personnel
             # Module Achat — Factures & Commandes (FK vers receptions/reception_lignes/fournisseurs)
             "historique_prix_achat",               # → catalogue_fournisseur, receptions, reception_lignes
             "facture_lignes",                      # → factures, reception_lignes, catalogue_fournisseur
