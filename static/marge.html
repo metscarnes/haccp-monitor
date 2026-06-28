@@ -46,15 +46,43 @@
       <h2 class="marge-section-titre">Détail du calcul</h2>
       <div class="marge-ligne marge-ligne--plus">
         <span class="marge-ligne-lbl">Chiffre d'affaires HT</span>
-        <span class="marge-ligne-val" id="d-ca">—</span>
+        <span class="marge-ligne-end">
+          <span class="marge-ligne-val" id="d-ca">—</span>
+          <button type="button" class="marge-edit-btn" id="edit-ca" title="Caler le CA TTC (banque)">✏️</button>
+        </span>
       </div>
       <div class="marge-ligne-sub" id="d-ca-sub">—</div>
+      <!-- Éditeur CA TTC (rapprochement banque) -->
+      <div class="marge-editor" id="editor-ca" hidden>
+        <label>CA TTC réel de la période (banque)
+          <input type="number" id="input-ca-ttc" inputmode="decimal" step="0.01" min="0">
+        </label>
+        <div class="marge-editor-btns">
+          <button type="button" class="marge-btn-sec" data-cancel-ca>Annuler</button>
+          <button type="button" class="marge-btn-calc" id="save-ca">Enregistrer</button>
+        </div>
+        <p class="marge-editor-hint">Écrit une ligne d'ajustement datée dans Pilotage (saisies journalières conservées).</p>
+      </div>
 
       <div class="marge-ligne marge-ligne--moins">
         <span class="marge-ligne-lbl">− Achats HT de la période</span>
-        <span class="marge-ligne-val" id="d-achats">—</span>
+        <span class="marge-ligne-end">
+          <span class="marge-ligne-val" id="d-achats">—</span>
+          <button type="button" class="marge-edit-btn" id="edit-achats" title="Saisir les achats réels (factures)">✏️</button>
+        </span>
       </div>
       <div class="marge-ligne-sub" id="d-achats-sub">—</div>
+      <!-- Éditeur Achats réels (factures du mois) -->
+      <div class="marge-editor" id="editor-achats" hidden>
+        <label>Achats HT réels facturés ce mois (factures)
+          <input type="number" id="input-achats-ht" inputmode="decimal" step="0.01" min="0">
+        </label>
+        <div class="marge-editor-btns">
+          <button type="button" class="marge-btn-sec" id="clear-achats">Effacer (calcul auto)</button>
+          <button type="button" class="marge-btn-calc" id="save-achats">Enregistrer</button>
+        </div>
+        <p class="marge-editor-hint" id="achats-editor-hint">Base : date de facture. Prime sur le calcul auto (gardé en référence).</p>
+      </div>
 
       <div class="marge-ligne marge-ligne--moins">
         <span class="marge-ligne-lbl">− Stock initial</span>
@@ -91,6 +119,10 @@
           <select id="pick-sf"></select>
         </label>
       </div>
+      <label class="marge-stock-zero">
+        <input type="checkbox" id="marge-si-zero">
+        <span>🚀 Démarrage d'activité — stock initial à 0 € (aucune photo nécessaire)</span>
+      </label>
     </section>
 
   </main>

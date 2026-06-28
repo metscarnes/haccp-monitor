@@ -365,6 +365,136 @@ async def test_marge_sans_inventaire_non_fiable(app_client, db):
 
 
 @pytest.mark.anyio
+async def test_marge_stock_initial_zero_demarrage(app_client, db):
+    """Démarrage d'activité : SI=0 assumé → marge fiable même sans photo initiale."""
+    fid = await _fournisseur(app_client)
+    cat = await _article(app_client, fid, prix_achat_ht=10.0, format_prix="kg", famille="Viande")
+    await _ca_jour(db, "2026-06-15", 1055.0)            # CA HT 1000
+    await _reception_cloturee(db, fid, cat, "2026-06-12", 30.0)  # achats 300
+    # Stock final = photo du 30/06 à 200 € ; PAS de photo initiale (activité démarrée le 11/06)
+    await _inventaire_cloture(app_client, db, "2026-06-30", 200.0)
+
+    # Sans le flag : pas de stock initial → non fiable
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
+    d = r.json()
+    assert d["stock_initial"] is None
+    assert d["marge_fiable"] is False
+
+    # Avec le flag démarrage : SI=0 réel → fiable. CMV = 300 + (0 − 200) = 100 ; marge = 900
+    r = await app_client.get("/api/inventaire/marge", params={
+        "date_debut": "2026-06-11", "date_fin": "2026-06-30", "stock_initial_zero": "true",
+    })
+    d = r.json()
+    assert d["stock_initial_zero"] is True
+    assert d["variation_stock"] == pytest.approx(-200.0)   # 0 − 200
+    assert d["cmv"] == pytest.approx(100.0)
+    assert d["marge_brute_ht"] == pytest.approx(900.0)
+    assert d["marge_fiable"] is True
+
+    # Une VRAIE photo initiale prime sur le flag zéro
+    await _inventaire_cloture(app_client, db, "2026-06-10", 50.0)
+    r = await app_client.get("/api/inventaire/marge", params={
+        "date_debut": "2026-06-11", "date_fin": "2026-06-30", "stock_initial_zero": "true",
+    })
+    d = r.json()
+    assert d["stock_initial_zero"] is False          # photo trouvée → pas de convention zéro
+    assert d["stock_initial"]["valeur_totale_ht"] == 50.0
+
+
+@pytest.mark.anyio
+async def test_achats_reels_priment_sur_calcul(app_client, db):
+    """Un montant achats réel saisi (mois entier) prime, calcul gardé en référence."""
+    fid = await _fournisseur(app_client)
+    cat = await _article(app_client, fid, prix_achat_ht=10.0, format_prix="kg", famille="Viande")
+    await _ca_jour(db, "2026-06-15", 1055.0)                    # CA HT 1000
+    await _reception_cloturee(db, fid, cat, "2026-06-12", 30.0)  # achats calculés 300
+
+    # Sans saisie : source = calcul
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    d = r.json()
+    assert d["achats"]["source"] == "calcule"
+    assert d["achats"]["ht"] == pytest.approx(300.0)
+    assert d["achats"]["saisie_possible"] is True
+    assert d["achats"]["annee_mois"] == "2026-06"
+
+    # Je saisis les achats réels facturés en juin = 280 €
+    r = await app_client.put("/api/inventaire/marge/achats-reels",
+                             json={"annee_mois": "2026-06", "montant_ht": 280.0})
+    assert r.status_code == 200
+
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    d = r.json()
+    assert d["achats"]["source"] == "reel"
+    assert d["achats"]["ht"] == pytest.approx(280.0)           # le réel prime
+    assert d["achats"]["ht_calcule"] == pytest.approx(300.0)   # calcul en référence
+    assert d["achats"]["ecart_reel_calcule"] == pytest.approx(-20.0)
+
+    # Effacer (montant_ht absent) → retour au calcul
+    r = await app_client.put("/api/inventaire/marge/achats-reels", json={"annee_mois": "2026-06"})
+    assert r.status_code == 200
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    assert r.json()["achats"]["source"] == "calcule"
+
+
+@pytest.mark.anyio
+async def test_achats_reels_periode_non_mensuelle(app_client, db):
+    """Période à cheval (pas un mois entier) → saisie réelle non applicable."""
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
+    d = r.json()
+    assert d["achats"]["saisie_possible"] is False
+    assert d["achats"]["annee_mois"] is None
+
+    # Validation format
+    r = await app_client.put("/api/inventaire/marge/achats-reels",
+                             json={"annee_mois": "2026-13", "montant_ht": 100})
+    assert r.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_ca_ajuster_ligne_dediee(app_client, db):
+    """Caler le CA total écrit une ligne d'ajustement non destructive, idempotente."""
+    # 2 jours saisis : 1000 + 500 = 1500 TTC réel
+    await _ca_jour(db, "2026-06-10", 1000.0)
+    await _ca_jour(db, "2026-06-20", 500.0)
+
+    # Je cale le total du mois à 1700 → écart +200 sur une ligne dédiée
+    r = await app_client.put("/api/inventaire/marge/ca-ajuster", json={
+        "date_debut": "2026-06-01", "date_fin": "2026-06-30", "montant_ttc_cible": 1700.0,
+    })
+    d = r.json()
+    assert d["ecart"] == pytest.approx(200.0)
+    assert d["ligne_ajustement"]["date_ca"] == "2026-06-30"
+
+    # La somme de la période vaut maintenant 1700, les vraies saisies intactes
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    assert r.json()["ca"]["ttc"] == pytest.approx(1700.0)
+
+    # Idempotence : re-caler à 1700 ne double pas l'ajustement (toujours +200 depuis la base)
+    r = await app_client.put("/api/inventaire/marge/ca-ajuster", json={
+        "date_debut": "2026-06-01", "date_fin": "2026-06-30", "montant_ttc_cible": 1700.0,
+    })
+    assert r.json()["ecart"] == pytest.approx(200.0)
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    assert r.json()["ca"]["ttc"] == pytest.approx(1700.0)
+
+    # Caler à la valeur réelle (1500) supprime la ligne d'ajustement
+    r = await app_client.put("/api/inventaire/marge/ca-ajuster", json={
+        "date_debut": "2026-06-01", "date_fin": "2026-06-30", "montant_ttc_cible": 1500.0,
+    })
+    assert r.json()["ligne_ajustement"] is None
+    r = await app_client.get("/api/inventaire/marge",
+                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    assert r.json()["ca"]["ttc"] == pytest.approx(1500.0)
+
+
+@pytest.mark.anyio
 async def test_marge_override_inventaires(app_client, db):
     """L'utilisateur peut forcer quelle photo sert de Stock Initial / Final."""
     fid = await _fournisseur(app_client)

@@ -25,6 +25,9 @@ GET    /api/inventaire/familles                    → familles/sous-familles (n
 GET    /api/inventaire/marge?date_debut=&date_fin= → tableau de bord marge (CA−CMV)
 GET    /api/inventaire/marge/tva                   → taux TVA paramétré (CA TTC→HT)
 PUT    /api/inventaire/marge/tva                   → modifier le taux TVA
+GET    /api/inventaire/marge/achats-reels?annee_mois= → achats HT réels saisis du mois
+PUT    /api/inventaire/marge/achats-reels          → saisir/effacer les achats réels du mois
+PUT    /api/inventaire/marge/ca-ajuster            → caler le CA TTC total (ligne d'ajustement)
 """
 import logging
 from datetime import date, timedelta
@@ -538,6 +541,201 @@ async def set_tva(data: TvaUpdate):
         return {"ok": True, "tva_pct": data.tva_pct}
 
 
+# ── Achats HT réels saisis par mois (vérité comptable, date de facture) ──
+
+class AchatsReelsUpdate(BaseModel):
+    annee_mois: str                       # 'YYYY-MM'
+    montant_ht: Optional[float] = None    # None ou absent = effacer la saisie réelle
+    commentaire: Optional[str] = None
+    personnel_id: Optional[int] = None
+
+
+def _valider_annee_mois(am):
+    import re
+    if not am or not re.fullmatch(r"\d{4}-\d{2}", am):
+        raise HTTPException(422, "annee_mois doit être au format 'YYYY-MM'")
+    mois = int(am[5:7])
+    if mois < 1 or mois > 12:
+        raise HTTPException(422, "mois invalide")
+
+
+async def _get_achats_reels(db, annee_mois):
+    """Montant achats réel saisi pour un mois, ou None si non saisi."""
+    async with db.execute(
+        """SELECT montant_ht, commentaire FROM achats_reels_mensuels
+           WHERE boutique_id = ? AND annee_mois = ?""",
+        (BOUTIQUE_ID, annee_mois),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+@router.get("/marge/achats-reels")
+async def get_achats_reels(annee_mois: str = Query(..., description="YYYY-MM")):
+    _valider_annee_mois(annee_mois)
+    async with get_db() as db:
+        saisie = await _get_achats_reels(db, annee_mois)
+    return {"annee_mois": annee_mois, "saisie": saisie}
+
+
+@router.put("/marge/achats-reels")
+async def set_achats_reels(data: AchatsReelsUpdate):
+    """Saisit (ou efface) le montant d'achats HT réel d'un mois (date de facture).
+
+    montant_ht absent/None → on EFFACE la saisie (retour au calcul auto pour ce mois).
+    """
+    _valider_annee_mois(data.annee_mois)
+    if data.montant_ht is not None and data.montant_ht < 0:
+        raise HTTPException(422, "montant_ht ne peut pas être négatif")
+    async with get_db() as db:
+        if data.montant_ht is None:
+            await db.execute(
+                "DELETE FROM achats_reels_mensuels WHERE boutique_id = ? AND annee_mois = ?",
+                (BOUTIQUE_ID, data.annee_mois),
+            )
+            await db.commit()
+            return {"ok": True, "annee_mois": data.annee_mois, "saisie": None}
+        await db.execute(
+            """INSERT INTO achats_reels_mensuels
+                   (boutique_id, annee_mois, montant_ht, commentaire, personnel_id)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(boutique_id, annee_mois) DO UPDATE SET
+                   montant_ht   = excluded.montant_ht,
+                   commentaire  = excluded.commentaire,
+                   personnel_id = excluded.personnel_id,
+                   updated_at   = CURRENT_TIMESTAMP""",
+            (BOUTIQUE_ID, data.annee_mois, data.montant_ht,
+             data.commentaire, data.personnel_id),
+        )
+        await db.commit()
+        return {"ok": True, "annee_mois": data.annee_mois,
+                "saisie": {"montant_ht": data.montant_ht, "commentaire": data.commentaire}}
+
+
+# ── CA TTC : caler le total d'une période via une ligne d'ajustement datée ──
+
+class CaAjustementBody(BaseModel):
+    date_debut: str
+    date_fin: str
+    montant_ttc_cible: float              # le total TTC voulu pour la période
+    personnel_id: Optional[int] = None
+
+
+# Date dédiée pour la ligne d'ajustement (le dernier jour de la période).
+LIBELLE_AJUSTEMENT = "Ajustement caisse/banque"
+
+
+@router.put("/marge/ca-ajuster")
+async def ajuster_ca_periode(body: CaAjustementBody):
+    """Cale le CA TTC TOTAL d'une période sur une valeur cible (rapprochement banque).
+
+    Non destructif : les saisies journalières restent intactes. L'écart (cible − somme
+    actuelle hors ligne d'ajustement existante) est porté par UNE ligne d'ajustement datée
+    au dernier jour de la période (commentaire dédié). Réappeler recalcule l'écart depuis la
+    base réelle, donc c'est idempotent (pas d'empilement).
+    """
+    if body.date_debut > body.date_fin:
+        raise HTTPException(422, "date_debut doit précéder date_fin")
+    if body.montant_ttc_cible < 0:
+        raise HTTPException(422, "le montant cible ne peut pas être négatif")
+
+    async with get_db() as db:
+        # Somme RÉELLE hors ligne d'ajustement (pour repartir d'une base propre).
+        async with db.execute(
+            """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc
+               FROM ca_journalier
+               WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?
+                 AND COALESCE(commentaire, '') <> ?""",
+            (BOUTIQUE_ID, body.date_debut, body.date_fin, LIBELLE_AJUSTEMENT),
+        ) as cur:
+            base = float((await cur.fetchone())["ttc"] or 0)
+
+        ecart = round(body.montant_ttc_cible - base, 2)
+        date_ajust = body.date_fin
+
+        # Si la date d'ajustement porte une VRAIE saisie (pas l'ajustement), on refuse
+        # d'écraser : on déplace l'ajustement sur cette même date en additionnant — mais
+        # pour rester simple et lisible, on stocke l'ajustement comme une ligne dédiée
+        # SEULEMENT si la date est libre ou ne contient que l'ancien ajustement.
+        async with db.execute(
+            """SELECT montant_ttc, commentaire FROM ca_journalier
+               WHERE boutique_id = ? AND date_ca = ?""",
+            (BOUTIQUE_ID, date_ajust),
+        ) as cur:
+            existant = await cur.fetchone()
+
+        if existant and (existant["commentaire"] or "") != LIBELLE_AJUSTEMENT:
+            # Le dernier jour a une vraie saisie → on porte l'ajustement la veille libre.
+            # On cherche une date libre en remontant (max 7 jours) sinon on empile sur fin.
+            d = date.fromisoformat(body.date_fin)
+            d1 = date.fromisoformat(body.date_debut)
+            date_ajust = None
+            for _ in range(7):
+                d = d - timedelta(days=1)
+                if d < d1:
+                    break
+                async with db.execute(
+                    "SELECT 1 FROM ca_journalier WHERE boutique_id = ? AND date_ca = ?",
+                    (BOUTIQUE_ID, d.isoformat()),
+                ) as cur:
+                    if not await cur.fetchone():
+                        date_ajust = d.isoformat()
+                        break
+            if date_ajust is None:
+                raise HTTPException(
+                    409,
+                    "Aucun jour libre pour l'ajustement sur cette période. "
+                    "Corrigez le CA jour par jour dans Pilotage.",
+                )
+
+        if abs(ecart) < 0.005:
+            # Cible = base : on supprime toute ligne d'ajustement résiduelle.
+            await db.execute(
+                "DELETE FROM ca_journalier WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ? AND commentaire = ?",
+                (BOUTIQUE_ID, body.date_debut, body.date_fin, LIBELLE_AJUSTEMENT),
+            )
+            await db.commit()
+            return {"ok": True, "ecart": 0.0, "base_ttc": round(base, 2),
+                    "cible_ttc": body.montant_ttc_cible, "ligne_ajustement": None}
+
+        await db.execute(
+            """INSERT INTO ca_journalier
+                   (boutique_id, date_ca, montant_ttc, nb_tickets, commentaire, personnel_id)
+               VALUES (?, ?, ?, NULL, ?, ?)
+               ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
+                   montant_ttc  = excluded.montant_ttc,
+                   commentaire  = excluded.commentaire,
+                   personnel_id = excluded.personnel_id,
+                   updated_at   = CURRENT_TIMESTAMP""",
+            (BOUTIQUE_ID, date_ajust, ecart, LIBELLE_AJUSTEMENT, body.personnel_id),
+        )
+        await db.commit()
+        return {"ok": True, "ecart": ecart, "base_ttc": round(base, 2),
+                "cible_ttc": body.montant_ttc_cible,
+                "ligne_ajustement": {"date_ca": date_ajust, "montant_ttc": ecart}}
+
+
+def _mois_calendaire(debut, fin):
+    """Retourne 'YYYY-MM' si [debut, fin] = un mois calendaire entier, sinon None.
+
+    Un mois entier = du 1er jour au dernier jour du même mois/année.
+    """
+    try:
+        d1 = date.fromisoformat(debut)
+        d2 = date.fromisoformat(fin)
+    except (ValueError, TypeError):
+        return None
+    if d1.year != d2.year or d1.month != d2.month:
+        return None
+    if d1.day != 1:
+        return None
+    import calendar
+    dernier = calendar.monthrange(d1.year, d1.month)[1]
+    if d2.day != dernier:
+        return None
+    return f"{d1.year:04d}-{d1.month:02d}"
+
+
 async def _ca_periode_ht(db, debut, fin, tva_pct):
     """CA HT de la période = somme TTC ca_journalier [debut, fin] / (1 + tva/100)."""
     async with db.execute(
@@ -611,6 +809,7 @@ async def tableau_marge(
     date_fin: str = Query(..., description="YYYY-MM-DD (inclus)"),
     stock_initial_id: Optional[int] = Query(None, description="override inventaire Stock Initial"),
     stock_final_id: Optional[int] = Query(None, description="override inventaire Stock Final"),
+    stock_initial_zero: bool = Query(False, description="démarrage d'activité : stock initial = 0 € fiable"),
 ):
     """Calcule la marge brute de la période.
 
@@ -621,6 +820,10 @@ async def tableau_marge(
     (≤ date_debut) et le plus proche jusqu'à la fin (≤ date_fin). L'utilisateur peut forcer
     une autre photo via stock_initial_id / stock_final_id. La liste de tous les inventaires
     clôturés est renvoyée pour permettre la correction côté UI.
+
+    stock_initial_zero : cas du DÉMARRAGE d'activité (stock réellement nul, pas de photo à
+    faire). Quand activé ET qu'aucun inventaire initial n'est trouvé/forcé, le Stock Initial
+    vaut 0 € et compte comme une VRAIE valeur → la marge reste fiable.
     """
     if date_debut > date_fin:
         raise HTTPException(422, "date_debut doit précéder date_fin")
@@ -628,7 +831,26 @@ async def tableau_marge(
     async with get_db() as db:
         tva_pct = await _get_tva_pct(db)
         ca = await _ca_periode_ht(db, date_debut, date_fin, tva_pct)
-        achats = await _achats_periode_ht(db, date_debut, date_fin)
+        achats_calcule = await _achats_periode_ht(db, date_debut, date_fin)
+
+        # Achats RÉELS saisis : ne s'appliquent que si la période = un mois calendaire
+        # entier (1er → dernier jour). Sinon la saisie mensuelle n'a pas de sens → on garde
+        # le calcul. Quand un montant réel existe, il PRIME mais le calcul reste en référence.
+        annee_mois = _mois_calendaire(date_debut, date_fin)
+        achats_reel_saisie = await _get_achats_reels(db, annee_mois) if annee_mois else None
+        achats = dict(achats_calcule)
+        achats["ht_calcule"] = achats_calcule["ht"]
+        achats["annee_mois"] = annee_mois
+        achats["saisie_possible"] = annee_mois is not None
+        if achats_reel_saisie is not None:
+            achats["ht_reel"] = round(float(achats_reel_saisie["montant_ht"]), 2)
+            achats["source"] = "reel"
+            achats["ht"] = achats["ht_reel"]
+            achats["ecart_reel_calcule"] = round(achats["ht_reel"] - achats_calcule["ht"], 2)
+        else:
+            achats["ht_reel"] = None
+            achats["source"] = "calcule"
+            achats["ecart_reel_calcule"] = None
 
         # Stock Initial : photo ≤ veille du début (l'inventaire de DÉBUT de période).
         # On cible la veille pour capter la photo prise avant la période, mais on tolère
@@ -665,12 +887,20 @@ async def tableau_marge(
     si = float(inv_init["valeur_totale_ht"]) if inv_init else None
     sf = float(inv_final["valeur_totale_ht"]) if inv_final else None
 
+    # Démarrage d'activité : stock initial réellement nul (pas une photo manquante).
+    # On ne l'applique que si aucune photo initiale n'a été trouvée/forcée (une vraie
+    # photo prime toujours sur la convention « zéro »).
+    si_zero_applique = bool(stock_initial_zero and inv_init is None)
+    if si_zero_applique:
+        si = 0.0
+
     # CMV = Achats + Stock Initial − Stock Final. Les stocks absents comptent 0 mais on
     # le signale (marge_fiable=False) pour ne pas laisser croire à un calcul complet.
     variation_stock = (si or 0) - (sf or 0)   # Stock Initial − Stock Final
     cmv = round(achats["ht"] + variation_stock, 2)
     marge = round(ca["ht"] - cmv, 2)
     marge_pct = round(100 * marge / ca["ht"], 1) if ca["ht"] else None
+    # Fiable si Stock Initial connu (vraie photo OU zéro démarrage assumé) ET Stock Final connu.
     marge_fiable = (si is not None) and (sf is not None)
 
     return {
@@ -680,6 +910,7 @@ async def tableau_marge(
         "achats": achats,               # {ht, nb_lignes, nb_non_valorisees}
         "stock_initial": inv_init,      # session ou None
         "stock_final": inv_final,       # session ou None
+        "stock_initial_zero": si_zero_applique,  # True = SI=0 démarrage d'activité assumé
         "variation_stock": round(variation_stock, 2),
         "cmv": cmv,
         "marge_brute_ht": marge,

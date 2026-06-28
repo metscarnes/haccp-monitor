@@ -81,9 +81,12 @@ async function calculer() {
   if (debut > fin) { toast('La date de début doit précéder la fin', 'err'); return; }
   try {
     const params = new URLSearchParams({ date_debut: debut, date_fin: fin });
+    const siZero = $('marge-si-zero').checked;
+    if (siZero) params.set('stock_initial_zero', 'true');
     // Conserver l'override de stock si l'utilisateur en a choisi un
+    // (un override de stock initial prime sur la convention « zéro » → on ne l'envoie pas si zéro coché)
     const si = $('pick-si').value, sf = $('pick-sf').value;
-    if (si && si !== 'auto') params.set('stock_initial_id', si);
+    if (!siZero && si && si !== 'auto') params.set('stock_initial_id', si);
     if (sf && sf !== 'auto') params.set('stock_final_id', sf);
     state.data = await api.get('/api/inventaire/marge?' + params.toString());
     rendre();
@@ -111,13 +114,35 @@ function rendre() {
   // Décomposition
   $('d-ca').textContent = fmtEur(d.ca.ht);
   $('d-ca-sub').textContent = `${fmtEur(d.ca.ttc)} TTC ÷ ${1 + d.tva_pct / 100} (TVA ${d.tva_pct} %) · ${d.ca.nb_jours} jour(s) saisis`;
-  $('d-achats').textContent = fmtEur(d.achats.ht);
-  let achatsSub = `${d.achats.nb_lignes} ligne(s) de réception clôturée`;
-  if (d.achats.nb_non_valorisees > 0) achatsSub += ` · ⚠️ ${d.achats.nb_non_valorisees} sans valeur`;
-  $('d-achats-sub').textContent = achatsSub;
+  const a = d.achats;
+  const achatsEl = $('d-achats');
+  achatsEl.textContent = fmtEur(a.ht);
+  achatsEl.classList.toggle('marge-val--reel', a.source === 'reel');
+  if (a.source === 'reel') {
+    const ecart = (a.ecart_reel_calcule != null)
+      ? ` · écart calcul ${a.ecart_reel_calcule >= 0 ? '+' : ''}${fmtEur(a.ecart_reel_calcule)}` : '';
+    $('d-achats-sub').textContent =
+      `📑 Réel (factures) · calcul auto : ${fmtEur(a.ht_calcule)}${ecart}`;
+  } else {
+    let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul auto)`;
+    if (a.nb_non_valorisees > 0) sub += ` · ⚠️ ${a.nb_non_valorisees} sans valeur`;
+    if (!a.saisie_possible) sub += ' · saisie réelle = période d\'un mois entier';
+    $('d-achats-sub').textContent = sub;
+  }
+  // Le crayon achats n'a de sens que sur un mois entier
+  $('edit-achats').style.display = a.saisie_possible ? '' : 'none';
 
-  $('d-si').textContent = d.stock_initial ? fmtEur(d.stock_initial.valeur_totale_ht) : '— (aucune photo)';
+  if (d.stock_initial) {
+    $('d-si').textContent = fmtEur(d.stock_initial.valeur_totale_ht);
+  } else if (d.stock_initial_zero) {
+    $('d-si').textContent = fmtEur(0) + ' (démarrage)';
+  } else {
+    $('d-si').textContent = '— (aucune photo)';
+  }
   $('d-sf').textContent = d.stock_final ? fmtEur(d.stock_final.valeur_totale_ht) : '— (aucune photo)';
+
+  // Le sélecteur de stock initial n'a pas de sens quand « démarrage à 0 » est coché.
+  $('pick-si').disabled = $('marge-si-zero').checked;
   $('d-marge').textContent = fmtEur(d.marge_brute_ht);
   $('d-cmv').textContent = fmtEur(d.cmv);
 
@@ -174,16 +199,83 @@ async function enregistrerTva() {
   }
 }
 
+// ── Édition CA TTC (rapprochement banque) ────────────────────
+function ouvrirEditCa() {
+  if (!state.data) return;
+  // Pré-remplit avec le CA TTC actuel de la période
+  $('input-ca-ttc').value = state.data.ca.ttc || '';
+  $('editor-ca').hidden = false;
+  setTimeout(() => $('input-ca-ttc').focus(), 50);
+}
+function fermerEditCa() { $('editor-ca').hidden = true; }
+
+async function enregistrerCa() {
+  const v = parseFloat($('input-ca-ttc').value);
+  if (isNaN(v) || v < 0) { toast('Montant invalide', 'err'); return; }
+  try {
+    const r = await api.put('/api/inventaire/marge/ca-ajuster', {
+      date_debut: $('marge-debut').value, date_fin: $('marge-fin').value,
+      montant_ttc_cible: v,
+    });
+    fermerEditCa();
+    const msg = (r.ecart === 0) ? 'CA calé (aucun écart)' : `CA calé · ajustement ${fmtEur(r.ecart)}`;
+    toast(msg, '');
+    calculer();   // recharge (le CA mis à jour est aussi visible dans Pilotage)
+  } catch (e) {
+    toast('Erreur : ' + e.message, 'err');
+  }
+}
+
+// ── Édition Achats réels (factures du mois) ──────────────────
+function ouvrirEditAchats() {
+  if (!state.data || !state.data.achats.saisie_possible) return;
+  const a = state.data.achats;
+  $('input-achats-ht').value = (a.ht_reel != null) ? a.ht_reel : '';
+  $('achats-editor-hint').textContent =
+    `Mois ${a.annee_mois} · base date de facture · calcul auto : ${fmtEur(a.ht_calcule)}`;
+  $('editor-achats').hidden = false;
+  setTimeout(() => $('input-achats-ht').focus(), 50);
+}
+function fermerEditAchats() { $('editor-achats').hidden = true; }
+
+async function enregistrerAchats(effacer) {
+  const am = state.data && state.data.achats.annee_mois;
+  if (!am) return;
+  const body = { annee_mois: am };
+  if (!effacer) {
+    const v = parseFloat($('input-achats-ht').value);
+    if (isNaN(v) || v < 0) { toast('Montant invalide', 'err'); return; }
+    body.montant_ht = v;
+  }
+  try {
+    await api.put('/api/inventaire/marge/achats-reels', body);
+    fermerEditAchats();
+    toast(effacer ? 'Retour au calcul auto' : 'Achats réels enregistrés', '');
+    calculer();
+  } catch (e) {
+    toast('Erreur : ' + e.message, 'err');
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────
 function init() {
   rendrePresets();
   $('marge-calc').onclick = calculer;
   $('pick-si').onchange = calculer;
   $('pick-sf').onchange = calculer;
+  $('marge-si-zero').onchange = calculer;
 
   $('marge-btn-tva').onclick = ouvrirTva;
   $('marge-modal-tva').querySelectorAll('[data-close]').forEach((el) => { el.onclick = fermerTva; });
   $('marge-modal-tva-ok').onclick = enregistrerTva;
+
+  // Éditeurs CA / Achats
+  $('edit-ca').onclick = ouvrirEditCa;
+  $('editor-ca').querySelector('[data-cancel-ca]').onclick = fermerEditCa;
+  $('save-ca').onclick = enregistrerCa;
+  $('edit-achats').onclick = ouvrirEditAchats;
+  $('save-achats').onclick = () => enregistrerAchats(false);
+  $('clear-achats').onclick = () => enregistrerAchats(true);
 
   chargerTva();
   // Par défaut : mois en cours

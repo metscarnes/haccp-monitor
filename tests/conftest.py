@@ -78,6 +78,7 @@ async def db():
             "inventaire_lignes",                   # → inventaires, catalogue_fournisseur
             "inventaires",                         # → boutiques, personnel
             "ca_journalier",                       # → boutiques, personnel (pilotage CA)
+            "achats_reels_mensuels",               # → boutiques, personnel (marge)
             # Module Achat — Factures & Commandes (FK vers receptions/reception_lignes/fournisseurs)
             "historique_prix_achat",               # → catalogue_fournisseur, receptions, reception_lignes
             "facture_lignes",                      # → factures, reception_lignes, catalogue_fournisseur

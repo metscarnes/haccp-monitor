@@ -1025,6 +1025,21 @@ CREATE TABLE IF NOT EXISTS inventaire_lignes (
 
 CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv
     ON inventaire_lignes(inventaire_id);
+
+-- Achats HT réels saisis par mois (vérité comptable) — voir migration v7.1.
+CREATE TABLE IF NOT EXISTS achats_reels_mensuels (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    annee_mois   TEXT    NOT NULL,
+    montant_ht   REAL    NOT NULL,
+    commentaire  TEXT,
+    personnel_id INTEGER,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (boutique_id, annee_mois),
+    FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+);
 """
 
 SEED_SQL = """
@@ -1703,6 +1718,24 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv ON inventaire_lignes(inventaire_id)",
+            # v7.1 — Achats HT RÉELS saisis par mois (vérité comptable, rapprochée aux
+            # factures fournisseurs sur leur DATE DE FACTURE = compta d'engagement). Sert au
+            # tableau de bord marge : quand un montant réel est saisi pour un mois, il PRIME
+            # sur les achats calculés (réceptions valorisées), qui restent en référence.
+            # annee_mois = 'YYYY-MM'. Une seule valeur par mois (UPSERT).
+            """CREATE TABLE IF NOT EXISTS achats_reels_mensuels (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id  INTEGER NOT NULL DEFAULT 1,
+                annee_mois   TEXT    NOT NULL,          -- 'YYYY-MM'
+                montant_ht   REAL    NOT NULL,
+                commentaire  TEXT,
+                personnel_id INTEGER,
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (boutique_id, annee_mois),
+                FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
+                FOREIGN KEY (personnel_id) REFERENCES personnel(id)
+            )""",
         ]
         for sql in migrations:
             try:
