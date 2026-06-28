@@ -39,7 +39,10 @@
     .section-box { border: 1px solid var(--color-border, #e2e2e2); border-radius: var(--radius-sm, 6px);
                    padding: var(--space-3); display: grid; gap: var(--space-2); }
     .section-box.matin { background: #fffaf2; }
-    .section-box.soir  { background: #f5f7ff; }
+    .section-box.soir  { background: #f5f7ff; position: relative; }
+    .section-box.soir.ferme .form-row,
+    .section-box.soir.ferme .panier-hint { opacity: .35; pointer-events: none; }
+    .soir-ferme { margin-top: var(--space-2); font-size: var(--text-sm); font-weight: 600; color: #6b7280; }
     .section-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: 4px; }
     .section-titre small { font-weight: 400; color: #6b7280; }
     .montant-input { font-size: 1.35rem !important; font-weight: 700; text-align: right; }
@@ -186,7 +189,7 @@
             <div class="panier-hint" id="panier-matin"></div>
           </div>
 
-          <div class="section-box soir">
+          <div class="section-box soir" id="box-soir">
             <div class="section-titre">🌇 Après-midi <small>16h – 19h30</small></div>
             <div class="form-row">
               <label for="montant-soir">CA TTC (€)</label>
@@ -197,6 +200,7 @@
               <input type="number" id="tickets-soir" inputmode="numeric" step="1" min="0" placeholder="—">
             </div>
             <div class="panier-hint" id="panier-soir"></div>
+            <div class="soir-ferme" id="soir-ferme" style="display:none">🔒 Fermé l'après-midi (dimanche)</div>
           </div>
         </div>
 
@@ -398,6 +402,20 @@
         b.classList.toggle('active', b.dataset.meteo === meteoSel));
     }
 
+    // Dimanche : la boutique n'ouvre que le matin → on grise l'après-midi.
+    const estDimanche = iso => {
+      const [y, m, d] = iso.split('-').map(Number);
+      return new Date(y, m - 1, d).getDay() === 0;
+    };
+    function majAffichageSoir(iso) {
+      const ferme = estDimanche(iso);
+      $('box-soir').classList.toggle('ferme', ferme);
+      $('soir-ferme').style.display = ferme ? '' : 'none';
+      $('montant-soir').disabled = ferme;
+      $('tickets-soir').disabled = ferme;
+      if (ferme) { $('montant-soir').value = ''; $('tickets-soir').value = ''; }
+    }
+
     function majPaniers() {
       const mm = num($('montant-matin').value), tm = parseInt($('tickets-matin').value, 10);
       const ms = num($('montant-soir').value),  ts = parseInt($('tickets-soir').value, 10);
@@ -439,6 +457,7 @@
           $('form-titre').textContent = `Saisie du CA — ${fmtDateLongue(iso)}`;
           $('btn-save').textContent = 'Enregistrer';
         }
+        majAffichageSoir(iso);   // grise l'après-midi le dimanche (après le remplissage)
         majPaniers();
       } catch (e) { console.error(e); }
     }
@@ -644,16 +663,20 @@
         $('profil-banner').innerHTML = rendreBanniereProfil(p);
 
         const tj_dow = new Date().getDay(); // pour surligner le jour courant
-        $('profil-body').innerHTML = p.jours.map(j => `
+        $('profil-body').innerHTML = p.jours.map(j => {
+          // Dimanche : pas d'après-midi → « Fermé » plutôt que « — »
+          const aprem = j.dow === 0 ? '<span class="mini">Fermé</span>' : fmtEur(j.ca_moyen_soir);
+          return `
           <tr data-dow="${j.dow}" class="${j.dow === tj_dow ? 'is-today' : ''}">
             <td>${j.nom}</td>
             <td class="num"><strong>${fmtEur(j.ca_moyen)}</strong></td>
             <td class="num">${fmtEur(j.ca_moyen_matin)}</td>
-            <td class="num">${fmtEur(j.ca_moyen_soir)}</td>
+            <td class="num">${aprem}</td>
             <td class="num">${j.tickets_moyen ?? '—'}</td>
             <td class="num">${fmtEur(j.panier_moyen)}</td>
             <td class="num">${j.nb}</td>
-          </tr>`).join('');
+          </tr>`;
+        }).join('');
       } catch (e) { console.error(e); }
     }
 
