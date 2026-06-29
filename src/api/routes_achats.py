@@ -2239,6 +2239,30 @@ def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg, famille=None):
     return None
 
 
+def _calc_prix_piece(format_prix, prix_achat_ht, qte_par_colis):
+    """Prix d'achat d'UNE pièce, dérivé du colis. None si non dérivable.
+
+    Pour les articles vendus/comptés à la pièce (charcuterie sèche, traiteur…), le €/kg
+    est souvent faux ou nul (poids unitaire indicatif, prix tarif = prix pièce). On préfère
+    valoriser directement à la pièce quand on peut : prix_piece = prix_colis / qte_par_colis.
+
+    - format 'colis' avec qte_par_colis > 0 : prix_achat_ht EST le prix du colis entier
+      → prix d'une pièce = prix_colis / qte_par_colis.
+    - tout autre format (kg, ou colis sans qté) : pas de notion de « pièce » fiable → None,
+      l'appelant retombe sur la valorisation au €/kg.
+    """
+    if prix_achat_ht is None:
+        return None
+    if format_prix == "colis" and qte_par_colis:
+        try:
+            n = float(qte_par_colis)
+        except (TypeError, ValueError):
+            return None
+        if n > 0:
+            return round(float(prix_achat_ht) / n, 4)
+    return None
+
+
 def _comparer_prix_bl_catalogue(prix_bl, unite_bl, cat_format_prix, cat_prix_ht,
                                 cat_poids_colis_kg, cat_famille, seuil_pct):
     """Compare un prix lu sur le BL au prix de référence catalogue, TOUS DEUX en €/kg.

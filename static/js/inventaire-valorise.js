@@ -405,6 +405,7 @@ function majApercu() {
 function calculerApercu(q) {
   const a = state.article;
   let poidsKg = null;
+  let valeur = null;
   if (state.unite === 'kg') {
     poidsKg = q;
   } else if (state.unite === 'colis') {
@@ -413,8 +414,16 @@ function calculerApercu(q) {
     let ppk = parseFloat($('invv-modal-poids-input').value);
     if (isNaN(ppk) || ppk <= 0) ppk = poidsPieceConnu();
     if (ppk) poidsKg = q * ppk;
+    // Voie privilégiée (= backend) : prix d'une pièce dérivé du colis → valeur directe,
+    // sans détour par le €/kg (cf. _calc_prix_piece).
+    const prixPiece = (a.format_prix === 'colis' && a.qte_par_colis > 0 && a.prix_achat_ht != null)
+      ? (+a.prix_achat_ht) / (+a.qte_par_colis) : null;
+    if (prixPiece != null) valeur = Math.round(q * prixPiece * 100) / 100;
   }
-  const valeur = (poidsKg != null && a.prix_kg != null) ? Math.round(poidsKg * a.prix_kg * 100) / 100 : null;
+  // Fallback €/kg (kg, colis, et pièce sans prix pièce dérivable).
+  if (valeur == null && poidsKg != null && a.prix_kg != null) {
+    valeur = Math.round(poidsKg * a.prix_kg * 100) / 100;
+  }
   return { poidsKg, valeur };
 }
 

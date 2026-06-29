@@ -99,6 +99,52 @@ async def test_ligne_piece_poids_saisi(app_client, db):
 
 
 @pytest.mark.anyio
+async def test_ligne_piece_colis_valorisee_au_prix_piece(app_client, db):
+    """Colis compté À LA PIÈCE : valeur = quantité × (prix_colis / qte_par_colis),
+    SANS détour par le €/kg (cas saucisson sec / traiteur)."""
+    fid = await _fournisseur(app_client)
+    # Carton de 12 saucissons à 51.60 € → 4.30 € la pièce. poids_colis = 12 × 0.18 = 2.16 kg.
+    cat = await _article(app_client, fid, designation="Saucisson sec",
+                         prix_achat_ht=51.60, format_prix="colis",
+                         qte_par_colis=12, poids_unitaire_kg=0.18, famille="Charcuterie")
+    inv = await _session(app_client)
+
+    # 14 saucissons comptés → 14 × 4.30 = 60.20 € (et NON 14 × 0.18 × €/kg).
+    r = await app_client.post(f"/api/inventaire/sessions/{inv}/lignes", json={
+        "catalogue_fournisseur_id": cat, "quantite": 14, "unite_saisie": "piece",
+    })
+    body = r.json()
+    assert body["valeur_ht"] == pytest.approx(60.20, abs=0.01)
+    assert body["poids_kg_calcule"] == pytest.approx(2.52, abs=0.001)   # 14 × 0.18 (indicatif)
+    # €/kg équivalent indicatif = 60.20 / 2.52 ≈ 23.89
+    assert body["prix_kg_fige"] == pytest.approx(23.89, abs=0.05)
+
+
+@pytest.mark.anyio
+async def test_ligne_piece_colis_prix_piece_prime_sur_kg(app_client, db):
+    """Même article compté EN COLIS ou EN KG reste valorisé au €/kg ; à la PIÈCE, le prix
+    pièce prime → cohérence des trois unités sur le total du carton."""
+    fid = await _fournisseur(app_client)
+    # 12 pièces × 0.18 = 2.16 kg, colis 51.60 € → 23.888…/kg, 4.30 €/pièce.
+    cat = await _article(app_client, fid, designation="Saucisson",
+                         prix_achat_ht=51.60, format_prix="colis",
+                         qte_par_colis=12, poids_unitaire_kg=0.18, famille="Charcuterie")
+    inv = await _session(app_client)
+
+    # 1 colis (au kg via poids_colis) = valeur du carton entier = 51.60 €
+    r = await app_client.post(f"/api/inventaire/sessions/{inv}/lignes", json={
+        "catalogue_fournisseur_id": cat, "quantite": 1, "unite_saisie": "colis",
+    })
+    assert r.json()["valeur_ht"] == pytest.approx(51.60, abs=0.02)
+
+    # 12 pièces = le carton aussi → même total (la voie pièce ne dérive pas)
+    r = await app_client.post(f"/api/inventaire/sessions/{inv}/lignes", json={
+        "catalogue_fournisseur_id": cat, "quantite": 12, "unite_saisie": "piece",
+    })
+    assert r.json()["valeur_ht"] == pytest.approx(51.60, abs=0.02)
+
+
+@pytest.mark.anyio
 async def test_ligne_piece_sans_poids_non_valorisee(app_client, db):
     """Pièce sans poids saisi ni dérivable du catalogue → valeur None, quantité gardée."""
     fid = await _fournisseur(app_client)

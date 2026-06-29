@@ -38,7 +38,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from src.database import get_db, get_parametre, set_parametre
-from src.api.routes_achats import _calc_prix_kg
+from src.api.routes_achats import _calc_prix_kg, _calc_prix_piece
 
 # Taux de TVA par défaut pour convertir le CA TTC → HT (boucherie = 5,5 %).
 TVA_DEFAUT_PCT = 5.5
@@ -92,11 +92,13 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
     Si on ne peut pas valoriser honnêtement → (prix_kg, None, None) : la quantité est
     quand même enregistrée mais la valeur reste « indisponible » (l'UI le signale).
 
-    - unité 'kg'    : poids = quantité telle quelle.
-    - unité 'colis' : poids = quantité × poids_colis_kg du catalogue.
-    - unité 'piece' : poids = quantité × poids unitaire. Poids unitaire = poids_piece_kg
-                      saisi en priorité, sinon dérivé du catalogue
-                      (poids_unitaire_kg, ou poids_colis_kg / qte_par_colis).
+    - unité 'kg'    : poids = quantité telle quelle ; valeur = poids × €/kg.
+    - unité 'colis' : poids = quantité × poids_colis_kg ; valeur = poids × €/kg.
+    - unité 'piece' : valorisée EN PRIORITÉ au prix d'achat d'une pièce dérivé du colis
+                      (prix_colis / qte_par_colis) → valeur = quantité × prix_piece, SANS
+                      détour par le €/kg ni le poids (le plus exact pour la charcuterie
+                      sèche / le traiteur, où le €/kg est souvent faux ou nul). À défaut de
+                      prix pièce dérivable, on retombe sur l'ancien calcul au €/kg.
     Le prix €/kg de référence vient toujours du catalogue via _calc_prix_kg.
     """
     prix_kg = None
@@ -109,6 +111,7 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
         )
 
     poids_kg = None
+    valeur_ht = None
     u = (unite_saisie or "kg").lower()
     q = float(quantite)
 
@@ -119,9 +122,9 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
         if pc:
             poids_kg = q * float(pc)
     elif u == "piece":
-        # 1) poids saisi par l'opérateur (le plus fiable terrain)
+        # Poids unitaire (pour info / fallback) : saisi par l'opérateur en priorité,
+        # sinon dérivé du catalogue.
         ppk = poids_piece_kg
-        # 2) sinon poids unitaire catalogue
         if not ppk and article:
             if article.get("poids_unitaire_kg"):
                 ppk = article["poids_unitaire_kg"]
@@ -133,8 +136,20 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
         if ppk:
             poids_kg = q * float(ppk)
 
-    valeur_ht = None
-    if poids_kg is not None and prix_kg is not None:
+        # Valorisation directe au prix d'UNE pièce (dérivé du colis) — voie privilégiée.
+        prix_piece = _calc_prix_piece(
+            article.get("format_prix"),
+            article.get("prix_achat_ht"),
+            article.get("qte_par_colis"),
+        ) if article is not None else None
+        if prix_piece is not None:
+            valeur_ht = round(q * prix_piece, 2)
+            # €/kg équivalent indicatif (cohérent avec la valeur), si le poids est connu.
+            if poids_kg:
+                prix_kg = round(valeur_ht / poids_kg, 4)
+
+    # Fallback au €/kg pour kg/colis, et pour 'piece' sans prix pièce dérivable.
+    if valeur_ht is None and poids_kg is not None and prix_kg is not None:
         valeur_ht = round(poids_kg * prix_kg, 2)
 
     poids_kg = round(poids_kg, 4) if poids_kg is not None else None
