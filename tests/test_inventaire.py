@@ -245,6 +245,136 @@ async def test_recherche_catalogue_et_familles(app_client, db):
     assert "Viande" in fams and "Charcuterie" in fams
     assert any(sf["nom"] == "Boeuf" for sf in fams["Viande"]["sous_familles"])
 
+    # Flags présents sur chaque article (false par défaut, pas de réf/cmd/réception)
+    a = arts[0]
+    assert a["est_reference"] is False
+    assert a["est_habituel"] is False
+    assert a["recu_recemment"] is False
+    assert "fournisseur_id" in a
+
+
+@pytest.mark.anyio
+async def test_recherche_badges_et_filtres_fournisseur(app_client, db):
+    f1 = await _fournisseur(app_client, "Bourdicaud")
+    f2 = await _fournisseur(app_client, "Metro")
+    a_cmd = await _article(app_client, f1, code_article="CB01", designation="Côte de boeuf",
+                           prix_achat_ht=18.0, format_prix="kg", famille="Viande")
+    a_recu = await _article(app_client, f2, code_article="POU1", designation="Poulet",
+                            prix_achat_ht=8.0, format_prix="kg", famille="Volaille")
+
+    # Commande confirmée référençant a_cmd → badge « habituel ».
+    cur = await db.execute(
+        """INSERT INTO commandes (boutique_id, fournisseur_id, statut, date_commande)
+           VALUES (1, ?, 'confirmee', '2026-06-01')""",
+        (f1,),
+    )
+    cmd_id = cur.lastrowid
+    await db.execute(
+        """INSERT INTO commande_lignes (commande_id, catalogue_fournisseur_id,
+                                        code_article, designation, quantite_commandee, unite)
+           VALUES (?, ?, 'CB01', 'Côte de boeuf', 2, 'kg')""",
+        (cmd_id, a_cmd),
+    )
+    await db.commit()
+
+    # Réception récente de a_recu → badge « reçu récemment » (hier, dans la fenêtre).
+    from datetime import date, timedelta
+    hier = (date.today() - timedelta(days=1)).isoformat()
+    await _reception_cloturee(db, f2, a_recu, hier, 5.0)
+
+    # Badge habituel → seul l'article commandé.
+    r = await app_client.get("/api/inventaire/catalogue-recherche", params={"badge": "habituel"})
+    arts = r.json()["articles"]
+    assert [x["id"] for x in arts] == [a_cmd]
+    assert arts[0]["est_habituel"] is True
+
+    # Badge reçu → seul l'article reçu récemment.
+    r = await app_client.get("/api/inventaire/catalogue-recherche", params={"badge": "recu"})
+    arts = r.json()["articles"]
+    assert [x["id"] for x in arts] == [a_recu]
+    assert arts[0]["recu_recemment"] is True
+
+    # Filtre fournisseur → seuls les articles de f2.
+    r = await app_client.get("/api/inventaire/catalogue-recherche",
+                             params={"fournisseur_id": f2})
+    arts = r.json()["articles"]
+    assert len(arts) == 1 and arts[0]["fournisseur_id"] == f2
+
+    # Endpoint fournisseurs : les deux, avec compteur.
+    r = await app_client.get("/api/inventaire/fournisseurs")
+    fns = {f["nom"]: f for f in r.json()["fournisseurs"]}
+    assert "Bourdicaud" in fns and "Metro" in fns
+    assert fns["Bourdicaud"]["nb"] == 1
+
+
+@pytest.mark.anyio
+async def test_modifier_prix_kg_viande_remonte_au_catalogue(app_client, db):
+    """Saisie d'un €/kg sur de la viande : prix_achat_ht catalogue = €/kg direct."""
+    fid = await _fournisseur(app_client)
+    cat = await _article(app_client, fid, designation="Côte de boeuf",
+                         prix_achat_ht=18.0, format_prix="kg", famille="Viande")
+
+    r = await app_client.put(f"/api/inventaire/catalogue/{cat}/prix-kg",
+                             json={"prix_kg": 21.5})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["prix_achat_ht"] == 21.5
+    assert body["prix_kg"] == 21.5
+
+    # La recherche catalogue (référence partagée) reflète le nouveau prix.
+    rs = await app_client.get("/api/inventaire/catalogue-recherche", params={"q": "boeuf"})
+    assert rs.json()["articles"][0]["prix_kg"] == 21.5
+
+
+@pytest.mark.anyio
+async def test_modifier_prix_kg_colis_reconverti_en_prix_colis(app_client, db):
+    """Saisie d'un €/kg sur un colis : prix_achat_ht = €/kg × poids_colis_kg."""
+    fid = await _fournisseur(app_client)
+    # colis de 5 kg (10 × 0.5). On veut 10 €/kg → prix de colis = 50 €.
+    cat = await _article(app_client, fid, designation="Saucisson",
+                         prix_achat_ht=40.0, format_prix="colis",
+                         qte_par_colis=10, poids_unitaire_kg=0.5, famille="Charcuterie")
+
+    r = await app_client.put(f"/api/inventaire/catalogue/{cat}/prix-kg",
+                             json={"prix_kg": 10.0})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["prix_achat_ht"] == pytest.approx(50.0, abs=0.01)   # 10 × 5
+    assert body["prix_kg"] == pytest.approx(10.0, abs=0.01)
+
+
+@pytest.mark.anyio
+async def test_modifier_prix_kg_article_introuvable(app_client, db):
+    r = await app_client.put("/api/inventaire/catalogue/999999/prix-kg",
+                             json={"prix_kg": 5.0})
+    assert r.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_modifier_prix_kg_puis_revaloriser_ligne(app_client, db):
+    """Après MAJ prix catalogue, re-PUT d'une ligne existante → nouvelle valeur."""
+    fid = await _fournisseur(app_client)
+    cat = await _article(app_client, fid, designation="Entrecôte",
+                         prix_achat_ht=18.0, format_prix="kg", famille="Viande")
+    inv = await _session(app_client)
+    r = await app_client.post(f"/api/inventaire/sessions/{inv}/lignes", json={
+        "catalogue_fournisseur_id": cat, "quantite": 10.0, "unite_saisie": "kg",
+    })
+    ligne_id = r.json()["id"]
+    assert r.json()["valeur_ht"] == pytest.approx(180.0, abs=0.01)
+
+    # On corrige le prix catalogue à 20 €/kg.
+    await app_client.put(f"/api/inventaire/catalogue/{cat}/prix-kg", json={"prix_kg": 20.0})
+
+    # Re-PUT de la ligne (mêmes quantité/unité) → revalorisée au nouveau prix.
+    r2 = await app_client.put(f"/api/inventaire/lignes/{ligne_id}", json={
+        "quantite": 10.0, "unite_saisie": "kg",
+    })
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["prix_kg_fige"] == 20.0
+    assert r2.json()["valeur_ht"] == pytest.approx(200.0, abs=0.01)
+    assert r2.json()["total_ht"] == pytest.approx(200.0, abs=0.01)
+
 
 # ===========================================================================
 # Tableau de bord MARGE
@@ -404,28 +534,26 @@ async def test_marge_stock_initial_zero_demarrage(app_client, db):
 
 @pytest.mark.anyio
 async def test_achats_reels_priment_sur_calcul(app_client, db):
-    """Un montant achats réel saisi (mois entier) prime, calcul gardé en référence."""
+    """Un montant achats réel saisi (rattaché à la période) prime, calcul en référence."""
     fid = await _fournisseur(app_client)
     cat = await _article(app_client, fid, prix_achat_ht=10.0, format_prix="kg", famille="Viande")
     await _ca_jour(db, "2026-06-15", 1055.0)                    # CA HT 1000
     await _reception_cloturee(db, fid, cat, "2026-06-12", 30.0)  # achats calculés 300
 
+    PER = {"date_debut": "2026-06-01", "date_fin": "2026-06-30"}
+
     # Sans saisie : source = calcul
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    r = await app_client.get("/api/inventaire/marge", params=PER)
     d = r.json()
     assert d["achats"]["source"] == "calcule"
     assert d["achats"]["ht"] == pytest.approx(300.0)
     assert d["achats"]["saisie_possible"] is True
-    assert d["achats"]["annee_mois"] == "2026-06"
 
-    # Je saisis les achats réels facturés en juin = 280 €
-    r = await app_client.put("/api/inventaire/marge/achats-reels",
-                             json={"annee_mois": "2026-06", "montant_ht": 280.0})
+    # Je saisis les achats réels facturés sur la période = 280 €
+    r = await app_client.put("/api/inventaire/marge/achats-reels", json={**PER, "montant_ht": 280.0})
     assert r.status_code == 200
 
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    r = await app_client.get("/api/inventaire/marge", params=PER)
     d = r.json()
     assert d["achats"]["source"] == "reel"
     assert d["achats"]["ht"] == pytest.approx(280.0)           # le réel prime
@@ -433,43 +561,38 @@ async def test_achats_reels_priment_sur_calcul(app_client, db):
     assert d["achats"]["ecart_reel_calcule"] == pytest.approx(-20.0)
 
     # Effacer (montant_ht absent) → retour au calcul
-    r = await app_client.put("/api/inventaire/marge/achats-reels", json={"annee_mois": "2026-06"})
+    r = await app_client.put("/api/inventaire/marge/achats-reels", json=PER)
     assert r.status_code == 200
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-01", "date_fin": "2026-06-30"})
+    r = await app_client.get("/api/inventaire/marge", params=PER)
     assert r.json()["achats"]["source"] == "calcule"
 
 
 @pytest.mark.anyio
-async def test_achats_reels_mois_partiel_et_a_cheval(app_client, db):
-    """Mois PARTIEL (11→30 juin, démarrage) = saisie possible rattachée au mois.
-    Période À CHEVAL sur 2 mois = saisie non applicable."""
-    # Mois partiel : démarrage le 11 juin → toujours rattaché à 2026-06
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
-    d = r.json()
-    assert d["achats"]["saisie_possible"] is True
-    assert d["achats"]["annee_mois"] == "2026-06"
+async def test_achats_reels_toujours_editables_par_periode(app_client, db):
+    """Éditable sur N'IMPORTE quelle période (mois partiel, à cheval) ; rattaché aux dates exactes."""
+    # Mois partiel (11→30 juin, démarrage) : saisie possible
+    P1 = {"date_debut": "2026-06-11", "date_fin": "2026-06-30"}
+    r = await app_client.get("/api/inventaire/marge", params=P1)
+    assert r.json()["achats"]["saisie_possible"] is True
 
-    # Je peux saisir les achats réels et ils priment sur cette période partielle
-    r = await app_client.put("/api/inventaire/marge/achats-reels",
-                             json={"annee_mois": "2026-06", "montant_ht": 250.0})
+    r = await app_client.put("/api/inventaire/marge/achats-reels", json={**P1, "montant_ht": 250.0})
     assert r.status_code == 200
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-11", "date_fin": "2026-06-30"})
-    assert r.json()["achats"]["source"] == "reel"
-    assert r.json()["achats"]["ht"] == pytest.approx(250.0)
+    assert (await app_client.get("/api/inventaire/marge", params=P1)).json()["achats"]["ht"] == pytest.approx(250.0)
 
-    # Période à cheval sur juin/juillet → pas de rattachement mois → calcul auto
-    r = await app_client.get("/api/inventaire/marge",
-                             params={"date_debut": "2026-06-15", "date_fin": "2026-07-15"})
-    d = r.json()
-    assert d["achats"]["saisie_possible"] is False
-    assert d["achats"]["annee_mois"] is None
+    # Période à cheval sur 2 mois : éditable aussi (rattachée à ses dates propres)
+    P2 = {"date_debut": "2026-06-15", "date_fin": "2026-07-15"}
+    r = await app_client.get("/api/inventaire/marge", params=P2)
+    assert r.json()["achats"]["saisie_possible"] is True
+    r = await app_client.put("/api/inventaire/marge/achats-reels", json={**P2, "montant_ht": 999.0})
+    assert r.status_code == 200
+    assert (await app_client.get("/api/inventaire/marge", params=P2)).json()["achats"]["ht"] == pytest.approx(999.0)
 
-    # Validation format
+    # Chaque période garde SA valeur (P1 inchangée par P2)
+    assert (await app_client.get("/api/inventaire/marge", params=P1)).json()["achats"]["ht"] == pytest.approx(250.0)
+
+    # Validation : dates invalides → 422
     r = await app_client.put("/api/inventaire/marge/achats-reels",
-                             json={"annee_mois": "2026-13", "montant_ht": 100})
+                             json={"date_debut": "2026-06-30", "date_fin": "2026-06-01", "montant_ht": 100})
     assert r.status_code == 422
 
 

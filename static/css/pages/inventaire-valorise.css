@@ -134,6 +134,34 @@
 }
 .invv-fam-btn[aria-pressed="true"] .invv-fam-nb { background: rgba(0,0,0,.15); }
 
+/* Filtres rapides (badges + fournisseur) */
+.invv-filtres {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+  margin-bottom: .9rem;
+}
+.invv-filtres-badges { display: flex; flex-wrap: wrap; gap: .5rem; }
+.invv-filtre-badge {
+  min-height: 44px; padding: 0 .9rem;
+  background: var(--invv-surface); color: var(--invv-text);
+  border: 1px solid var(--invv-line); border-radius: 999px;
+  font-size: .92rem; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: .35rem;
+}
+.invv-filtre-badge[aria-pressed="true"] {
+  background: var(--invv-accent); color: #06121E; border-color: var(--invv-accent);
+}
+.invv-filtre-fournisseur {
+  min-height: 44px; padding: 0 .8rem; margin-left: auto;
+  background: var(--invv-surface); color: var(--invv-text);
+  border: 1px solid var(--invv-line); border-radius: 12px;
+  font-size: .92rem; font-weight: 600; cursor: pointer; max-width: 60%;
+}
+.invv-filtre-fournisseur:focus { border-color: var(--invv-accent); outline: none; }
+
+/* Pastilles sur les articles (réf / habituel / reçu) */
+.invv-pastilles { display: inline-flex; gap: .15rem; margin-left: .35rem; vertical-align: middle; }
+.invv-pastille { font-size: .9rem; line-height: 1; }
+
 /* Articles (résultats) */
 .invv-articles { display: flex; flex-direction: column; gap: .55rem; margin-bottom: 1.3rem; }
 .invv-article-btn {
@@ -216,8 +244,20 @@
   background: var(--invv-surface-2); color: var(--invv-text); border: none; font-size: 1.1rem; cursor: pointer;
 }
 .invv-modal-nom { font-size: 1.3rem; font-weight: 800; padding-right: 3rem; }
-.invv-modal-prixkg { color: var(--invv-accent); font-weight: 700; font-size: 1.05rem; }
+.invv-modal-prix-ligne { display: flex; align-items: center; gap: .6rem; }
+.invv-modal-prixkg { flex: 1; color: var(--invv-accent); font-weight: 700; font-size: 1.05rem; }
 .invv-modal-prixkg--na { color: var(--invv-warn); }
+.invv-modal-prix-edit {
+  flex-shrink: 0; min-height: 40px; padding: 0 .8rem;
+  background: var(--invv-surface-2); color: var(--invv-text);
+  border: 1px solid var(--invv-line); border-radius: 10px;
+  font-size: .85rem; font-weight: 700; cursor: pointer;
+}
+.invv-modal-prix-edit:active { background: var(--invv-line); }
+.invv-modal-prix-editor { display: flex; flex-direction: column; gap: .4rem; }
+.invv-modal-prix-row { display: flex; gap: .5rem; }
+.invv-modal-prix-row .invv-modal-input { flex: 1; }
+.invv-modal-prix-save { flex-shrink: 0; min-height: 64px; padding: 0 1.2rem; }
 
 .invv-unite-toggle { display: flex; gap: .5rem; }
 .invv-unite-btn {

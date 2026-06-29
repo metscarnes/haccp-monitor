@@ -1026,17 +1026,18 @@ CREATE TABLE IF NOT EXISTS inventaire_lignes (
 CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv
     ON inventaire_lignes(inventaire_id);
 
--- Achats HT réels saisis par mois (vérité comptable) — voir migration v7.1.
-CREATE TABLE IF NOT EXISTS achats_reels_mensuels (
+-- Achats HT réels saisis par période (vérité comptable) — voir migration v7.1.
+CREATE TABLE IF NOT EXISTS achats_reels_periode (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     boutique_id  INTEGER NOT NULL DEFAULT 1,
-    annee_mois   TEXT    NOT NULL,
+    date_debut   TEXT    NOT NULL,
+    date_fin     TEXT    NOT NULL,
     montant_ht   REAL    NOT NULL,
     commentaire  TEXT,
     personnel_id INTEGER,
     created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (boutique_id, annee_mois),
+    UNIQUE (boutique_id, date_debut, date_fin),
     FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id)
 );
@@ -1718,21 +1719,23 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id)
             )""",
             "CREATE INDEX IF NOT EXISTS idx_inventaire_lignes_inv ON inventaire_lignes(inventaire_id)",
-            # v7.1 — Achats HT RÉELS saisis par mois (vérité comptable, rapprochée aux
-            # factures fournisseurs sur leur DATE DE FACTURE = compta d'engagement). Sert au
-            # tableau de bord marge : quand un montant réel est saisi pour un mois, il PRIME
-            # sur les achats calculés (réceptions valorisées), qui restent en référence.
-            # annee_mois = 'YYYY-MM'. Une seule valeur par mois (UPSERT).
-            """CREATE TABLE IF NOT EXISTS achats_reels_mensuels (
+            # v7.1 — Achats HT RÉELS saisis (vérité comptable, rapprochée aux factures
+            # fournisseurs sur leur DATE DE FACTURE = compta d'engagement). Sert au tableau
+            # de bord marge : quand un montant réel est saisi pour une PÉRIODE, il PRIME sur
+            # les achats calculés (réceptions valorisées), qui restent en référence.
+            # Rattaché à la période EXACTE analysée (date_debut, date_fin) → éditable quelle
+            # que soit la période, jamais bloqué. Une valeur par paire de dates (UPSERT).
+            """CREATE TABLE IF NOT EXISTS achats_reels_periode (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 boutique_id  INTEGER NOT NULL DEFAULT 1,
-                annee_mois   TEXT    NOT NULL,          -- 'YYYY-MM'
+                date_debut   TEXT    NOT NULL,          -- 'YYYY-MM-DD'
+                date_fin     TEXT    NOT NULL,          -- 'YYYY-MM-DD'
                 montant_ht   REAL    NOT NULL,
                 commentaire  TEXT,
                 personnel_id INTEGER,
                 created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE (boutique_id, annee_mois),
+                UNIQUE (boutique_id, date_debut, date_fin),
                 FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
                 FOREIGN KEY (personnel_id) REFERENCES personnel(id)
             )""",

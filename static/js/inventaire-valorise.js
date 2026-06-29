@@ -46,6 +46,9 @@ const state = {
   familles: [],
   familleActive: null,
   sousFamilleActive: null,
+  fournisseurs: [],
+  fournisseurActif: null,   // id fournisseur, ou null = tous
+  badgeActif: null,         // 'reference' | 'habituel' | 'recu' | null
   // article en cours de saisie dans la modale
   article: null,
   unite: 'kg',
@@ -145,8 +148,13 @@ async function ouvrirSession(id) {
     montrerEcran('saisie');
     if (!state.familles.length) await chargerFamilles();
     rendreFamilles();
-    // Réinitialise la recherche
+    if (!state.fournisseurs.length) await chargerFournisseurs();
+    // Réinitialise la recherche et les filtres
     $('invv-search').value = '';
+    state.badgeActif = null;
+    state.fournisseurActif = null;
+    rendreFiltresBadges();
+    rendreFournisseurs();
     $('invv-articles').innerHTML = '';
   } catch (e) {
     toast('Ouverture impossible : ' + e.message, 'err');
@@ -173,6 +181,8 @@ function rendreBandeau() {
   // Verrouillage visuel de la saisie quand l'inventaire est clôturé.
   const verrou = estCloture();
   document.querySelector('.invv-search-zone').style.display = verrou ? 'none' : '';
+  const zf = document.querySelector('.invv-filtres');
+  if (zf) zf.style.display = verrou ? 'none' : '';
   $('invv-familles').style.display = verrou ? 'none' : '';
   $('invv-sous-familles').style.display = verrou ? 'none' : '';
   $('invv-articles').style.display = verrou ? 'none' : '';
@@ -185,6 +195,34 @@ async function chargerFamilles() {
     const d = await api.get('/api/inventaire/familles');
     state.familles = d.familles || [];
   } catch (_) { state.familles = []; }
+}
+
+// ── Fournisseurs (filtre) ──
+async function chargerFournisseurs() {
+  try {
+    const d = await api.get('/api/inventaire/fournisseurs');
+    state.fournisseurs = d.fournisseurs || [];
+  } catch (_) { state.fournisseurs = []; }
+  rendreFournisseurs();
+}
+
+function rendreFournisseurs() {
+  const sel = $('invv-filtre-fournisseur');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Tous fournisseurs</option>';
+  for (const f of state.fournisseurs) {
+    const o = document.createElement('option');
+    o.value = f.id;
+    o.textContent = `${f.nom} (${f.nb})`;
+    sel.appendChild(o);
+  }
+  sel.value = state.fournisseurActif || '';
+}
+
+function rendreFiltresBadges() {
+  document.querySelectorAll('.invv-filtre-badge').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(state.badgeActif === btn.dataset.badge));
+  });
 }
 
 function rendreFamilles() {
@@ -245,12 +283,16 @@ function lancerRecherche() {
 async function rechercherArticles() {
   const q = $('invv-search').value.trim();
   $('invv-search-clear').hidden = !q;
-  // On n'affiche rien tant qu'aucun critère (évite de tout charger d'un coup)
-  if (!q && !state.familleActive) { $('invv-articles').innerHTML = ''; return; }
+  // On n'affiche rien tant qu'aucun critère (évite de tout charger d'un coup).
+  // Un filtre seul (badge, fournisseur, famille) suffit désormais à lister.
+  const aCritere = q || state.familleActive || state.badgeActif || state.fournisseurActif;
+  if (!aCritere) { $('invv-articles').innerHTML = ''; return; }
   const params = new URLSearchParams();
   if (q) params.set('q', q);
   if (state.familleActive) params.set('famille', state.familleActive);
   if (state.sousFamilleActive) params.set('sous_famille', state.sousFamilleActive);
+  if (state.fournisseurActif) params.set('fournisseur_id', state.fournisseurActif);
+  if (state.badgeActif) params.set('badge', state.badgeActif);
   try {
     const d = await api.get('/api/inventaire/catalogue-recherche?' + params.toString());
     rendreArticles(d.articles || []);
@@ -273,9 +315,13 @@ function rendreArticles(articles) {
     const prix = (a.prix_kg != null)
       ? `<span class="invv-article-prix">${fmtEur(a.prix_kg)}/kg</span>`
       : `<span class="invv-article-prix invv-article-prix--na">€/kg n/d</span>`;
+    let badges = '';
+    if (a.recu_recemment) badges += '<span class="invv-pastille invv-pastille--recu" title="Reçu récemment">📦</span>';
+    if (a.est_habituel) badges += '<span class="invv-pastille invv-pastille--habituel" title="Commandé habituellement">🔁</span>';
+    if (a.est_reference) badges += '<span class="invv-pastille invv-pastille--ref" title="Référencé (comparateur)">⭐</span>';
     b.innerHTML = `
       <span class="invv-article-main">
-        <span class="invv-article-nom">${esc(a.designation)}</span>
+        <span class="invv-article-nom">${esc(a.designation)}${badges ? ' <span class="invv-pastilles">' + badges + '</span>' : ''}</span>
         <span class="invv-article-sub">${esc(a.fournisseur_nom || '')}${a.code_article ? ' · ' + esc(a.code_article) : ''}</span>
       </span>
       ${prix}`;
@@ -303,6 +349,9 @@ function ouvrirModaleQte(article) {
   }
   $('invv-modal-qte-input').value = '';
   $('invv-modal-poids-input').value = '';
+  // Replie l'éditeur de prix et masque le bouton ✏️ si l'article n'est pas modifiable au €/kg.
+  $('invv-modal-prix-editor').hidden = true;
+  $('invv-modal-prix-edit').hidden = !prixKgModifiable(article);
   majToggleUnite();
   majPoidsPieceVisible();
   majApercu();
@@ -396,6 +445,76 @@ async function validerLigne() {
   } catch (e) {
     toast('Ajout impossible : ' + e.message, 'err');
   }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Modification du prix €/kg (remonte au catalogue achats)
+// ════════════════════════════════════════════════════════════
+
+// Le prix €/kg n'est modifiable que pour les formats que le backend sait reconvertir :
+// viande / format 'kg' (prix = €/kg direct) ou colis AVEC poids de colis connu.
+function prixKgModifiable(a) {
+  if (!a) return false;
+  const fam = String(a.famille || '').trim().toLowerCase();
+  if (fam === 'viande' || a.format_prix === 'kg') return true;
+  if (a.format_prix === 'colis' && a.poids_colis_kg) return true;
+  return false;
+}
+
+function ouvrirEditeurPrix() {
+  const a = state.article;
+  if (!a) return;
+  const ed = $('invv-modal-prix-editor');
+  const ouvert = !ed.hidden;
+  ed.hidden = ouvert; // toggle
+  if (!ouvert) {
+    const inp = $('invv-modal-prix-input');
+    inp.value = (a.prix_kg != null) ? a.prix_kg : '';
+    setTimeout(() => { inp.focus(); inp.select(); }, 60);
+  }
+}
+
+async function enregistrerPrixKg() {
+  const a = state.article;
+  if (!a) return;
+  const prix = parseFloat($('invv-modal-prix-input').value);
+  if (isNaN(prix) || prix < 0) { toast('Prix invalide', 'err'); return; }
+
+  try {
+    const r = await api.put(`/api/inventaire/catalogue/${a.id}/prix-kg`, { prix_kg: prix });
+    // Met à jour l'article courant avec le €/kg effectif renvoyé par le backend.
+    a.prix_kg = r.prix_kg;
+    a.prix_achat_ht = r.prix_achat_ht;
+    // Rafraîchit l'affichage du prix dans la modale + l'aperçu.
+    const pk = $('invv-modal-prixkg');
+    pk.textContent = (a.prix_kg != null) ? `${fmtEur(a.prix_kg)} / kg` : '€/kg indisponible';
+    pk.className = 'invv-modal-prixkg' + (a.prix_kg == null ? ' invv-modal-prixkg--na' : '');
+    $('invv-modal-prix-editor').hidden = true;
+    majApercu();
+    // Revalorise les lignes DÉJÀ saisies de cet article dans la session en cours.
+    await revaloriserLignesArticle(a.id);
+    toast('Prix mis à jour (catalogue + inventaire)', 'ok');
+  } catch (e) {
+    toast('Mise à jour impossible : ' + e.message, 'err');
+  }
+}
+
+// Re-déclenche la valorisation backend (PUT /lignes/{id}) des lignes de cet article :
+// le serveur recharge le catalogue (nouveau prix) et recalcule prix_kg_fige + valeur_ht.
+async function revaloriserLignesArticle(catalogueId) {
+  const lignes = state.lignes.filter((l) => l.catalogue_fournisseur_id === catalogueId);
+  if (!lignes.length) return;
+  for (const l of lignes) {
+    try {
+      await api.put(`/api/inventaire/lignes/${l.id}`, {
+        quantite: l.quantite,
+        unite_saisie: l.unite_saisie,
+        poids_piece_kg: l.poids_kg_calcule && l.unite_saisie === 'piece'
+          ? l.poids_kg_calcule / l.quantite : undefined,
+      });
+    } catch (_) { /* on continue : une ligne en échec ne bloque pas les autres */ }
+  }
+  await rechargerLignes();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -498,6 +617,22 @@ function init() {
     rechercherArticles();
   };
 
+  // Filtres rapides badges (un clic = (dé)sélection exclusive)
+  document.querySelectorAll('.invv-filtre-badge').forEach((btn) => {
+    btn.onclick = () => {
+      const b = btn.dataset.badge;
+      state.badgeActif = (state.badgeActif === b) ? null : b;
+      rendreFiltresBadges();
+      rechercherArticles();
+    };
+  });
+
+  // Filtre fournisseur
+  $('invv-filtre-fournisseur').onchange = (e) => {
+    state.fournisseurActif = e.target.value || null;
+    rechercherArticles();
+  };
+
   // Modale
   $('invv-modal-qte').querySelectorAll('[data-close]').forEach((el) => { el.onclick = fermerModale; });
   document.querySelectorAll('.invv-unite-btn').forEach((btn) => {
@@ -511,6 +646,9 @@ function init() {
   $('invv-modal-qte-input').oninput = majApercu;
   $('invv-modal-poids-input').oninput = majApercu;
   $('invv-modal-valider').onclick = validerLigne;
+  $('invv-modal-prix-edit').onclick = ouvrirEditeurPrix;
+  $('invv-modal-prix-save').onclick = enregistrerPrixKg;
+  $('invv-modal-prix-input').onkeydown = (e) => { if (e.key === 'Enter') enregistrerPrixKg(); };
 
   $('invv-btn-cloturer').onclick = cloturer;
 

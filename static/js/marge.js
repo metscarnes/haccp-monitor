@@ -126,11 +126,9 @@ function rendre() {
   } else {
     let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul auto)`;
     if (a.nb_non_valorisees > 0) sub += ` · ⚠️ ${a.nb_non_valorisees} sans valeur`;
-    if (!a.saisie_possible) sub += ' · saisie réelle = période dans un seul mois';
     $('d-achats-sub').textContent = sub;
   }
-  // Le crayon achats n'a de sens que si la période tient dans un seul mois civil.
-  $('edit-achats').style.display = a.saisie_possible ? '' : 'none';
+  // Le crayon achats est toujours disponible (saisie rattachée à la période exacte).
 
   if (d.stock_initial) {
     $('d-si').textContent = fmtEur(d.stock_initial.valeur_totale_ht);
@@ -226,22 +224,21 @@ async function enregistrerCa() {
   }
 }
 
-// ── Édition Achats réels (factures du mois) ──────────────────
+// ── Édition Achats réels (factures de la période) ────────────
 function ouvrirEditAchats() {
-  if (!state.data || !state.data.achats.saisie_possible) return;
+  if (!state.data) return;
   const a = state.data.achats;
   $('input-achats-ht').value = (a.ht_reel != null) ? a.ht_reel : '';
   $('achats-editor-hint').textContent =
-    `Mois ${a.annee_mois} · base date de facture · calcul auto : ${fmtEur(a.ht_calcule)}`;
+    `Période ${$('marge-debut').value} → ${$('marge-fin').value} · base date de facture · calcul auto : ${fmtEur(a.ht_calcule)}`;
   $('editor-achats').hidden = false;
   setTimeout(() => $('input-achats-ht').focus(), 50);
 }
 function fermerEditAchats() { $('editor-achats').hidden = true; }
 
 async function enregistrerAchats(effacer) {
-  const am = state.data && state.data.achats.annee_mois;
-  if (!am) return;
-  const body = { annee_mois: am };
+  if (!state.data) return;
+  const body = { date_debut: $('marge-debut').value, date_fin: $('marge-fin').value };
   if (!effacer) {
     const v = parseFloat($('input-achats-ht').value);
     if (isNaN(v) || v < 0) { toast('Montant invalide', 'err'); return; }

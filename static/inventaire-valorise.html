@@ -53,6 +53,18 @@
       <button type="button" id="invv-search-clear" class="invv-search-clear" hidden aria-label="Effacer">✕</button>
     </div>
 
+    <!-- Filtres rapides : badges + fournisseur -->
+    <div class="invv-filtres">
+      <div id="invv-filtres-badges" class="invv-filtres-badges">
+        <button type="button" class="invv-filtre-badge" data-badge="recu" aria-pressed="false">📦 Reçus récemment</button>
+        <button type="button" class="invv-filtre-badge" data-badge="habituel" aria-pressed="false">🔁 Habituels</button>
+        <button type="button" class="invv-filtre-badge" data-badge="reference" aria-pressed="false">⭐ Référencés</button>
+      </div>
+      <select id="invv-filtre-fournisseur" class="invv-filtre-fournisseur" aria-label="Filtrer par fournisseur">
+        <option value="">Tous fournisseurs</option>
+      </select>
+    </div>
+
     <!-- Navigation familles (gros boutons) -->
     <div id="invv-familles" class="invv-familles"></div>
     <div id="invv-sous-familles" class="invv-sous-familles" hidden></div>
@@ -84,7 +96,24 @@
     <div class="invv-modal-panel">
       <button type="button" class="invv-modal-close" data-close aria-label="Fermer">✕</button>
       <div id="invv-modal-nom" class="invv-modal-nom">—</div>
-      <div id="invv-modal-prixkg" class="invv-modal-prixkg">—</div>
+      <div class="invv-modal-prix-ligne">
+        <div id="invv-modal-prixkg" class="invv-modal-prixkg">—</div>
+        <button type="button" id="invv-modal-prix-edit" class="invv-modal-prix-edit"
+                aria-label="Modifier le prix au kilo">✏️ Prix</button>
+      </div>
+
+      <!-- Éditeur de prix €/kg (remonte au catalogue achats) -->
+      <div id="invv-modal-prix-editor" class="invv-modal-prix-editor" hidden>
+        <label class="invv-modal-label" for="invv-modal-prix-input">
+          Prix d'achat (€/kg)
+          <span class="invv-modal-hint">— met à jour le catalogue achats</span>
+        </label>
+        <div class="invv-modal-prix-row">
+          <input type="number" id="invv-modal-prix-input" class="invv-modal-input"
+                 inputmode="decimal" step="0.01" min="0" placeholder="Ex : 12.50">
+          <button type="button" id="invv-modal-prix-save" class="invv-btn-primary invv-modal-prix-save">✓</button>
+        </div>
+      </div>
 
       <!-- Toggle unité (gros, neutre) -->
       <div class="invv-unite-toggle" role="group" aria-label="Unité de saisie">

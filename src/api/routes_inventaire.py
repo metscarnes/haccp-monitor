@@ -19,14 +19,15 @@ POST   /api/inventaire/sessions/{id}/lignes        → ajouter une ligne (valori
 PUT    /api/inventaire/lignes/{id}                 → corriger une ligne (revalorise)
 DELETE /api/inventaire/lignes/{id}                 → supprimer une ligne
 
-GET    /api/inventaire/catalogue-recherche?q=      → autocomplete article + €/kg pré-calculé
+GET    /api/inventaire/catalogue-recherche?q=      → autocomplete article + €/kg pré-calculé + badges (réf/habituel/reçu)
 GET    /api/inventaire/familles                    → familles/sous-familles (navigation rayon)
+GET    /api/inventaire/fournisseurs                → fournisseurs du catalogue (filtre rayon)
 
 GET    /api/inventaire/marge?date_debut=&date_fin= → tableau de bord marge (CA−CMV)
 GET    /api/inventaire/marge/tva                   → taux TVA paramétré (CA TTC→HT)
 PUT    /api/inventaire/marge/tva                   → modifier le taux TVA
-GET    /api/inventaire/marge/achats-reels?annee_mois= → achats HT réels saisis du mois
-PUT    /api/inventaire/marge/achats-reels          → saisir/effacer les achats réels du mois
+GET    /api/inventaire/marge/achats-reels?date_debut=&date_fin= → achats HT réels de la période
+PUT    /api/inventaire/marge/achats-reels          → saisir/effacer les achats réels d'une période
 PUT    /api/inventaire/marge/ca-ajuster            → caler le CA TTC total (ligne d'ajustement)
 """
 import logging
@@ -408,16 +409,75 @@ async def supprimer_ligne(ligne_id: int):
 # Aides à la saisie : recherche article + familles
 # ---------------------------------------------------------------------------
 
+# Fenêtre (jours) pour considérer un article comme « reçu récemment » (badge 📦).
+RECU_RECEMMENT_JOURS = 30
+
+
+async def _flags_articles(db, cat_ids: set):
+    """Pour un ensemble d'articles catalogue, renvoie 3 ensembles d'ids :
+    référencés (⭐ comparateur), habituels (🔁 déjà commandés), reçus récemment (📦).
+
+    Permet de baliser les résultats de recherche de l'inventaire sans 3 appels
+    cross-module côté client.
+    """
+    if not cat_ids:
+        return set(), set(), set()
+    placeholders = ",".join("?" * len(cat_ids))
+    ids = list(cat_ids)
+
+    # ⭐ Références = lignes d'achat choisies dans le comparateur fournisseurs.
+    async with db.execute(
+        f"""SELECT DISTINCT gv.ligne_choisie_id AS id
+            FROM comparatif_groupe_vente gv
+            JOIN comparatif_groupe g ON g.id = gv.groupe_id
+            WHERE gv.ligne_choisie_id IN ({placeholders})
+              AND g.boutique_id = ?""",
+        ids + [BOUTIQUE_ID],
+    ) as cur:
+        refs = {r["id"] for r in await cur.fetchall()}
+
+    # 🔁 Habituels = déjà commandés (commandes confirmées ou livrées).
+    async with db.execute(
+        f"""SELECT DISTINCT cl.catalogue_fournisseur_id AS id
+            FROM commande_lignes cl
+            JOIN commandes c ON c.id = cl.commande_id
+            WHERE cl.catalogue_fournisseur_id IN ({placeholders})
+              AND c.boutique_id = ?
+              AND c.statut IN ('confirmee', 'livree')""",
+        ids + [BOUTIQUE_ID],
+    ) as cur:
+        habituels = {r["id"] for r in await cur.fetchall()}
+
+    # 📦 Reçus récemment = présents dans une réception des N derniers jours.
+    seuil = (date.today() - timedelta(days=RECU_RECEMMENT_JOURS)).isoformat()
+    async with db.execute(
+        f"""SELECT DISTINCT rl.catalogue_fournisseur_id AS id
+            FROM reception_lignes rl
+            JOIN receptions r ON r.id = rl.reception_id
+            WHERE rl.catalogue_fournisseur_id IN ({placeholders})
+              AND r.date_reception >= ?""",
+        ids + [seuil],
+    ) as cur:
+        recus = {r["id"] for r in await cur.fetchall()}
+
+    return refs, habituels, recus
+
+
 @router.get("/catalogue-recherche")
 async def recherche_catalogue(
     q: Optional[str] = Query(None),
     famille: Optional[str] = Query(None),
     sous_famille: Optional[str] = Query(None),
+    fournisseur_id: Optional[int] = Query(None),
+    badge: Optional[str] = Query(None, description="reference | habituel | recu"),
     limit: int = Query(40, ge=1, le=200),
 ):
     """Recherche d'articles catalogue avec €/kg pré-calculé (autocomplete + rayon).
 
-    Filtres combinables : `q` (texte sur designation/code), `famille`, `sous_famille`.
+    Filtres combinables : `q` (texte sur designation/code), `famille`,
+    `sous_famille`, `fournisseur_id`, et `badge` (référencé / habituel / reçu
+    récemment). Chaque article renvoyé porte les flags `est_reference`,
+    `est_habituel`, `recu_recemment` pour l'affichage de pastilles.
     """
     clauses = ["c.actif = 1"]
     params: List = []
@@ -431,15 +491,22 @@ async def recherche_catalogue(
     if sous_famille:
         clauses.append("c.sous_famille = ?")
         params.append(sous_famille)
+    if fournisseur_id:
+        clauses.append("c.fournisseur_id = ?")
+        params.append(fournisseur_id)
 
     where = " AND ".join(clauses)
-    params.append(limit)
+    # On élargit la limite SQL si un filtre badge est demandé : le filtrage
+    # par badge se fait en Python (sur les flags), donc on récupère un peu plus
+    # large avant de retrancher à `limit`.
+    sql_limit = limit if not badge else min(limit * 5, 1000)
+    params.append(sql_limit)
     async with get_db() as db:
         async with db.execute(
             f"""SELECT c.id, c.designation, c.code_article, c.famille, c.sous_famille,
                        c.format_prix, c.prix_achat_ht, c.poids_colis_kg,
                        c.qte_par_colis, c.poids_unitaire_kg, c.unites_autorisees,
-                       f.nom AS fournisseur_nom
+                       c.fournisseur_id, f.nom AS fournisseur_nom
                 FROM catalogue_fournisseur c
                 LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id
                 WHERE {where}
@@ -449,12 +516,40 @@ async def recherche_catalogue(
         ) as cur:
             rows = [dict(r) for r in await cur.fetchall()]
 
+        refs, habituels, recus = await _flags_articles(db, {r["id"] for r in rows})
+
         for r in rows:
             r["prix_kg"] = _calc_prix_kg(
                 r.get("format_prix"), r.get("prix_achat_ht"),
                 r.get("poids_colis_kg"), r.get("famille"),
             )
-        return {"articles": rows}
+            r["est_reference"] = r["id"] in refs
+            r["est_habituel"] = r["id"] in habituels
+            r["recu_recemment"] = r["id"] in recus
+
+        if badge == "reference":
+            rows = [r for r in rows if r["est_reference"]]
+        elif badge == "habituel":
+            rows = [r for r in rows if r["est_habituel"]]
+        elif badge == "recu":
+            rows = [r for r in rows if r["recu_recemment"]]
+
+        return {"articles": rows[:limit]}
+
+
+@router.get("/fournisseurs")
+async def liste_fournisseurs_catalogue():
+    """Fournisseurs ayant au moins un article actif au catalogue (filtre rayon)."""
+    async with get_db() as db:
+        async with db.execute(
+            """SELECT f.id, f.nom, COUNT(*) AS nb
+               FROM catalogue_fournisseur c
+               JOIN fournisseurs f ON f.id = c.fournisseur_id
+               WHERE c.actif = 1
+               GROUP BY f.id, f.nom
+               ORDER BY f.nom""",
+        ) as cur:
+            return {"fournisseurs": [dict(r) for r in await cur.fetchall()]}
 
 
 class PoidsPieceUpdate(BaseModel):
@@ -485,6 +580,65 @@ async def memoriser_poids_piece(catalogue_fournisseur_id: int, data: PoidsPieceU
         await db.commit()
         return {"ok": True, "id": catalogue_fournisseur_id,
                 "poids_unitaire_kg": data.poids_unitaire_kg}
+
+
+class PrixKgUpdate(BaseModel):
+    prix_kg: float
+
+
+@router.put("/catalogue/{catalogue_fournisseur_id}/prix-kg")
+async def modifier_prix_kg(catalogue_fournisseur_id: int, data: PrixKgUpdate):
+    """Met à jour le prix d'achat du catalogue à partir d'un prix €/kg saisi à l'inventaire.
+
+    L'opérateur saisit un prix AU KILO ; on le reconvertit en `prix_achat_ht` selon le
+    format de l'article, de façon à ce que `_calc_prix_kg` redonne EXACTEMENT ce €/kg :
+      - viande / format 'kg' : prix_achat_ht = prix_kg (le prix d'achat EST le €/kg).
+      - format 'colis'       : prix_achat_ht = prix_kg × poids_colis_kg (prix du colis),
+                               donc poids_colis_kg DOIT être connu.
+    La correction REMONTE au catalogue achats (référence partagée). Les lignes d'inventaire
+    déjà saisies ne sont pas touchées ici (le front revalorise la ligne courante à part).
+    """
+    if data.prix_kg < 0:
+        raise HTTPException(422, "prix_kg ne peut pas être négatif")
+    async with get_db() as db:
+        article = await _charger_article(db, catalogue_fournisseur_id)
+        if article is None:
+            raise HTTPException(404, "Article catalogue introuvable")
+
+        famille = (article.get("famille") or "").strip().lower()
+        format_prix = article.get("format_prix")
+        if famille == "viande" or format_prix == "kg":
+            nouveau_prix_achat = round(float(data.prix_kg), 4)
+        elif format_prix == "colis":
+            poids_colis = article.get("poids_colis_kg")
+            if not poids_colis:
+                raise HTTPException(
+                    422,
+                    "Article au colis sans poids de colis renseigné : "
+                    "impossible de reconvertir le €/kg en prix de colis.",
+                )
+            nouveau_prix_achat = round(float(data.prix_kg) * float(poids_colis), 4)
+        else:
+            raise HTTPException(
+                422,
+                f"Format de prix '{format_prix}' non géré pour la saisie au €/kg.",
+            )
+
+        await db.execute(
+            "UPDATE catalogue_fournisseur SET prix_achat_ht = ? WHERE id = ?",
+            (nouveau_prix_achat, catalogue_fournisseur_id),
+        )
+        await db.commit()
+        # Renvoie le €/kg effectif recalculé (sanity check côté front).
+        prix_kg_effectif = _calc_prix_kg(
+            format_prix, nouveau_prix_achat,
+            article.get("poids_colis_kg"), article.get("famille"),
+        )
+        return {
+            "ok": True, "id": catalogue_fournisseur_id,
+            "prix_achat_ht": nouveau_prix_achat,
+            "prix_kg": prix_kg_effectif,
+        }
 
 
 @router.get("/familles")
@@ -541,74 +695,82 @@ async def set_tva(data: TvaUpdate):
         return {"ok": True, "tva_pct": data.tva_pct}
 
 
-# ── Achats HT réels saisis par mois (vérité comptable, date de facture) ──
+# ── Achats HT réels saisis par PÉRIODE (vérité comptable, date de facture) ──
 
 class AchatsReelsUpdate(BaseModel):
-    annee_mois: str                       # 'YYYY-MM'
+    date_debut: str                       # 'YYYY-MM-DD'
+    date_fin: str                         # 'YYYY-MM-DD'
     montant_ht: Optional[float] = None    # None ou absent = effacer la saisie réelle
     commentaire: Optional[str] = None
     personnel_id: Optional[int] = None
 
 
-def _valider_annee_mois(am):
-    import re
-    if not am or not re.fullmatch(r"\d{4}-\d{2}", am):
-        raise HTTPException(422, "annee_mois doit être au format 'YYYY-MM'")
-    mois = int(am[5:7])
-    if mois < 1 or mois > 12:
-        raise HTTPException(422, "mois invalide")
+def _valider_periode(debut, fin):
+    try:
+        d1 = date.fromisoformat(debut)
+        d2 = date.fromisoformat(fin)
+    except (ValueError, TypeError):
+        raise HTTPException(422, "dates au format 'YYYY-MM-DD' requises")
+    if d1 > d2:
+        raise HTTPException(422, "date_debut doit précéder date_fin")
 
 
-async def _get_achats_reels(db, annee_mois):
-    """Montant achats réel saisi pour un mois, ou None si non saisi."""
+async def _get_achats_reels(db, debut, fin):
+    """Montant achats réel saisi pour la période exacte [debut, fin], ou None."""
     async with db.execute(
-        """SELECT montant_ht, commentaire FROM achats_reels_mensuels
-           WHERE boutique_id = ? AND annee_mois = ?""",
-        (BOUTIQUE_ID, annee_mois),
+        """SELECT montant_ht, commentaire FROM achats_reels_periode
+           WHERE boutique_id = ? AND date_debut = ? AND date_fin = ?""",
+        (BOUTIQUE_ID, debut, fin),
     ) as cur:
         row = await cur.fetchone()
     return dict(row) if row else None
 
 
 @router.get("/marge/achats-reels")
-async def get_achats_reels(annee_mois: str = Query(..., description="YYYY-MM")):
-    _valider_annee_mois(annee_mois)
+async def get_achats_reels(
+    date_debut: str = Query(..., description="YYYY-MM-DD"),
+    date_fin: str = Query(..., description="YYYY-MM-DD"),
+):
+    _valider_periode(date_debut, date_fin)
     async with get_db() as db:
-        saisie = await _get_achats_reels(db, annee_mois)
-    return {"annee_mois": annee_mois, "saisie": saisie}
+        saisie = await _get_achats_reels(db, date_debut, date_fin)
+    return {"date_debut": date_debut, "date_fin": date_fin, "saisie": saisie}
 
 
 @router.put("/marge/achats-reels")
 async def set_achats_reels(data: AchatsReelsUpdate):
-    """Saisit (ou efface) le montant d'achats HT réel d'un mois (date de facture).
+    """Saisit (ou efface) le montant d'achats HT réel d'une PÉRIODE (date de facture).
 
-    montant_ht absent/None → on EFFACE la saisie (retour au calcul auto pour ce mois).
+    Rattaché aux dates exactes analysées → éditable quelle que soit la période.
+    montant_ht absent/None → on EFFACE la saisie (retour au calcul auto).
     """
-    _valider_annee_mois(data.annee_mois)
+    _valider_periode(data.date_debut, data.date_fin)
     if data.montant_ht is not None and data.montant_ht < 0:
         raise HTTPException(422, "montant_ht ne peut pas être négatif")
     async with get_db() as db:
         if data.montant_ht is None:
             await db.execute(
-                "DELETE FROM achats_reels_mensuels WHERE boutique_id = ? AND annee_mois = ?",
-                (BOUTIQUE_ID, data.annee_mois),
+                """DELETE FROM achats_reels_periode
+                   WHERE boutique_id = ? AND date_debut = ? AND date_fin = ?""",
+                (BOUTIQUE_ID, data.date_debut, data.date_fin),
             )
             await db.commit()
-            return {"ok": True, "annee_mois": data.annee_mois, "saisie": None}
+            return {"ok": True, "date_debut": data.date_debut,
+                    "date_fin": data.date_fin, "saisie": None}
         await db.execute(
-            """INSERT INTO achats_reels_mensuels
-                   (boutique_id, annee_mois, montant_ht, commentaire, personnel_id)
-               VALUES (?, ?, ?, ?, ?)
-               ON CONFLICT(boutique_id, annee_mois) DO UPDATE SET
+            """INSERT INTO achats_reels_periode
+                   (boutique_id, date_debut, date_fin, montant_ht, commentaire, personnel_id)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(boutique_id, date_debut, date_fin) DO UPDATE SET
                    montant_ht   = excluded.montant_ht,
                    commentaire  = excluded.commentaire,
                    personnel_id = excluded.personnel_id,
                    updated_at   = CURRENT_TIMESTAMP""",
-            (BOUTIQUE_ID, data.annee_mois, data.montant_ht,
+            (BOUTIQUE_ID, data.date_debut, data.date_fin, data.montant_ht,
              data.commentaire, data.personnel_id),
         )
         await db.commit()
-        return {"ok": True, "annee_mois": data.annee_mois,
+        return {"ok": True, "date_debut": data.date_debut, "date_fin": data.date_fin,
                 "saisie": {"montant_ht": data.montant_ht, "commentaire": data.commentaire}}
 
 
@@ -715,24 +877,6 @@ async def ajuster_ca_periode(body: CaAjustementBody):
                 "ligne_ajustement": {"date_ca": date_ajust, "montant_ttc": ecart}}
 
 
-def _mois_calendaire(debut, fin):
-    """Retourne 'YYYY-MM' si [debut, fin] tient dans UN SEUL mois civil, sinon None.
-
-    On accepte un mois PARTIEL (ex. 11→30 juin pour un démarrage d'activité le 11) :
-    le seul critère est que début et fin soient dans le même mois/année. La saisie des
-    achats réels est rattachée à ce mois. Si la période est à cheval sur deux mois, on
-    ne peut pas rattacher proprement → None (retour au calcul auto).
-    """
-    try:
-        d1 = date.fromisoformat(debut)
-        d2 = date.fromisoformat(fin)
-    except (ValueError, TypeError):
-        return None
-    if d1.year != d2.year or d1.month != d2.month:
-        return None
-    return f"{d1.year:04d}-{d1.month:02d}"
-
-
 async def _ca_periode_ht(db, debut, fin, tva_pct):
     """CA HT de la période = somme TTC ca_journalier [debut, fin] / (1 + tva/100)."""
     async with db.execute(
@@ -830,15 +974,13 @@ async def tableau_marge(
         ca = await _ca_periode_ht(db, date_debut, date_fin, tva_pct)
         achats_calcule = await _achats_periode_ht(db, date_debut, date_fin)
 
-        # Achats RÉELS saisis : ne s'appliquent que si la période = un mois calendaire
-        # entier (1er → dernier jour). Sinon la saisie mensuelle n'a pas de sens → on garde
-        # le calcul. Quand un montant réel existe, il PRIME mais le calcul reste en référence.
-        annee_mois = _mois_calendaire(date_debut, date_fin)
-        achats_reel_saisie = await _get_achats_reels(db, annee_mois) if annee_mois else None
+        # Achats RÉELS saisis : rattachés à la PÉRIODE exacte analysée → éditables quelle
+        # que soit la période (jamais bloqué). Quand un montant réel existe pour ces dates,
+        # il PRIME mais le calcul (réceptions valorisées) reste en référence.
+        achats_reel_saisie = await _get_achats_reels(db, date_debut, date_fin)
         achats = dict(achats_calcule)
         achats["ht_calcule"] = achats_calcule["ht"]
-        achats["annee_mois"] = annee_mois
-        achats["saisie_possible"] = annee_mois is not None
+        achats["saisie_possible"] = True
         if achats_reel_saisie is not None:
             achats["ht_reel"] = round(float(achats_reel_saisie["montant_ht"]), 2)
             achats["source"] = "reel"
