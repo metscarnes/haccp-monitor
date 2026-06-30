@@ -226,6 +226,7 @@ class FactureUpdate(BaseModel):
 class FactureLigneUpdate(BaseModel):
     poids_facture_kg: Optional[float] = None
     prix_facture_ht: Optional[float] = None
+    montant_facture_ht: Optional[float] = None  # saisie directe du montant ligne (prioritaire)
     statut_ligne: Optional[str] = None    # ok|litige
     commentaire_litige: Optional[str] = None
 
@@ -3557,21 +3558,38 @@ def _calc_ecarts_ligne(poids_recu, prix_commande, poids_facture, prix_facture):
     return montant_facture, ecart_poids, ecart_prix, ecart_montant
 
 
-async def _recalculer_ecarts_ligne(db, ligne_id: int):
-    """Relit une ligne, recalcule montant + écarts, persiste."""
+async def _recalculer_ecarts_ligne(db, ligne_id: int, *, derive_montant: bool = True):
+    """Relit une ligne, recalcule montant + écarts, persiste.
+
+    - derive_montant=True (défaut) : le montant facturé est dérivé poids × prix
+      (saisie au prix unitaire €/kg).
+    - derive_montant=False : le montant facturé déjà stocké est la source de vérité
+      (saisi tel quel depuis la facture, on ne re-multiplie PAS par le poids) ;
+      le prix €/kg est recalé sur montant / poids pour rester cohérent à l'affichage.
+    """
     cur = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
     ligne = await cur.fetchone()
     if not ligne:
         return
-    montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
-        ligne["poids_recu_kg"], ligne["prix_commande_ht"],
-        ligne["poids_facture_kg"], ligne["prix_facture_ht"],
-    )
+    pr = ligne["poids_recu_kg"] or 0.0
+    pc = ligne["prix_commande_ht"] or 0.0
+    pf = ligne["poids_facture_kg"] or 0.0
+    prix_f = ligne["prix_facture_ht"] or 0.0
+
+    if derive_montant or ligne["montant_facture_ht"] is None:
+        montant = pf * prix_f
+    else:
+        montant = ligne["montant_facture_ht"]
+        if pf > 0:
+            prix_f = montant / pf  # garde le €/kg cohérent avec le montant saisi
+
+    montant_attendu = pr * pc
     await db.execute(
         """UPDATE facture_lignes
-           SET montant_facture_ht = ?, ecart_poids_kg = ?, ecart_prix_ht = ?, ecart_montant_ht = ?
+           SET montant_facture_ht = ?, prix_facture_ht = ?,
+               ecart_poids_kg = ?, ecart_prix_ht = ?, ecart_montant_ht = ?
            WHERE id = ?""",
-        (montant, e_poids, e_prix, e_montant, ligne_id),
+        (montant, prix_f, pf - pr, prix_f - pc, montant - montant_attendu, ligne_id),
     )
 
 
@@ -4163,8 +4181,10 @@ async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLign
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [ligne_id]
         await db.execute(f"UPDATE facture_lignes SET {set_clause} WHERE id = ?", values)
+        # Si le montant est saisi directement, il fait foi (pas de poids × prix).
+        montant_direct = "montant_facture_ht" in fields
         # Recalcule écarts de la ligne + totaux d'entête
-        await _recalculer_ecarts_ligne(db, ligne_id)
+        await _recalculer_ecarts_ligne(db, ligne_id, derive_montant=not montant_direct)
         await _recalculer_totaux_facture(db, facture_id)
         await db.commit()
 

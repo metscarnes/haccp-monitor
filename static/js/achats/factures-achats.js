@@ -201,7 +201,11 @@ function rendreLignes(lignes) {
           <input type="number" step="0.01" min="0" class="fac-input" data-champ="prix_facture_ht"
                  value="${l.prix_facture_ht != null ? l.prix_facture_ht : ''}">
         </td>
-        <td class="ach-col-num">${fmtPrix(l.montant_facture_ht)} €</td>
+        <td class="ach-col-num">
+          <input type="number" step="0.01" min="0" class="fac-input" data-champ="montant_facture_ht"
+                 value="${l.montant_facture_ht != null ? l.montant_facture_ht : ''}"
+                 title="Montant HT de la ligne tel que facturé — saisie directe possible">
+        </td>
         <td class="ach-col-num fac-ecart ${classeEcart(ecart)}">${signe(ecart)}${fmtPrix(Math.abs(ecart))} €</td>
         <td style="text-align:center;">
           <button class="fac-btn-litige ${enLitige ? 'actif' : ''}" data-litige="${l.id}"
