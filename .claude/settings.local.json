@@ -165,7 +165,12 @@
       "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"=== origin/master vs local ===\"; & $git rev-parse --short HEAD; & $git rev-parse --short origin/master 2>$null; \"=== commits depuis e8d7cee \\(avec fichiers\\) ===\"; & $git log --stat --oneline e8d7cee..HEAD)",
       "PowerShell(python _tmp_dump.py)",
       "PowerShell($git = \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\GitHubDesktop\\\\app-3.6.1\\\\resources\\\\app\\\\git\\\\cmd\\\\git.exe\"; \"############ routes_etiquettes.py ############\"; & $git show a142747 -- src/api/routes_etiquettes.py; \"############ brother_ql_prix.py ############\"; & $git show a142747 -- src/printing/brother_ql_prix.py)",
-      "PowerShell(python scripts\\\\fix_fk_reception_lignes_old.py)"
+      "PowerShell(python scripts\\\\fix_fk_reception_lignes_old.py)",
+      "PowerShell(python -m pytest tests/test_factures.py tests/test_facture_auto_cloture.py -q 2>&1)",
+      "PowerShell(Get-ChildItem -Directory | Where-Object { $_.Name -match 'venv|env|\\\\.venv' } | Select-Object Name; if \\(Test-Path \".venv\\\\Scripts\\\\python.exe\"\\) { \".venv found\" }; if \\(Test-Path \"venv\\\\Scripts\\\\python.exe\"\\) { \"venv found\" })",
+      "PowerShell(py -m pytest tests/test_factures.py -q 2>&1)",
+      "PowerShell(python -m pip install -q pytest pytest-asyncio httpx 2>&1)",
+      "PowerShell(python -m pip install -q python-multipart 2>&1)"
     ]
   }
 }

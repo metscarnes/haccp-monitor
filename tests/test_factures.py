@@ -127,6 +127,46 @@ async def test_ecart_poids_facture(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_montant_saisi_directement_pas_de_remultiplication(app_client, db):
+    """Le montant HT de la ligne peut être saisi tel quel depuis la facture :
+    il ne doit PAS être re-multiplié par le poids. L'écart compare alors
+    montant facturé vs montant attendu (poids reçu × prix commande)."""
+    ids = await _setup_base(app_client, db)
+    r = await app_client.post(f"/api/achats/factures/depuis-reception/{ids['reception_id']}")
+    fac = r.json()
+    ligne_id = fac["lignes"][0]["id"]
+
+    # Attendu = 9.4 × 12 = 112.8. Le fournisseur facture un montant total de 115.00.
+    r = await app_client.put(
+        f"/api/achats/factures/{fac['id']}/lignes/{ligne_id}",
+        json={"montant_facture_ht": 115.0},
+    )
+    assert r.status_code == 200, r.text
+    ligne = r.json()
+    # Le montant saisi est conservé tel quel (pas de poids × prix)
+    assert abs(ligne["montant_facture_ht"] - 115.0) < 1e-9
+    # Écart = 115.0 − 112.8 = 2.2
+    assert abs(ligne["ecart_montant_ht"] - 2.2) < 1e-9
+    # Le prix €/kg est recalé sur montant / poids (115 / 9.4) pour rester cohérent
+    assert abs(ligne["prix_facture_ht"] - 115.0 / 9.4) < 1e-9
+
+    # Totaux d'entête cohérents avec le montant saisi
+    r = await app_client.get(f"/api/achats/factures/{fac['id']}")
+    head = r.json()
+    assert abs(head["montant_total_ht_facture"] - 115.0) < 1e-9
+    assert abs(head["ecart_total_ht"] - 2.2) < 1e-9
+
+    # Repasser au prix unitaire (poids × prix) doit re-dériver le montant
+    r = await app_client.put(
+        f"/api/achats/factures/{fac['id']}/lignes/{ligne_id}",
+        json={"prix_facture_ht": 12.0},
+    )
+    ligne = r.json()
+    assert abs(ligne["montant_facture_ht"] - 9.4 * 12.0) < 1e-9
+    assert abs(ligne["ecart_montant_ht"] - 0.0) < 1e-9
+
+
+@pytest.mark.asyncio
 async def test_ecart_prix_et_litige(app_client, db):
     ids = await _setup_base(app_client, db)
     r = await app_client.post(f"/api/achats/factures/depuis-reception/{ids['reception_id']}")
