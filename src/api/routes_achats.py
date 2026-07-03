@@ -1072,6 +1072,86 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
     return stats
 
 
+@router.get("/catalogue/variations-prix")
+async def variations_prix_catalogue(
+    jours: int = Query(30, ge=1, le=3650),
+    fournisseur_id: Optional[int] = Query(None),
+):
+    """Vue d'ensemble des variations de prix d'achat sur une période (€/kg).
+
+    Pour chaque article ayant au moins 2 prix constatés dans la fenêtre `jours`,
+    compare le PREMIER et le DERNIER prix constaté de la période et renvoie la
+    variation %. Tri par ampleur de variation décroissante (hausses fortes en
+    haut). Sert la vue « Variations de prix » du catalogue (pas de clic article
+    par article). Réutilise historique_prix_achat : les prix_kg y sont déjà
+    normalisés au moment du constat, aucune reconversion nécessaire.
+
+    ⚠️ Cette route STATIQUE doit rester déclarée AVANT `/catalogue/{article_id}`
+    (route dynamique une seule segment) sinon FastAPI parse « variations-prix »
+    comme un article_id → 422.
+    """
+    borne = (date.today() - timedelta(days=jours)).isoformat()
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT h.catalogue_fournisseur_id AS cat_id,
+                   cf.designation, cf.code_article, cf.fournisseur_id,
+                   f.nom AS fournisseur_nom,
+                   h.date_constat, h.prix_kg, h.applique_au_catalogue
+            FROM historique_prix_achat h
+            JOIN catalogue_fournisseur cf ON cf.id = h.catalogue_fournisseur_id
+            LEFT JOIN fournisseurs f ON f.id = cf.fournisseur_id
+            WHERE h.date_constat >= ?
+              AND h.prix_kg IS NOT NULL
+              AND (? IS NULL OR cf.fournisseur_id = ?)
+            ORDER BY h.catalogue_fournisseur_id, h.date_constat ASC, h.id ASC
+            """,
+            (borne, fournisseur_id, fournisseur_id),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+
+    # Regroupe les points par article (déjà triés date ASC par la requête).
+    par_article: dict = {}
+    for r in rows:
+        par_article.setdefault(r["cat_id"], []).append(r)
+
+    variations = []
+    for cat_id, pts in par_article.items():
+        if len(pts) < 2:
+            continue  # une seule observation dans la période = pas de variation mesurable
+        premier = pts[0]["prix_kg"]
+        dernier = pts[-1]["prix_kg"]
+        if premier is None or dernier is None or premier <= 0:
+            continue
+        ecart_pct = (dernier - premier) / premier * 100
+        variations.append({
+            "catalogue_fournisseur_id": cat_id,
+            "designation": pts[0]["designation"],
+            "code_article": pts[0]["code_article"],
+            "fournisseur_nom": pts[0]["fournisseur_nom"],
+            "prix_kg_debut": round(premier, 4),
+            "prix_kg_fin": round(dernier, 4),
+            "ecart_pct": round(ecart_pct, 2),
+            "nb_releves": len(pts),
+            "date_debut": pts[0]["date_constat"],
+            "date_fin": pts[-1]["date_constat"],
+            # Points pour la mini-sparkline (même forme que /historique-prix).
+            "points": [
+                {
+                    "date_constat": p["date_constat"],
+                    "prix_kg": p["prix_kg"],
+                    "applique_au_catalogue": p["applique_au_catalogue"],
+                }
+                for p in pts
+            ],
+        })
+
+    # Tri par ampleur de variation décroissante (les plus gros mouvements d'abord),
+    # hausses et baisses confondues, les articles stables se retrouvent en bas.
+    variations.sort(key=lambda v: abs(v["ecart_pct"]), reverse=True)
+    return {"jours": jours, "nb_articles": len(variations), "variations": variations}
+
+
 @router.get("/catalogue/{article_id}")
 async def get_article(article_id: int):
     async with get_db() as db:

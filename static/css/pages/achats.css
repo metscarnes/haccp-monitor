@@ -698,3 +698,35 @@
   .ach-bar-actions { justify-content: center; }
   .ach-ligne-row { grid-template-columns: 1fr 1fr; }
 }
+
+/* ── Variations de prix ─────────────────────────────────────── */
+.ach-champ--inline { flex-direction: row; align-items: center; gap: 8px; }
+.ach-variations-corps { padding: 1rem 1.2rem 1.2rem; }
+.ach-variations-barre {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: .8rem;
+  flex-wrap: wrap;
+}
+.ach-variations-compte { font-size: var(--text-sm); color: #6b7280; font-weight: 600; }
+.ach-variations-tableau { overflow-x: auto; }
+.ach-variations-vide { text-align: center; color: #6b7280; padding: 2rem 1rem; }
+.ach-variations-table { width: 100%; border-collapse: collapse; }
+.ach-variations-table thead th {
+  text-align: left;
+  padding: .5rem .7rem;
+  font-size: var(--text-sm);
+  color: #6b7280;
+  border-bottom: 2px solid #e8d9c4;
+  white-space: nowrap;
+}
+.ach-variations-table td {
+  padding: .5rem .7rem;
+  border-bottom: 1px solid #f1ead9;
+  font-size: var(--text-sm);
+  vertical-align: middle;
+}
+.ach-variations-table tbody tr:hover { background: #faf5ec; }
+.ach-var-code { font-size: .78em; color: #9ca3af; }

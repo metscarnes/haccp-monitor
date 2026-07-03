@@ -69,6 +69,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 function bindEvents() {
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveauModal);
   document.getElementById('btn-export').addEventListener('click', exporterCatalogue);
+  document.getElementById('btn-variations').addEventListener('click', ouvrirVariations);
+  document.getElementById('variations-fermer').addEventListener('click', () => { document.getElementById('modal-variations').hidden = true; });
+  document.getElementById('variations-periode').addEventListener('change', chargerVariations);
   document.getElementById('btn-import').addEventListener('click', () => {
     // Ouvre la modale propre : pas de fichier → bouton désactivé, résultat masqué
     document.getElementById('import-fichier').value = '';
@@ -722,6 +725,96 @@ function dessinerSparklinePrix(points, prixRef) {
       ${n} relevé(s) — de ${premier.toFixed(2)} à <strong>${dernier.toFixed(2)} €/kg</strong>
       <span style="color:${evolCol};font-weight:600;margin-left:.4rem;">${evolTxt}</span>
     </div>`;
+}
+
+// ── Vue d'ensemble : variations de prix ──────────────────────
+// Modale listant TOUS les articles ayant bougé sur une période, triés par
+// ampleur de variation. Évite de cliquer article par article pour voir ce qui
+// a changé. S'appuie sur GET /catalogue/variations-prix (historique_prix_achat).
+function ouvrirVariations() {
+  document.getElementById('modal-variations').hidden = false;
+  chargerVariations();
+}
+
+async function chargerVariations() {
+  const jours = document.getElementById('variations-periode').value;
+  const tableau = document.getElementById('variations-tableau');
+  const compte = document.getElementById('variations-compte');
+  tableau.innerHTML = '<p class="ach-variations-vide">Chargement…</p>';
+  compte.textContent = '';
+  try {
+    const r = await fetch(`${API_CAT}/variations-prix?jours=${encodeURIComponent(jours)}`);
+    if (!r.ok) throw new Error('http');
+    const data = await r.json();
+    const vars = data.variations || [];
+    if (!vars.length) {
+      tableau.innerHTML = '<p class="ach-variations-vide">Aucune variation de prix sur cette période.<br><span style="font-size:.85em;color:#9ca3af;">Il faut au moins 2 prix constatés (réceptions) pour un même article.</span></p>';
+      return;
+    }
+    compte.textContent = `${vars.length} article(s) avec historique`;
+    tableau.innerHTML = `
+      <table class="ach-variations-table">
+        <thead>
+          <tr>
+            <th>Article</th><th>Fournisseur</th>
+            <th class="ach-col-num">Début</th><th class="ach-col-num">Fin</th>
+            <th class="ach-col-num">Variation</th><th>Tendance</th>
+          </tr>
+        </thead>
+        <tbody>${vars.map(ligneVariation).join('')}</tbody>
+      </table>`;
+    // Clic sur une ligne → ouvre la fiche de l'article (réutilise l'édition).
+    tableau.querySelectorAll('tr[data-cat-id]').forEach(tr => {
+      tr.addEventListener('click', () => {
+        document.getElementById('modal-variations').hidden = true;
+        ouvrirEditionModal(parseInt(tr.dataset.catId, 10));
+      });
+    });
+  } catch (_) {
+    tableau.innerHTML = '<p class="ach-variations-vide">Erreur de chargement des variations.</p>';
+  }
+}
+
+// Une ligne du tableau des variations (couleur rouge hausse / vert baisse).
+function ligneVariation(v) {
+  const pct = v.ecart_pct;
+  const col = pct > 0 ? '#c1452c' : (pct < 0 ? '#2f7d3a' : '#6b7280');
+  const fleche = pct > 0 ? '▲' : (pct < 0 ? '▼' : '–');
+  const signe = pct > 0 ? '+' : '';
+  const spark = miniSparkVariation(v.points);
+  return `
+    <tr data-cat-id="${v.catalogue_fournisseur_id}" style="cursor:pointer;">
+      <td>${_echap(v.designation)}<div class="ach-var-code">${_echap(v.code_article || '')}</div></td>
+      <td>${_echap(v.fournisseur_nom || '—')}</td>
+      <td class="ach-col-num">${fmtPrix(v.prix_kg_debut)} €</td>
+      <td class="ach-col-num"><strong>${fmtPrix(v.prix_kg_fin)} €</strong></td>
+      <td class="ach-col-num" style="color:${col};font-weight:600;white-space:nowrap;">${fleche} ${signe}${pct.toFixed(1)} %</td>
+      <td>${spark}</td>
+    </tr>`;
+}
+
+// Mini-sparkline compacte (sans axes ni référence) pour une ligne de tableau.
+function miniSparkVariation(points) {
+  const pts = (points || []).filter(p => p.prix_kg != null);
+  if (pts.length < 2) return '';
+  const W = 90, H = 26, PAD = 3;
+  const prix = pts.map(p => p.prix_kg);
+  let min = Math.min(...prix), max = Math.max(...prix);
+  if (min === max) { min -= 1; max += 1; }
+  const n = pts.length;
+  const x = i => PAD + i * (W - 2 * PAD) / (n - 1);
+  const y = val => H - PAD - (val - min) / (max - min) * (H - 2 * PAD);
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.prix_kg).toFixed(1)}`).join(' ');
+  const hausse = prix[n - 1] >= prix[0];
+  const stroke = hausse ? '#c1452c' : '#2f7d3a';
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;">`
+       + `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.5"/></svg>`;
+}
+
+// Échappement HTML minimal (les désignations viennent de la saisie utilisateur).
+function _echap(s) {
+  return String(s ?? '').replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 // Formate une date ISO 'YYYY-MM-DD' en 'JJ/MM/AA' (compact pour le graphe).

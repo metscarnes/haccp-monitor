@@ -35,6 +35,7 @@
     <a href="/achats.html" class="ach-retour">← Achats</a>
     <div class="ach-bar-titre">📋 CATALOGUE ACHATS</div>
     <div class="ach-bar-actions">
+      <button class="ach-btn" id="btn-variations">📈 Variations</button>
       <button class="ach-btn" id="btn-export">⬇ Exporter</button>
       <button class="ach-btn" id="btn-import">⬆ Importer</button>
       <button class="ach-btn ach-btn--primary" id="btn-nouveau">+ Ajouter</button>
@@ -469,6 +470,33 @@
         <div class="ach-modal-footer" style="padding-top:0; border-top:none; margin-top:0;">
           <button type="button" class="ach-btn" id="import-annuler">Annuler</button>
           <button type="button" class="ach-btn ach-btn--primary" id="import-lancer">Importer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal variations de prix ── -->
+  <div class="ach-modal" id="modal-variations" hidden>
+    <div class="ach-modal-card ach-modal-card--lg">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">📈 Variations de prix d'achat</h2>
+        <button class="ach-modal-fermer" id="variations-fermer">✕</button>
+      </header>
+      <div class="ach-variations-corps">
+        <div class="ach-variations-barre">
+          <div class="ach-champ ach-champ--inline">
+            <label>Période</label>
+            <select id="variations-periode">
+              <option value="7">7 derniers jours</option>
+              <option value="30" selected>30 derniers jours</option>
+              <option value="90">90 derniers jours</option>
+              <option value="3650">Tout l'historique</option>
+            </select>
+          </div>
+          <div class="ach-variations-compte" id="variations-compte"></div>
+        </div>
+        <div class="ach-variations-tableau" id="variations-tableau">
+          <p class="ach-variations-vide">Chargement…</p>
         </div>
       </div>
     </div>
