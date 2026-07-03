@@ -416,8 +416,16 @@ async def get_catalogue(
     avec_stock: bool = Query(False),
 ):
     async with get_db() as db:
+        # groupe_id / groupe_nom : groupe de comparaison auquel l'article est rattaché
+        # (suivi de marge). NULL = non relié. Sous-requêtes pour ne pas dupliquer les lignes
+        # si l'article appartient à plusieurs groupes (on expose le premier).
         sql = """
-            SELECT c.*, f.nom AS fournisseur_nom
+            SELECT c.*, f.nom AS fournisseur_nom,
+                   (SELECT gl.groupe_id FROM comparatif_groupe_ligne gl
+                     WHERE gl.catalogue_fournisseur_id = c.id LIMIT 1) AS groupe_id,
+                   (SELECT g.nom FROM comparatif_groupe_ligne gl
+                      JOIN comparatif_groupe g ON g.id = gl.groupe_id
+                     WHERE gl.catalogue_fournisseur_id = c.id LIMIT 1) AS groupe_nom
             FROM catalogue_fournisseur c
             JOIN fournisseurs f ON f.id = c.fournisseur_id
             WHERE f.boutique_id = 1

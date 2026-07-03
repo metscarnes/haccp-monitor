@@ -23,6 +23,14 @@ let triSens      = 'asc';   // 'asc' | 'desc'
 
 const DLC_LABELS = { dlc: 'DLC', date_abattage: 'Abattage', no_dlc: 'Sans DLC' };
 
+// Familles dont les articles sont susceptibles d'être revendus au comptoir :
+// on ne propose le rattachement au suivi de marge que pour celles-ci
+// (on exclut « Aide culinaire » et « Hygiène et emballage »).
+const FAMILLES_VENDABLES = new Set(['Viande', 'Charcuterie', 'Traiteur']);
+
+// Dernier article créé, mémorisé pour la modale « proposer un produit de vente ».
+let dernierArticleCree = null;
+
 // FAMILLES est défini dans /static/js/core/familles.js (chargé avant ce script).
 
 const COLONNES = [
@@ -79,6 +87,32 @@ function bindEvents() {
   document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-lancer').addEventListener('click', lancerImport);
   document.getElementById('form-article').addEventListener('submit', sauver);
+
+  // Modal « proposer un produit de vente » (suivi de marge après création)
+  document.getElementById('mvp-fermer').addEventListener('click', fermerModalVentePropose);
+  document.getElementById('mvp-btn-ignorer').addEventListener('click', fermerModalVentePropose);
+  document.getElementById('mvp-btn-lier').addEventListener('click', lierAProduitVenteExistant);
+  document.getElementById('mvp-btn-creer').addEventListener('click', creerEtLierProduitVente);
+  // Écran 2 — recherche + liaison
+  document.getElementById('mvp-lier-retour').addEventListener('click', () => mvpMontrerEcran('choix'));
+  document.getElementById('mvp-lier-search').addEventListener('input', e => {
+    clearTimeout(mvpRechercheTimer);
+    const q = e.target.value.trim();
+    mvpRechercheTimer = setTimeout(() => mvpRechercherVentes(q), 250);
+  });
+  document.getElementById('mvp-lier-resultats').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-vid]');
+    if (!btn) return;
+    mvpLierAuProduit(btn.dataset.vid, btn.dataset.gid || null);
+  });
+  // Écran 3 — création + liaison
+  document.getElementById('mvp-creer-retour').addEventListener('click', () => mvpMontrerEcran('choix'));
+  document.getElementById('mvp-creer-valider').addEventListener('click', mvpValiderCreation);
+  document.getElementById('mvpc-unite').addEventListener('change', e => {
+    document.getElementById('mvpc-zone-poids').hidden = e.target.value !== 'piece';
+  });
+  // Écran 4 — succès
+  document.getElementById('mvp-succes-ok').addEventListener('click', fermerModalVentePropose);
   document.getElementById('a-qte-colis').addEventListener('input', recalcPoidsColis);
   document.getElementById('a-poids-unitaire').addEventListener('input', recalcPoidsColis);
   document.getElementById('a-famille').addEventListener('change', () => majSousFamilleForm());
@@ -288,6 +322,7 @@ function afficherTable(liste) {
       <td class="ach-cell-nom" ondblclick="editerInline(this,${a.id},'designation','text')" style="cursor:pointer;${hl('Désignation')}">
         ${escHtml(a.designation)}
         ${!a.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
+        ${a.groupe_id ? ` <span class="ach-badge ach-badge--dlc" title="Suivi de marge — groupe : ${escHtml(a.groupe_nom || '')}">🔗 lié</span>` : ''}
         ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${[...manque].join(', ')}</span>` : ''}
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'prix_achat_ht','number')" style="cursor:pointer;${hl('Prix HT')}">${fmtPrix(a.prix_achat_ht)} €</td>
@@ -826,6 +861,218 @@ function fermerModal() {
   document.getElementById('modal-article').hidden = true;
 }
 
+// ── Modal « Proposer un produit de vente » (suivi de marge) ──────────
+// Ouverte après création d'un article d'une famille vendable. Permet de relier
+// l'article au comparateur (groupe → produit de vente) pour calculer la marge.
+function ouvrirModalVentePropose(article) {
+  dernierArticleCree = article;
+  document.getElementById('mvp-designation').textContent = article.designation || '(sans nom)';
+  mvpMontrerEcran('choix');
+  document.getElementById('modal-vente-propose').hidden = false;
+}
+
+function fermerModalVentePropose() {
+  document.getElementById('modal-vente-propose').hidden = true;
+  dernierArticleCree = null;
+}
+
+// Bascule entre les écrans de la modale : 'choix' | 'lier' | 'creer' | 'succes'.
+function mvpMontrerEcran(ecran) {
+  document.getElementById('mvp-choix').hidden  = ecran !== 'choix';
+  document.getElementById('mvp-lier').hidden   = ecran !== 'lier';
+  document.getElementById('mvp-creer').hidden  = ecran !== 'creer';
+  document.getElementById('mvp-succes').hidden = ecran !== 'succes';
+  document.getElementById('mvp-erreur').hidden = true;
+}
+
+function mvpErreur(msg) {
+  const z = document.getElementById('mvp-erreur');
+  z.textContent = msg;
+  z.hidden = false;
+}
+
+// ── Étape 2 — Lier à un produit de vente existant ────────────────────
+// Ouvre l'écran de recherche. La saisie déclenche recherche-ventes (debounce),
+// et le clic sur un résultat rattache l'article achat au groupe de ce produit.
+let mvpRechercheTimer = null;
+
+function lierAProduitVenteExistant() {
+  mvpMontrerEcran('lier');
+  const input = document.getElementById('mvp-lier-search');
+  input.value = '';
+  document.getElementById('mvp-lier-resultats').innerHTML =
+    '<p style="color:#9ca3af;font-size:var(--text-sm);">Tapez pour rechercher…</p>';
+  // Pré-remplit avec la désignation de l'article pour proposer les correspondances proches.
+  const pref = (dernierArticleCree?.designation || '').trim();
+  if (pref) {
+    input.value = pref;
+    mvpRechercherVentes(pref);
+  }
+  input.focus();
+}
+
+async function mvpRechercherVentes(q) {
+  const zone = document.getElementById('mvp-lier-resultats');
+  try {
+    const r = await fetch(`/api/achats/comparatif/recherche-ventes?q=${encodeURIComponent(q)}`);
+    if (!r.ok) throw new Error('Recherche impossible');
+    const data = await r.json();
+    const produits = data.produits || [];
+    if (!produits.length) {
+      zone.innerHTML = '<p style="color:#9ca3af;font-size:var(--text-sm);">Aucun produit de vente trouvé.</p>';
+      return;
+    }
+    zone.innerHTML = produits.map(p => {
+      const relie = p.groupe_id
+        ? `<span class="ach-badge ach-badge--dlc" style="margin-left:6px;">groupe : ${escHtml(p.groupe_nom)}</span>`
+        : '<span class="ach-badge ach-badge--no-dlc" style="margin-left:6px;">sans suivi</span>';
+      const prix = p.prix_vente_ttc != null
+        ? `${fmtPrix(p.prix_vente_ttc)} € TTC/${p.unite_vente === 'piece' ? 'pièce' : 'kg'}`
+        : 'prix non renseigné';
+      return `
+        <button type="button" class="ach-btn" data-vid="${p.id}" data-gid="${p.groupe_id || ''}"
+                style="justify-content:space-between;text-align:left;padding:10px 12px;width:100%;">
+          <span>
+            <strong>${escHtml(p.nom)}</strong>${relie}<br>
+            <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(p.famille || '')}${p.sous_famille ? ' · ' + escHtml(p.sous_famille) : ''} — ${prix}</span>
+          </span>
+        </button>`;
+    }).join('');
+  } catch (e) {
+    zone.innerHTML = `<p style="color:#c1452c;font-size:var(--text-sm);">${escHtml(e.message)}</p>`;
+  }
+}
+
+// Rattache l'article achat créé au produit de vente choisi (crée le groupe si besoin),
+// définit cet achat comme ligne de référence du produit de vente (pour que la marge se
+// calcule immédiatement), puis affiche la marge obtenue.
+async function mvpLierAuProduit(venteId, groupeId) {
+  const articleId = dernierArticleCree?.id;
+  if (!articleId) return;
+  // Groupe préexistant → le produit peut déjà avoir une ligne de référence choisie par
+  // l'utilisateur : on ne la surcharge PAS. On n'auto-définit la référence que sur un
+  // groupe fraîchement créé (aucune référence possible).
+  const groupeNouveau = !groupeId;
+  try {
+    // 1) Le produit de vente n'a pas de groupe → on en crée un et on l'y associe.
+    if (!groupeId) {
+      const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catalogue_vente_id: Number(venteId) }),
+      });
+      if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');
+      groupeId = (await rg.json()).id;
+    }
+    // 2) On ajoute l'article achat comme ligne fournisseur du groupe.
+    const rl = await fetch(`/api/achats/comparatif/groupes/${groupeId}/lignes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogue_fournisseur_id: Number(articleId) }),
+    });
+    if (!rl.ok) throw new Error((await rl.json()).detail || 'Liaison impossible');
+
+    // 3) Sur un groupe NEUF, définir cet achat comme ligne de référence du produit de vente
+    //    → marge calculable sans repasser par le comparateur. La réponse renvoie le détail.
+    //    (Best-effort : un échec ne bloque pas la liaison.)
+    let detail = null;
+    try {
+      if (groupeNouveau) {
+        const rr = await fetch(`/api/achats/comparatif/groupes/${groupeId}/ventes/${venteId}/reference`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ligne_choisie_id: Number(articleId) }),
+        });
+        if (rr.ok) detail = await rr.json();
+      } else {
+        // Groupe existant : on lit juste l'état courant (référence de l'utilisateur préservée).
+        const rd = await fetch(`/api/achats/comparatif/groupes/${groupeId}`);
+        if (rd.ok) detail = await rd.json();
+      }
+    } catch (_) { /* marge = bonus, on continue */ }
+
+    const pv = detail ? (detail.produits_vente || []).find(p => p.id === Number(venteId)) : null;
+    await chargerCatalogue();
+    mvpAfficherSucces(pv?.marge || null);
+  } catch (e) {
+    mvpErreur('Erreur : ' + e.message);
+  }
+}
+
+// Écran de succès : affiche la marge si calculable, sinon invite à compléter les prix.
+function mvpAfficherSucces(marge) {
+  const zone = document.getElementById('mvp-succes-marge');
+  if (marge && marge.marge != null) {
+    const taux = marge.taux_marge != null ? ` (${(marge.taux_marge * 100).toFixed(0)} %)` : '';
+    const u = marge.unite === 'piece' ? 'pièce' : 'kg';
+    zone.innerHTML = `
+      Marge brute : <strong style="color:#2f7d3a;">${fmtPrix(marge.marge)} € / ${u}${taux}</strong><br>
+      <span style="font-size:var(--text-sm);color:#6b7280;">
+        Vente HT ${fmtPrix(marge.prix_vente_ht)} € − coût matière ${fmtPrix(marge.cout_matiere)} €
+      </span>`;
+  } else {
+    zone.innerHTML = `<span style="color:#6b7280;">
+      Marge non calculable pour l'instant : complétez le prix de vente et le poids/prix d'achat.
+    </span>`;
+  }
+  mvpMontrerEcran('succes');
+}
+
+// ── Étape 3 — Créer un produit de vente + lier ───────────────────────
+// Ouvre le formulaire pré-rempli depuis l'article achat. La famille / sous-famille
+// sont héritées (masquées, envoyées telles quelles au catalogue de vente).
+function creerEtLierProduitVente() {
+  const a = dernierArticleCree;
+  if (!a) return;
+  mvpMontrerEcran('creer');
+  document.getElementById('mvpc-nom').value = a.designation || '';
+  document.getElementById('mvpc-prix').value = '';
+  document.getElementById('mvpc-unite').value = 'kg';
+  document.getElementById('mvpc-poids-piece').value = '';
+  document.getElementById('mvpc-zone-poids').hidden = true;
+  document.getElementById('mvpc-famille-lbl').textContent = a.famille || '—';
+  document.getElementById('mvpc-nom').focus();
+}
+
+// Enchaîne : crée le produit de vente → crée le groupe (from-vente) → rattache l'achat.
+async function mvpValiderCreation() {
+  const a = dernierArticleCree;
+  if (!a) return;
+  const nom = document.getElementById('mvpc-nom').value.trim();
+  if (!nom) { mvpErreur('Le nom du produit de vente est obligatoire.'); return; }
+
+  const unite = document.getElementById('mvpc-unite').value;
+  const prix  = parseFloat(document.getElementById('mvpc-prix').value);
+  const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
+
+  const btn = document.getElementById('mvp-creer-valider');
+  btn.disabled = true; btn.textContent = 'Création…';
+  try {
+    // 1) Créer le produit de vente (famille / sous-famille héritées de l'article achat).
+    const rv = await fetch('/api/vente/catalogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nom,
+        prix_vente_ttc: isNaN(prix) ? null : prix,
+        unite_vente: unite,
+        poids_piece_kg: (unite === 'piece' && !isNaN(poids)) ? poids : null,
+        famille: a.famille || null,
+        sous_famille: a.sous_famille || null,
+      }),
+    });
+    if (!rv.ok) throw new Error((await rv.json()).detail || 'Création du produit impossible');
+    const vente = await rv.json();
+
+    // 2 & 3) Créer le groupe depuis ce produit puis y rattacher l'article achat.
+    await mvpLierAuProduit(vente.id, null);
+  } catch (e) {
+    mvpErreur('Erreur : ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Créer et lier';
+  }
+}
+
 function viderForm() {
   ['a-id','a-code','a-designation','a-prix',
    'a-qte-colis','a-poids-unitaire','a-poids-colis'].forEach(id => {
@@ -866,8 +1113,14 @@ async function sauver(e) {
     const method = modeEdition ? 'PUT' : 'POST';
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    const article = await r.json().catch(() => null);
     fermerModal();
     await chargerCatalogue();
+    // Après une CRÉATION d'article d'une famille vendable, proposer de le relier au
+    // suivi de marge (produit de vente). Édition ou famille non vendable → rien.
+    if (!modeEdition && article && article.id && FAMILLES_VENDABLES.has(article.famille)) {
+      ouvrirModalVentePropose(article);
+    }
   } catch(err) {
     const z = document.getElementById('form-erreur');
     z.textContent = err.message; z.hidden = false;
