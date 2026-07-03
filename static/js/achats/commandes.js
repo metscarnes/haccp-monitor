@@ -313,7 +313,9 @@ function majBadgePanier() {
 // Unité de commande par défaut = unité naturelle du prix de l'article si elle
 // est commandable, sinon la première unité commandable disponible.
 function uniteParDefaut(a) {
-  const naturelle = (a.format_prix === 'kg') ? 'kg' : 'colis';
+  // L'unité naturelle = celle du format de saisie du prix (kg / colis / pièce).
+  const naturelle = (a.format_prix === 'kg') ? 'kg'
+                  : (a.format_prix === 'piece') ? 'piece' : 'colis';
   if (peutCommander(a, naturelle)) return naturelle;
   return ['colis', 'kg', 'piece'].find(u => peutCommander(a, u)) || naturelle;
 }
@@ -365,10 +367,11 @@ function peutCommanderKg(a)    { return peutCommander(a, 'kg'); }
 function peutCommanderPiece(a) { return peutCommander(a, 'piece'); }
 function peutCommanderColis(a) { return peutCommander(a, 'colis'); }
 
-// Prix unitaire HT pour une unité de commande ('kg' | 'piece' | 'colis').
-// Renvoie null si la conversion est impossible (donnée manquante).
+// Prix unitaire HT pour une unité de commande ('kg' | 'piece' | 'colis'),
+// selon le FORMAT de saisie du prix (kg / colis / pièce). null si non dérivable.
 //   format kg    : prix = €/kg     → pièce = prix×poids_unit ; colis = prix×poids_colis
-//   format colis : prix = €/colis  → kg = prix÷poids_colis ; pièce = prix÷qte_par_colis
+//   format colis : prix = €/colis  → kg = prix÷poids_colis   ; pièce = prix÷qte_par_colis
+//   format piece : prix = €/pièce  → kg = prix÷poids_unit    ; colis = prix×qte_par_colis
 function prixUnitaire(a, unite) {
   const prix       = parseFloat(a.prix_achat_ht) || 0;
   const poidsColis = poidsColisKg(a);
@@ -379,7 +382,12 @@ function prixUnitaire(a, unite) {
     if (unite === 'colis') return poidsColis !== null ? prix * poidsColis : null;
     return prix;                       // kg
   }
-  // format 'colis' (ou ancien 'piece') : prix = €/colis
+  if (a.format_prix === 'piece') {
+    if (unite === 'kg')    return poidsUnit !== null ? prix / poidsUnit : null;
+    if (unite === 'colis') return parColis  !== null ? prix * parColis  : null;
+    return prix;                       // pièce
+  }
+  // format 'colis' (ou ancien) : prix = €/colis
   if (unite === 'kg')    return poidsColis !== null ? prix / poidsColis : null;
   if (unite === 'piece') return parColis   !== null ? prix / parColis   : null;
   return prix;                         // colis

@@ -327,7 +327,7 @@ function afficherTable(liste) {
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'prix_achat_ht','number')" style="cursor:pointer;${hl('Prix HT')}">${fmtPrix(a.prix_achat_ht)} €</td>
       <td ondblclick="editerInline(this,${a.id},'format_prix','select')" style="cursor:pointer;${hl('Format')}">
-        <span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : 'abattage'}">${a.format_prix === 'kg' ? '€/kg' : '€/colis'}</span>
+        <span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : a.format_prix === 'piece' ? 'no-dlc' : 'abattage'}">${fmtFormatPrix(a.format_prix)}</span>
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'qte_par_colis','number')" style="cursor:pointer;${estColis && hl('Qté/colis')}">${a.qte_par_colis != null ? a.qte_par_colis : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'poids_unitaire_kg','number')" style="cursor:pointer;${estColis && hl('Poids unitaire')}">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
@@ -759,7 +759,7 @@ function recalcPoidsColis() {
 
 // ── Édition inline (double-clic sur cellule) ─────────────────
 const SELECT_OPTIONS = {
-  format_prix: [['kg','€/kg'], ['colis','€/colis']],
+  format_prix: [['kg','€/kg'], ['colis','€/colis'], ['piece','€/pièce']],
   dlc_type:    [['dlc','DLC'], ['date_abattage','Abattage'], ['no_dlc','Sans DLC']],
   famille:     () => [['', '— Aucune —'], ...Object.keys(FAMILLES).map(f => [f, f])],
 };
@@ -1087,10 +1087,44 @@ function viderForm() {
   document.getElementById('form-erreur').hidden = true;
 }
 
+// Garde-fou non-bloquant : détecte des saisies incohérentes qui fausseraient les
+// conversions pièce/colis/kg (cause n°1 des marges aberrantes). Renvoie une liste de
+// messages ; vide = RAS. On alerte, on ne bloque pas (cas atypiques légitimes possibles).
+function detecterAnomaliesSaisie(b) {
+  const warns = [];
+  const prix  = b.prix_achat_ht;
+  const pu    = b.poids_unitaire_kg;
+  const qte   = b.qte_par_colis;
+
+  // Poids d'une pièce aberrant (ex. paupiette saisie à 15 kg).
+  if (pu != null && pu > 5) {
+    warns.push(`Poids unitaire de ${pu} kg : est-ce bien le poids d'UNE pièce ? (semble élevé)`);
+  }
+  // Formats pièce/colis sans la donnée nécessaire à la conversion.
+  if (b.format_prix === 'colis' && !qte) {
+    warns.push("Format « colis » sans quantité par colis : le prix à la pièce ne pourra pas être calculé.");
+  }
+  if (b.format_prix === 'piece' && !pu) {
+    warns.push("Format « pièce » sans poids unitaire : le prix au kg ne pourra pas être calculé.");
+  }
+  // €/kg dérivé hors plage plausible pour une famille alimentaire (0 toléré = gratuit).
+  let prixKg = null;
+  if (prix != null) {
+    if (b.format_prix === 'kg')    prixKg = prix;
+    else if (b.format_prix === 'piece' && pu)  prixKg = prix / pu;
+    else if (b.format_prix === 'colis' && pu && qte) prixKg = prix / (pu * qte);
+  }
+  if (prixKg != null && prixKg > 0 && prixKg < 0.5) {
+    warns.push(`Prix au kilo dérivé très bas (${prixKg.toFixed(2)} €/kg) : vérifiez le format et le prix.`);
+  }
+  if (prixKg != null && prixKg > 200) {
+    warns.push(`Prix au kilo dérivé très élevé (${prixKg.toFixed(0)} €/kg) : vérifiez le format et le prix.`);
+  }
+  return warns;
+}
+
 async function sauver(e) {
   e.preventDefault();
-  const btn = document.getElementById('btn-sauver');
-  btn.disabled = true; btn.textContent = 'Enregistrement…';
 
   const body = {
     fournisseur_id:  parseInt(document.getElementById('a-fournisseur').value),
@@ -1106,6 +1140,15 @@ async function sauver(e) {
     sous_famille:    document.getElementById('a-sous-famille').value || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
   };
+
+  // Alerte non-bloquante sur les saisies suspectes (conversions faussées).
+  const anomalies = detecterAnomaliesSaisie(body);
+  if (anomalies.length && !confirm('⚠ Vérification :\n\n• ' + anomalies.join('\n• ') + '\n\nEnregistrer quand même ?')) {
+    return;
+  }
+
+  const btn = document.getElementById('btn-sauver');
+  btn.disabled = true; btn.textContent = 'Enregistrement…';
 
   try {
     const id = document.getElementById('a-id').value;
@@ -1194,6 +1237,11 @@ function afficherErreur(msg) {
   z.textContent = msg; z.hidden = false;
 }
 function fmtPrix(v) { return (v ?? 0).toFixed(2); }
+
+// Libellé court du format de prix (kg / colis / pièce).
+function fmtFormatPrix(f) {
+  return f === 'kg' ? '€/kg' : f === 'piece' ? '€/pièce' : '€/colis';
+}
 
 // Affiche les unités autorisées sous forme de petits badges (kg · pièce · colis).
 const UNITE_LABELS = { kg: 'kg', piece: 'pièce', colis: 'colis' };

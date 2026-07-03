@@ -283,15 +283,21 @@ class CaJournalierUpsert(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _normaliser_format_prix(valeur) -> str:
-    """Ramène le format de prix à 'kg' ou 'colis'.
+    """Ramène le format de prix à 'kg', 'colis' ou 'piece'.
 
-    Tolère les anciennes valeurs ('piece' → 'colis') et les libellés saisis
-    par un fournisseur dans le template ('au kilo', 'au colis', 'pièce'...).
+    Trois formats non ambigus (le prix saisi est exprimé dans l'unité du format) :
+      - 'kg'    : prix au kilo
+      - 'colis' : prix du colis entier
+      - 'piece' : prix d'une pièce
+    Tolère les libellés saisis par un fournisseur dans le template
+    ('au kilo', 'au colis', 'à la pièce', 'unité'...).
     """
     v = (str(valeur) if valeur is not None else "").strip().lower()
     if v in ("kg", "kilo", "au kilo", "kilogramme", "/kg"):
         return "kg"
-    if v in ("colis", "piece", "pièce", "au colis", "carton", "unite", "unité"):
+    if v in ("piece", "pièce", "à la pièce", "a la piece", "unite", "unité", "/piece", "/pièce"):
+        return "piece"
+    if v in ("colis", "au colis", "carton", "/colis"):
         return "colis"
     return "kg"  # défaut prudent : au kilo
 
@@ -452,9 +458,7 @@ async def get_catalogue(
         # Prix au kilo normalisé (None si incalculable) — attendu par le comparateur et
         # tout consommateur de ce catalogue ; les écrans qui l'ignorent ne sont pas affectés.
         for a in articles:
-            a["prix_kg"] = _calc_prix_kg(
-                a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"), a.get("famille")
-            )
+            a["prix_kg"] = _prix_kg_article(a)
 
         if avec_stock and articles:
             stocks = await _compter_stock_par_article(db)
@@ -2223,52 +2227,90 @@ async def envoyer_commande(commande_id: int):
 # ===========================================================================
 
 
-def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg, famille=None):
-    """Prix au kilo normalisé d'un article catalogue.
+def _calc_prix_kg(format_prix, prix_achat_ht, poids_colis_kg, famille=None,
+                  poids_unitaire_kg=None, qte_par_colis=None):
+    """Prix au kilo normalisé d'un article catalogue, selon son format de saisie.
 
-    - famille 'Viande' : le prix d'achat EST déjà le €/kg (la viande se vend au kilo) ;
-      le poids_colis_kg ne sert qu'à la commande, JAMAIS au calcul → pas de division.
-    - format 'kg'    : le prix est déjà au kilo → tel quel.
-    - format 'colis' : prix du colis / poids total du colis (qté × poids unitaire).
-    Retourne None si on ne peut pas le calculer honnêtement (prix absent, ou
-    colis sans poids renseigné) → l'UI affiche « €/kg indisponible ».
+    Convention des 3 formats (le prix saisi = le prix DANS l'unité du format) :
+      - 'kg'    : prix déjà au kilo → tel quel.
+      - 'colis' : prix du COLIS entier → €/kg = prix ÷ poids_colis_kg.
+      - 'piece' : prix d'UNE pièce    → €/kg = prix ÷ poids_unitaire_kg.
+
+    Le format EXPLICITE prime toujours (y compris pour la viande) : c'est lui qui lève
+    l'ambiguïté kg/colis/pièce. La règle « viande = €/kg direct » n'est plus qu'un repli
+    pour les données historiques rangées en 'colis' sans poids exploitable.
+
+    Retourne None si le €/kg n'est pas dérivable honnêtement (prix absent, ou poids
+    nécessaire manquant) → l'UI affiche « €/kg indisponible » plutôt qu'un chiffre faux.
+    0 € reste un prix réel (gratuit/offert) → €/kg = 0, pas None.
     """
-    # 0 € est un PRIX RÉEL (produit gratuit / offert / échantillon), pas une donnée
-    # manquante → €/kg = 0, comparable, marge calculable (100 %). Seul un prix absent
-    # (None) ou un colis sans poids reste « indisponible ».
     if prix_achat_ht is None:
         return None
-    # Viande : prix d'achat = €/kg direct, quel que soit le format (poids = commande only).
-    if (famille or "").strip().lower() == "viande":
-        return round(float(prix_achat_ht), 4)
+    prix = float(prix_achat_ht)
+
     if format_prix == "kg":
-        return round(float(prix_achat_ht), 4)
-    if format_prix == "colis" and poids_colis_kg:
-        return round(float(prix_achat_ht) / float(poids_colis_kg), 4)
+        return round(prix, 4)
+    if format_prix == "piece":
+        if poids_unitaire_kg:
+            return round(prix / float(poids_unitaire_kg), 4)
+        return None  # prix pièce sans poids → €/kg indérivable
+    if format_prix == "colis":
+        if poids_colis_kg:
+            return round(prix / float(poids_colis_kg), 4)
+        return None  # colis sans poids → €/kg indérivable
+
+    # Format inconnu / legacy : repli viande = prix pris comme €/kg direct.
+    if (famille or "").strip().lower() == "viande":
+        return round(prix, 4)
     return None
 
 
-def _calc_prix_piece(format_prix, prix_achat_ht, qte_par_colis):
-    """Prix d'achat d'UNE pièce, dérivé du colis. None si non dérivable.
+def _prix_kg_article(a) -> Optional[float]:
+    """€/kg d'un article catalogue (dict) : passe tous les champs à _calc_prix_kg,
+    y compris poids_unitaire_kg / qte_par_colis nécessaires au format 'piece'.
+    Raccourci pour ne rien oublier au fil des appels."""
+    return _calc_prix_kg(
+        a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"),
+        a.get("famille"), a.get("poids_unitaire_kg"), a.get("qte_par_colis"),
+    )
 
-    Pour les articles vendus/comptés à la pièce (charcuterie sèche, traiteur…), le €/kg
-    est souvent faux ou nul (poids unitaire indicatif, prix tarif = prix pièce). On préfère
-    valoriser directement à la pièce quand on peut : prix_piece = prix_colis / qte_par_colis.
 
-    - format 'colis' avec qte_par_colis > 0 : prix_achat_ht EST le prix du colis entier
-      → prix d'une pièce = prix_colis / qte_par_colis.
-    - tout autre format (kg, ou colis sans qté) : pas de notion de « pièce » fiable → None,
-      l'appelant retombe sur la valorisation au €/kg.
+def _prix_piece_article(a) -> Optional[float]:
+    """Prix d'UNE pièce d'un article catalogue (dict). Raccourci de _calc_prix_piece."""
+    return _calc_prix_piece(
+        a.get("format_prix"), a.get("prix_achat_ht"),
+        a.get("qte_par_colis"), a.get("poids_unitaire_kg"),
+    )
+
+
+def _calc_prix_piece(format_prix, prix_achat_ht, qte_par_colis, poids_unitaire_kg=None):
+    """Prix d'achat d'UNE pièce, selon le format. None si non dérivable.
+
+    Convention des 3 formats :
+      - 'piece' : le prix saisi EST déjà le prix d'une pièce → tel quel.
+      - 'colis' avec qte_par_colis > 0 : prix du colis ÷ qte_par_colis.
+      - 'kg'    : prix au kilo × poids_unitaire_kg (poids d'une pièce), si connu.
+
+    Pour les articles comptés à la pièce, c'est la voie la plus fiable (pas de €/kg
+    intermédiaire dépendant d'un poids parfois approximatif). None → l'appelant retombe
+    sur la valorisation au €/kg.
     """
     if prix_achat_ht is None:
         return None
+    prix = float(prix_achat_ht)
+
+    if format_prix == "piece":
+        return round(prix, 4)
     if format_prix == "colis" and qte_par_colis:
         try:
             n = float(qte_par_colis)
         except (TypeError, ValueError):
             return None
         if n > 0:
-            return round(float(prix_achat_ht) / n, 4)
+            return round(prix / n, 4)
+        return None
+    if format_prix == "kg" and poids_unitaire_kg:
+        return round(prix * float(poids_unitaire_kg), 4)
     return None
 
 
@@ -2388,41 +2430,52 @@ async def comparer_prix_catalogue(body: ComparerPrixBody):
 
 
 def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
-                unite_vente="kg", poids_piece_kg=None):
+                unite_vente="kg", poids_piece_kg=None, achat_ref_piece=None):
     """Marge à la volée d'un produit revendu en l'état, au kg OU à la pièce.
 
-    - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE (⭐), déjà normalisé par
-      `_calc_prix_kg`. None → marge indisponible.
+    - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE (⭐), normalisé par
+      `_calc_prix_kg`.
+    - `achat_ref_piece` = prix d'achat d'UNE pièce dérivé du colis (prix_colis ÷ qte_par_colis,
+      via `_calc_prix_piece`). PRIORITAIRE pour une vente à la pièce : c'est le coût honnête,
+      sans dépendre du poids (souvent mal saisi). None si non dérivable.
     - `prix_vente_ttc` = prix de vente, exprimé dans l'unité de vente (€/kg ou €/pièce).
     - `unite_vente` : 'kg' (défaut) ou 'piece'.
-    - `poids_piece_kg` : requis si unité 'piece' (poids d'une pièce vendue) pour ramener
-      l'achat €/kg à un coût/pièce. Absent → marge indisponible (jamais inventée).
+    - `poids_piece_kg` : poids d'une pièce vendue, utilisé pour ramener l'achat €/kg à un
+      coût/pièce UNIQUEMENT en repli quand `achat_ref_piece` n'est pas dérivable (achat au kg).
 
     Le calcul se fait DANS l'unité de vente :
       - kg    : coût matière = achat €/kg ; marge = vente HT/kg − coût.
-      - pièce : coût matière = achat €/kg × poids_piece_kg ; marge = vente HT/pièce − coût.
+      - pièce : coût matière = prix pièce (dérivé du colis) SINON achat €/kg × poids_piece_kg.
     Renvoie un dict {unite, base_label, prix_vente_ht, cout_matiere, marge, taux_marge,
     coef, achat_ref_kg, ...} ou None.
     """
-    if achat_ref_kg is None or prix_vente_ttc is None:
+    if prix_vente_ttc is None:
         return None
     try:
         ttc = float(prix_vente_ttc)
-        achat = float(achat_ref_kg)
     except (TypeError, ValueError):
         return None
     if ttc <= 0:
         return None
+    # Achat €/kg peut manquer si l'article est au colis sans poids ; on garde None sans planter.
+    achat = float(achat_ref_kg) if achat_ref_kg is not None else None
 
     tva = float(tva_percent) if tva_percent is not None else 0.0
     prix_vente_ht = ttc / (1.0 + tva / 100.0)
 
     if unite_vente == "piece":
-        if not poids_piece_kg or float(poids_piece_kg) <= 0:
-            return None  # poids d'une pièce manquant → marge incalculable
-        cout_matiere = achat * float(poids_piece_kg)
+        # Voie privilégiée : prix d'UNE pièce dérivé du colis (pas de poids dans l'équation).
+        if achat_ref_piece is not None:
+            cout_matiere = float(achat_ref_piece)
+        elif achat is not None and poids_piece_kg and float(poids_piece_kg) > 0:
+            # Repli : achat au kg × poids d'une pièce vendue.
+            cout_matiere = achat * float(poids_piece_kg)
+        else:
+            return None  # ni prix pièce dérivable ni (€/kg + poids) → marge incalculable
         base_label = "€/pièce"
     else:
+        if achat is None:
+            return None  # vente au kg sans €/kg d'achat → incalculable
         cout_matiere = achat  # achat déjà au kg
         base_label = "€/kg"
 
@@ -2430,14 +2483,21 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
     taux = marge / prix_vente_ht if prix_vente_ht > 0 else None
     coef = ttc / cout_matiere if cout_matiere > 0 else None
 
-    # Pour une vente à la pièce : équivalents au kilo, pour comparer sur la même base
-    # que l'achat (qui est en €/kg). vente €/kg = prix_HT/pièce ÷ poids ; achat €/kg = achat_ref.
+    # Équivalents au kilo (utiles surtout pour la pièce : comparer vente vs achat en €/kg).
+    # Chaque terme n'est renseigné que s'il est dérivable — sinon None (jamais inventé).
     if unite_vente == "piece":
-        vente_ht_kg = prix_vente_ht / float(poids_piece_kg)
-        cout_kg = achat  # le coût matière ramené au kg, c'est l'achat €/kg lui-même
+        ppk = float(poids_piece_kg) if poids_piece_kg and float(poids_piece_kg) > 0 else None
+        vente_ht_kg = round(prix_vente_ht / ppk, 4) if ppk else None
+        # Coût matière ramené au kg : soit l'achat €/kg direct, soit coût pièce ÷ poids.
+        if achat is not None:
+            cout_kg = round(achat, 4)
+        elif ppk:
+            cout_kg = round(cout_matiere / ppk, 4)
+        else:
+            cout_kg = None
     else:
-        vente_ht_kg = prix_vente_ht
-        cout_kg = cout_matiere
+        vente_ht_kg = round(prix_vente_ht, 4)
+        cout_kg = round(cout_matiere, 4)
 
     return {
         "unite": "piece" if unite_vente == "piece" else "kg",
@@ -2445,12 +2505,12 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
         "prix_vente_ttc": round(ttc, 2),
         "prix_vente_ht": round(prix_vente_ht, 4),
         "tva_percent": round(tva, 2),
-        "achat_ref_kg": round(achat, 4),
+        "achat_ref_kg": round(achat, 4) if achat is not None else None,
         "poids_piece_kg": round(float(poids_piece_kg), 4) if poids_piece_kg else None,
         "cout_matiere": round(cout_matiere, 4),
         # Équivalents au kilo (utiles surtout pour la pièce : comparer vente vs achat en €/kg).
-        "vente_ht_kg": round(vente_ht_kg, 4),
-        "cout_kg": round(cout_kg, 4),
+        "vente_ht_kg": vente_ht_kg,
+        "cout_kg": cout_kg,
         # 'marge_kg' conservé comme alias générique de la marge dans l'unité (rétrocompat front).
         "marge_kg": round(marge, 4),
         "marge": round(marge, 4),
@@ -2773,7 +2833,7 @@ async def comparatif_achats_suggestions(groupe_id: int, _=Depends(require_admin)
             meme_sf = bool(sf_vente) and (a.get("sous_famille") or "").strip().lower() == sf_vente
             a["meme_sous_famille"] = meme_sf
             a["score"] = round(score, 3)
-            a["prix_kg"] = _calc_prix_kg(a.get("format_prix"), a.get("prix_achat_ht"), a.get("poids_colis_kg"), a.get("famille"))
+            a["prix_kg"] = _prix_kg_article(a)
             suggestions.append(a)
 
         # Tri : même sous-famille d'abord, puis score, puis €/kg croissant (None en dernier).
@@ -2821,11 +2881,11 @@ async def comparatif_marge_incalculable(_=Depends(require_admin)):
             if ligne_id in ref_cache:
                 return ref_cache[ligne_id]
             cur_l = await db.execute(
-                "SELECT format_prix, prix_achat_ht, poids_colis_kg, famille FROM catalogue_fournisseur WHERE id = ?",
+                "SELECT format_prix, prix_achat_ht, poids_colis_kg, famille, poids_unitaire_kg, qte_par_colis FROM catalogue_fournisseur WHERE id = ?",
                 (ligne_id,),
             )
             l = await cur_l.fetchone()
-            pk = _calc_prix_kg(l["format_prix"], l["prix_achat_ht"], l["poids_colis_kg"], l["famille"]) if l else None
+            pk = _prix_kg_article(dict(l)) if l else None
             ref_cache[ligne_id] = pk
             return pk
 
@@ -2998,14 +3058,17 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
         groupe = dict(groupe)
 
         # €/kg de chaque ligne d'achat (indexé pour la marge par produit de vente).
+        # On indexe AUSSI le prix d'UNE pièce dérivé du colis (prix_colis ÷ qte_par_colis) :
+        # pour une vente à la pièce, c'est le coût honnête, sans passer par le poids (qui,
+        # mal saisi, fausse tout — cf. audit conversions pièce/colis/kg).
         prix_kg_par_ligne = {}
+        prix_piece_par_ligne = {}
         for ligne in lignes:
-            pk = _calc_prix_kg(
-                ligne.get("format_prix"), ligne.get("prix_achat_ht"), ligne.get("poids_colis_kg"), ligne.get("famille")
-            )
+            pk = _prix_kg_article(ligne)
             ligne["prix_kg"] = pk
             ligne["meilleur"] = False
             prix_kg_par_ligne[ligne["id"]] = pk
+            prix_piece_par_ligne[ligne["id"]] = _prix_piece_article(ligne)
 
         prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None]
         if prix_valides:
@@ -3037,13 +3100,15 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
             pv = dict(r)
             ref = pv.get("ligne_choisie_id")
             # La ligne de référence doit appartenir au groupe (sinon ignorée).
-            achat_ref_kg = prix_kg_par_ligne.get(ref) if ref in prix_kg_par_ligne else None
+            achat_ref_kg    = prix_kg_par_ligne.get(ref)    if ref in prix_kg_par_ligne    else None
+            achat_ref_piece = prix_piece_par_ligne.get(ref) if ref in prix_piece_par_ligne else None
             pv["marge"] = _calc_marge(
                 pv.get("prix_vente_ttc"),
                 pv.get("tva_percent"),
                 achat_ref_kg,
                 unite_vente=pv.get("unite_vente") or "kg",
                 poids_piece_kg=pv.get("poids_piece_kg"),
+                achat_ref_piece=achat_ref_piece,
             )
             produits_vente.append(pv)
 
@@ -3337,9 +3402,7 @@ async def comparatif_suggestions(
             score = _similarite(ref["designation"], c["designation"])
             if score > 0:
                 c["score"] = round(score, 3)
-                c["prix_kg"] = _calc_prix_kg(
-                    c.get("format_prix"), c.get("prix_achat_ht"), c.get("poids_colis_kg"), c.get("famille")
-                )
+                c["prix_kg"] = _prix_kg_article(c)
                 suggestions.append(c)
 
         suggestions.sort(key=lambda x: x["score"], reverse=True)
@@ -3497,7 +3560,7 @@ async def proposer_groupes(_=Depends(require_admin)):
                     "designation": g["designation"],
                     "fournisseur_nom": g["fournisseur_nom"],
                     "code_article": g["code_article"],
-                    "prix_kg": _calc_prix_kg(g.get("format_prix"), g.get("prix_achat_ht"), g.get("poids_colis_kg"), g.get("famille")),
+                    "prix_kg": _prix_kg_article(g),
                 })
             grappes.append({
                 "nom_suggere": _nom_suggere([g["_coeur"] for g in grappe], [g["designation"] for g in grappe]),
@@ -4082,7 +4145,8 @@ async def historique_prix_catalogue(catalogue_id: int, limit: int = Query(60, ge
     """
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT designation, prix_achat_ht, format_prix, poids_colis_kg, famille "
+            "SELECT designation, prix_achat_ht, format_prix, poids_colis_kg, famille, "
+            "poids_unitaire_kg, qte_par_colis "
             "FROM catalogue_fournisseur WHERE id = ?",
             (catalogue_id,),
         )
@@ -4100,9 +4164,7 @@ async def historique_prix_catalogue(catalogue_id: int, limit: int = Query(60, ge
         )
         points = [dict(r) for r in await cur2.fetchall()]
 
-    prix_ref_kg = _calc_prix_kg(
-        art["format_prix"], art["prix_achat_ht"], art["poids_colis_kg"], art["famille"]
-    )
+    prix_ref_kg = _prix_kg_article(art)
     return {
         "catalogue_fournisseur_id": catalogue_id,
         "designation": art["designation"],

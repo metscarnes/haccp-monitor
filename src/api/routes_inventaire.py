@@ -38,7 +38,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from src.database import get_db, get_parametre, set_parametre
-from src.api.routes_achats import _calc_prix_kg, _calc_prix_piece
+from src.api.routes_achats import (
+    _calc_prix_kg, _calc_prix_piece, _prix_kg_article, _prix_piece_article,
+)
 
 # Taux de TVA par défaut pour convertir le CA TTC → HT (boucherie = 5,5 %).
 TVA_DEFAUT_PCT = 5.5
@@ -101,14 +103,7 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
                       prix pièce dérivable, on retombe sur l'ancien calcul au €/kg.
     Le prix €/kg de référence vient toujours du catalogue via _calc_prix_kg.
     """
-    prix_kg = None
-    if article is not None:
-        prix_kg = _calc_prix_kg(
-            article.get("format_prix"),
-            article.get("prix_achat_ht"),
-            article.get("poids_colis_kg"),
-            article.get("famille"),
-        )
+    prix_kg = _prix_kg_article(article) if article is not None else None
 
     poids_kg = None
     valeur_ht = None
@@ -136,12 +131,9 @@ def _valoriser_ligne(unite_saisie, quantite, poids_piece_kg, article):
         if ppk:
             poids_kg = q * float(ppk)
 
-        # Valorisation directe au prix d'UNE pièce (dérivé du colis) — voie privilégiée.
-        prix_piece = _calc_prix_piece(
-            article.get("format_prix"),
-            article.get("prix_achat_ht"),
-            article.get("qte_par_colis"),
-        ) if article is not None else None
+        # Valorisation directe au prix d'UNE pièce — voie privilégiée (format 'piece' :
+        # prix tel quel ; 'colis' : prix ÷ qte_par_colis ; 'kg' : prix × poids_unitaire).
+        prix_piece = _prix_piece_article(article) if article is not None else None
         if prix_piece is not None:
             valeur_ht = round(q * prix_piece, 2)
             # €/kg équivalent indicatif (cohérent avec la valeur), si le poids est connu.
