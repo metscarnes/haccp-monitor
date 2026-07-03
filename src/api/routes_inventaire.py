@@ -470,6 +470,22 @@ async def _flags_articles(db, cat_ids: set):
     return refs, habituels, recus
 
 
+_TRI_SQL = {
+    "az":         "c.designation COLLATE NOCASE",
+    "za":         "c.designation COLLATE NOCASE DESC",
+    "famille":    "c.famille, c.sous_famille, c.designation COLLATE NOCASE",
+    "fournisseur":"f.nom, c.designation COLLATE NOCASE",
+    "prix_asc":   "c.prix_achat_ht ASC",
+    "prix_desc":  "c.prix_achat_ht DESC",
+}
+
+
+def _normalise(s: str) -> str:
+    """Supprime les accents et met en minuscules pour la comparaison floue."""
+    import unicodedata
+    return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower()
+
+
 @router.get("/catalogue-recherche")
 async def recherche_catalogue(
     q: Optional[str] = Query(None),
@@ -477,18 +493,23 @@ async def recherche_catalogue(
     sous_famille: Optional[str] = Query(None),
     fournisseur_id: Optional[int] = Query(None),
     badge: Optional[str] = Query(None, description="reference | habituel | recu"),
+    tri: Optional[str] = Query("az", description="az | za | famille | fournisseur | prix_asc | prix_desc"),
     limit: int = Query(40, ge=1, le=200),
 ):
     """Recherche d'articles catalogue avec €/kg pré-calculé (autocomplete + rayon).
 
-    Filtres combinables : `q` (texte sur designation/code), `famille`,
-    `sous_famille`, `fournisseur_id`, et `badge` (référencé / habituel / reçu
-    récemment). Chaque article renvoyé porte les flags `est_reference`,
+    Filtres combinables : `q` (texte sur designation/code, insensible aux accents),
+    `famille`, `sous_famille`, `fournisseur_id`, `badge` (référencé / habituel / reçu
+    récemment) et `tri`. Chaque article renvoyé porte les flags `est_reference`,
     `est_habituel`, `recu_recemment` pour l'affichage de pastilles.
     """
+    q_norm = _normalise(q.strip()) if q and q.strip() else None
+
     clauses = ["c.actif = 1"]
     params: List = []
-    if q and q.strip():
+    # Si une recherche texte est demandée on élargit côté SQL sur designation/code
+    # (sans accent-matching) puis on refiltre en Python avec normalisation complète.
+    if q_norm:
         clauses.append("(c.designation LIKE ? OR c.code_article LIKE ?)")
         like = f"%{q.strip()}%"
         params += [like, like]
@@ -502,11 +523,11 @@ async def recherche_catalogue(
         clauses.append("c.fournisseur_id = ?")
         params.append(fournisseur_id)
 
+    order = _TRI_SQL.get(tri or "az", _TRI_SQL["az"])
     where = " AND ".join(clauses)
-    # On élargit la limite SQL si un filtre badge est demandé : le filtrage
-    # par badge se fait en Python (sur les flags), donc on récupère un peu plus
-    # large avant de retrancher à `limit`.
-    sql_limit = limit if not badge else min(limit * 5, 1000)
+    # On élargit la limite SQL si un filtre badge ou texte est demandé car le
+    # filtrage final (badge en Python, accents en Python) peut retrancher des lignes.
+    sql_limit = limit if (not badge and not q_norm) else min(limit * 10, 2000)
     params.append(sql_limit)
     async with get_db() as db:
         async with db.execute(
@@ -517,11 +538,19 @@ async def recherche_catalogue(
                 FROM catalogue_fournisseur c
                 LEFT JOIN fournisseurs f ON f.id = c.fournisseur_id
                 WHERE {where}
-                ORDER BY c.designation
+                ORDER BY {order}
                 LIMIT ?""",
             params,
         ) as cur:
             rows = [dict(r) for r in await cur.fetchall()]
+
+        # Refiltre accent-insensible en Python si recherche texte
+        if q_norm:
+            rows = [
+                r for r in rows
+                if q_norm in _normalise(r.get("designation") or "")
+                or q_norm in _normalise(r.get("code_article") or "")
+            ]
 
         refs, habituels, recus = await _flags_articles(db, {r["id"] for r in rows})
 

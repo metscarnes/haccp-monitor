@@ -4490,12 +4490,15 @@ async def get_receptions(
             "EXISTS ("
             "  SELECT 1 FROM reception_lignes rl2 "
             "  LEFT JOIN produits pr2 ON pr2.id = rl2.produit_id "
+            "  LEFT JOIN catalogue_fournisseur cf2 ON cf2.id = rl2.catalogue_fournisseur_id "
             "  WHERE rl2.reception_id = r.id "
             "    AND (pr2.nom LIKE ? COLLATE NOCASE "
+            "         OR cf2.designation LIKE ? COLLATE NOCASE "
+            "         OR rl2.designation_libre LIKE ? COLLATE NOCASE "
             "         OR rl2.numero_lot LIKE ? COLLATE NOCASE)"
             ")"
         )
-        params.extend([like, like])
+        params.extend([like, like, like, like])
 
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 

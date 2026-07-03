@@ -158,6 +158,23 @@
 }
 .invv-filtre-fournisseur:focus { border-color: var(--invv-accent); outline: none; }
 
+/* Tri */
+.invv-tri-zone {
+  display: flex; align-items: center; gap: .5rem;
+  margin-bottom: .9rem;
+}
+.invv-tri-lbl {
+  font-size: .82rem; font-weight: 600; color: var(--invv-muted);
+  white-space: nowrap;
+}
+.invv-tri-select {
+  min-height: 40px; padding: 0 .8rem;
+  background: var(--invv-surface); color: var(--invv-text);
+  border: 1px solid var(--invv-line); border-radius: 12px;
+  font-size: .9rem; font-weight: 600; cursor: pointer;
+}
+.invv-tri-select:focus { border-color: var(--invv-accent); outline: none; }
+
 /* Pastilles sur les articles (réf / habituel / reçu) */
 .invv-pastilles { display: inline-flex; gap: .15rem; margin-left: .35rem; vertical-align: middle; }
 .invv-pastille { font-size: .9rem; line-height: 1; }

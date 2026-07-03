@@ -49,6 +49,7 @@ const state = {
   fournisseurs: [],
   fournisseurActif: null,   // id fournisseur, ou null = tous
   badgeActif: null,         // 'reference' | 'habituel' | 'recu' | null
+  triActif: 'az',           // az | za | famille | fournisseur | prix_asc | prix_desc
   // article en cours de saisie dans la modale
   article: null,
   unite: 'kg',
@@ -293,6 +294,7 @@ async function rechercherArticles() {
   if (state.sousFamilleActive) params.set('sous_famille', state.sousFamilleActive);
   if (state.fournisseurActif) params.set('fournisseur_id', state.fournisseurActif);
   if (state.badgeActif) params.set('badge', state.badgeActif);
+  if (state.triActif) params.set('tri', state.triActif);
   try {
     const d = await api.get('/api/inventaire/catalogue-recherche?' + params.toString());
     rendreArticles(d.articles || []);
@@ -646,6 +648,12 @@ function init() {
   // Filtre fournisseur
   $('invv-filtre-fournisseur').onchange = (e) => {
     state.fournisseurActif = e.target.value || null;
+    rechercherArticles();
+  };
+
+  // Tri
+  $('invv-tri').onchange = (e) => {
+    state.triActif = e.target.value;
     rechercherArticles();
   };
 
