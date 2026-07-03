@@ -414,10 +414,16 @@ function calculerApercu(q) {
     let ppk = parseFloat($('invv-modal-poids-input').value);
     if (isNaN(ppk) || ppk <= 0) ppk = poidsPieceConnu();
     if (ppk) poidsKg = q * ppk;
-    // Voie privilégiée (= backend) : prix d'une pièce dérivé du colis → valeur directe,
-    // sans détour par le €/kg (cf. _calc_prix_piece).
-    const prixPiece = (a.format_prix === 'colis' && a.qte_par_colis > 0 && a.prix_achat_ht != null)
-      ? (+a.prix_achat_ht) / (+a.qte_par_colis) : null;
+    // Voie privilégiée (= backend _calc_prix_piece) : prix d'UNE pièce selon le format,
+    // valeur directe sans détour par le €/kg. 'piece' = prix tel quel ; 'colis' = ÷ qte ;
+    // 'kg' = × poids d'une pièce.
+    let prixPiece = null;
+    const prixHt = (a.prix_achat_ht != null) ? +a.prix_achat_ht : null;
+    if (prixHt != null) {
+      if (a.format_prix === 'piece') prixPiece = prixHt;
+      else if (a.format_prix === 'colis' && a.qte_par_colis > 0) prixPiece = prixHt / (+a.qte_par_colis);
+      else if (a.format_prix === 'kg' && a.poids_unitaire_kg > 0) prixPiece = prixHt * (+a.poids_unitaire_kg);
+    }
     if (prixPiece != null) valeur = Math.round(q * prixPiece * 100) / 100;
   }
   // Fallback €/kg (kg, colis, et pièce sans prix pièce dérivable).
@@ -461,12 +467,13 @@ async function validerLigne() {
 // ════════════════════════════════════════════════════════════
 
 // Le prix €/kg n'est modifiable que pour les formats que le backend sait reconvertir :
-// viande / format 'kg' (prix = €/kg direct) ou colis AVEC poids de colis connu.
+// format 'kg' (prix = €/kg direct), 'colis' AVEC poids de colis, 'piece' AVEC poids unitaire.
 function prixKgModifiable(a) {
   if (!a) return false;
-  const fam = String(a.famille || '').trim().toLowerCase();
-  if (fam === 'viande' || a.format_prix === 'kg') return true;
+  if (a.format_prix === 'kg') return true;
   if (a.format_prix === 'colis' && a.poids_colis_kg) return true;
+  if (a.format_prix === 'piece' && a.poids_unitaire_kg) return true;
+  if (String(a.famille || '').trim().toLowerCase() === 'viande') return true; // legacy
   return false;
 }
 

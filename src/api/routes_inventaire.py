@@ -612,9 +612,10 @@ async def modifier_prix_kg(catalogue_fournisseur_id: int, data: PrixKgUpdate):
         if article is None:
             raise HTTPException(404, "Article catalogue introuvable")
 
-        famille = (article.get("famille") or "").strip().lower()
         format_prix = article.get("format_prix")
-        if famille == "viande" or format_prix == "kg":
+        # Le format EXPLICITE prime (cohérent avec _calc_prix_kg) : on reconvertit le €/kg
+        # saisi vers prix_achat_ht selon l'unité du prix, pour que _calc_prix_kg le redonne.
+        if format_prix == "kg":
             nouveau_prix_achat = round(float(data.prix_kg), 4)
         elif format_prix == "colis":
             poids_colis = article.get("poids_colis_kg")
@@ -625,6 +626,18 @@ async def modifier_prix_kg(catalogue_fournisseur_id: int, data: PrixKgUpdate):
                     "impossible de reconvertir le €/kg en prix de colis.",
                 )
             nouveau_prix_achat = round(float(data.prix_kg) * float(poids_colis), 4)
+        elif format_prix == "piece":
+            poids_piece = article.get("poids_unitaire_kg")
+            if not poids_piece:
+                raise HTTPException(
+                    422,
+                    "Article à la pièce sans poids unitaire renseigné : "
+                    "impossible de reconvertir le €/kg en prix de pièce.",
+                )
+            nouveau_prix_achat = round(float(data.prix_kg) * float(poids_piece), 4)
+        elif (article.get("famille") or "").strip().lower() == "viande":
+            # Legacy : viande sans format exploitable → prix = €/kg direct.
+            nouveau_prix_achat = round(float(data.prix_kg), 4)
         else:
             raise HTTPException(
                 422,

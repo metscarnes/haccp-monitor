@@ -277,7 +277,7 @@ function construireGrilleVS(lignes, opts = {}) {
   const criteres = [
     ['Code article', (l) => esc(l.code_article) || '—'],
     ['Désignation', (l) => esc(l.designation)],
-    ['Format prix', (l) => l.format_prix === 'kg' ? '€/kg' : '€/colis'],
+    ['Format prix', (l) => l.format_prix === 'kg' ? '€/kg' : l.format_prix === 'piece' ? '€/pièce' : '€/colis'],
     ['Prix d\'achat', (l) => fmtEuro(l.prix_achat_ht)],
     ['Poids colis', (l) => l.poids_colis_kg != null ? l.poids_colis_kg.toFixed(3) + ' kg' : '—'],
   ];
