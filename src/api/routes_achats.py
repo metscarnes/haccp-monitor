@@ -3997,6 +3997,7 @@ async def _historiser_prix_reception(db, reception_id: int, source: str = "bl") 
         """SELECT rl.id AS reception_ligne_id, rl.prix_unitaire_ht AS prix_bl,
                   rl.catalogue_fournisseur_id AS cat_id,
                   cf.format_prix, cf.prix_achat_ht AS prix_ref, cf.poids_colis_kg, cf.famille,
+                  cf.poids_unitaire_kg, cf.qte_par_colis,
                   r.date_reception AS date_reception
            FROM reception_lignes rl
            JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
@@ -4012,8 +4013,10 @@ async def _historiser_prix_reception(db, reception_id: int, source: str = "bl") 
     # arrivés), pas la date de clôture — plus juste pour la courbe en cas de saisie différée.
     n = 0
     for l in lignes:
-        prix_kg = _calc_prix_kg(l["format_prix"], l["prix_bl"], l["poids_colis_kg"], l["famille"])
-        prix_kg_ref = _calc_prix_kg(l["format_prix"], l["prix_ref"], l["poids_colis_kg"], l["famille"])
+        # €/kg du prix BL et du prix de référence, en réutilisant format + poids du catalogue
+        # (les 3 formats kg/colis/pièce sont gérés). Le prix diffère (BL vs référence).
+        prix_kg     = _prix_kg_article({**l, "prix_achat_ht": l["prix_bl"]})
+        prix_kg_ref = _prix_kg_article({**l, "prix_achat_ht": l["prix_ref"]})
         date_constat = l.get("date_reception") or date.today().isoformat()
         await db.execute(
             """INSERT INTO historique_prix_achat
@@ -4153,6 +4156,7 @@ async def historique_prix_catalogue(catalogue_id: int, limit: int = Query(60, ge
         art = await cur.fetchone()
         if not art:
             raise HTTPException(404, "Article introuvable")
+        art = dict(art)
 
         cur2 = await db.execute(
             """SELECT date_constat, prix_kg, prix_ht, source, applique_au_catalogue
