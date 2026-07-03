@@ -1035,6 +1035,12 @@ function mvpAfficherSucces(marge) {
   mvpMontrerEcran('succes');
 }
 
+// Unité de vente par défaut selon le format d'achat : kg→kg, pièce→pièce, colis→pièce
+// (un colis, ex. carton de 6 bouteilles, se revend à l'unité). Défaut 'kg' si inconnu.
+function uniteVenteParDefaut(formatAchat) {
+  return (formatAchat === 'piece' || formatAchat === 'colis') ? 'piece' : 'kg';
+}
+
 // ── Étape 3 — Créer un produit de vente + lier ───────────────────────
 // Ouvre le formulaire pré-rempli depuis l'article achat. La famille / sous-famille
 // sont héritées (masquées, envoyées telles quelles au catalogue de vente).
@@ -1044,11 +1050,13 @@ function creerEtLierProduitVente() {
   mvpMontrerEcran('creer');
   document.getElementById('mvpc-nom').value = a.designation || '';
   document.getElementById('mvpc-prix').value = '';
-  document.getElementById('mvpc-unite').value = 'kg';
+  const unite = uniteVenteParDefaut(a.format_prix);
+  document.getElementById('mvpc-unite').value = unite;
   document.getElementById('mvpc-poids-piece').value = '';
-  document.getElementById('mvpc-zone-poids').hidden = true;
+  document.getElementById('mvpc-zone-poids').hidden = unite !== 'piece';
   document.getElementById('mvpc-marge').hidden = true;
   document.getElementById('mvpc-poids-aide').hidden = true;
+  if (unite === 'piece') mvpcPreremplirPoids();   // poids + aide cohérents dès l'ouverture
   document.getElementById('mvpc-famille-lbl').textContent = a.famille || '—';
   document.getElementById('mvpc-nom').focus();
 }
@@ -1063,40 +1071,64 @@ function mvpcPreremplirPoids() {
   if (defaut != null && defaut > 0 && !champ.value) {
     champ.value = defaut;
   }
-  if (defaut != null && defaut > 0) {
-    aide.textContent = `Repris de l'article d'achat : ${defaut} kg (modifiable).`;
-    aide.hidden = false;
+  // Coût d'achat d'une pièce connu (prix_piece) → c'est lui qui sert à la marge ; sinon
+  // la marge se calcule via €/kg × poids, et le poids est alors déterminant.
+  if (a && a.prix_piece != null) {
+    aide.innerHTML = `Coût d'achat : <strong>${fmtPrix(a.prix_piece)} € la pièce</strong>. `
+      + `Le poids ne sert qu'aux étiquettes.`;
+  } else if (defaut != null && defaut > 0) {
+    aide.textContent = `Poids repris de l'achat : ${defaut} kg (modifiable) — sert au calcul de la marge.`;
   } else {
-    aide.textContent = "L'article d'achat n'a pas de poids unitaire renseigné — saisissez-le.";
-    aide.hidden = false;
+    aide.textContent = "Pas de poids sur l'article d'achat — saisissez-le pour calculer la marge.";
   }
+  aide.hidden = false;
 }
 
-// Marge brute en direct, calculée sur le €/kg de l'article d'achat source.
-// Miroir de _calc_marge backend (unité kg = €/kg ; pièce = €/kg × poids d'une pièce).
+// Marge brute en direct — MIROIR FIDÈLE de _calc_marge backend.
+// - vente au kg    : coût = €/kg d'achat.
+// - vente à la pièce : coût = prix d'UNE pièce dérivé du colis (prix_piece, PRIORITAIRE, sans
+//   dépendre d'un poids) ; repli seulement si prix_piece indérivable → €/kg × poids saisi.
 // TVA reprise de l'article d'achat (défaut alimentaire 5,5 %).
+// Renvoie {marge, unite, taux, coef, base} ou {motif} explicatif si incalculable.
 function mvpcCalcMarge() {
   const a = dernierArticleCree;
-  if (!a) return null;
-  const achatKg = a.prix_kg != null ? Number(a.prix_kg) : null;
+  if (!a) return { motif: 'pas_article' };
   const ttc = parseFloat(document.getElementById('mvpc-prix').value);
-  if (achatKg == null || isNaN(ttc) || !(ttc > 0)) return null;
+  if (isNaN(ttc) || !(ttc > 0)) return { motif: 'pas_prix' };
+
   const tva = a.tva_percent != null ? Number(a.tva_percent) : 5.5;
   const venteHt = ttc / (1 + tva / 100);
   const unite = document.getElementById('mvpc-unite').value;
+  const achatKg    = a.prix_kg    != null ? Number(a.prix_kg)    : null;
+  const achatPiece = a.prix_piece != null ? Number(a.prix_piece) : null;
+
   let cout, u;
+  // Équivalent €/kg (pièce seulement) : pour comparer vente vs achat sur la base de l'achat.
+  let venteKg = null, achatKgEquiv = null;
   if (unite === 'piece') {
-    const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
-    if (isNaN(poids) || !(poids > 0)) return null;
-    cout = achatKg * poids;
+    // Coût d'une pièce : prix d'achat d'une pièce (colis ÷ qté) si connu, sinon €/kg × poids.
+    if (achatPiece != null) {
+      cout = achatPiece;
+    } else {
+      const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
+      if (achatKg == null || isNaN(poids) || !(poids > 0)) return { motif: 'pas_cout_piece' };
+      cout = achatKg * poids;
+    }
     u = 'pièce';
+    // Équivalent €/kg si le poids d'une pièce est connu : vendu = venteHT/poids, acheté = €/kg.
+    const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
+    if (poids > 0) {
+      venteKg = venteHt / poids;
+      achatKgEquiv = achatKg != null ? achatKg : (cout / poids);
+    }
   } else {
-    cout = achatKg;
+    if (achatKg == null) return { motif: 'pas_kg' };
+    cout = achatKg;   // achat déjà au kg
     u = 'kg';
   }
   const marge = venteHt - cout;
   return {
-    marge, unite: u,
+    marge, unite: u, cout, venteKg, achatKgEquiv,
     taux: venteHt > 0 ? marge / venteHt : null,
     coef: cout > 0 ? ttc / cout : null,
   };
@@ -1106,12 +1138,12 @@ function mvpcCalcMarge() {
 function mvpcMajMarge() {
   const zone = document.getElementById('mvpc-marge');
   const m = mvpcCalcMarge();
-  if (!m) {
-    // Prix saisi mais achat €/kg indisponible → le signaler brièvement.
+  if (m.motif) {
+    // N'afficher un message que si un prix est saisi et que le coût d'achat manque.
     const a = dernierArticleCree;
     const ttc = parseFloat(document.getElementById('mvpc-prix').value);
-    if (a && (a.prix_kg == null) && ttc > 0) {
-      zone.innerHTML = '<span style="color:#9ca3af;">€/kg d\'achat indisponible — marge non calculable.</span>';
+    if (a && ttc > 0 && (m.motif === 'pas_kg' || m.motif === 'pas_cout_piece')) {
+      zone.innerHTML = '<span style="color:#9ca3af;">Coût d\'achat indisponible — marge non calculable.</span>';
       zone.hidden = false;
     } else {
       zone.hidden = true;
@@ -1121,8 +1153,18 @@ function mvpcMajMarge() {
   const taux = m.taux != null ? ` · ${(m.taux * 100).toFixed(0)} %` : '';
   const coef = m.coef != null ? ` · coef ${m.coef.toFixed(2)}` : '';
   const col = m.marge >= 0 ? '#2f7d3a' : '#c1452c';
-  zone.innerHTML = `<span style="color:${col};">Marge : ${fmtPrix(m.marge)} € / ${m.unite}${taux}</span>`
-                 + `<span style="color:#6b7280;font-weight:400;">${coef}</span>`;
+  // Équivalent €/kg (vente à la pièce) : comparer vente vs achat sur la même base que l'achat.
+  const equiv = (m.unite === 'pièce' && m.venteKg != null && m.achatKgEquiv != null)
+    ? `<div style="color:#6b7280;font-weight:400;font-size:var(--text-xs);margin-top:2px;">
+         ≈ vendu ${fmtPrix(m.venteKg)} €/kg HT · acheté ${fmtPrix(m.achatKgEquiv)} €/kg
+       </div>`
+    : '';
+  // Rappel du coût d'achat HT utilisé (par kg ou par pièce selon l'unité) pour vérifier d'un
+  // coup d'œil ; la marge est nette de TVA (calcul sur le prix HT).
+  zone.innerHTML =
+      `<span style="color:${col};">Marge : ${fmtPrix(m.marge)} € / ${m.unite}${taux}</span>`
+    + `<span style="color:#6b7280;font-weight:400;">${coef} · achat ${fmtPrix(m.cout)} €/${m.unite} HT</span>`
+    + equiv;
   zone.hidden = false;
 }
 

@@ -665,6 +665,39 @@ function malErreur(msg) {
   z.textContent = msg; z.hidden = false;
 }
 
+// Marge qu'un article d'achat donnerait POUR le produit de vente courant (malProduitCourant).
+// Miroir de _calc_marge : vente kg → coût = €/kg ; vente pièce → coût = prix pièce (colis ÷ qté)
+// sinon €/kg × poids. Marge sur le prix HT (nette de TVA). null si non calculable.
+function malCalcMarge(article) {
+  const p = malProduitCourant;
+  if (!p || !article) return null;
+  const ttc = p.prix_vente_ttc != null ? Number(p.prix_vente_ttc) : null;
+  if (ttc == null || !(ttc > 0)) return null;
+  const tva = p.tva_percent != null ? Number(p.tva_percent) : 5.5;
+  const venteHt = ttc / (1 + tva / 100);
+  const unite = p.unite_vente || 'kg';
+  const achatKg    = article.prix_kg    != null ? Number(article.prix_kg)    : null;
+  const achatPiece = article.prix_piece != null ? Number(article.prix_piece) : null;
+  const poids = p.poids_piece_kg != null ? Number(p.poids_piece_kg) : null;
+
+  let cout, u, venteKg = null, achatKgEquiv = null;
+  if (unite === 'piece') {
+    if (achatPiece != null) cout = achatPiece;
+    else if (achatKg != null && poids > 0) cout = achatKg * poids;
+    else return null;
+    u = 'pièce';
+    if (poids > 0) { venteKg = venteHt / poids; achatKgEquiv = achatKg != null ? achatKg : cout / poids; }
+  } else {
+    if (achatKg == null) return null;
+    cout = achatKg;
+    u = 'kg';
+  }
+  const marge = venteHt - cout;
+  return { marge, unite: u, cout, venteKg, achatKgEquiv,
+           taux: venteHt > 0 ? marge / venteHt : null,
+           coef: cout > 0 ? ttc / cout : null };
+}
+
 async function malRechercherAchats(q) {
   const zone = document.getElementById('mal-resultats');
   try {
@@ -685,12 +718,23 @@ async function malRechercherAchats(q) {
       const prix = a.prix_kg != null
         ? `${fmtPrix(a.prix_kg)} € HT/kg`
         : '€/kg indisponible';
+      // Marge simulée pour le produit de vente courant, pour choisir le meilleur fournisseur.
+      const m = malCalcMarge(a);
+      let margeLigne = '';
+      if (m) {
+        const taux = m.taux != null ? ` · ${(m.taux * 100).toFixed(0)} %` : '';
+        const col = m.marge >= 0 ? '#2f7d3a' : '#c1452c';
+        const equiv = (m.unite === 'pièce' && m.venteKg != null && m.achatKgEquiv != null)
+          ? ` · ≈ vendu ${fmtPrix(m.venteKg)} €/kg · acheté ${fmtPrix(m.achatKgEquiv)} €/kg` : '';
+        margeLigne = `<br><span style="color:${col};font-size:var(--text-xs);font-weight:600;">Marge : ${fmtPrix(m.marge)} € / ${m.unite}${taux}</span>`
+                   + `<span style="color:#6b7280;font-size:var(--text-xs);">${equiv}</span>`;
+      }
       return `
         <button type="button" class="ach-btn" data-aid="${a.id}" data-gid="${a.groupe_id || ''}"
                 style="justify-content:space-between;text-align:left;padding:10px 12px;width:100%;">
           <span>
             <strong>${escHtml(a.designation)}</strong>${relie}<br>
-            <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(a.fournisseur_nom || '')}${a.code_article ? ' · ' + escHtml(a.code_article) : ''} — ${prix}</span>
+            <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(a.fournisseur_nom || '')}${a.code_article ? ' · ' + escHtml(a.code_article) : ''} — ${prix}</span>${margeLigne}
           </span>
         </button>`;
     }).join('');

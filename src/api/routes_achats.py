@@ -2641,6 +2641,7 @@ async def comparatif_recherche_achats(q: str = "", _=Depends(require_admin)):
         for r in await cur.fetchall():
             a = dict(r)
             a["prix_kg"] = _prix_kg_article(a)
+            a["prix_piece"] = _prix_piece_article(a)
             articles.append(a)
         return {"total": len(articles), "articles": articles}
 

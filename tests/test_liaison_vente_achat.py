@@ -57,6 +57,8 @@ async def test_recherche_achats_renvoie_prix_kg_et_groupe(app_client, db):
     # Recherche par code article aussi.
     r2 = await app_client.get("/api/achats/comparatif/recherche-achats?q=ENT01")
     assert r2.json()["total"] == 1
+    # prix_piece exposé aussi (nécessaire à la marge à la pièce côté vente).
+    assert "prix_piece" in art
 
 
 @pytest.mark.asyncio
@@ -142,6 +144,34 @@ async def test_prix_kg_viande_repli_legacy_sans_format(app_client, db):
         "famille": "Viande", "sous_famille": "Boeuf",
     })
     assert r.json()["prix_kg"] == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
+async def test_marge_limonade_kg_et_piece(app_client, db):
+    """Cas limonade réel : bouteille 0,75 kg achetée 3,30 €/pièce, vendue 9,90 €. Marge sur HT.
+    - au kg    : achat €/kg = 3,30/0,75 = 4,40 ; marge = 9,90/1,055 − 4,40 ≈ 4,98 (53 %).
+    - à la pièce : coût = 3,30 € la pièce ; marge = 9,90/1,055 − 3,30 ≈ 6,08."""
+    from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
+
+    # format 'piece' : le prix saisi EST le prix d'une pièce (3,30 €) ; poids 0,75 kg.
+    art = {"format_prix": "piece", "prix_achat_ht": 3.30,
+           "poids_unitaire_kg": 0.75, "famille": "Traiteur"}
+    prix_kg    = _prix_kg_article(art)      # 3.30 / 0.75 = 4.40 €/kg
+    prix_piece = _prix_piece_article(art)   # 3.30 € la pièce
+    assert prix_kg == pytest.approx(4.40)
+    assert prix_piece == pytest.approx(3.30)
+
+    # Vente au kg 9,90 €/kg.
+    mk = _calc_marge(9.90, 5.5, prix_kg, unite_vente="kg")
+    assert mk["cout_matiere"] == pytest.approx(4.40)
+    assert mk["marge"] == pytest.approx(9.90 / 1.055 - 4.40, abs=0.01)   # ≈ 4,98 €
+    assert round(mk["taux_marge"] * 100) == 53
+
+    # Vente à la pièce 9,90 € la bouteille → coût = 3,30 € (prix pièce, pas via le poids).
+    mp = _calc_marge(9.90, 5.5, prix_kg, unite_vente="piece",
+                     poids_piece_kg=0.75, achat_ref_piece=prix_piece)
+    assert mp["cout_matiere"] == pytest.approx(3.30)
+    assert mp["marge"] == pytest.approx(9.90 / 1.055 - 3.30, abs=0.01)
 
 
 @pytest.mark.asyncio
