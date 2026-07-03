@@ -83,6 +83,14 @@ function bindEvents() {
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
   document.getElementById('btn-supprimer-article').addEventListener('click', supprimerArticle);
+  // Relier un article EXISTANT à un produit de vente (réutilise la modale de création).
+  document.getElementById('btn-relier-vente').addEventListener('click', () => {
+    const id = parseInt(document.getElementById('a-id').value);
+    const a = articles.find(x => x.id === id);
+    if (!a) return;
+    fermerModal();
+    ouvrirModalVentePropose(a);
+  });
   document.getElementById('import-fermer').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-lancer').addEventListener('click', lancerImport);
@@ -598,6 +606,7 @@ function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouvel article';
   document.getElementById('btn-supprimer-article').hidden = true;
+  document.getElementById('btn-relier-vente').hidden = true;  // pas d'id tant que non créé
   const hp = document.getElementById('hist-prix');
   if (hp) hp.hidden = true;  // pas d'historique pour un nouvel article
   viderForm();
@@ -626,6 +635,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
   recalcPoidsColis();
   document.getElementById('btn-supprimer-article').hidden = false;
+  document.getElementById('btn-relier-vente').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-article').hidden = false;
   chargerHistoriquePrix(a.id);

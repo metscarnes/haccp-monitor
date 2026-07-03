@@ -2599,6 +2599,42 @@ async def comparatif_recherche_ventes(q: str = "", _=Depends(require_admin)):
         return {"total": len(produits), "produits": produits}
 
 
+@router.get("/comparatif/recherche-achats")
+async def comparatif_recherche_achats(q: str = "", _=Depends(require_admin)):
+    """Recherche un article du catalogue d'ACHAT par désignation (ou code) et renvoie, pour
+    chacun, le groupe de comparaison auquel il est déjà rattaché (s'il y en a un) + son €/kg.
+    Miroir de recherche-ventes : sert à partir d'un produit de vente pour retrouver l'article
+    d'achat à lui associer (suivi de marge)."""
+    terme = (q or "").strip()
+    async with get_db() as db:
+        # Un article peut appartenir à plusieurs groupes (PK composite) : on n'en garde qu'un
+        # représentatif (le plus petit groupe_id) via une sous-requête, pour éviter les doublons.
+        sql = """
+            SELECT c.*, f.nom AS fournisseur_nom,
+                   (SELECT MIN(gl.groupe_id) FROM comparatif_groupe_ligne gl
+                    WHERE gl.catalogue_fournisseur_id = c.id) AS groupe_id,
+                   (SELECT g.nom FROM comparatif_groupe_ligne gl
+                    JOIN comparatif_groupe g ON g.id = gl.groupe_id
+                    WHERE gl.catalogue_fournisseur_id = c.id
+                    ORDER BY gl.groupe_id LIMIT 1) AS groupe_nom
+            FROM catalogue_fournisseur c
+            JOIN fournisseurs f ON f.id = c.fournisseur_id
+            WHERE f.boutique_id = 1 AND c.actif = 1
+        """
+        params: list = []
+        if terme:
+            sql += " AND (c.designation LIKE ? OR c.code_article LIKE ?)"
+            params.extend([f"%{terme}%", f"%{terme}%"])
+        sql += " ORDER BY c.designation LIMIT 50"
+        cur = await db.execute(sql, params)
+        articles = []
+        for r in await cur.fetchall():
+            a = dict(r)
+            a["prix_kg"] = _prix_kg_article(a)
+            articles.append(a)
+        return {"total": len(articles), "articles": articles}
+
+
 @router.post("/comparatif/groupes/from-vente", status_code=201)
 async def create_groupe_from_vente(body: ComparatifVenteLink, _=Depends(require_admin)):
     """Crée un groupe de comparaison nommé d'après un produit de vente et lui associe ce produit,

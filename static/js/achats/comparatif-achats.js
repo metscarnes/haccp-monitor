@@ -1049,7 +1049,17 @@ async function reorganiserViande() {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  chargerGroupes();
+  // Deep-link : ?groupe=<id> ouvre directement ce groupe (venu du catalogue de vente/achat).
+  const groupeUrl = new URLSearchParams(location.search).get('groupe');
+  chargerGroupes(groupeUrl || undefined).then(() => {
+    if (groupeUrl) {
+      const sel = $('select-groupe');
+      if (sel.value === String(groupeUrl)) {
+        majBoutonsGroupe();
+        afficherVS(Number(groupeUrl));
+      }
+    }
+  });
   majBadgeMargeKo();
   majBadgeVentesNonReliees();
 

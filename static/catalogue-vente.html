@@ -269,11 +269,64 @@
         <div class="ach-modal-footer" style="justify-content:space-between;">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer" hidden>Supprimer</button>
           <div style="display:flex;gap:var(--space-2);">
+            <button type="button" class="ach-btn" id="btn-relier-achat" hidden>🔗 Relier à un achat</button>
             <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
             <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ── Modal « Relier à un article d'achat » (suivi de marge) ── -->
+  <div class="ach-modal" id="modal-achat-lie" hidden>
+    <div class="ach-modal-card" style="max-width:560px;">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Relier à un article d'achat</h2>
+        <button class="ach-modal-fermer" id="mal-fermer">✕</button>
+      </header>
+
+      <div style="padding:var(--space-3);">
+        <p style="margin:0 0 var(--space-3);color:#5a3e28;">
+          Produit de vente : <strong id="mal-nom"></strong><br>
+          <span style="color:#6b7280;font-size:var(--text-sm);">
+            Relie-le à l'article que tu achètes pour connaître ta marge brute. Tu peux aussi
+            ouvrir le comparateur pour arbitrer entre plusieurs fournisseurs.
+          </span>
+        </p>
+
+        <!-- Écran 1 : recherche + liaison directe -->
+        <div id="mal-lier">
+          <label style="font-size:var(--text-sm);font-weight:600;color:#4b5563;">
+            Rechercher l'article d'achat
+          </label>
+          <input type="search" id="mal-search" placeholder="Ex : Entrecôte, code article…"
+                 style="width:100%;min-height:44px;padding:.5rem .75rem;border:1px solid #d4c5af;border-radius:8px;font-size:1rem;margin:6px 0 10px;">
+          <div id="mal-resultats"
+               style="max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:6px;"></div>
+          <div style="margin-top:var(--space-3);display:flex;gap:var(--space-2);justify-content:space-between;">
+            <button type="button" class="ach-btn" id="mal-annuler">Fermer</button>
+            <button type="button" class="ach-btn" id="mal-comparateur"
+                    title="Ouvrir le comparateur pour arbitrer entre plusieurs fournisseurs">
+              📊 Vérifier dans le comparateur →
+            </button>
+          </div>
+        </div>
+
+        <!-- Écran 2 : succès + marge -->
+        <div id="mal-succes" hidden style="text-align:center;">
+          <div style="font-size:2rem;">✅</div>
+          <p style="margin:8px 0;color:#2f7d3a;font-weight:600;">Produit relié au suivi de marge</p>
+          <div id="mal-succes-marge"
+               style="background:#f3ebdf;border-radius:10px;padding:14px;margin:12px 0;color:#5a3e28;"></div>
+          <div style="display:flex;gap:var(--space-2);justify-content:center;">
+            <button type="button" class="ach-btn" id="mal-succes-comparateur">📊 Ouvrir le comparateur</button>
+            <button type="button" class="ach-btn ach-btn--primary" id="mal-succes-ok">Terminé</button>
+          </div>
+        </div>
+
+        <div id="mal-erreur" class="ach-form-erreur" hidden style="margin-top:var(--space-2);"></div>
+      </div>
     </div>
   </div>
 

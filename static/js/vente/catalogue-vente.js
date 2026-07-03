@@ -59,6 +59,27 @@ function bindEvents() {
   document.getElementById('btn-supprimer').addEventListener('click', supprimer);
   document.getElementById('form-vente').addEventListener('submit', sauver);
 
+  // Modal « Relier à un article d'achat » (suivi de marge)
+  document.getElementById('btn-relier-achat').addEventListener('click', () => {
+    const id = parseInt(document.getElementById('v-id').value);
+    if (id) { fermerModal(); ouvrirModalAchatLie(id); }
+  });
+  document.getElementById('mal-fermer').addEventListener('click', fermerModalAchatLie);
+  document.getElementById('mal-annuler').addEventListener('click', fermerModalAchatLie);
+  document.getElementById('mal-succes-ok').addEventListener('click', fermerModalAchatLie);
+  document.getElementById('mal-comparateur').addEventListener('click', ouvrirComparateurDepuisVente);
+  document.getElementById('mal-succes-comparateur').addEventListener('click', ouvrirComparateurDepuisVente);
+  document.getElementById('mal-search').addEventListener('input', e => {
+    clearTimeout(malRechercheTimer);
+    const q = e.target.value.trim();
+    malRechercheTimer = setTimeout(() => malRechercherAchats(q), 250);
+  });
+  document.getElementById('mal-resultats').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-aid]');
+    if (!btn) return;
+    malLierAArticle(btn.dataset.aid, btn.dataset.gid || null);
+  });
+
   // Filtres
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-inactifs').addEventListener('change', charger);
@@ -215,6 +236,7 @@ function afficherTable(liste) {
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
+        <button class="ach-btn ach-btn--small" onclick="ouvrirModalAchatLie(${p.id})" title="Relier à un article d'achat (suivi de marge)">🔗</button>
         <button class="ach-btn ach-btn--small btn-etiq-prix" data-id="${p.id}" title="Imprimer étiquette prix">🏷️</button>
         ${p.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${p.id}, false)" title="Désactiver">✕</button>`
@@ -424,6 +446,7 @@ function ouvrirNouveau() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouveau produit fini';
   document.getElementById('btn-supprimer').hidden = true;
+  document.getElementById('btn-relier-achat').hidden = true;  // pas d'id tant que non créé
   viderForm();
   peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), '');
   document.getElementById('modal-vente').hidden = false;
@@ -455,6 +478,7 @@ function ouvrirEdition(id) {
   majSousFamille(p.famille || '', document.getElementById('v-sous-famille'), p.sous_famille || '');
   document.getElementById('v-code').value = p.code_vente || '';
   document.getElementById('btn-supprimer').hidden = false;
+  document.getElementById('btn-relier-achat').hidden = false;
   document.getElementById('form-erreur').hidden = true;
   document.getElementById('modal-vente').hidden = false;
 }
@@ -505,8 +529,14 @@ async function sauver(e) {
     const method = modeEdition ? 'PUT' : 'POST';
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    const produit = await r.json().catch(() => null);
     fermerModal();
     await charger();
+    // Après CRÉATION d'un produit de vente, proposer de le relier à un article d'achat
+    // (suivi de marge). En édition, on ne déclenche rien (bouton dédié dans la fiche).
+    if (!modeEdition && produit && produit.id) {
+      ouvrirModalAchatLie(produit.id);
+    }
   } catch (err) {
     const z = document.getElementById('form-erreur');
     z.textContent = err.message; z.hidden = false;
@@ -592,6 +622,189 @@ function fmtTva(v) {
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtPrix(v) { return (v ?? 0).toFixed(2); }
+
+// ── Modal « Relier à un article d'achat » (suivi de marge) ───
+// Miroir du flux achat→vente (modale mvp-* de catalogue-achats.js), sens inverse :
+// on part d'un produit de VENTE et on lui rattache un article d'ACHAT. La liaison
+// passe par le groupe comparatif : from-vente crée le groupe si besoin, /lignes ajoute
+// l'article d'achat, puis la référence est fixée pour un calcul de marge immédiat.
+let malProduitCourant = null;   // produit de vente ciblé par la modale
+let malGroupeCourant  = null;   // groupe du produit (connu après liaison) → deep-link comparateur
+let malRechercheTimer = null;
+
+function ouvrirModalAchatLie(produitId) {
+  const p = produits.find(x => x.id === produitId);
+  if (!p) return;
+  malProduitCourant = p;
+  malGroupeCourant  = null;
+  document.getElementById('mal-nom').textContent = p.nom || '(sans nom)';
+  document.getElementById('mal-erreur').hidden = true;
+  document.getElementById('mal-succes').hidden = true;
+  document.getElementById('mal-lier').hidden = false;
+  document.getElementById('mal-resultats').innerHTML =
+    '<p style="color:#9ca3af;font-size:var(--text-sm);">Tapez pour rechercher…</p>';
+  const input = document.getElementById('mal-search');
+  input.value = '';
+  document.getElementById('modal-achat-lie').hidden = false;
+  // Pré-remplit avec le nom du produit pour proposer d'emblée les achats proches.
+  const pref = (p.nom || '').trim();
+  if (pref) { input.value = pref; malRechercherAchats(pref); }
+  input.focus();
+}
+
+function fermerModalAchatLie() {
+  document.getElementById('modal-achat-lie').hidden = true;
+  malProduitCourant = null;
+  malGroupeCourant  = null;
+}
+
+function malErreur(msg) {
+  const z = document.getElementById('mal-erreur');
+  z.textContent = msg; z.hidden = false;
+}
+
+async function malRechercherAchats(q) {
+  const zone = document.getElementById('mal-resultats');
+  try {
+    const token = localStorage.getItem('admin_token');
+    const headers = token ? { Authorization: 'Bearer ' + token } : {};
+    const r = await fetch(`/api/achats/comparatif/recherche-achats?q=${encodeURIComponent(q)}`, { headers });
+    if (!r.ok) throw new Error('Recherche impossible');
+    const data = await r.json();
+    const articles = data.articles || [];
+    if (!articles.length) {
+      zone.innerHTML = '<p style="color:#9ca3af;font-size:var(--text-sm);">Aucun article d\'achat trouvé.</p>';
+      return;
+    }
+    zone.innerHTML = articles.map(a => {
+      const relie = a.groupe_id
+        ? `<span class="ach-badge ach-badge--dlc" style="margin-left:6px;">groupe : ${escHtml(a.groupe_nom || '')}</span>`
+        : '<span class="ach-badge ach-badge--no-dlc" style="margin-left:6px;">sans suivi</span>';
+      const prix = a.prix_kg != null
+        ? `${fmtPrix(a.prix_kg)} € HT/kg`
+        : '€/kg indisponible';
+      return `
+        <button type="button" class="ach-btn" data-aid="${a.id}" data-gid="${a.groupe_id || ''}"
+                style="justify-content:space-between;text-align:left;padding:10px 12px;width:100%;">
+          <span>
+            <strong>${escHtml(a.designation)}</strong>${relie}<br>
+            <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(a.fournisseur_nom || '')}${a.code_article ? ' · ' + escHtml(a.code_article) : ''} — ${prix}</span>
+          </span>
+        </button>`;
+    }).join('');
+  } catch (e) {
+    zone.innerHTML = `<p style="color:#c1452c;font-size:var(--text-sm);">${escHtml(e.message)}</p>`;
+  }
+}
+
+// Rattache l'article d'achat choisi au produit de vente courant. Crée le groupe du produit
+// s'il n'en a pas encore, ajoute l'article comme ligne fournisseur, puis (groupe neuf) le
+// définit comme référence pour que la marge se calcule immédiatement.
+async function malLierAArticle(articleId, articleGroupeId) {
+  const p = malProduitCourant;
+  if (!p) return;
+  const token = localStorage.getItem('admin_token');
+  const authHeaders = token ? { Authorization: 'Bearer ' + token } : {};
+  const jsonHeaders = { 'Content-Type': 'application/json', ...authHeaders };
+  try {
+    // 1) Groupe du produit de vente : réutilise s'il existe, sinon le crée (from-vente).
+    let groupeId = await malGroupeDuProduit(p.id, jsonHeaders);
+    const groupeNouveau = !groupeId;
+    if (!groupeId) {
+      const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
+        method: 'POST', headers: jsonHeaders,
+        body: JSON.stringify({ catalogue_vente_id: p.id }),
+      });
+      if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');
+      groupeId = (await rg.json()).id;
+    }
+    malGroupeCourant = groupeId;
+
+    // 2) Ajoute l'article d'achat comme ligne fournisseur du groupe.
+    const rl = await fetch(`/api/achats/comparatif/groupes/${groupeId}/lignes`, {
+      method: 'POST', headers: jsonHeaders,
+      body: JSON.stringify({ catalogue_fournisseur_id: Number(articleId) }),
+    });
+    if (!rl.ok) throw new Error((await rl.json()).detail || 'Liaison impossible');
+
+    // 3) Sur un groupe NEUF, définir cet achat comme référence du produit → marge calculable.
+    //    Sur un groupe existant, on respecte la référence déjà choisie par l'utilisateur.
+    let detail = null;
+    try {
+      if (groupeNouveau) {
+        const rr = await fetch(`/api/achats/comparatif/groupes/${groupeId}/ventes/${p.id}/reference`, {
+          method: 'PUT', headers: jsonHeaders,
+          body: JSON.stringify({ ligne_choisie_id: Number(articleId) }),
+        });
+        if (rr.ok) detail = await rr.json();
+      } else {
+        const rd = await fetch(`/api/achats/comparatif/groupes/${groupeId}`, { headers: authHeaders });
+        if (rd.ok) detail = await rd.json();
+      }
+    } catch (_) { /* marge = bonus, on continue */ }
+
+    const pv = detail ? (detail.produits_vente || []).find(x => x.id === p.id) : null;
+    malAfficherSucces(pv?.marge || null);
+  } catch (e) {
+    malErreur('Erreur : ' + e.message);
+  }
+}
+
+// Retrouve le groupe déjà associé à un produit de vente (via recherche-ventes), ou null.
+async function malGroupeDuProduit(venteId, headers) {
+  try {
+    const nom = (malProduitCourant?.nom || '').trim();
+    const r = await fetch(`/api/achats/comparatif/recherche-ventes?q=${encodeURIComponent(nom)}`, { headers });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const trouve = (data.produits || []).find(x => x.id === venteId);
+    return trouve?.groupe_id || null;
+  } catch (_) { return null; }
+}
+
+function malAfficherSucces(marge) {
+  const zone = document.getElementById('mal-succes-marge');
+  if (marge && marge.marge != null) {
+    const taux = marge.taux_marge != null ? ` (${(marge.taux_marge * 100).toFixed(0)} %)` : '';
+    const u = marge.unite === 'piece' ? 'pièce' : 'kg';
+    zone.innerHTML = `
+      Marge brute : <strong style="color:#2f7d3a;">${fmtPrix(marge.marge)} € / ${u}${taux}</strong><br>
+      <span style="font-size:var(--text-sm);color:#6b7280;">
+        Vente HT ${fmtPrix(marge.prix_vente_ht)} € − coût matière ${fmtPrix(marge.cout_matiere)} €
+      </span>`;
+  } else {
+    zone.innerHTML = `<span style="color:#6b7280;">
+      Marge non calculable pour l'instant : complétez le prix de vente et le poids/prix d'achat.
+    </span>`;
+  }
+  document.getElementById('mal-lier').hidden = true;
+  document.getElementById('mal-succes').hidden = false;
+  document.getElementById('mal-erreur').hidden = true;
+}
+
+// Redirige vers le comparateur sur le groupe du produit (le crée si nécessaire).
+async function ouvrirComparateurDepuisVente() {
+  const p = malProduitCourant;
+  if (!p) return;
+  const token = localStorage.getItem('admin_token');
+  const authHeaders = token ? { Authorization: 'Bearer ' + token } : {};
+  const jsonHeaders = { 'Content-Type': 'application/json', ...authHeaders };
+  try {
+    let groupeId = malGroupeCourant || await malGroupeDuProduit(p.id, jsonHeaders);
+    if (!groupeId) {
+      const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
+        method: 'POST', headers: jsonHeaders,
+        body: JSON.stringify({ catalogue_vente_id: p.id }),
+      });
+      if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');
+      groupeId = (await rg.json()).id;
+    }
+    window.location.href = `/comparatif-achats.html?groupe=${groupeId}`;
+  } catch (e) {
+    malErreur('Erreur : ' + e.message);
+  }
 }
 
 // ── Impression rapide étiquette prix ─────────────────────────
