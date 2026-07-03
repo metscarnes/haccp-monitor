@@ -54,6 +54,7 @@ GET    /api/achats/pilotage/ca/stats/prochain-a-saisir      → jour à saisir p
 
 import io
 import logging
+import sqlite3
 import unicodedata
 from datetime import date, datetime, timedelta
 from typing import List, Optional
@@ -1140,8 +1141,11 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
         fields["date_maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [article_id]
-        await db.execute(f"UPDATE catalogue_fournisseur SET {set_clause} WHERE id = ?", values)
-        await db.commit()
+        try:
+            await db.execute(f"UPDATE catalogue_fournisseur SET {set_clause} WHERE id = ?", values)
+            await db.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, "Ce code article existe déjà pour ce fournisseur")
 
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
         return dict(await cur2.fetchone())

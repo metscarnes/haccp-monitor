@@ -1155,7 +1155,10 @@ async function sauver(e) {
     const url    = modeEdition ? `${API_CAT}/${id}` : API_CAT;
     const method = modeEdition ? 'PUT' : 'POST';
     const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.detail || `Erreur serveur (${r.status})`);
+    }
     const article = await r.json().catch(() => null);
     fermerModal();
     await chargerCatalogue();
