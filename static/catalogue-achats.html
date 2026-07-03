@@ -408,6 +408,8 @@
           <div class="ach-champ">
             <label>Prix de vente TTC (€)</label>
             <input type="number" id="mvpc-prix" min="0" step="0.01" placeholder="0.00">
+            <!-- Marge en direct selon le prix d'achat de l'article source. -->
+            <div id="mvpc-marge" style="margin-top:6px;font-size:var(--text-sm);font-weight:600;" hidden></div>
           </div>
           <div class="ach-champ">
             <label>Vendu au</label>
@@ -419,6 +421,7 @@
           <div class="ach-champ" id="mvpc-zone-poids" hidden>
             <label>Poids d'une pièce (kg)</label>
             <input type="number" id="mvpc-poids-piece" min="0" step="0.001" placeholder="Ex : 0.185">
+            <div id="mvpc-poids-aide" style="margin-top:4px;font-size:var(--text-xs);color:#6b7280;" hidden></div>
           </div>
           <p style="font-size:var(--text-sm);color:#6b7280;margin:6px 0 0;">
             La famille <strong id="mvpc-famille-lbl"></strong> et la sous-famille sont reprises de l'article.

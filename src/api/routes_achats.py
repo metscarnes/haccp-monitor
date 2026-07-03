@@ -458,8 +458,10 @@ async def get_catalogue(
 
         # Prix au kilo normalisé (None si incalculable) — attendu par le comparateur et
         # tout consommateur de ce catalogue ; les écrans qui l'ignorent ne sont pas affectés.
+        # prix_piece : poids d'une pièce dérivé, pour pré-remplir la marge/poids à la vente.
         for a in articles:
             a["prix_kg"] = _prix_kg_article(a)
+            a["prix_piece"] = _prix_piece_article(a)
 
         if avec_stock and articles:
             stocks = await _compter_stock_par_article(db)
@@ -1113,7 +1115,12 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
-        return dict(await cur2.fetchone())
+        article = dict(await cur2.fetchone())
+        # Champs dérivés (mêmes règles métier que le catalogue) : la modale de liaison
+        # au produit de vente s'en sert pour afficher la marge et pré-remplir le poids.
+        article["prix_kg"] = _prix_kg_article(article)
+        article["prix_piece"] = _prix_piece_article(article)
+        return article
 
 
 @router.put("/catalogue/{article_id}")
@@ -1148,7 +1155,10 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
             raise HTTPException(409, "Ce code article existe déjà pour ce fournisseur")
 
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
-        return dict(await cur2.fetchone())
+        article = dict(await cur2.fetchone())
+        article["prix_kg"] = _prix_kg_article(article)
+        article["prix_piece"] = _prix_piece_article(article)
+        return article
 
 
 @router.delete("/catalogue/{article_id}", status_code=200)

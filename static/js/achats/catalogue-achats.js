@@ -117,8 +117,15 @@ function bindEvents() {
   document.getElementById('mvp-creer-retour').addEventListener('click', () => mvpMontrerEcran('choix'));
   document.getElementById('mvp-creer-valider').addEventListener('click', mvpValiderCreation);
   document.getElementById('mvpc-unite').addEventListener('change', e => {
-    document.getElementById('mvpc-zone-poids').hidden = e.target.value !== 'piece';
+    const piece = e.target.value === 'piece';
+    document.getElementById('mvpc-zone-poids').hidden = !piece;
+    // Passage en pièce : pré-remplir le poids avec celui saisi côté achat (si le champ
+    // est vide) pour éviter les erreurs de re-saisie.
+    if (piece) mvpcPreremplirPoids();
+    mvpcMajMarge();
   });
+  document.getElementById('mvpc-prix').addEventListener('input', mvpcMajMarge);
+  document.getElementById('mvpc-poids-piece').addEventListener('input', mvpcMajMarge);
   // Écran 4 — succès
   document.getElementById('mvp-succes-ok').addEventListener('click', fermerModalVentePropose);
   document.getElementById('a-qte-colis').addEventListener('input', recalcPoidsColis);
@@ -1040,8 +1047,83 @@ function creerEtLierProduitVente() {
   document.getElementById('mvpc-unite').value = 'kg';
   document.getElementById('mvpc-poids-piece').value = '';
   document.getElementById('mvpc-zone-poids').hidden = true;
+  document.getElementById('mvpc-marge').hidden = true;
+  document.getElementById('mvpc-poids-aide').hidden = true;
   document.getElementById('mvpc-famille-lbl').textContent = a.famille || '—';
   document.getElementById('mvpc-nom').focus();
+}
+
+// Poids d'une pièce par défaut = celui de l'article d'achat (poids_unitaire_kg).
+// Ne surcharge pas une valeur déjà tapée par l'utilisateur.
+function mvpcPreremplirPoids() {
+  const a = dernierArticleCree;
+  const champ = document.getElementById('mvpc-poids-piece');
+  const aide  = document.getElementById('mvpc-poids-aide');
+  const defaut = a && a.poids_unitaire_kg != null ? Number(a.poids_unitaire_kg) : null;
+  if (defaut != null && defaut > 0 && !champ.value) {
+    champ.value = defaut;
+  }
+  if (defaut != null && defaut > 0) {
+    aide.textContent = `Repris de l'article d'achat : ${defaut} kg (modifiable).`;
+    aide.hidden = false;
+  } else {
+    aide.textContent = "L'article d'achat n'a pas de poids unitaire renseigné — saisissez-le.";
+    aide.hidden = false;
+  }
+}
+
+// Marge brute en direct, calculée sur le €/kg de l'article d'achat source.
+// Miroir de _calc_marge backend (unité kg = €/kg ; pièce = €/kg × poids d'une pièce).
+// TVA reprise de l'article d'achat (défaut alimentaire 5,5 %).
+function mvpcCalcMarge() {
+  const a = dernierArticleCree;
+  if (!a) return null;
+  const achatKg = a.prix_kg != null ? Number(a.prix_kg) : null;
+  const ttc = parseFloat(document.getElementById('mvpc-prix').value);
+  if (achatKg == null || isNaN(ttc) || !(ttc > 0)) return null;
+  const tva = a.tva_percent != null ? Number(a.tva_percent) : 5.5;
+  const venteHt = ttc / (1 + tva / 100);
+  const unite = document.getElementById('mvpc-unite').value;
+  let cout, u;
+  if (unite === 'piece') {
+    const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
+    if (isNaN(poids) || !(poids > 0)) return null;
+    cout = achatKg * poids;
+    u = 'pièce';
+  } else {
+    cout = achatKg;
+    u = 'kg';
+  }
+  const marge = venteHt - cout;
+  return {
+    marge, unite: u,
+    taux: venteHt > 0 ? marge / venteHt : null,
+    coef: cout > 0 ? ttc / cout : null,
+  };
+}
+
+// Affiche/masque la ligne de marge sous le prix de vente.
+function mvpcMajMarge() {
+  const zone = document.getElementById('mvpc-marge');
+  const m = mvpcCalcMarge();
+  if (!m) {
+    // Prix saisi mais achat €/kg indisponible → le signaler brièvement.
+    const a = dernierArticleCree;
+    const ttc = parseFloat(document.getElementById('mvpc-prix').value);
+    if (a && (a.prix_kg == null) && ttc > 0) {
+      zone.innerHTML = '<span style="color:#9ca3af;">€/kg d\'achat indisponible — marge non calculable.</span>';
+      zone.hidden = false;
+    } else {
+      zone.hidden = true;
+    }
+    return;
+  }
+  const taux = m.taux != null ? ` · ${(m.taux * 100).toFixed(0)} %` : '';
+  const coef = m.coef != null ? ` · coef ${m.coef.toFixed(2)}` : '';
+  const col = m.marge >= 0 ? '#2f7d3a' : '#c1452c';
+  zone.innerHTML = `<span style="color:${col};">Marge : ${fmtPrix(m.marge)} € / ${m.unite}${taux}</span>`
+                 + `<span style="color:#6b7280;font-weight:400;">${coef}</span>`;
+  zone.hidden = false;
 }
 
 // Enchaîne : crée le produit de vente → crée le groupe (from-vente) → rattache l'achat.

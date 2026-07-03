@@ -104,6 +104,47 @@ async def test_flux_vente_vers_achat_calcule_la_marge(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_creation_article_renvoie_prix_kg_et_prix_piece(app_client, db):
+    """POST /catalogue renvoie prix_kg + prix_piece dérivés (pour la marge/poids à la vente)."""
+    fid = await _fournisseur(app_client, "Boucherie Test")
+
+    # Format kg : prix_kg = prix brut ; prix_piece dérivé du poids d'une pièce.
+    r = await app_client.post("/api/achats/catalogue", json={
+        "fournisseur_id": fid, "code_article": "KG01", "designation": "Bavette",
+        "prix_achat_ht": 18.0, "format_prix": "kg", "poids_unitaire_kg": 0.2,
+    })
+    assert r.status_code == 201, r.text
+    a = r.json()
+    assert a["prix_kg"] == pytest.approx(18.0)
+    assert a["prix_piece"] == pytest.approx(18.0 * 0.2)   # kg → prix pièce = €/kg × poids
+
+    # Format colis : prix_kg = prix ÷ poids colis ; prix_piece = prix ÷ qté.
+    r2 = await app_client.post("/api/achats/catalogue", json={
+        "fournisseur_id": fid, "code_article": "COL01", "designation": "Paupiette",
+        "prix_achat_ht": 12.0, "format_prix": "colis",
+        "qte_par_colis": 4, "poids_unitaire_kg": 0.15,
+    })
+    a2 = r2.json()
+    assert a2["prix_piece"] == pytest.approx(12.0 / 4)             # 3 € la pièce
+    assert a2["prix_kg"] == pytest.approx(12.0 / (4 * 0.15))       # ÷ poids colis (0.6 kg)
+
+
+@pytest.mark.asyncio
+async def test_prix_kg_viande_repli_legacy_sans_format(app_client, db):
+    """Le format EXPLICITE prime, même pour la viande : colis avec poids → €/kg = prix ÷ poids
+    colis. Le repli « viande = €/kg brut » ne s'applique QUE sur un format legacy/inconnu."""
+    fid = await _fournisseur(app_client, "Boucherie Test")
+    # Format colis explicite : la règle format prime → 16 / (8 × 1.0) = 2 €/kg.
+    r = await app_client.post("/api/achats/catalogue", json={
+        "fournisseur_id": fid, "code_article": "BAV01", "designation": "Bavette colis",
+        "prix_achat_ht": 16.0, "format_prix": "colis",
+        "qte_par_colis": 8, "poids_unitaire_kg": 1.0,
+        "famille": "Viande", "sous_famille": "Boeuf",
+    })
+    assert r.json()["prix_kg"] == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
 async def test_from_vente_refuse_doublon(app_client, db):
     """Un produit de vente déjà relié à un groupe → 409 (cardinalité vente unique)."""
     vente = await _produit_vente(app_client, "Saucisse", prix_vente_ttc=12.0)
