@@ -748,7 +748,7 @@ async function chargerVariations() {
     const data = await r.json();
     const vars = data.variations || [];
     if (!vars.length) {
-      tableau.innerHTML = '<p class="ach-variations-vide">Aucune variation de prix sur cette période.<br><span style="font-size:.85em;color:#9ca3af;">Il faut au moins 2 prix constatés (réceptions) pour un même article.</span></p>';
+      tableau.innerHTML = '<p class="ach-variations-vide">Aucune variation de prix sur cette période.<br><span style="font-size:.85em;color:#9ca3af;">Un article reçu au moins une fois, à un prix différent de sa référence catalogue, apparaît ici.</span></p>';
       return;
     }
     compte.textContent = `${vars.length} article(s) avec historique`;
@@ -782,11 +782,16 @@ function ligneVariation(v) {
   const fleche = pct > 0 ? '▲' : (pct < 0 ? '▼' : '–');
   const signe = pct > 0 ? '+' : '';
   const spark = miniSparkVariation(v.points);
+  // Une seule réception : le « Début » est le prix de référence catalogue, pas une
+  // réception réelle → on le signale pour ne pas laisser croire à 2 livraisons.
+  const debutHint = v.base_reference
+    ? '<div class="ach-var-code" title="Aucune 2e réception sur la période : comparé au prix de référence du catalogue">réf. catalogue</div>'
+    : '';
   return `
     <tr data-cat-id="${v.catalogue_fournisseur_id}" style="cursor:pointer;">
       <td>${_echap(v.designation)}<div class="ach-var-code">${_echap(v.code_article || '')}</div></td>
       <td>${_echap(v.fournisseur_nom || '—')}</td>
-      <td class="ach-col-num">${fmtPrix(v.prix_kg_debut)} €</td>
+      <td class="ach-col-num">${fmtPrix(v.prix_kg_debut)} €${debutHint}</td>
       <td class="ach-col-num"><strong>${fmtPrix(v.prix_kg_fin)} €</strong></td>
       <td class="ach-col-num" style="color:${col};font-weight:600;white-space:nowrap;">${fleche} ${signe}${pct.toFixed(1)} %</td>
       <td>${spark}</td>

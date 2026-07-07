@@ -76,17 +76,42 @@ async def test_variations_triees_par_ampleur(app_client, db):
 
 
 @pytest.mark.anyio
-async def test_variations_exclut_un_seul_releve(app_client, db):
+async def test_variations_exclut_un_seul_releve_egal_reference(app_client, db):
     await _personnel(db)
     r = await app_client.post("/api/achats/fournisseurs", json={"nom": "MetroPro"})
     fid = r.json()["id"]
     art = await _article(app_client, fid, "S1", "Solo", 5.0)
-    # Une seule réception = pas de variation mesurable → absent de la vue
+    # Une seule réception AU PRIX DE RÉFÉRENCE (5.0 = 5.0) → aucune variation → absent.
     await _reception_cloturee(app_client, db, fid, art, 5.0, "2026-06-20")
 
     r = await app_client.get("/api/achats/catalogue/variations-prix?jours=60")
     assert r.status_code == 200, r.text
     assert r.json()["variations"] == []
+
+
+@pytest.mark.anyio
+async def test_variations_un_seul_releve_vs_reference(app_client, db):
+    """Point B : une SEULE réception à un prix différent de la référence catalogue
+    doit apparaître (comparaison vs prix de référence de l'époque), sans attendre
+    une 2e réception. Ex. jambon serrano réf 12,80 → réception 11,11."""
+    await _personnel(db)
+    r = await app_client.post("/api/achats/fournisseurs", json={"nom": "Dipsa"})
+    fid = r.json()["id"]
+    art = await _article(app_client, fid, "J1", "Jambon serrano", 12.80)
+    # Une seule réception, à un prix plus bas que la référence catalogue.
+    await _reception_cloturee(app_client, db, fid, art, 11.11, "2026-07-03")
+
+    r = await app_client.get("/api/achats/catalogue/variations-prix?jours=60")
+    assert r.status_code == 200, r.text
+    vars = r.json()["variations"]
+    assert len(vars) == 1
+    v = vars[0]
+    assert v["designation"] == "Jambon serrano"
+    assert v["prix_kg_debut"] == 12.80      # référence catalogue de l'époque
+    assert v["prix_kg_fin"] == 11.11        # prix réellement constaté
+    assert v["ecart_pct"] == round((11.11 - 12.80) / 12.80 * 100, 2)  # ≈ -13,2 %
+    assert v["base_reference"] is True
+    assert len(v["points"]) == 2            # référence + observation → sparkline traçable
 
 
 @pytest.mark.anyio

@@ -1081,10 +1081,13 @@ async def variations_prix_catalogue(
 
     Pour chaque article ayant au moins 2 prix constatés dans la fenêtre `jours`,
     compare le PREMIER et le DERNIER prix constaté de la période et renvoie la
-    variation %. Tri par ampleur de variation décroissante (hausses fortes en
-    haut). Sert la vue « Variations de prix » du catalogue (pas de clic article
-    par article). Réutilise historique_prix_achat : les prix_kg y sont déjà
-    normalisés au moment du constat, aucune reconversion nécessaire.
+    variation %. Pour un article reçu UNE SEULE fois dans la fenêtre, on compare
+    la réception au PRIX DE RÉFÉRENCE catalogue de l'époque (prix_kg_precedent) :
+    la variation est ainsi visible dès la 1re livraison, sans attendre une 2e
+    réception (marquée `base_reference=True`). Tri par ampleur de variation
+    décroissante (hausses fortes en haut). Sert la vue « Variations de prix » du
+    catalogue (pas de clic article par article). Réutilise historique_prix_achat :
+    les prix_kg y sont déjà normalisés au moment du constat, aucune reconversion.
 
     ⚠️ Cette route STATIQUE doit rester déclarée AVANT `/catalogue/{article_id}`
     (route dynamique une seule segment) sinon FastAPI parse « variations-prix »
@@ -1097,7 +1100,7 @@ async def variations_prix_catalogue(
             SELECT h.catalogue_fournisseur_id AS cat_id,
                    cf.designation, cf.code_article, cf.fournisseur_id,
                    f.nom AS fournisseur_nom,
-                   h.date_constat, h.prix_kg, h.applique_au_catalogue
+                   h.date_constat, h.prix_kg, h.prix_kg_precedent, h.applique_au_catalogue
             FROM historique_prix_achat h
             JOIN catalogue_fournisseur cf ON cf.id = h.catalogue_fournisseur_id
             LEFT JOIN fournisseurs f ON f.id = cf.fournisseur_id
@@ -1117,12 +1120,33 @@ async def variations_prix_catalogue(
 
     variations = []
     for cat_id, pts in par_article.items():
-        if len(pts) < 2:
-            continue  # une seule observation dans la période = pas de variation mesurable
-        premier = pts[0]["prix_kg"]
-        dernier = pts[-1]["prix_kg"]
-        if premier is None or dernier is None or premier <= 0:
-            continue
+        if len(pts) >= 2:
+            # Au moins 2 réceptions : variation premier → dernier prix constaté.
+            premier = pts[0]["prix_kg"]
+            dernier = pts[-1]["prix_kg"]
+            if premier is None or dernier is None or premier <= 0:
+                continue
+            pts_courbe = pts
+            base_reference = False
+        else:
+            # Une SEULE réception dans la fenêtre : on la compare au PRIX DE RÉFÉRENCE
+            # catalogue tel qu'il était au moment de cette réception (prix_kg_precedent),
+            # pour rendre visible une variation dès la 1re livraison (ex. 12,80 → 11,11)
+            # sans attendre une 2e réception.
+            obs = pts[0]
+            premier = obs["prix_kg_precedent"]
+            dernier = obs["prix_kg"]
+            if premier is None or dernier is None or premier <= 0:
+                continue
+            # obs = référence (ou prix déjà répercuté au catalogue) → aucune variation à montrer.
+            if round(dernier, 4) == round(premier, 4):
+                continue
+            base_reference = True
+            # Point de départ synthétique = référence catalogue, puis l'observation réelle.
+            pts_courbe = [
+                {"date_constat": obs["date_constat"], "prix_kg": premier, "applique_au_catalogue": 0},
+                obs,
+            ]
         ecart_pct = (dernier - premier) / premier * 100
         variations.append({
             "catalogue_fournisseur_id": cat_id,
@@ -1133,7 +1157,10 @@ async def variations_prix_catalogue(
             "prix_kg_fin": round(dernier, 4),
             "ecart_pct": round(ecart_pct, 2),
             "nb_releves": len(pts),
-            "date_debut": pts[0]["date_constat"],
+            # True quand le « début » est le prix de référence catalogue (une seule réception),
+            # pas un prix réellement constaté → le front l'indique (« réf. catalogue »).
+            "base_reference": base_reference,
+            "date_debut": pts_courbe[0]["date_constat"],
             "date_fin": pts[-1]["date_constat"],
             # Points pour la mini-sparkline (même forme que /historique-prix).
             "points": [
@@ -1142,7 +1169,7 @@ async def variations_prix_catalogue(
                     "prix_kg": p["prix_kg"],
                     "applique_au_catalogue": p["applique_au_catalogue"],
                 }
-                for p in pts
+                for p in pts_courbe
             ],
         })
 
@@ -2408,6 +2435,13 @@ def _calc_prix_piece(format_prix, prix_achat_ht, qte_par_colis, poids_unitaire_k
     return None
 
 
+# Plancher d'écart ABSOLU (€/kg) au-delà duquel une variation est jugée significative,
+# même si l'écart relatif reste sous `seuil_pct`. Sur un article cher, 2 % = plusieurs
+# dizaines de centimes : 5 ct/kg (une vraie hausse pour un boucher) passerait sinon
+# inaperçu. 0.01 €/kg = 1 centime, la plus petite variation lisible à 2 décimales.
+SEUIL_ECART_ABS_KG = 0.01
+
+
 def _comparer_prix_bl_catalogue(prix_bl, unite_bl, cat_format_prix, cat_prix_ht,
                                 cat_poids_colis_kg, cat_famille, seuil_pct):
     """Compare un prix lu sur le BL au prix de référence catalogue, TOUS DEUX en €/kg.
@@ -2446,7 +2480,10 @@ def _comparer_prix_bl_catalogue(prix_bl, unite_bl, cat_format_prix, cat_prix_ht,
         ecart_kg = round(prix_kg_bl - prix_kg_cat, 4)
         if prix_kg_cat > 0:
             ecart_pct = round((prix_kg_bl - prix_kg_cat) / prix_kg_cat * 100, 2)
-            significatif = abs(ecart_pct) > seuil_pct
+            # Significatif si l'écart RELATIF dépasse le seuil OU si l'écart ABSOLU
+            # atteint le plancher (1 ct/kg) : ne jamais rater une hausse/baisse réelle
+            # sur un article cher où 5 ct/kg reste sous les 2 %.
+            significatif = abs(ecart_kg) >= SEUIL_ECART_ABS_KG or abs(ecart_pct) > seuil_pct
         elif prix_kg_bl > 0:
             # référence à 0 € mais BL non nul : changement réel, à signaler.
             significatif = True
@@ -4204,7 +4241,10 @@ async def ecarts_prix_reception(reception_id: int, seuil_pct: float = Query(2.0)
         if prix_kg is None or ref_kg is None or ref_kg <= 0:
             continue
         ecart_pct = (prix_kg - ref_kg) / ref_kg * 100
-        if abs(ecart_pct) <= seuil_pct:
+        ecart_kg = prix_kg - ref_kg
+        # Écart jugé négligeable seulement s'il est PETIT en relatif ET en absolu :
+        # 5 ct/kg (< 2 % sur un article cher) reste une vraie variation à signaler.
+        if abs(ecart_kg) < SEUIL_ECART_ABS_KG and abs(ecart_pct) <= seuil_pct:
             continue
         # Si le prix de référence a déjà été aligné depuis (égal au constaté), plus d'écart.
         if r["applique_au_catalogue"]:

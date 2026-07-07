@@ -581,10 +581,11 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
         # de facturation ne doit jamais empêcher la clôture HACCP — on loggue et on continue.
         facture_auto = None
         if not body.livraison_refusee:
+            from src.api.routes_achats import (
+                _generer_facture_depuis_reception, _historiser_prix_reception,
+            )
+            # 1) Facture BROUILLON — non bloquant : une erreur ne doit jamais empêcher la clôture.
             try:
-                from src.api.routes_achats import (
-                    _generer_facture_depuis_reception, _historiser_prix_reception,
-                )
                 res_fac = await _generer_facture_depuis_reception(
                     db, reception_id,
                     personnel_id=rec_row["personnel_id"],
@@ -596,12 +597,18 @@ async def cloturer(reception_id: int, body: CloturerBody = CloturerBody()):
                     "facture_id": res_fac.get("facture_id"),
                     "raison": res_fac.get("raison"),
                 }
-                # Historiser les prix constatés (indépendant du sort de la facture) :
-                # alimente la courbe d'évolution + prépare le bandeau « MAJ catalogue ? ».
+            except Exception as e:  # pragma: no cover - filet de sécurité
+                logger.warning("Facture auto à la clôture (réception %s) échouée : %s", reception_id, e)
+                facture_auto = {"creee": False, "facture_id": None, "raison": "erreur"}
+
+            # 2) Historisation des prix constatés — INDÉPENDANTE de la facture : alimente la
+            #    courbe d'évolution + le bandeau « MAJ catalogue ? ». Un échec de facturation
+            #    ne doit JAMAIS faire sauter l'historisation (sinon prix « non enregistré »
+            #    malgré la détection à la réception).
+            try:
                 await _historiser_prix_reception(db, reception_id, source="bl")
             except Exception as e:  # pragma: no cover - filet de sécurité
-                logger.warning("Facture/historisation auto à la clôture (réception %s) échouée : %s", reception_id, e)
-                facture_auto = {"creee": False, "facture_id": None, "raison": "erreur"}
+                logger.warning("Historisation prix à la clôture (réception %s) échouée : %s", reception_id, e)
 
     if isinstance(reception, dict):
         reception = {**reception, "facture_auto": facture_auto}

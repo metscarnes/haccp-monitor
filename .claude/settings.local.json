@@ -170,7 +170,13 @@
       "PowerShell(Get-ChildItem -Directory | Where-Object { $_.Name -match 'venv|env|\\\\.venv' } | Select-Object Name; if \\(Test-Path \".venv\\\\Scripts\\\\python.exe\"\\) { \".venv found\" }; if \\(Test-Path \"venv\\\\Scripts\\\\python.exe\"\\) { \"venv found\" })",
       "PowerShell(py -m pytest tests/test_factures.py -q 2>&1)",
       "PowerShell(python -m pip install -q pytest pytest-asyncio httpx 2>&1)",
-      "PowerShell(python -m pip install -q python-multipart 2>&1)"
+      "PowerShell(python -m pip install -q python-multipart 2>&1)",
+      "PowerShell(python -m pytest tests/test_variations_prix.py tests/test_historique_prix.py tests/test_prix_reception.py tests/test_reception.py tests/test_reception_v2.py -q 2>&1)",
+      "PowerShell(git stash)",
+      "PowerShell(python -m pytest tests/test_reception.py::test_api_creer_reception tests/test_reception_v2.py::test_get_receptions_retourne_liste -q 2>&1)",
+      "PowerShell(git stash pop)",
+      "PowerShell(python -m pytest tests/test_reception.py::test_api_creer_reception -q 2>&1)",
+      "PowerShell(python -m pytest tests/test_variations_prix.py tests/test_historique_prix.py tests/test_historique_prix_courbe.py tests/test_prix_reception.py -q 2>&1)"
     ]
   }
 }
