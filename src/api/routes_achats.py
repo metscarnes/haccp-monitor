@@ -4203,6 +4203,9 @@ async def get_facture(facture_id: int):
         )
         result["lignes"] = [dict(r) for r in await cur2.fetchall()]
         result["recap"] = _recap_facture(result, result["lignes"])
+        # Réception effective (directe ou via commande mappée) → pilote l'affichage du
+        # bouton « importer depuis le BL » et le rejeu de l'analyse sur le BL scanné.
+        result["reception_bl_id"] = await _reception_liee_facture(db, facture)
         return result
 
 
@@ -4967,6 +4970,24 @@ async def importer_document_facture(
     return data
 
 
+async def _reception_liee_facture(db, facture_row) -> Optional[int]:
+    """Réception rattachée à une facture : reception_id direct, sinon via la
+    commande mappée (commande_receptions_mapping). Permet de retrouver le BL même
+    quand la facture n'a pas été créée par le flux « depuis-reception »."""
+    if facture_row["reception_id"]:
+        return facture_row["reception_id"]
+    if facture_row["commande_id"]:
+        cur = await db.execute(
+            """SELECT reception_id FROM commande_receptions_mapping
+               WHERE commande_id = ? ORDER BY date_liaison DESC LIMIT 1""",
+            (facture_row["commande_id"],),
+        )
+        row = await cur.fetchone()
+        if row:
+            return row["reception_id"]
+    return None
+
+
 @router.post("/factures/{facture_id}/importer-depuis-bl")
 async def importer_depuis_bl_reception(facture_id: int):
     """Rejoue l'analyse sur le BL déjà scanné à la réception liée (Factur-X sinon
@@ -4976,18 +4997,20 @@ async def importer_depuis_bl_reception(facture_id: int):
 
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id, statut, reception_id FROM factures WHERE id = ?", (facture_id,)
+            "SELECT id, statut, reception_id, commande_id FROM factures WHERE id = ?",
+            (facture_id,),
         )
         fac = await cur.fetchone()
         if not fac:
             raise HTTPException(404, "Facture introuvable")
         _verifier_facture_modifiable(fac)
-        if not fac["reception_id"]:
+        reception_id = await _reception_liee_facture(db, fac)
+        if not reception_id:
             raise HTTPException(400, "Cette facture n'est rattachée à aucune réception.")
 
         # Pages du BL principal (photo_bl_filename + reception_bl_pages)
         cur_r = await db.execute(
-            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (fac["reception_id"],)
+            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
         )
         rec = await cur_r.fetchone()
         fichiers: list = []
@@ -4996,7 +5019,7 @@ async def importer_depuis_bl_reception(facture_id: int):
         cur_p = await db.execute(
             "SELECT photo_filename FROM reception_bl_pages "
             "WHERE reception_id = ? AND bl_supplementaire_id IS NULL ORDER BY page_num",
-            (fac["reception_id"],),
+            (reception_id,),
         )
         for r in await cur_p.fetchall():
             if r["photo_filename"]:

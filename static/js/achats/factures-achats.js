@@ -205,8 +205,9 @@ async function ouvrirFacture(id, prefetch) {
   rendreTotaux(fac);
   chargerSuggestionsAnnexes(fac);
   appliquerVerrou(fac);
-  // Import « depuis le BL » : seulement si une réception est rattachée
-  document.getElementById('btn-import-bl').hidden = !fac.reception_id;
+  // Import « depuis le BL » : si une réception est rattachée (directement ou via
+  // la commande mappée — reception_bl_id résout les deux cas côté serveur).
+  document.getElementById('btn-import-bl').hidden = !(fac.reception_bl_id || fac.reception_id);
   document.getElementById('fac-import-resultat').hidden = true;
   document.getElementById('fac-import-etat').textContent = '';
   document.getElementById('modal-facture').hidden = false;
@@ -230,12 +231,20 @@ async function importerDepuisBl() {
 
 async function lancerImport(url, opts) {
   const etat = document.getElementById('fac-import-etat');
-  etat.textContent = '⏳ Analyse en cours…';
+  etat.textContent = '⏳ Analyse en cours… (l\'OCR peut prendre 10-20 s)';
   try {
     const r = await fetch(url, { method: opts.method || 'POST', body: opts.body });
     if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      etat.textContent = '❌ ' + (err.detail || 'Échec de l\'analyse.');
+      // Un 500 renvoie souvent du HTML/texte, pas du JSON : on lit le corps brut
+      // pour donner un message utile plutôt qu'un silence.
+      let detail = '';
+      try { detail = (await r.json()).detail; }
+      catch (_) { detail = (await r.text().catch(() => '')).slice(0, 200); }
+      if (r.status === 500) {
+        detail = 'Erreur serveur (500). Si le module vient d\'être mis à jour, '
+          + 'redémarrez le service backend sur le serveur (la base doit se mettre à jour).';
+      }
+      etat.textContent = '❌ ' + (detail || `Échec (HTTP ${r.status}).`);
       return;
     }
     extractionCourante = await r.json();
@@ -244,8 +253,8 @@ async function lancerImport(url, opts) {
       : '✓ Lecture OCR — vérifiez les montants';
     etat.textContent = src;
     rendreExtraction(extractionCourante);
-  } catch (_) {
-    etat.textContent = '❌ Erreur réseau pendant l\'analyse.';
+  } catch (err) {
+    etat.textContent = '❌ Erreur réseau pendant l\'analyse : ' + (err.message || err);
   }
 }
 

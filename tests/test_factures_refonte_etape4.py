@@ -181,6 +181,26 @@ async def test_appliquer_import(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_reception_bl_id_expose_pour_bouton_bl(app_client, db):
+    """get_facture expose reception_bl_id (réception liée directement OU via commande
+    mappée) → pilote l'affichage du bouton « importer depuis le BL »."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    detail = (await app_client.get(f"/api/achats/factures/{fac['id']}")).json()
+    # Cette facture est reliée à la réception (directement et/ou via commande)
+    assert detail["reception_bl_id"] == ids["reception_id"]
+
+    # Une facture manuelle sans aucun lien → reception_bl_id null (bouton masqué)
+    manuelle = (await app_client.post("/api/achats/factures", json={
+        "fournisseur_id": ids["fournisseur_id"], "lignes": [],
+    })).json()
+    detail2 = (await app_client.get(f"/api/achats/factures/{manuelle['id']}")).json()
+    assert detail2["reception_bl_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_import_respecte_verrou(app_client, db):
     ids = await _setup(app_client, db)
     fac = (await app_client.post(
