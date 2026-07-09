@@ -39,7 +39,7 @@ _SCHEMA = {
         "numero_facture": {"type": ["string", "null"]},
         "date_facture_brut": {"type": ["string", "null"]},
         # 'facture' | 'avoir' (cadré par l'instruction, normalisé en Python)
-        "type_document":  {"type": ["string", "null"]},
+        "type_document":  {"type": "string"},
         "lignes": {
             "type": "array",
             "items": {
@@ -79,9 +79,9 @@ _SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "taux":    {"type": ["number", "null"]},
-                    "base_ht": {"type": ["number", "null"]},
-                    "tva":     {"type": ["number", "null"]},
+                    "taux":    {"type": "number"},
+                    "base_ht": {"type": "number"},
+                    "tva":     {"type": "number"},
                 },
                 "required": ["taux", "base_ht", "tva"],
                 "additionalProperties": False,
@@ -123,7 +123,7 @@ Cherche activement, souvent en bas du tableau ou avant les totaux : frais de por
 - tva_pct : le taux de TVA de cette ligne annexe
 
 RÉCAPITULATIF DE TVA (le tableau de ventilation, souvent en pied de facture) :
-Pour chaque taux présent, un objet dans "recap_tva" : taux (ex. 5.5), base_ht (base soumise à ce taux), tva (montant de TVA de ce taux).
+Pour chaque taux présent, un objet dans "recap_tva" : taux (ex. 5.5), base_ht (base soumise à ce taux), tva (montant de TVA de ce taux). N'ajoute une ligne dans "recap_tva" QUE si tu peux lire les trois valeurs ; sinon n'ajoute rien pour ce taux (pas de valeur inventée).
 
 TOTAUX (en bas de la facture) :
 - total_ht : total hors taxes
