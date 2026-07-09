@@ -182,24 +182,38 @@ async function ouvrirFacture(id, prefetch) {
 function rendreLignes(lignes) {
   const tbody = document.getElementById('tbody-lignes-facture');
   if (!lignes.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="ach-vide">Aucune ligne.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="ach-vide">Aucune ligne.</td></tr>';
     return;
   }
   tbody.innerHTML = lignes.map(l => {
     const ecart = l.ecart_montant_ht ?? 0;
     const enLitige = l.statut_ligne === 'litige';
+    // Unité du PRIX : pour colis/pièce le montant = quantité × prix (le poids reste
+    // affiché à titre HACCP) ; pour le kg, le montant = poids × prix.
+    const auQuantite = l.unite_prix === 'colis' || l.unite_prix === 'piece';
+    const unite = libelleUnite(l.unite_prix);
     return `
       <tr data-lid="${l.id}" class="${enLitige ? 'fac-ligne--litige' : ''}">
-        <td>${escHtml(l.designation)}${l.code_article ? `<div class="fac-choix-meta">${escHtml(l.code_article)}</div>` : ''}</td>
+        <td>${escHtml(l.designation)}
+          <div class="fac-choix-meta">${l.code_article ? escHtml(l.code_article) + ' · ' : ''}prix ${auQuantite ? 'au ' + unite : 'au kg'}</div>
+        </td>
         <td class="ach-col-num">${l.poids_recu_kg != null ? fmtPrix(l.poids_recu_kg) : '—'}</td>
         <td class="ach-col-num">
           <input type="number" step="0.001" min="0" class="fac-input" data-champ="poids_facture_kg"
-                 value="${l.poids_facture_kg != null ? l.poids_facture_kg : ''}">
+                 value="${l.poids_facture_kg != null ? l.poids_facture_kg : ''}"
+                 ${auQuantite ? 'title="Poids indicatif (HACCP) — le montant de cette ligne se calcule quantité × prix"' : ''}>
+        </td>
+        <td class="ach-col-num">
+          ${auQuantite ? `
+          <input type="number" step="1" min="0" class="fac-input" data-champ="quantite_facturee"
+                 value="${l.quantite_facturee != null ? l.quantite_facturee : ''}"
+                 title="Quantité facturée (${unite}) — montant = quantité × prix">` : '—'}
         </td>
         <td class="ach-col-num">${l.prix_commande_ht != null ? fmtPrix(l.prix_commande_ht) + ' €' : '—'}</td>
         <td class="ach-col-num">
           <input type="number" step="0.01" min="0" class="fac-input" data-champ="prix_facture_ht"
-                 value="${l.prix_facture_ht != null ? l.prix_facture_ht : ''}">
+                 value="${l.prix_facture_ht != null ? arrondiAffichagePrix(l.prix_facture_ht) : ''}"
+                 title="Prix facturé HT (€/${unite})">
         </td>
         <td class="ach-col-num">
           <input type="number" step="0.01" min="0" class="fac-input" data-champ="montant_facture_ht"
@@ -249,10 +263,10 @@ function rendreTotaux(fac) {
   document.getElementById('fac-total-facture').textContent = fmtPrix(fac.montant_total_ht_facture) + ' €';
   const ecart = fac.ecart_total_ht ?? 0;
   const span = document.getElementById('fac-total-ecart');
-  span.textContent = signe(ecart) + fmtPrix(Math.abs(ecart)) + ' €';
+  span.textContent = signe(ecart, SEUIL_ECART_TOTAL) + fmtPrix(Math.abs(ecart)) + ' €';
   const bar = span.closest('.ach-total-bar');
   bar.classList.remove('fac-total-ecart--haut', 'fac-total-ecart--bas', 'fac-total-ecart--nul');
-  bar.classList.add(`fac-total-ecart--${niveauEcart(ecart)}`);
+  bar.classList.add(`fac-total-ecart--${niveauEcart(ecart, SEUIL_ECART_TOTAL)}`);
 }
 
 // ── Litige ───────────────────────────────────────────────────
@@ -348,9 +362,18 @@ function exporterXlsx() {
 }
 
 // ── Helpers ──────────────────────────────────────────────────
+// Tolérance de rapprochement : sous ces seuils, l'écart est du bruit d'arrondi
+// (le fournisseur arrondit chaque ligne au centime) → affiché neutre, pas rouge.
+const SEUIL_ECART_LIGNE = 0.02;
+const SEUIL_ECART_TOTAL = 0.05;
+
 function fmtPrix(v) { return (v ?? 0).toFixed(2).replace('.', ','); }
-function signe(v) { return v > 0.0001 ? '+' : (v < -0.0001 ? '−' : ''); }
-function niveauEcart(v) { return v > 0.0001 ? 'haut' : (v < -0.0001 ? 'bas' : 'nul'); }
+function libelleUnite(u) { return u === 'colis' ? 'colis' : (u === 'piece' ? 'pièce' : 'kg'); }
+// Les prix unitaires peuvent avoir 3-4 décimales (ex. 12,456 €/kg) : on n'affiche
+// dans l'input que 4 décimales max, sans zéros inutiles (12.5 reste 12.5).
+function arrondiAffichagePrix(v) { return Math.round(v * 10000) / 10000; }
+function signe(v, seuil = SEUIL_ECART_LIGNE) { return v > seuil ? '+' : (v < -seuil ? '−' : ''); }
+function niveauEcart(v, seuil = SEUIL_ECART_LIGNE) { return v > seuil ? 'haut' : (v < -seuil ? 'bas' : 'nul'); }
 function classeEcart(v) { return 'fac-ecart--' + niveauEcart(v); }
 function escHtml(str) {
   if (!str) return '';

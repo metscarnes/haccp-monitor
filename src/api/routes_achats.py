@@ -57,6 +57,7 @@ import logging
 import sqlite3
 import unicodedata
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -228,6 +229,8 @@ class FactureLigneUpdate(BaseModel):
     poids_facture_kg: Optional[float] = None
     prix_facture_ht: Optional[float] = None
     montant_facture_ht: Optional[float] = None  # saisie directe du montant ligne (prioritaire)
+    quantite_facturee: Optional[float] = None   # nb colis/pièces facturés (unité de prix non-kg)
+    unite_prix: Optional[str] = None            # kg|colis|piece
     statut_ligne: Optional[str] = None    # ok|litige
     commentaire_litige: Optional[str] = None
 
@@ -238,6 +241,8 @@ class FactureLigneCreate(BaseModel):
     code_article: Optional[str] = None
     designation: str
     unite: Optional[str] = "kg"
+    unite_prix: Optional[str] = "kg"            # kg|colis|piece (unité du PRIX facturé)
+    quantite_facturee: Optional[float] = None
     poids_recu_kg: Optional[float] = None
     prix_commande_ht: Optional[float] = None
     quantite_commandee: Optional[float] = None
@@ -3775,13 +3780,48 @@ async def create_groupe_from_cluster(body: ComparatifFromCluster, _=Depends(requ
 # calculé : facturé − reçu (poids), facturé − commande (prix), et sur le montant.
 
 
-def _calc_ecarts_ligne(poids_recu, prix_commande, poids_facture, prix_facture):
+# Tolérance de rapprochement : sous ce seuil, un écart de montant est du bruit
+# d'arrondi (le fournisseur arrondit chaque ligne au centime), pas un litige.
+TOLERANCE_ECART_LIGNE_EUR = 0.02
+TOLERANCE_ECART_TOTAL_EUR = 0.05
+
+# Unités de prix dont le montant se calcule sur la QUANTITÉ (pas le poids).
+UNITES_PRIX_QUANTITE = ("colis", "piece")
+
+
+def _arrondi_commercial(x, decimales: int = 2):
+    """Arrondi « facture » : ROUND_HALF_UP (2,675 → 2,68), à la différence du
+    round() de Python (arrondi bancaire : 2,675 → 2,67). Passe par Decimal(str(x))
+    pour neutraliser la représentation binaire des floats. None → None."""
+    if x is None:
+        return None
+    quantum = Decimal(1).scaleb(-decimales)
+    return float(Decimal(str(x)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
+def _base_montant(unite_prix, poids, quantite):
+    """Base de calcul du montant selon l'unité du prix :
+    - 'kg' → le poids ; - 'colis'/'piece' → la quantité, avec REPLI sur le poids si
+    la quantité est inconnue (lignes historiques d'avant v7.2 : comportement inchangé).
+    """
+    if unite_prix in UNITES_PRIX_QUANTITE and quantite is not None:
+        return quantite
+    return poids
+
+
+def _calc_ecarts_ligne(poids_recu, prix_commande, poids_facture, prix_facture,
+                       unite_prix="kg", quantite_facturee=None, quantite_commandee=None):
     """Calcule (montant_facture, ecart_poids, ecart_prix, ecart_montant) pour une ligne.
 
-    - montant facturé = poids facturé × prix facturé
+    - montant facturé = base × prix facturé, où base dépend de l'unité du prix :
+        'kg' → poids facturé ; 'colis'/'piece' → quantité facturée
     - écart poids     = poids facturé − poids reçu (positif = facturé en trop)
     - écart prix      = prix facturé − prix commande (positif = plus cher que négocié)
-    - écart montant   = montant facturé − montant attendu (poids reçu × prix commande)
+    - écart montant   = montant facturé − montant attendu
+        (montant attendu = base attendue × prix commande, base attendue = poids reçu
+         ou quantité commandée selon l'unité)
+    Les MONTANTS sont arrondis commercialement à 2 décimales (comme sur la facture
+    papier) ; les prix unitaires gardent leur précision (3-4 décimales possibles).
     Les valeurs manquantes sont traitées comme 0 pour ne pas casser le calcul.
     """
     pr = poids_recu or 0.0
@@ -3789,22 +3829,26 @@ def _calc_ecarts_ligne(poids_recu, prix_commande, poids_facture, prix_facture):
     pf = poids_facture or 0.0
     prix_f = prix_facture or 0.0
 
-    montant_facture = pf * prix_f
-    montant_attendu = pr * pc
-    ecart_poids = pf - pr
+    base_facturee = _base_montant(unite_prix, pf, quantite_facturee) or 0.0
+    base_attendue = _base_montant(unite_prix, pr, quantite_commandee) or 0.0
+
+    montant_facture = _arrondi_commercial(base_facturee * prix_f)
+    montant_attendu = _arrondi_commercial(base_attendue * pc)
+    ecart_poids = round(pf - pr, 3)
     ecart_prix = prix_f - pc
-    ecart_montant = montant_facture - montant_attendu
+    ecart_montant = _arrondi_commercial(montant_facture - montant_attendu)
     return montant_facture, ecart_poids, ecart_prix, ecart_montant
 
 
 async def _recalculer_ecarts_ligne(db, ligne_id: int, *, derive_montant: bool = True):
     """Relit une ligne, recalcule montant + écarts, persiste.
 
-    - derive_montant=True (défaut) : le montant facturé est dérivé poids × prix
-      (saisie au prix unitaire €/kg).
+    - derive_montant=True (défaut) : le montant facturé est dérivé base × prix
+      (base = poids pour un prix au kg, quantité facturée pour colis/pièce).
     - derive_montant=False : le montant facturé déjà stocké est la source de vérité
-      (saisi tel quel depuis la facture, on ne re-multiplie PAS par le poids) ;
-      le prix €/kg est recalé sur montant / poids pour rester cohérent à l'affichage.
+      (saisi tel quel depuis la facture, on ne re-multiplie PAS) ; le prix unitaire
+      est recalé sur montant / base pour rester cohérent à l'affichage.
+    Les montants sont arrondis commercialement à 2 décimales.
     """
     cur = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
     ligne = await cur.fetchone()
@@ -3814,41 +3858,61 @@ async def _recalculer_ecarts_ligne(db, ligne_id: int, *, derive_montant: bool = 
     pc = ligne["prix_commande_ht"] or 0.0
     pf = ligne["poids_facture_kg"] or 0.0
     prix_f = ligne["prix_facture_ht"] or 0.0
+    unite_prix = ligne["unite_prix"] or "kg"
+    qte_f = ligne["quantite_facturee"]
+    qte_c = ligne["quantite_commandee"]
+
+    base_facturee = _base_montant(unite_prix, pf, qte_f) or 0.0
 
     if derive_montant or ligne["montant_facture_ht"] is None:
-        montant = pf * prix_f
+        montant = _arrondi_commercial(base_facturee * prix_f)
     else:
-        montant = ligne["montant_facture_ht"]
-        if pf > 0:
-            prix_f = montant / pf  # garde le €/kg cohérent avec le montant saisi
+        montant = _arrondi_commercial(ligne["montant_facture_ht"])
+        if base_facturee > 0:
+            prix_f = montant / base_facturee  # prix unitaire cohérent avec le montant saisi
 
-    montant_attendu = pr * pc
+    base_attendue = _base_montant(unite_prix, pr, qte_c) or 0.0
+    montant_attendu = _arrondi_commercial(base_attendue * pc)
     await db.execute(
         """UPDATE facture_lignes
            SET montant_facture_ht = ?, prix_facture_ht = ?,
                ecart_poids_kg = ?, ecart_prix_ht = ?, ecart_montant_ht = ?
            WHERE id = ?""",
-        (montant, prix_f, pf - pr, prix_f - pc, montant - montant_attendu, ligne_id),
+        (montant, prix_f, round(pf - pr, 3), prix_f - pc,
+         _arrondi_commercial(montant - montant_attendu), ligne_id),
     )
 
 
 async def _recalculer_totaux_facture(db, facture_id: int):
-    """Recalcule les totaux d'entête (facturé, attendu, écart) depuis les lignes."""
+    """Recalcule les totaux d'entête (facturé, attendu, écart) depuis les lignes.
+
+    Le total attendu est la somme des montants attendus PAR LIGNE (chacun arrondi
+    au centime, comme le fournisseur), dans l'unité de prix propre à chaque ligne —
+    pas un SUM(poids × prix) qui présumerait tout au kg et accumulerait les floats.
+    """
     cur = await db.execute(
-        """SELECT
-               COALESCE(SUM(montant_facture_ht), 0) AS total_facture,
-               COALESCE(SUM(COALESCE(poids_recu_kg, 0) * COALESCE(prix_commande_ht, 0)), 0) AS total_attendu
+        """SELECT montant_facture_ht, poids_recu_kg, prix_commande_ht,
+                  unite_prix, quantite_commandee
            FROM facture_lignes WHERE facture_id = ?""",
         (facture_id,),
     )
-    row = await cur.fetchone()
-    total_facture = row["total_facture"]
-    total_attendu = row["total_attendu"]
+    lignes = await cur.fetchall()
+    total_facture = 0.0
+    total_attendu = 0.0
+    for l in lignes:
+        total_facture += l["montant_facture_ht"] or 0.0
+        base_attendue = _base_montant(
+            l["unite_prix"] or "kg", l["poids_recu_kg"], l["quantite_commandee"]
+        ) or 0.0
+        total_attendu += _arrondi_commercial(base_attendue * (l["prix_commande_ht"] or 0.0))
+    total_facture = _arrondi_commercial(total_facture)
+    total_attendu = _arrondi_commercial(total_attendu)
     await db.execute(
         """UPDATE factures
            SET montant_total_ht_facture = ?, montant_total_ht_attendu = ?, ecart_total_ht = ?
            WHERE id = ?""",
-        (total_facture, total_attendu, total_facture - total_attendu, facture_id),
+        (total_facture, total_attendu,
+         _arrondi_commercial(total_facture - total_attendu), facture_id),
     )
 
 
@@ -4015,12 +4079,14 @@ async def _generer_facture_depuis_reception(
     if not fournisseur_id:
         return {"ok": False, "facture_id": None, "raison": "sans_fournisseur"}
 
-    # Lignes de réception (poids HACCP figé + prix BL indicatif) + désignation via COALESCE
+    # Lignes de réception (poids HACCP figé + prix BL indicatif) + désignation via COALESCE.
+    # format_prix (catalogue) donne l'unité du prix ; nb_colis (réception) la quantité.
     cur_rl = await db.execute(
         """SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
                   rl.poids_kg AS poids_recu_kg, rl.prix_unitaire_ht AS prix_bl_ht,
+                  rl.nb_colis AS nb_colis,
                   COALESCE(p.nom, cf.designation, rl.designation_libre) AS designation,
-                  cf.code_article AS code_article
+                  cf.code_article AS code_article, cf.format_prix AS format_prix
            FROM reception_lignes rl
            LEFT JOIN produits p ON p.id = rl.produit_id
            LEFT JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
@@ -4067,13 +4133,24 @@ async def _generer_facture_depuis_reception(
         quantite_commandee = cl["quantite_commandee"] if cl else None
         unite = (cl["unite"] if cl else None) or "kg"
         poids_facture = rl["poids_recu_kg"]
+        # Unité du PRIX : le format catalogue fait foi (c'est lui qui dit si l'article
+        # se facture au kg, au colis ou à la pièce), repli sur l'unité de commande.
+        u = (rl.get("format_prix") or unite or "kg").strip().lower()
+        unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
+        # Quantité facturée (colis/pièce) : nb de colis pointé à la réception,
+        # repli quantité commandée. NULL pour un prix au kg (le poids fait foi).
+        quantite_facturee = None
+        if unite_prix in UNITES_PRIX_QUANTITE:
+            quantite_facturee = rl.get("nb_colis") or quantite_commandee
         # Prix facturé pré-rempli : prix BL (réalité constatée) si dispo, sinon prix commande.
         if prix_source == "bl":
             prix_facture = rl.get("prix_bl_ht") if rl.get("prix_bl_ht") is not None else prix_commande
         else:
             prix_facture = prix_commande
         montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
-            rl["poids_recu_kg"], prix_commande, poids_facture, prix_facture
+            rl["poids_recu_kg"], prix_commande, poids_facture, prix_facture,
+            unite_prix=unite_prix, quantite_facturee=quantite_facturee,
+            quantite_commandee=quantite_commandee,
         )
 
         # Litige auto : écart prix relatif (vs commande) au-delà du seuil.
@@ -4093,13 +4170,15 @@ async def _generer_facture_depuis_reception(
         await db.execute(
             """INSERT INTO facture_lignes
                (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
-                designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
+                designation, unite, unite_prix, quantite_facturee,
+                poids_recu_kg, prix_commande_ht, quantite_commandee,
                 poids_facture_kg, prix_facture_ht, montant_facture_ht,
                 ecart_poids_kg, ecart_prix_ht, ecart_montant_ht,
                 statut_ligne, commentaire_litige)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (facture_id, rl["catalogue_fournisseur_id"], rl["reception_ligne_id"],
              rl["code_article"], rl["designation"] or "Article", unite,
+             unite_prix, quantite_facturee,
              rl["poids_recu_kg"], prix_commande, quantite_commandee,
              poids_facture, prix_facture, montant, e_poids, e_prix, e_montant,
              statut_ligne, commentaire_litige),
@@ -4348,6 +4427,33 @@ async def historique_prix_catalogue(catalogue_id: int, limit: int = Query(60, ge
     }
 
 
+async def _verifier_doublon_numero_facture(db, fournisseur_id, numero_facture,
+                                           exclure_id: Optional[int] = None):
+    """Refuse (409) un numéro de facture déjà enregistré pour ce fournisseur.
+
+    Contrôle anti-double-comptabilisation/paiement standard (le n° fournisseur est
+    unique par fournisseur). Les factures sans numéro (brouillons) ne sont pas
+    contraintes. Doublé côté BDD par l'index partiel idx_factures_fournisseur_numero.
+    """
+    numero = (numero_facture or "").strip()
+    if not numero or not fournisseur_id:
+        return
+    sql = """SELECT id FROM factures
+             WHERE fournisseur_id = ? AND TRIM(COALESCE(numero_facture, '')) = ?"""
+    params = [fournisseur_id, numero]
+    if exclure_id is not None:
+        sql += " AND id <> ?"
+        params.append(exclure_id)
+    cur = await db.execute(sql, params)
+    doublon = await cur.fetchone()
+    if doublon:
+        raise HTTPException(
+            409,
+            f"Le numéro de facture « {numero} » existe déjà pour ce fournisseur "
+            f"(facture id={doublon['id']}). Risque de double comptabilisation.",
+        )
+
+
 @router.post("/factures", status_code=201)
 async def create_facture(body: FactureCreate):
     """Création manuelle d'une facture (entête + lignes optionnelles)."""
@@ -4357,6 +4463,8 @@ async def create_facture(body: FactureCreate):
         )
         if not await cur_f.fetchone():
             raise HTTPException(404, "Fournisseur introuvable")
+
+        await _verifier_doublon_numero_facture(db, body.fournisseur_id, body.numero_facture)
 
         date_fac = body.date_facture or date.today().isoformat()
         cur = await db.execute(
@@ -4369,19 +4477,25 @@ async def create_facture(body: FactureCreate):
         facture_id = cur.lastrowid
 
         for ligne in (body.lignes or []):
+            u = (ligne.unite_prix or "kg").strip().lower()
+            unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
             montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
                 ligne.poids_recu_kg, ligne.prix_commande_ht,
                 ligne.poids_facture_kg, ligne.prix_facture_ht,
+                unite_prix=unite_prix, quantite_facturee=ligne.quantite_facturee,
+                quantite_commandee=ligne.quantite_commandee,
             )
             await db.execute(
                 """INSERT INTO facture_lignes
                    (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
-                    designation, unite, poids_recu_kg, prix_commande_ht, quantite_commandee,
+                    designation, unite, unite_prix, quantite_facturee,
+                    poids_recu_kg, prix_commande_ht, quantite_commandee,
                     poids_facture_kg, prix_facture_ht, montant_facture_ht,
                     ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (facture_id, ligne.catalogue_fournisseur_id, ligne.reception_ligne_id,
                  ligne.code_article, ligne.designation, ligne.unite or "kg",
+                 unite_prix, ligne.quantite_facturee,
                  ligne.poids_recu_kg, ligne.prix_commande_ht, ligne.quantite_commandee,
                  ligne.poids_facture_kg, ligne.prix_facture_ht, montant,
                  e_poids, e_prix, e_montant),
@@ -4395,13 +4509,21 @@ async def create_facture(body: FactureCreate):
 @router.put("/factures/{facture_id}")
 async def update_facture(facture_id: int, body: FactureUpdate):
     async with get_db() as db:
-        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
-        if not await cur.fetchone():
+        cur = await db.execute(
+            "SELECT id, fournisseur_id FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
             raise HTTPException(404, "Facture introuvable")
 
         fields = {k: v for k, v in body.model_dump().items() if v is not None}
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
+
+        if "numero_facture" in fields:
+            await _verifier_doublon_numero_facture(
+                db, fac["fournisseur_id"], fields["numero_facture"], exclure_id=facture_id
+            )
 
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [facture_id]
@@ -4423,10 +4545,16 @@ async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLign
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
 
+        if "unite_prix" in fields:
+            u = (fields["unite_prix"] or "kg").strip().lower()
+            if u not in ("kg",) + UNITES_PRIX_QUANTITE:
+                raise HTTPException(422, "unite_prix doit être 'kg', 'colis' ou 'piece'")
+            fields["unite_prix"] = u
+
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [ligne_id]
         await db.execute(f"UPDATE facture_lignes SET {set_clause} WHERE id = ?", values)
-        # Si le montant est saisi directement, il fait foi (pas de poids × prix).
+        # Si le montant est saisi directement, il fait foi (pas de base × prix).
         montant_direct = "montant_facture_ht" in fields
         # Recalcule écarts de la ligne + totaux d'entête
         await _recalculer_ecarts_ligne(db, ligne_id, derive_montant=not montant_direct)

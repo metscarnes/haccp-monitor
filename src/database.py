@@ -880,6 +880,13 @@ CREATE INDEX IF NOT EXISTS idx_factures_fournisseur
 CREATE INDEX IF NOT EXISTS idx_factures_reception
     ON factures(reception_id);
 
+-- Anti-doublon comptable (v7.2) : un même fournisseur ne peut pas avoir deux
+-- factures portant le même numéro (risque de double comptabilisation/paiement).
+-- Index PARTIEL : les factures sans numéro (brouillons) ne sont pas contraintes.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_factures_fournisseur_numero
+    ON factures(fournisseur_id, numero_facture)
+    WHERE numero_facture IS NOT NULL AND TRIM(numero_facture) <> '';
+
 CREATE TABLE IF NOT EXISTS facture_lignes (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
     facture_id               INTEGER NOT NULL,
@@ -888,6 +895,11 @@ CREATE TABLE IF NOT EXISTS facture_lignes (
     code_article             TEXT,
     designation              TEXT    NOT NULL,
     unite                    TEXT    NOT NULL DEFAULT 'kg',
+    -- v7.2 — unité du PRIX facturé ('kg'|'colis'|'piece') : pilote le calcul du
+    -- montant (kg → poids × prix ; colis/pièce → quantité facturée × prix).
+    -- quantite_facturee = nb de colis/pièces facturés (NULL pour les lignes au kg).
+    unite_prix               TEXT    DEFAULT 'kg',
+    quantite_facturee        REAL,
     poids_recu_kg            REAL,
     prix_commande_ht         REAL,
     quantite_commandee       REAL,
@@ -1603,6 +1615,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 code_article             TEXT,
                 designation              TEXT    NOT NULL,
                 unite                    TEXT    NOT NULL DEFAULT 'kg',
+                -- v7.2 — unité du PRIX facturé + quantité facturée (colis/pièce) :
+                unite_prix               TEXT    DEFAULT 'kg',
+                quantite_facturee        REAL,
                 -- REÇU (copie figée de la réception, lecture seule) :
                 poids_recu_kg            REAL,
                 -- COMMANDÉ (référence prix négocié) :
@@ -1999,6 +2014,42 @@ PRAGMA foreign_keys=ON;
                 logger.info("Migration v6.8 : nb_colis ajouté à reception_lignes")
         except Exception as e:
             logger.warning("Migration v6.8 nb_colis : %s", e)
+
+        # Migration v7.2 : refonte facture étape 1 — unité du prix facturé + quantité
+        # facturée sur facture_lignes (montant colis/pièce = quantité × prix, plus
+        # poids × prix) + index unique anti-doublon (fournisseur, numéro de facture).
+        try:
+            cur_fl = await db.execute("PRAGMA table_info(facture_lignes)")
+            cols_fl = {row[1] for row in await cur_fl.fetchall()}
+            if cols_fl and "unite_prix" not in cols_fl:
+                await db.execute(
+                    "ALTER TABLE facture_lignes ADD COLUMN unite_prix TEXT DEFAULT 'kg'"
+                )
+                await db.execute(
+                    "ALTER TABLE facture_lignes ADD COLUMN quantite_facturee REAL"
+                )
+                # Backfill : l'unité VRAIE vient du catalogue (format_prix). Les montants
+                # historiques ne sont PAS recalculés (quantité facturée inconnue → le
+                # calcul replie sur poids × prix, inchangé) : ils se corrigeront à la
+                # réédition de la ligne, facture papier en main.
+                await db.execute(
+                    """UPDATE facture_lignes SET unite_prix = COALESCE(
+                           (SELECT cf.format_prix FROM catalogue_fournisseur cf
+                             WHERE cf.id = facture_lignes.catalogue_fournisseur_id), 'kg')"""
+                )
+                logger.info(
+                    "Migration v7.2 : unite_prix + quantite_facturee ajoutés à facture_lignes"
+                )
+        except Exception as e:
+            logger.warning("Migration v7.2 facture_lignes : %s", e)
+        try:
+            await db.execute(
+                """CREATE UNIQUE INDEX IF NOT EXISTS idx_factures_fournisseur_numero
+                       ON factures(fournisseur_id, numero_facture)
+                       WHERE numero_facture IS NOT NULL AND TRIM(numero_facture) <> ''"""
+            )
+        except Exception as e:
+            logger.warning("Migration v7.2 index anti-doublon factures : %s", e)
 
         # Migration v5.8 : recalculer statut des lignes en_attente mal classées
         # - lot_interne=1 compte comme lot présent (numéro auto-généré)

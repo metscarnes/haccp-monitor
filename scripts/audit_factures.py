@@ -47,8 +47,9 @@ def a_plus_de_2_decimales(x, epsilon=1e-6):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("db", nargs="?",
-                    default=str(Path(__file__).resolve().parent.parent / "data" / "haccp.db"),
-                    help="Chemin de la base SQLite (défaut : data/haccp.db du projet)")
+                    default=str(Path(__file__).resolve().parent.parent / "haccp.db"),
+                    help="Chemin de la base SQLite (défaut : haccp.db à la racine du projet, "
+                         "= la base de prod sur le Pi)")
     args = ap.parse_args()
 
     db_path = Path(args.db)
