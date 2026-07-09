@@ -151,6 +151,7 @@
                 <th class="ach-col-num">Prix cmd HT</th>
                 <th class="ach-col-num">Prix fact. HT</th>
                 <th class="ach-col-num">Montant HT</th>
+                <th class="ach-col-num" title="Taux de TVA de la ligne (récapitulatif par taux dans le bouclage)">TVA</th>
                 <th class="ach-col-num">Écart HT</th>
                 <th style="text-align:center;">Litige</th>
               </tr>
@@ -160,12 +161,52 @@
         </div>
       </div>
 
-      <div class="ach-total-bar">
-        <span style="display:flex; gap:var(--space-4); align-items:center; flex-wrap:wrap;">
-          <span style="font-size:var(--text-sm); color:#6b7280;">Attendu (cmd × reçu) : <strong id="fac-total-attendu">0,00 €</strong></span>
-          <span style="font-size:var(--text-sm); color:#6b7280;">Facturé : <strong id="fac-total-facture">0,00 €</strong></span>
-          <span style="font-size:var(--text-base);">Écart total : <strong id="fac-total-ecart">0,00 €</strong></span>
-        </span>
+      <div class="ach-lignes">
+        <div class="ach-lignes-titre">Frais annexes &amp; remises
+          <span class="fac-choix-meta" style="font-weight:normal;">— comptent dans le total facture, pas dans l'écart marchandise</span>
+        </div>
+        <div id="fac-annexes-suggestions" class="fac-annexes-suggestions"></div>
+        <div class="fac-table-wrap">
+          <table class="ach-table fac-table" id="table-annexes-facture">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Désignation</th>
+                <th class="ach-col-num">Montant HT</th>
+                <th class="ach-col-num">TVA</th>
+                <th style="text-align:center;">—</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-annexes-facture"></tbody>
+          </table>
+        </div>
+        <div class="fac-annexes-boutons">
+          <button type="button" class="ach-btn" data-ajout-annexe="transport">+ Transport</button>
+          <button type="button" class="ach-btn" data-ajout-annexe="taxe">+ Taxe</button>
+          <button type="button" class="ach-btn" data-ajout-annexe="consigne">+ Consigne</button>
+          <button type="button" class="ach-btn" data-ajout-annexe="remise">− Remise</button>
+        </div>
+      </div>
+
+      <div class="ach-total-bar fac-bouclage" id="fac-bouclage">
+        <div class="fac-bouclage-calcul">
+          <span class="fac-bouclage-item">Attendu (cmd × reçu) : <strong id="fac-total-attendu">0,00 €</strong></span>
+          <span class="fac-bouclage-item">Écart marchandise : <strong id="fac-total-ecart">0,00 €</strong></span>
+          <span class="fac-bouclage-item">Marchandise HT : <strong id="fac-recap-marchandise">0,00 €</strong></span>
+          <span class="fac-bouclage-item">Annexes HT : <strong id="fac-recap-annexes">0,00 €</strong></span>
+          <span class="fac-bouclage-item">Total HT : <strong id="fac-total-facture">0,00 €</strong></span>
+          <span class="fac-bouclage-item" id="fac-recap-tva">TVA : —</span>
+          <span class="fac-bouclage-item">TTC calculé : <strong id="fac-recap-ttc">0,00 €</strong></span>
+        </div>
+        <div class="fac-bouclage-papier">
+          <label>Total HT papier
+            <input type="number" step="0.01" id="fac-papier-ht" class="fac-input" placeholder="—">
+          </label>
+          <label>Total TTC papier
+            <input type="number" step="0.01" id="fac-papier-ttc" class="fac-input" placeholder="—">
+          </label>
+          <span class="fac-reste" id="fac-reste">Saisir le total du papier pour vérifier le bouclage</span>
+        </div>
       </div>
 
       <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">

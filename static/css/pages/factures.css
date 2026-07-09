@@ -71,3 +71,76 @@
 .fac-choix-item:hover { background: #f9f5ef; }
 .fac-choix-item.deja-facturee { opacity: .5; cursor: not-allowed; }
 .fac-choix-meta { font-size: var(--text-sm); color: #6b7280; }
+
+/* ── Refonte étape 2 : lignes annexes + bouclage ─────────────────────────── */
+
+/* Sélecteur TVA (par ligne) */
+.fac-select {
+  border: 1px solid #d4c5af;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: .3rem .35rem;
+  font-size: var(--text-sm);
+}
+
+/* Champ texte (désignation d'une ligne annexe) */
+.fac-input--texte { width: 100%; min-width: 160px; text-align: left; }
+
+/* Boutons d'ajout d'annexes */
+.fac-annexes-boutons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+}
+
+/* Suggestions « habituels chez ce fournisseur » */
+.fac-annexes-suggestions {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: var(--text-sm);
+  color: #6b7280;
+}
+.fac-chip {
+  border: 1px dashed #d4c5af;
+  background: #f9f5ef;
+  border-radius: 999px;
+  padding: .25rem .7rem;
+  margin: .15rem .1rem;
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.fac-chip:hover { background: #f0e7d8; }
+
+/* Barre de bouclage */
+.fac-bouclage { display: block; }
+.fac-bouclage-calcul {
+  display: flex;
+  gap: var(--space-4);
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: #6b7280;
+}
+.fac-bouclage-item strong { color: #1f2937; }
+.fac-bouclage-papier {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed #e5d9c3;
+}
+.fac-bouclage-papier label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: #6b7280;
+}
+.fac-bouclage-papier input { max-width: 110px; }
+
+/* Reste à expliquer */
+.fac-reste { font-weight: 700; }
+.fac-reste--ok { color: #166534; }
+.fac-reste--ko { color: #b91c1c; }

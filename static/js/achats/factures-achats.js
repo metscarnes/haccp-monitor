@@ -43,6 +43,17 @@ function bindEvents() {
   document.getElementById('modal-litige-fermer').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-annuler').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-confirmer').addEventListener('click', confirmerLitige);
+
+  // Lignes annexes : boutons d'ajout par type
+  document.querySelectorAll('[data-ajout-annexe]').forEach(btn => {
+    btn.addEventListener('click', () => ajouterAnnexe(btn.dataset.ajoutAnnexe));
+  });
+
+  // Bouclage : totaux lus sur le papier (effaçables → null)
+  document.getElementById('fac-papier-ht').addEventListener('change',
+    (e) => majPapier('total_ht_papier', e.target));
+  document.getElementById('fac-papier-ttc').addEventListener('change',
+    (e) => majPapier('total_ttc_papier', e.target));
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -176,16 +187,20 @@ async function ouvrirFacture(id, prefetch) {
 
   rendreLignes(fac.lignes || []);
   rendreTotaux(fac);
+  chargerSuggestionsAnnexes(fac);
   document.getElementById('modal-facture').hidden = false;
 }
 
 function rendreLignes(lignes) {
+  const marchandises = lignes.filter(l => (l.type_ligne || 'marchandise') === 'marchandise');
+  rendreAnnexes(lignes.filter(l => (l.type_ligne || 'marchandise') !== 'marchandise'));
+
   const tbody = document.getElementById('tbody-lignes-facture');
-  if (!lignes.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="ach-vide">Aucune ligne.</td></tr>';
+  if (!marchandises.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="ach-vide">Aucune ligne.</td></tr>';
     return;
   }
-  tbody.innerHTML = lignes.map(l => {
+  tbody.innerHTML = marchandises.map(l => {
     const ecart = l.ecart_montant_ht ?? 0;
     const enLitige = l.statut_ligne === 'litige';
     // Unité du PRIX : pour colis/pièce le montant = quantité × prix (le poids reste
@@ -220,6 +235,7 @@ function rendreLignes(lignes) {
                  value="${l.montant_facture_ht != null ? l.montant_facture_ht : ''}"
                  title="Montant HT de la ligne tel que facturé — saisie directe possible">
         </td>
+        <td class="ach-col-num">${selectTva(l.tva_pct)}</td>
         <td class="ach-col-num fac-ecart ${classeEcart(ecart)}">${signe(ecart)}${fmtPrix(Math.abs(ecart))} €</td>
         <td style="text-align:center;">
           <button class="fac-btn-litige ${enLitige ? 'actif' : ''}" data-litige="${l.id}"
@@ -230,21 +246,137 @@ function rendreLignes(lignes) {
       </tr>`;
   }).join('');
 
-  // Saisie inline : recalcul serveur au blur (Enter = blur)
-  tbody.querySelectorAll('input.fac-input').forEach(inp => {
-    inp.addEventListener('change', () => majLigne(inp));
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
-  });
+  brancherSaisieLignes(tbody);
   tbody.querySelectorAll('[data-litige]').forEach(btn => {
     btn.addEventListener('click', () => basculerLitige(btn.dataset.litige));
   });
+}
+
+// ── Lignes annexes (transport, taxe, consigne, remise, ajustement) ──
+const TYPE_ANNEXE_LABELS = {
+  transport: '🚚 Transport', taxe: '🏛 Taxe', consigne: '📦 Consigne',
+  remise: '➖ Remise', ajustement: '🔧 Ajustement',
+};
+
+function rendreAnnexes(annexes) {
+  const tbody = document.getElementById('tbody-annexes-facture');
+  if (!annexes.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="ach-vide">Aucun frais annexe — ajoutez transport, taxe, consigne ou remise si la facture en comporte.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = annexes.map(l => `
+    <tr data-lid="${l.id}">
+      <td>${TYPE_ANNEXE_LABELS[l.type_ligne] || escHtml(l.type_ligne)}</td>
+      <td>
+        <input type="text" class="fac-input fac-input--texte" data-champ="designation"
+               value="${escHtml(l.designation)}">
+      </td>
+      <td class="ach-col-num">
+        <input type="number" step="0.01" class="fac-input" data-champ="montant_facture_ht"
+               value="${l.montant_facture_ht != null ? l.montant_facture_ht : ''}"
+               title="Montant HT — négatif pour une remise">
+      </td>
+      <td class="ach-col-num">${selectTva(l.tva_pct)}</td>
+      <td style="text-align:center;">
+        <button class="fac-btn-litige" data-suppr-annexe="${l.id}" title="Supprimer la ligne">🗑</button>
+      </td>
+    </tr>`).join('');
+
+  brancherSaisieLignes(tbody);
+  tbody.querySelectorAll('[data-suppr-annexe]').forEach(btn => {
+    btn.addEventListener('click', () => supprimerAnnexe(btn.dataset.supprAnnexe));
+  });
+}
+
+function selectTva(valeur) {
+  const taux = [0, 2.1, 5.5, 10, 20];
+  const opts = taux.map(t =>
+    `<option value="${t}" ${valeur === t ? 'selected' : ''}>${String(t).replace('.', ',')} %</option>`
+  ).join('');
+  return `<select class="fac-select" data-champ="tva_pct" title="Taux de TVA de la ligne">
+    <option value="" ${valeur == null ? 'selected' : ''}>—</option>${opts}</select>`;
+}
+
+function brancherSaisieLignes(tbody) {
+  // Saisie inline : recalcul serveur au change (Enter = blur)
+  tbody.querySelectorAll('input.fac-input, select.fac-select').forEach(inp => {
+    inp.addEventListener('change', () => majLigne(inp));
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+  });
+}
+
+async function ajouterAnnexe(type, prefill) {
+  const defauts = {
+    transport: { designation: 'Frais de transport', tva_pct: 20 },
+    taxe:      { designation: 'Taxe', tva_pct: 20 },
+    consigne:  { designation: 'Consigne', tva_pct: 20 },
+    remise:    { designation: 'Remise', tva_pct: 5.5 },
+    ajustement:{ designation: 'Ajustement', tva_pct: 5.5 },
+  };
+  const base = defauts[type] || { designation: 'Ligne', tva_pct: 20 };
+  const body = {
+    designation: prefill?.designation ?? base.designation,
+    type_ligne: type,
+    montant_facture_ht: prefill?.montant_facture_ht ?? 0,
+    tva_pct: prefill?.tva_pct ?? base.tva_pct,
+  };
+  const r = await fetch(`${API_FAC}/${facCourante.id}/lignes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { alert('Impossible d\'ajouter la ligne.'); return; }
+  await rafraichirFacture();
+}
+
+async function supprimerAnnexe(ligneId) {
+  const r = await fetch(`${API_FAC}/${facCourante.id}/lignes/${ligneId}`, { method: 'DELETE' });
+  if (!r.ok) { alert('Échec de la suppression.'); return; }
+  await rafraichirFacture();
+}
+
+// Annexes habituelles du fournisseur (mémoire des factures passées) → chips cliquables.
+async function chargerSuggestionsAnnexes(fac) {
+  const zone = document.getElementById('fac-annexes-suggestions');
+  zone.innerHTML = '';
+  if (!fac.fournisseur_id) return;
+  try {
+    const sugg = await fetch(`${API_FAC}/annexes-frequentes?fournisseur_id=${fac.fournisseur_id}`)
+      .then(r => r.ok ? r.json() : []);
+    const dejaLa = new Set((fac.lignes || [])
+      .filter(l => l.type_ligne !== 'marchandise')
+      .map(l => `${l.type_ligne}|${(l.designation || '').toLowerCase()}`));
+    const utiles = sugg.filter(s => !dejaLa.has(`${s.type_ligne}|${(s.designation || '').toLowerCase()}`));
+    if (!utiles.length) return;
+    zone.innerHTML = 'Habituels chez ce fournisseur : ' + utiles.map((s, i) =>
+      `<button type="button" class="fac-chip" data-sugg="${i}">
+         ${escHtml(s.designation)} · ${fmtPrix(s.dernier_montant_ht)} €
+       </button>`).join(' ');
+    zone.querySelectorAll('[data-sugg]').forEach(btn => {
+      const s = utiles[parseInt(btn.dataset.sugg, 10)];
+      btn.addEventListener('click', () => ajouterAnnexe(s.type_ligne, {
+        designation: s.designation,
+        montant_facture_ht: s.dernier_montant_ht,
+        tva_pct: s.tva_pct,
+      }));
+    });
+  } catch (_) { /* suggestions = confort, jamais bloquant */ }
+}
+
+async function rafraichirFacture() {
+  facCourante = await fetch(`${API_FAC}/${facCourante.id}`).then(x => x.json());
+  rendreLignes(facCourante.lignes || []);
+  rendreTotaux(facCourante);
+  chargerSuggestionsAnnexes(facCourante);
 }
 
 async function majLigne(input) {
   const tr = input.closest('tr');
   const ligneId = tr.dataset.lid;
   const champ = input.dataset.champ;
-  const val = input.value === '' ? null : parseFloat(input.value);
+  const val = input.value === ''
+    ? null
+    : (champ === 'designation' ? input.value : parseFloat(input.value));
 
   const r = await fetch(`${API_FAC}/${facCourante.id}/lignes/${ligneId}`, {
     method: 'PUT',
@@ -258,6 +390,19 @@ async function majLigne(input) {
   rendreTotaux(facCourante);
 }
 
+// ── Bouclage : totaux papier ─────────────────────────────────
+async function majPapier(champ, input) {
+  const val = input.value === '' ? null : parseFloat(input.value);
+  const r = await fetch(`${API_FAC}/${facCourante.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [champ]: val }),
+  });
+  if (!r.ok) { alert('Échec de l\'enregistrement du total papier.'); return; }
+  facCourante = await r.json();
+  rendreTotaux(facCourante);
+}
+
 function rendreTotaux(fac) {
   document.getElementById('fac-total-attendu').textContent = fmtPrix(fac.montant_total_ht_attendu) + ' €';
   document.getElementById('fac-total-facture').textContent = fmtPrix(fac.montant_total_ht_facture) + ' €';
@@ -267,6 +412,39 @@ function rendreTotaux(fac) {
   const bar = span.closest('.ach-total-bar');
   bar.classList.remove('fac-total-ecart--haut', 'fac-total-ecart--bas', 'fac-total-ecart--nul');
   bar.classList.add(`fac-total-ecart--${niveauEcart(ecart, SEUIL_ECART_TOTAL)}`);
+
+  // Récapitulatif de bouclage (marchandise/annexes, TVA par taux, TTC, reste à expliquer)
+  const rec = fac.recap || {};
+  document.getElementById('fac-recap-marchandise').textContent = fmtPrix(rec.marchandise_ht) + ' €';
+  document.getElementById('fac-recap-annexes').textContent = fmtPrix(rec.annexes_ht) + ' €';
+  document.getElementById('fac-recap-ttc').textContent = fmtPrix(rec.total_ttc_calcule) + ' €';
+  const detTva = (rec.tva_par_taux || [])
+    .map(t => `${String(t.taux).replace('.', ',')} % → ${fmtPrix(t.tva)} €`).join(' · ');
+  document.getElementById('fac-recap-tva').textContent =
+    'TVA : ' + (detTva || '—') + (rec.nb_lignes_sans_tva ? ` (${rec.nb_lignes_sans_tva} ligne(s) sans taux)` : '');
+
+  // Inputs papier : reflète l'état serveur sans écraser une saisie en cours
+  const inpHt = document.getElementById('fac-papier-ht');
+  const inpTtc = document.getElementById('fac-papier-ttc');
+  if (document.activeElement !== inpHt) inpHt.value = rec.total_ht_papier ?? '';
+  if (document.activeElement !== inpTtc) inpTtc.value = rec.total_ttc_papier ?? '';
+
+  const zone = document.getElementById('fac-reste');
+  zone.classList.remove('fac-reste--ok', 'fac-reste--ko');
+  const resteTtc = rec.reste_a_expliquer_ttc;
+  const resteHt = rec.reste_a_expliquer_ht;
+  if (resteTtc == null && resteHt == null) {
+    zone.textContent = 'Saisir le total du papier pour vérifier le bouclage';
+  } else if (rec.boucle) {
+    zone.textContent = '✓ La facture boucle';
+    zone.classList.add('fac-reste--ok');
+  } else {
+    const parties = [];
+    if (resteTtc != null) parties.push(`${signe(resteTtc, 0.005) || ''}${fmtPrix(Math.abs(resteTtc))} € TTC`);
+    if (resteHt != null) parties.push(`${signe(resteHt, 0.005) || ''}${fmtPrix(Math.abs(resteHt))} € HT`);
+    zone.textContent = `Reste à expliquer : ${parties.join(' · ')}`;
+    zone.classList.add('fac-reste--ko');
+  }
 }
 
 // ── Litige ───────────────────────────────────────────────────

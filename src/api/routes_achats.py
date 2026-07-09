@@ -223,6 +223,9 @@ class FactureUpdate(BaseModel):
     date_facture: Optional[str] = None
     statut: Optional[str] = None          # brouillon|validee|litige
     commentaire: Optional[str] = None
+    # Totaux LUS SUR LE PAPIER (bouclage) — envoyables à null pour effacer.
+    total_ht_papier: Optional[float] = None
+    total_ttc_papier: Optional[float] = None
 
 
 class FactureLigneUpdate(BaseModel):
@@ -231,6 +234,8 @@ class FactureLigneUpdate(BaseModel):
     montant_facture_ht: Optional[float] = None  # saisie directe du montant ligne (prioritaire)
     quantite_facturee: Optional[float] = None   # nb colis/pièces facturés (unité de prix non-kg)
     unite_prix: Optional[str] = None            # kg|colis|piece
+    designation: Optional[str] = None           # édition libre (lignes annexes surtout)
+    tva_pct: Optional[float] = None
     statut_ligne: Optional[str] = None    # ok|litige
     commentaire_litige: Optional[str] = None
 
@@ -240,6 +245,8 @@ class FactureLigneCreate(BaseModel):
     reception_ligne_id: Optional[int] = None
     code_article: Optional[str] = None
     designation: str
+    type_ligne: Optional[str] = "marchandise"   # marchandise|transport|taxe|consigne|remise|ajustement
+    tva_pct: Optional[float] = None             # défaut : 5,5 marchandise / 20 annexe
     unite: Optional[str] = "kg"
     unite_prix: Optional[str] = "kg"            # kg|colis|piece (unité du PRIX facturé)
     quantite_facturee: Optional[float] = None
@@ -248,6 +255,7 @@ class FactureLigneCreate(BaseModel):
     quantite_commandee: Optional[float] = None
     poids_facture_kg: Optional[float] = None
     prix_facture_ht: Optional[float] = None
+    montant_facture_ht: Optional[float] = None  # annexes : montant saisi directement
 
 
 class FactureCreate(BaseModel):
@@ -261,6 +269,8 @@ class FactureCreate(BaseModel):
     commande_id: Optional[int] = None
     numero_facture: Optional[str] = None
     date_facture: Optional[str] = None
+    type: Optional[str] = "facture"       # facture|avoir (avoir = document séparé)
+    facture_liee_id: Optional[int] = None  # avoir → facture d'origine
     personnel_id: Optional[int] = None
     commentaire: Optional[str] = None
     lignes: Optional[List[FactureLigneCreate]] = []
@@ -3788,6 +3798,16 @@ TOLERANCE_ECART_TOTAL_EUR = 0.05
 # Unités de prix dont le montant se calcule sur la QUANTITÉ (pas le poids).
 UNITES_PRIX_QUANTITE = ("colis", "piece")
 
+# Types de lignes : 'marchandise' participe au rapprochement poids/prix ; les
+# ANNEXES comptent dans le total facture (bouclage) mais pas dans les écarts.
+TYPES_LIGNE_ANNEXES = ("transport", "taxe", "consigne", "remise", "ajustement")
+TYPES_LIGNE = ("marchandise",) + TYPES_LIGNE_ANNEXES
+
+# TVA par défaut (éditable ligne à ligne) : 5,5 % alimentaire pour la marchandise,
+# 20 % pour les frais annexes (transport, prestations…).
+TVA_DEFAUT_MARCHANDISE = 5.5
+TVA_DEFAUT_ANNEXE = 20.0
+
 
 def _arrondi_commercial(x, decimales: int = 2):
     """Arrondi « facture » : ROUND_HALF_UP (2,675 → 2,68), à la différence du
@@ -3854,6 +3874,19 @@ async def _recalculer_ecarts_ligne(db, ligne_id: int, *, derive_montant: bool = 
     ligne = await cur.fetchone()
     if not ligne:
         return
+
+    # Ligne ANNEXE (transport/taxe/…) : le montant saisi fait foi tel quel, pas de
+    # rapprochement (aucun attendu commande/réception) → écarts à zéro.
+    if (ligne["type_ligne"] or "marchandise") != "marchandise":
+        await db.execute(
+            """UPDATE facture_lignes
+               SET montant_facture_ht = ?,
+                   ecart_poids_kg = 0, ecart_prix_ht = 0, ecart_montant_ht = 0
+               WHERE id = ?""",
+            (_arrondi_commercial(ligne["montant_facture_ht"] or 0.0), ligne_id),
+        )
+        return
+
     pr = ligne["poids_recu_kg"] or 0.0
     pc = ligne["prix_commande_ht"] or 0.0
     pf = ligne["poids_facture_kg"] or 0.0
@@ -3886,34 +3919,112 @@ async def _recalculer_ecarts_ligne(db, ligne_id: int, *, derive_montant: bool = 
 async def _recalculer_totaux_facture(db, facture_id: int):
     """Recalcule les totaux d'entête (facturé, attendu, écart) depuis les lignes.
 
+    - montant_total_ht_facture = TOUTES les lignes (marchandise + annexes, remises
+      négatives incluses) : c'est le total qui doit boucler avec le papier.
+    - montant_total_ht_attendu + ecart_total_ht = MARCHANDISE seulement : c'est le
+      rapprochement pur commande/réception, non pollué par les frais annexes.
     Le total attendu est la somme des montants attendus PAR LIGNE (chacun arrondi
     au centime, comme le fournisseur), dans l'unité de prix propre à chaque ligne —
     pas un SUM(poids × prix) qui présumerait tout au kg et accumulerait les floats.
     """
     cur = await db.execute(
         """SELECT montant_facture_ht, poids_recu_kg, prix_commande_ht,
-                  unite_prix, quantite_commandee
+                  unite_prix, quantite_commandee, type_ligne
            FROM facture_lignes WHERE facture_id = ?""",
         (facture_id,),
     )
     lignes = await cur.fetchall()
     total_facture = 0.0
+    total_marchandise = 0.0
     total_attendu = 0.0
     for l in lignes:
-        total_facture += l["montant_facture_ht"] or 0.0
+        montant = l["montant_facture_ht"] or 0.0
+        total_facture += montant
+        if (l["type_ligne"] or "marchandise") != "marchandise":
+            continue
+        total_marchandise += montant
         base_attendue = _base_montant(
             l["unite_prix"] or "kg", l["poids_recu_kg"], l["quantite_commandee"]
         ) or 0.0
         total_attendu += _arrondi_commercial(base_attendue * (l["prix_commande_ht"] or 0.0))
     total_facture = _arrondi_commercial(total_facture)
+    total_marchandise = _arrondi_commercial(total_marchandise)
     total_attendu = _arrondi_commercial(total_attendu)
     await db.execute(
         """UPDATE factures
            SET montant_total_ht_facture = ?, montant_total_ht_attendu = ?, ecart_total_ht = ?
            WHERE id = ?""",
         (total_facture, total_attendu,
-         _arrondi_commercial(total_facture - total_attendu), facture_id),
+         _arrondi_commercial(total_marchandise - total_attendu), facture_id),
     )
+
+
+def _recap_facture(facture: dict, lignes: list) -> dict:
+    """Récapitulatif de BOUCLAGE d'une facture (calculé à la volée, rien de stocké) :
+
+    - ventilation marchandise / annexes (par type),
+    - TVA PAR TAUX sur la base cumulée du taux (comme le fournisseur la calcule —
+      pas ligne à ligne, sinon écarts d'un centime systématiques), TTC calculé,
+    - « reste à expliquer » = total papier (saisi/OCR) − total calculé, en HT et
+      TTC selon ce qui est renseigné ; boucle = |reste| ≤ tolérance.
+    """
+    marchandise_ht = 0.0
+    annexes_ht = 0.0
+    annexes_par_type: dict = {}
+    bases_par_taux: dict = {}
+    nb_sans_tva = 0
+    for l in lignes:
+        montant = l.get("montant_facture_ht") or 0.0
+        if (l.get("type_ligne") or "marchandise") == "marchandise":
+            marchandise_ht += montant
+        else:
+            annexes_ht += montant
+            t = l["type_ligne"]
+            annexes_par_type[t] = annexes_par_type.get(t, 0.0) + montant
+        taux = l.get("tva_pct")
+        if taux is None:
+            nb_sans_tva += 1
+        else:
+            bases_par_taux[taux] = bases_par_taux.get(taux, 0.0) + montant
+
+    marchandise_ht = _arrondi_commercial(marchandise_ht)
+    annexes_ht = _arrondi_commercial(annexes_ht)
+    total_ht = _arrondi_commercial(marchandise_ht + annexes_ht)
+
+    tva_par_taux = []
+    total_tva = 0.0
+    for taux in sorted(bases_par_taux):
+        base = _arrondi_commercial(bases_par_taux[taux])
+        tva = _arrondi_commercial(base * taux / 100.0)
+        total_tva += tva
+        tva_par_taux.append({"taux": taux, "base_ht": base, "tva": tva})
+    total_tva = _arrondi_commercial(total_tva)
+    total_ttc_calcule = _arrondi_commercial(total_ht + total_tva)
+
+    ht_papier = facture.get("total_ht_papier")
+    ttc_papier = facture.get("total_ttc_papier")
+    reste_ht = _arrondi_commercial(ht_papier - total_ht) if ht_papier is not None else None
+    reste_ttc = (_arrondi_commercial(ttc_papier - total_ttc_calcule)
+                 if ttc_papier is not None else None)
+    # Bouclage jugé sur le TTC papier si saisi (le chiffre en bas de page), sinon le HT.
+    reste_ref = reste_ttc if reste_ttc is not None else reste_ht
+    boucle = (abs(reste_ref) <= TOLERANCE_ECART_TOTAL_EUR) if reste_ref is not None else None
+
+    return {
+        "marchandise_ht": marchandise_ht,
+        "annexes_ht": annexes_ht,
+        "annexes_par_type": {t: _arrondi_commercial(v) for t, v in annexes_par_type.items()},
+        "total_ht": total_ht,
+        "tva_par_taux": tva_par_taux,
+        "total_tva": total_tva,
+        "total_ttc_calcule": total_ttc_calcule,
+        "nb_lignes_sans_tva": nb_sans_tva,
+        "total_ht_papier": ht_papier,
+        "total_ttc_papier": ttc_papier,
+        "reste_a_expliquer_ht": reste_ht,
+        "reste_a_expliquer_ttc": reste_ttc,
+        "boucle": boucle,
+    }
 
 
 @router.get("/factures/receptions-disponibles")
@@ -3955,6 +4066,34 @@ async def receptions_a_facturer(limit: int = Query(100)):
         for row in rows:
             row["deja_facturee"] = row["facture_id"] is not None
         return rows
+
+
+@router.get("/factures/annexes-frequentes")
+async def annexes_frequentes(fournisseur_id: int = Query(...), limit: int = Query(6)):
+    """Lignes annexes HABITUELLES d'un fournisseur (transport, taxes…), déduites de
+    ses factures passées — pour les proposer pré-remplies sur la facture suivante
+    (si Fournisseur X facture toujours une « taxe équarrissage », un clic la rajoute).
+    Le montant proposé = celui de la dernière occurrence.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """SELECT fl.designation, fl.type_ligne, fl.tva_pct,
+                      COUNT(*) AS occurrences,
+                      (SELECT fl2.montant_facture_ht FROM facture_lignes fl2
+                        JOIN factures f2 ON f2.id = fl2.facture_id
+                       WHERE f2.fournisseur_id = ? AND fl2.type_ligne = fl.type_ligne
+                         AND fl2.designation = fl.designation
+                       ORDER BY fl2.id DESC LIMIT 1) AS dernier_montant_ht
+               FROM facture_lignes fl
+               JOIN factures f ON f.id = fl.facture_id
+               WHERE f.fournisseur_id = ? AND fl.type_ligne <> 'marchandise'
+                 AND fl.type_ligne <> 'ajustement'
+               GROUP BY fl.designation, fl.type_ligne, fl.tva_pct
+               ORDER BY occurrences DESC, MAX(fl.id) DESC
+               LIMIT ?""",
+            (fournisseur_id, fournisseur_id, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
 
 
 @router.get("/factures")
@@ -4022,6 +4161,7 @@ async def get_facture(facture_id: int):
             "SELECT * FROM facture_lignes WHERE facture_id = ? ORDER BY id", (facture_id,)
         )
         result["lignes"] = [dict(r) for r in await cur2.fetchall()]
+        result["recap"] = _recap_facture(result, result["lignes"])
         return result
 
 
@@ -4170,15 +4310,15 @@ async def _generer_facture_depuis_reception(
         await db.execute(
             """INSERT INTO facture_lignes
                (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
-                designation, unite, unite_prix, quantite_facturee,
+                designation, type_ligne, tva_pct, unite, unite_prix, quantite_facturee,
                 poids_recu_kg, prix_commande_ht, quantite_commandee,
                 poids_facture_kg, prix_facture_ht, montant_facture_ht,
                 ecart_poids_kg, ecart_prix_ht, ecart_montant_ht,
                 statut_ligne, commentaire_litige)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, 'marchandise', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (facture_id, rl["catalogue_fournisseur_id"], rl["reception_ligne_id"],
-             rl["code_article"], rl["designation"] or "Article", unite,
-             unite_prix, quantite_facturee,
+             rl["code_article"], rl["designation"] or "Article", TVA_DEFAUT_MARCHANDISE,
+             unite, unite_prix, quantite_facturee,
              rl["poids_recu_kg"], prix_commande, quantite_commandee,
              poids_facture, prix_facture, montant, e_poids, e_prix, e_montant,
              statut_ligne, commentaire_litige),
@@ -4454,9 +4594,68 @@ async def _verifier_doublon_numero_facture(db, fournisseur_id, numero_facture,
         )
 
 
+async def _inserer_facture_ligne(db, facture_id: int, ligne: FactureLigneCreate) -> int:
+    """Insère une ligne (marchandise OU annexe) avec ses calculs, renvoie son id.
+
+    - marchandise : montant/écarts via _calc_ecarts_ligne (unité de prix respectée) ;
+      si seul le montant est fourni (sans poids/prix), il est gardé tel quel.
+    - annexe (transport/taxe/consigne/remise/ajustement) : le montant saisi fait foi
+      (remise = montant négatif), écarts à zéro (pas de rapprochement).
+    TVA par défaut si non fournie : 5,5 % marchandise, 20 % annexe.
+    """
+    type_ligne = (ligne.type_ligne or "marchandise").strip().lower()
+    if type_ligne not in TYPES_LIGNE:
+        raise HTTPException(422, f"type_ligne invalide : {type_ligne} (attendu : {', '.join(TYPES_LIGNE)})")
+    u = (ligne.unite_prix or "kg").strip().lower()
+    unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
+
+    if type_ligne == "marchandise":
+        tva = ligne.tva_pct if ligne.tva_pct is not None else TVA_DEFAUT_MARCHANDISE
+        a_base = (ligne.poids_facture_kg is not None or ligne.quantite_facturee is not None)
+        if a_base and ligne.prix_facture_ht is not None:
+            montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
+                ligne.poids_recu_kg, ligne.prix_commande_ht,
+                ligne.poids_facture_kg, ligne.prix_facture_ht,
+                unite_prix=unite_prix, quantite_facturee=ligne.quantite_facturee,
+                quantite_commandee=ligne.quantite_commandee,
+            )
+        else:
+            # Montant seul (saisi depuis le papier) : conservé tel quel.
+            montant = _arrondi_commercial(ligne.montant_facture_ht or 0.0)
+            base_attendue = _base_montant(unite_prix, ligne.poids_recu_kg,
+                                          ligne.quantite_commandee) or 0.0
+            attendu = _arrondi_commercial(base_attendue * (ligne.prix_commande_ht or 0.0))
+            e_poids, e_prix = 0.0, 0.0
+            e_montant = _arrondi_commercial(montant - attendu)
+    else:
+        tva = ligne.tva_pct if ligne.tva_pct is not None else TVA_DEFAUT_ANNEXE
+        montant = _arrondi_commercial(ligne.montant_facture_ht or 0.0)
+        e_poids, e_prix, e_montant = 0.0, 0.0, 0.0
+
+    cur = await db.execute(
+        """INSERT INTO facture_lignes
+           (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
+            designation, type_ligne, tva_pct, unite, unite_prix, quantite_facturee,
+            poids_recu_kg, prix_commande_ht, quantite_commandee,
+            poids_facture_kg, prix_facture_ht, montant_facture_ht,
+            ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (facture_id, ligne.catalogue_fournisseur_id, ligne.reception_ligne_id,
+         ligne.code_article, ligne.designation, type_ligne, tva,
+         ligne.unite or "kg", unite_prix, ligne.quantite_facturee,
+         ligne.poids_recu_kg, ligne.prix_commande_ht, ligne.quantite_commandee,
+         ligne.poids_facture_kg, ligne.prix_facture_ht, montant,
+         e_poids, e_prix, e_montant),
+    )
+    return cur.lastrowid
+
+
 @router.post("/factures", status_code=201)
 async def create_facture(body: FactureCreate):
-    """Création manuelle d'une facture (entête + lignes optionnelles)."""
+    """Création manuelle d'une facture ou d'un AVOIR (entête + lignes optionnelles)."""
+    type_doc = (body.type or "facture").strip().lower()
+    if type_doc not in ("facture", "avoir"):
+        raise HTTPException(422, "type doit être 'facture' ou 'avoir'")
     async with get_db() as db:
         cur_f = await db.execute(
             "SELECT id FROM fournisseurs WHERE id = ? AND boutique_id = 1", (body.fournisseur_id,)
@@ -4464,46 +4663,50 @@ async def create_facture(body: FactureCreate):
         if not await cur_f.fetchone():
             raise HTTPException(404, "Fournisseur introuvable")
 
+        if body.facture_liee_id is not None:
+            cur_l = await db.execute(
+                "SELECT id FROM factures WHERE id = ?", (body.facture_liee_id,)
+            )
+            if not await cur_l.fetchone():
+                raise HTTPException(404, "Facture liée introuvable")
+
         await _verifier_doublon_numero_facture(db, body.fournisseur_id, body.numero_facture)
 
         date_fac = body.date_facture or date.today().isoformat()
         cur = await db.execute(
             """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
-                                     numero_facture, date_facture, statut, personnel_id, commentaire)
-               VALUES (1, ?, ?, ?, ?, ?, 'brouillon', ?, ?)""",
+                                     numero_facture, date_facture, statut, type, facture_liee_id,
+                                     personnel_id, commentaire)
+               VALUES (1, ?, ?, ?, ?, ?, 'brouillon', ?, ?, ?, ?)""",
             (body.fournisseur_id, body.reception_id, body.commande_id, body.numero_facture,
-             date_fac, body.personnel_id, body.commentaire),
+             date_fac, type_doc, body.facture_liee_id, body.personnel_id, body.commentaire),
         )
         facture_id = cur.lastrowid
 
         for ligne in (body.lignes or []):
-            u = (ligne.unite_prix or "kg").strip().lower()
-            unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
-            montant, e_poids, e_prix, e_montant = _calc_ecarts_ligne(
-                ligne.poids_recu_kg, ligne.prix_commande_ht,
-                ligne.poids_facture_kg, ligne.prix_facture_ht,
-                unite_prix=unite_prix, quantite_facturee=ligne.quantite_facturee,
-                quantite_commandee=ligne.quantite_commandee,
-            )
-            await db.execute(
-                """INSERT INTO facture_lignes
-                   (facture_id, catalogue_fournisseur_id, reception_ligne_id, code_article,
-                    designation, unite, unite_prix, quantite_facturee,
-                    poids_recu_kg, prix_commande_ht, quantite_commandee,
-                    poids_facture_kg, prix_facture_ht, montant_facture_ht,
-                    ecart_poids_kg, ecart_prix_ht, ecart_montant_ht)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (facture_id, ligne.catalogue_fournisseur_id, ligne.reception_ligne_id,
-                 ligne.code_article, ligne.designation, ligne.unite or "kg",
-                 unite_prix, ligne.quantite_facturee,
-                 ligne.poids_recu_kg, ligne.prix_commande_ht, ligne.quantite_commandee,
-                 ligne.poids_facture_kg, ligne.prix_facture_ht, montant,
-                 e_poids, e_prix, e_montant),
-            )
+            await _inserer_facture_ligne(db, facture_id, ligne)
 
         await _recalculer_totaux_facture(db, facture_id)
         await db.commit()
         return await get_facture(facture_id)
+
+
+@router.post("/factures/{facture_id}/lignes", status_code=201)
+async def ajouter_facture_ligne(facture_id: int, body: FactureLigneCreate):
+    """Ajoute une ligne à une facture existante — surtout les LIGNES ANNEXES
+    (transport, taxe, consigne, remise négative, ajustement) qui font boucler le
+    total, mais aussi une marchandise oubliée sur le BL."""
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Facture introuvable")
+
+        ligne_id = await _inserer_facture_ligne(db, facture_id, body)
+        await _recalculer_totaux_facture(db, facture_id)
+        await db.commit()
+
+        cur2 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
+        return dict(await cur2.fetchone())
 
 
 @router.put("/factures/{facture_id}")
@@ -4516,7 +4719,12 @@ async def update_facture(facture_id: int, body: FactureUpdate):
         if not fac:
             raise HTTPException(404, "Facture introuvable")
 
-        fields = {k: v for k, v in body.model_dump().items() if v is not None}
+        # Les totaux papier sont EFFAÇABLES (null explicite autorisé) : on se base sur
+        # les champs réellement envoyés (exclude_unset) ; les autres champs gardent la
+        # règle « null = non modifié » (le front envoie tout le formulaire à chaque fois).
+        envoyes = body.model_dump(exclude_unset=True)
+        fields = {k: v for k, v in envoyes.items()
+                  if v is not None or k in ("total_ht_papier", "total_ttc_papier")}
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
 

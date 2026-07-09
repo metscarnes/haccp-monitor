@@ -862,6 +862,15 @@ CREATE TABLE IF NOT EXISTS factures (
     numero_facture            TEXT,
     date_facture              DATE    NOT NULL DEFAULT CURRENT_DATE,
     statut                    TEXT    NOT NULL DEFAULT 'brouillon',  -- brouillon|validee|litige
+    -- v7.3 — un avoir est un DOCUMENT SÉPARÉ (jamais une facture modifiée) rattaché
+    -- à sa facture d'origine : type='avoir' + facture_liee_id. Lignes saisies en
+    -- positif ; le type inverse le signe dans les agrégations de période.
+    type                      TEXT    NOT NULL DEFAULT 'facture',    -- facture|avoir
+    facture_liee_id           INTEGER,
+    -- v7.3 — totaux LUS SUR LE PAPIER (saisis ou OCR) pour le bouclage :
+    -- « reste à expliquer » = papier − calculé. NULL = non renseigné.
+    total_ht_papier           REAL,
+    total_ttc_papier          REAL,
     montant_total_ht_facture  REAL    DEFAULT 0.0,
     montant_total_ht_attendu  REAL    DEFAULT 0.0,
     ecart_total_ht            REAL    DEFAULT 0.0,
@@ -872,6 +881,7 @@ CREATE TABLE IF NOT EXISTS factures (
     FOREIGN KEY (fournisseur_id) REFERENCES fournisseurs(id),
     FOREIGN KEY (reception_id)   REFERENCES receptions(id),
     FOREIGN KEY (commande_id)    REFERENCES commandes(id),
+    FOREIGN KEY (facture_liee_id) REFERENCES factures(id),
     FOREIGN KEY (personnel_id)   REFERENCES personnel(id)
 );
 
@@ -900,6 +910,12 @@ CREATE TABLE IF NOT EXISTS facture_lignes (
     -- quantite_facturee = nb de colis/pièces facturés (NULL pour les lignes au kg).
     unite_prix               TEXT    DEFAULT 'kg',
     quantite_facturee        REAL,
+    -- v7.3 — nature de la ligne : 'marchandise' participe au rapprochement
+    -- poids/prix ; les ANNEXES (transport|taxe|consigne|remise|ajustement) comptent
+    -- dans le total facture (bouclage) mais PAS dans les écarts ni le prix de
+    -- revient. Remise = montant négatif. TVA portée par ligne (récap par taux).
+    type_ligne               TEXT    NOT NULL DEFAULT 'marchandise',
+    tva_pct                  REAL,
     poids_recu_kg            REAL,
     prix_commande_ht         REAL,
     quantite_commandee       REAL,
@@ -1595,6 +1611,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 numero_facture            TEXT,               -- n° de la facture fournisseur (saisi)
                 date_facture              DATE    NOT NULL DEFAULT CURRENT_DATE,
                 statut                    TEXT    NOT NULL DEFAULT 'brouillon',  -- brouillon|validee|litige
+                type                      TEXT    NOT NULL DEFAULT 'facture',    -- v7.3 facture|avoir
+                facture_liee_id           INTEGER,            -- v7.3 avoir → facture d'origine
+                total_ht_papier           REAL,               -- v7.3 total lu sur le papier (bouclage)
+                total_ttc_papier          REAL,               -- v7.3
                 montant_total_ht_facture  REAL    DEFAULT 0.0,   -- somme facturée
                 montant_total_ht_attendu  REAL    DEFAULT 0.0,   -- somme commande (théorique)
                 ecart_total_ht            REAL    DEFAULT 0.0,    -- facturé - attendu
@@ -1618,6 +1638,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 -- v7.2 — unité du PRIX facturé + quantité facturée (colis/pièce) :
                 unite_prix               TEXT    DEFAULT 'kg',
                 quantite_facturee        REAL,
+                -- v7.3 — nature de la ligne (marchandise|transport|taxe|consigne|remise|ajustement) + TVA :
+                type_ligne               TEXT    NOT NULL DEFAULT 'marchandise',
+                tva_pct                  REAL,
                 -- REÇU (copie figée de la réception, lecture seule) :
                 poids_recu_kg            REAL,
                 -- COMMANDÉ (référence prix négocié) :
@@ -2050,6 +2073,39 @@ PRAGMA foreign_keys=ON;
             )
         except Exception as e:
             logger.warning("Migration v7.2 index anti-doublon factures : %s", e)
+
+        # Migration v7.3 : refonte facture étape 2 — lignes annexes + TVA + bouclage
+        # + avoir. factures : type (facture|avoir), facture_liee_id, totaux papier.
+        # facture_lignes : type_ligne (marchandise|transport|taxe|consigne|remise|
+        # ajustement), tva_pct. Backfill tva_pct=5.5 sur l'existant (taux alimentaire
+        # boucherie, éditable ligne à ligne — récap TVA indicatif sur l'historique).
+        try:
+            cur_f = await db.execute("PRAGMA table_info(factures)")
+            cols_f = {row[1] for row in await cur_f.fetchall()}
+            if cols_f and "type" not in cols_f:
+                await db.execute(
+                    "ALTER TABLE factures ADD COLUMN type TEXT NOT NULL DEFAULT 'facture'"
+                )
+                await db.execute("ALTER TABLE factures ADD COLUMN facture_liee_id INTEGER")
+                await db.execute("ALTER TABLE factures ADD COLUMN total_ht_papier REAL")
+                await db.execute("ALTER TABLE factures ADD COLUMN total_ttc_papier REAL")
+                logger.info("Migration v7.3 : type/facture_liee_id/totaux papier ajoutés à factures")
+        except Exception as e:
+            logger.warning("Migration v7.3 factures : %s", e)
+        try:
+            cur_fl = await db.execute("PRAGMA table_info(facture_lignes)")
+            cols_fl = {row[1] for row in await cur_fl.fetchall()}
+            if cols_fl and "type_ligne" not in cols_fl:
+                await db.execute(
+                    "ALTER TABLE facture_lignes ADD COLUMN type_ligne TEXT NOT NULL DEFAULT 'marchandise'"
+                )
+                await db.execute("ALTER TABLE facture_lignes ADD COLUMN tva_pct REAL")
+                await db.execute(
+                    "UPDATE facture_lignes SET tva_pct = 5.5 WHERE tva_pct IS NULL"
+                )
+                logger.info("Migration v7.3 : type_ligne + tva_pct ajoutés à facture_lignes")
+        except Exception as e:
+            logger.warning("Migration v7.3 facture_lignes : %s", e)
 
         # Migration v5.8 : recalculer statut des lignes en_attente mal classées
         # - lot_interne=1 compte comme lot présent (numéro auto-généré)
