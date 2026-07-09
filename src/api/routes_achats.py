@@ -3808,6 +3808,24 @@ TYPES_LIGNE = ("marchandise",) + TYPES_LIGNE_ANNEXES
 TVA_DEFAUT_MARCHANDISE = 5.5
 TVA_DEFAUT_ANNEXE = 20.0
 
+# Cycle de vie d'une facture : brouillon ⇄ rapprochee (bouclage OK, automatique)
+# → validee (VERROUILLÉE : toute correction passe par un avoir) ; litige = état
+# posé quand des lignes sont en litige.
+STATUTS_FACTURE = ("brouillon", "rapprochee", "litige", "validee")
+
+
+def _verifier_facture_modifiable(facture_row):
+    """409 si la facture est validée : une facture validée est VERROUILLÉE
+    (règle comptable — les corrections passent par un avoir, jamais par
+    modification du document). Le déverrouillage explicite reste possible
+    via PUT statut (outil de gestion, pas la comptabilité légale)."""
+    if (facture_row["statut"] or "") == "validee":
+        raise HTTPException(
+            409,
+            "Facture validée (verrouillée). Déverrouillez-la explicitement ou "
+            "enregistrez un avoir pour la corriger.",
+        )
+
 
 def _arrondi_commercial(x, decimales: int = 2):
     """Arrondi « facture » : ROUND_HALF_UP (2,675 → 2,68), à la différence du
@@ -3957,6 +3975,29 @@ async def _recalculer_totaux_facture(db, facture_id: int):
         (total_facture, total_attendu,
          _arrondi_commercial(total_marchandise - total_attendu), facture_id),
     )
+
+
+async def _maj_statut_rapprochement(db, facture_id: int):
+    """Bascule AUTOMATIQUE brouillon ⇄ rapprochee selon le bouclage.
+
+    Une facture dont le total colle au papier (recap.boucle) passe en 'rapprochee' ;
+    si le bouclage casse (ligne modifiée, papier changé), elle redevient 'brouillon'.
+    Ne touche JAMAIS aux statuts posés par l'utilisateur ('litige', 'validee').
+    """
+    cur = await db.execute("SELECT * FROM factures WHERE id = ?", (facture_id,))
+    fac = await cur.fetchone()
+    if not fac or fac["statut"] not in ("brouillon", "rapprochee"):
+        return
+    cur2 = await db.execute(
+        "SELECT * FROM facture_lignes WHERE facture_id = ?", (facture_id,)
+    )
+    lignes = [dict(r) for r in await cur2.fetchall()]
+    recap = _recap_facture(dict(fac), lignes)
+    nouveau = "rapprochee" if recap["boucle"] else "brouillon"
+    if nouveau != fac["statut"]:
+        await db.execute(
+            "UPDATE factures SET statut = ? WHERE id = ?", (nouveau, facture_id)
+        )
 
 
 def _recap_facture(facture: dict, lignes: list) -> dict:
@@ -4697,23 +4738,142 @@ async def ajouter_facture_ligne(facture_id: int, body: FactureLigneCreate):
     (transport, taxe, consigne, remise négative, ajustement) qui font boucler le
     total, mais aussi une marchandise oubliée sur le BL."""
     async with get_db() as db:
-        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
-        if not await cur.fetchone():
+        cur = await db.execute(
+            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
             raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
 
         ligne_id = await _inserer_facture_ligne(db, facture_id, body)
         await _recalculer_totaux_facture(db, facture_id)
+        await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
 
         cur2 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
         return dict(await cur2.fetchone())
 
 
+@router.post("/factures/{facture_id}/solder-ecart", status_code=201)
+async def solder_ecart(facture_id: int):
+    """CORRECTION RAPIDE : solde le « reste à expliquer » HT par une ligne
+    d'AJUSTEMENT traçable, sans corriger ligne à ligne.
+
+    Le total papier fait foi (c'est ce que le fournisseur encaissera) : l'écart non
+    détaillé est posé sur une ligne 'ajustement' visible et supprimable — JAMAIS
+    d'écrasement silencieux des lignes vérifiées ni du total. La facture peut être
+    reprise plus tard à tête reposée (la ligne d'ajustement montre ce qui n'a pas
+    été détaillé). Nécessite le Total HT papier (l'ajustement est un montant HT).
+    """
+    async with get_db() as db:
+        cur = await db.execute("SELECT * FROM factures WHERE id = ?", (facture_id,))
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+        if fac["total_ht_papier"] is None:
+            raise HTTPException(
+                400, "Saisir d'abord le Total HT papier : l'ajustement est un montant HT."
+            )
+
+        cur2 = await db.execute(
+            "SELECT * FROM facture_lignes WHERE facture_id = ?", (facture_id,)
+        )
+        lignes = [dict(r) for r in await cur2.fetchall()]
+        recap = _recap_facture(dict(fac), lignes)
+        reste = recap["reste_a_expliquer_ht"] or 0.0
+        if abs(reste) <= TOLERANCE_ECART_TOTAL_EUR:
+            raise HTTPException(400, "Rien à solder : la facture boucle déjà en HT.")
+
+        ligne = FactureLigneCreate(
+            designation=f"Ajustement sur total papier du {fac['date_facture']}"
+                        " — écart non détaillé",
+            type_ligne="ajustement",
+            montant_facture_ht=reste,
+            tva_pct=TVA_DEFAUT_MARCHANDISE,
+        )
+        ligne_id = await _inserer_facture_ligne(db, facture_id, ligne)
+        await _recalculer_totaux_facture(db, facture_id)
+        await _maj_statut_rapprochement(db, facture_id)
+        await db.commit()
+
+        cur3 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
+        return {"ligne": dict(await cur3.fetchone()), "montant_solde_ht": reste}
+
+
+@router.post("/factures/{facture_id}/avoir-depuis-litiges", status_code=201)
+async def creer_avoir_depuis_litiges(facture_id: int, personnel_id: Optional[int] = None):
+    """Crée un AVOIR brouillon pré-rempli depuis les lignes en litige de la facture
+    (une ligne d'avoir par litige, montant = écart en notre défaveur).
+
+    L'avoir est un document SÉPARÉ (type='avoir', facture_liee_id) : la facture
+    d'origine n'est jamais modifiée. Son numéro sera saisi quand l'avoir fournisseur
+    arrivera. Refuse s'il existe déjà un avoir lié (le compléter plutôt qu'en empiler).
+    """
+    async with get_db() as db:
+        cur = await db.execute("SELECT * FROM factures WHERE id = ?", (facture_id,))
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        if fac["type"] == "avoir":
+            raise HTTPException(400, "Impossible de créer un avoir depuis un avoir.")
+
+        cur_a = await db.execute(
+            "SELECT id FROM factures WHERE facture_liee_id = ? AND type = 'avoir'",
+            (facture_id,),
+        )
+        existant = await cur_a.fetchone()
+        if existant:
+            raise HTTPException(
+                409, f"Un avoir existe déjà pour cette facture (id={existant['id']})."
+            )
+
+        cur_l = await db.execute(
+            """SELECT * FROM facture_lignes
+               WHERE facture_id = ? AND statut_ligne = 'litige'
+               ORDER BY id""",
+            (facture_id,),
+        )
+        litiges = [dict(r) for r in await cur_l.fetchall()]
+        # Un avoir rembourse le trop-facturé : on ne reprend que les écarts > 0.
+        litiges = [l for l in litiges if (l.get("ecart_montant_ht") or 0) > 0]
+        if not litiges:
+            raise HTTPException(
+                400, "Aucune ligne en litige avec un écart en votre défaveur."
+            )
+
+        cur_ins = await db.execute(
+            """INSERT INTO factures (boutique_id, fournisseur_id, date_facture, statut,
+                                     type, facture_liee_id, personnel_id, commentaire)
+               VALUES (1, ?, ?, 'brouillon', 'avoir', ?, ?, ?)""",
+            (fac["fournisseur_id"], date.today().isoformat(), facture_id, personnel_id,
+             f"Avoir attendu sur facture {fac['numero_facture'] or facture_id} "
+             f"({len(litiges)} litige(s))"),
+        )
+        avoir_id = cur_ins.lastrowid
+
+        for l in litiges:
+            await _inserer_facture_ligne(db, avoir_id, FactureLigneCreate(
+                catalogue_fournisseur_id=l.get("catalogue_fournisseur_id"),
+                code_article=l.get("code_article"),
+                designation=f"{l['designation']} — écart litige",
+                type_ligne="marchandise",
+                tva_pct=l.get("tva_pct"),
+                montant_facture_ht=l["ecart_montant_ht"],
+            ))
+
+        await _recalculer_totaux_facture(db, avoir_id)
+        await db.commit()
+    return await get_facture(avoir_id)
+
+
 @router.put("/factures/{facture_id}")
 async def update_facture(facture_id: int, body: FactureUpdate):
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id, fournisseur_id FROM factures WHERE id = ?", (facture_id,)
+            "SELECT id, fournisseur_id, statut, numero_facture FROM factures WHERE id = ?",
+            (facture_id,),
         )
         fac = await cur.fetchone()
         if not fac:
@@ -4728,6 +4888,25 @@ async def update_facture(facture_id: int, body: FactureUpdate):
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
 
+        if "statut" in fields and fields["statut"] not in STATUTS_FACTURE:
+            raise HTTPException(
+                422, f"Statut invalide (attendu : {', '.join(STATUTS_FACTURE)})"
+            )
+
+        # Facture VALIDÉE = verrouillée : seuls le déverrouillage (statut) et le
+        # commentaire restent permis — les corrections passent par un avoir.
+        if fac["statut"] == "validee" and not set(fields) <= {"statut", "commentaire"}:
+            _verifier_facture_modifiable(fac)
+
+        # Valider EXIGE un numéro de facture : c'est lui qui rattache le document au
+        # fournisseur (anti-doublon) et que la compta rapprochera du paiement.
+        if fields.get("statut") == "validee":
+            numero = fields.get("numero_facture", fac["numero_facture"])
+            if not (numero or "").strip():
+                raise HTTPException(
+                    400, "Numéro de facture obligatoire pour valider (il est sur le papier)."
+                )
+
         if "numero_facture" in fields:
             await _verifier_doublon_numero_facture(
                 db, fac["fournisseur_id"], fields["numero_facture"], exclure_id=facture_id
@@ -4736,6 +4915,10 @@ async def update_facture(facture_id: int, body: FactureUpdate):
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [facture_id]
         await db.execute(f"UPDATE factures SET {set_clause} WHERE id = ?", values)
+        # Un changement de totaux papier peut faire (dé)boucler → statut auto,
+        # sauf si l'utilisateur vient de poser lui-même un statut.
+        if "statut" not in fields:
+            await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
         return await get_facture(facture_id)
 
@@ -4743,6 +4926,14 @@ async def update_facture(facture_id: int, body: FactureUpdate):
 @router.put("/factures/{facture_id}/lignes/{ligne_id}")
 async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLigneUpdate):
     async with get_db() as db:
+        cur_f = await db.execute(
+            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur_f.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+
         cur = await db.execute(
             "SELECT id FROM facture_lignes WHERE id = ? AND facture_id = ?", (ligne_id, facture_id)
         )
@@ -4767,6 +4958,7 @@ async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLign
         # Recalcule écarts de la ligne + totaux d'entête
         await _recalculer_ecarts_ligne(db, ligne_id, derive_montant=not montant_direct)
         await _recalculer_totaux_facture(db, facture_id)
+        await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
 
         cur2 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
@@ -4776,19 +4968,32 @@ async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLign
 @router.delete("/factures/{facture_id}/lignes/{ligne_id}", status_code=204)
 async def delete_facture_ligne(facture_id: int, ligne_id: int):
     async with get_db() as db:
+        cur_f = await db.execute(
+            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur_f.fetchone()
+        if fac:
+            _verifier_facture_modifiable(fac)
         await db.execute(
             "DELETE FROM facture_lignes WHERE id = ? AND facture_id = ?", (ligne_id, facture_id)
         )
         await _recalculer_totaux_facture(db, facture_id)
+        await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
 
 
 @router.delete("/factures/{facture_id}", status_code=204)
 async def delete_facture(facture_id: int):
     async with get_db() as db:
-        cur = await db.execute("SELECT id FROM factures WHERE id = ?", (facture_id,))
-        if not await cur.fetchone():
+        cur = await db.execute(
+            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
             raise HTTPException(404, "Facture introuvable")
+        # Une facture validée ne se supprime pas (pièce comptable) : déverrouiller
+        # d'abord, explicitement, si c'est vraiment une erreur de saisie.
+        _verifier_facture_modifiable(fac)
         await db.execute("DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,))
         await db.execute("DELETE FROM factures WHERE id = ?", (facture_id,))
         await db.commit()

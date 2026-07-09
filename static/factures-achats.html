@@ -52,6 +52,7 @@
       <select id="filtre-statut">
         <option value="">Tous</option>
         <option value="brouillon">Brouillon</option>
+        <option value="rapprochee">Rapprochée</option>
         <option value="validee">Validée</option>
         <option value="litige">En litige</option>
       </select>
@@ -206,6 +207,8 @@
             <input type="number" step="0.01" id="fac-papier-ttc" class="fac-input" placeholder="—">
           </label>
           <span class="fac-reste" id="fac-reste">Saisir le total du papier pour vérifier le bouclage</span>
+          <button type="button" class="ach-btn" id="btn-solder-ecart" hidden
+                  title="Pose l'écart non détaillé sur une ligne d'ajustement traçable — le total papier fait foi, rien n'est écrasé">⚖ Solder l'écart</button>
         </div>
       </div>
 
@@ -214,11 +217,15 @@
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-fac">🗑 Supprimer</button>
           <button type="button" class="ach-btn" id="btn-export-pdf">🖨 PDF</button>
           <button type="button" class="ach-btn" id="btn-export-xlsx">📊 Excel</button>
+          <button type="button" class="ach-btn" id="btn-avoir-fac" hidden
+                  title="Crée un avoir brouillon pré-rempli avec les écarts des lignes en litige">↩ Créer l'avoir</button>
         </div>
         <div style="display:flex; gap:var(--space-2);">
           <button type="button" class="ach-btn" id="btn-fermer-fac">Fermer</button>
           <button type="button" class="ach-btn ach-btn--primary" id="btn-sauver-fac">💾 Enregistrer</button>
           <button type="button" class="ach-btn ach-btn--ok" id="btn-valider-fac">✅ Valider la facture</button>
+          <button type="button" class="ach-btn" id="btn-deverrouiller-fac" hidden
+                  title="Une facture validée est verrouillée — le déverrouillage est une action explicite">🔓 Déverrouiller</button>
         </div>
       </div>
     </div>

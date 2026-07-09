@@ -144,3 +144,23 @@
 .fac-reste { font-weight: 700; }
 .fac-reste--ok { color: #166534; }
 .fac-reste--ko { color: #b91c1c; }
+
+/* ── Refonte étape 3 : workflow + avoir ──────────────────────────────────── */
+
+/* Badge statut « rapprochée » (bouclage OK, pas encore validée) */
+.ach-badge--rapprochee { background: #dbeafe; color: #1d4ed8; }
+
+/* Marqueur AVOIR dans la liste */
+.fac-badge-avoir {
+  display: inline-block;
+  background: #ede9fe;
+  color: #6d28d9;
+  border-radius: var(--radius-sm);
+  padding: .1rem .4rem;
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 700;
+  letter-spacing: .03em;
+}
+
+/* Champs désactivés (facture verrouillée) */
+.fac-input:disabled, .fac-select:disabled { background: #f3efe7; color: #9ca3af; cursor: not-allowed; }

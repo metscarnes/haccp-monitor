@@ -12,7 +12,12 @@ let fournisseurs = [];
 let receptions   = [];     // pour la modale "nouvelle facture"
 let facCourante  = null;   // facture en cours d'édition (détail)
 
-const STATUT_LABELS = { brouillon: 'Brouillon', validee: 'Validée', litige: 'En litige' };
+const STATUT_LABELS = {
+  brouillon: 'Brouillon', rapprochee: 'Rapprochée', validee: 'Validée', litige: 'En litige',
+};
+
+// Une facture validée est VERROUILLÉE (correction = avoir) — le front grise tout.
+function estVerrouillee() { return facCourante?.statut === 'validee'; }
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -54,6 +59,11 @@ function bindEvents() {
     (e) => majPapier('total_ht_papier', e.target));
   document.getElementById('fac-papier-ttc').addEventListener('change',
     (e) => majPapier('total_ttc_papier', e.target));
+
+  // Étape 3 : solder l'écart / créer l'avoir / déverrouiller
+  document.getElementById('btn-solder-ecart').addEventListener('click', solderEcart);
+  document.getElementById('btn-avoir-fac').addEventListener('click', creerAvoir);
+  document.getElementById('btn-deverrouiller-fac').addEventListener('click', deverrouillerFacture);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -99,7 +109,7 @@ function rendreFactures() {
     const cls = classeEcart(ecart);
     return `
       <tr data-id="${f.id}" style="cursor:pointer;">
-        <td>${escHtml(f.numero_facture) || '<em style="color:#9ca3af;">— à saisir —</em>'}</td>
+        <td>${f.type === 'avoir' ? '<span class="fac-badge-avoir">↩ AVOIR</span> ' : ''}${escHtml(f.numero_facture) || '<em style="color:#9ca3af;">— à saisir —</em>'}</td>
         <td>${escHtml(f.date_facture || '')}</td>
         <td>${escHtml(f.fournisseur_nom || '')}</td>
         <td>${escHtml(f.numero_commande) || '<span style="color:#9ca3af;">—</span>'}</td>
@@ -175,8 +185,10 @@ async function ouvrirFacture(id, prefetch) {
   const fac = prefetch || await fetch(`${API_FAC}/${id}`).then(r => r.json());
   facCourante = fac;
 
+  const prefixe = fac.type === 'avoir' ? 'Avoir' : 'Facture';
   document.getElementById('modal-fac-titre').textContent =
-    `Facture ${fac.numero_facture || '(brouillon)'} — ${fac.fournisseur_nom || ''}`;
+    `${prefixe} ${fac.numero_facture || '(brouillon)'} — ${fac.fournisseur_nom || ''}`
+    + (fac.statut === 'validee' ? ' 🔒' : '');
   document.getElementById('fac-id').value = fac.id;
   document.getElementById('fac-fournisseur-nom').value = fac.fournisseur_nom || '';
   document.getElementById('fac-numero').value = fac.numero_facture || '';
@@ -188,7 +200,66 @@ async function ouvrirFacture(id, prefetch) {
   rendreLignes(fac.lignes || []);
   rendreTotaux(fac);
   chargerSuggestionsAnnexes(fac);
+  appliquerVerrou(fac);
   document.getElementById('modal-facture').hidden = false;
+}
+
+// Verrouillage visuel : facture validée = tout en lecture seule sauf le commentaire.
+function appliquerVerrou(fac) {
+  const verrou = fac.statut === 'validee';
+  document.getElementById('fac-numero').disabled = verrou;
+  document.getElementById('fac-date').disabled = verrou;
+  document.getElementById('fac-papier-ht').disabled = verrou;
+  document.getElementById('fac-papier-ttc').disabled = verrou;
+  document.querySelectorAll('#tbody-lignes-facture input, #tbody-lignes-facture select, ' +
+    '#tbody-lignes-facture button, #tbody-annexes-facture input, ' +
+    '#tbody-annexes-facture select, #tbody-annexes-facture button')
+    .forEach(el => { el.disabled = verrou; });
+  document.querySelectorAll('[data-ajout-annexe]').forEach(b => { b.hidden = verrou; });
+  document.getElementById('fac-annexes-suggestions').hidden = verrou;
+  document.getElementById('btn-sauver-fac').hidden = verrou;
+  document.getElementById('btn-valider-fac').hidden = verrou;
+  document.getElementById('btn-supprimer-fac').hidden = verrou;
+  document.getElementById('btn-deverrouiller-fac').hidden = !verrou;
+  // Avoir : proposé si la facture (pas un avoir) a des litiges
+  const aLitiges = (fac.lignes || []).some(l => l.statut_ligne === 'litige');
+  document.getElementById('btn-avoir-fac').hidden = !(fac.type !== 'avoir' && aLitiges);
+}
+
+async function deverrouillerFacture() {
+  if (!confirm('Déverrouiller cette facture validée ?\nElle redeviendra modifiable — '
+    + 'à réserver aux erreurs de saisie (sinon, passer par un avoir).')) return;
+  const r = await fetch(`${API_FAC}/${facCourante.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ statut: 'brouillon' }),
+  });
+  if (!r.ok) { alert('Échec du déverrouillage.'); return; }
+  await chargerFactures();
+  ouvrirFacture(facCourante.id);
+}
+
+async function solderEcart() {
+  const r = await fetch(`${API_FAC}/${facCourante.id}/solder-ecart`, { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    alert(err.detail || 'Impossible de solder l\'écart.');
+    return;
+  }
+  await rafraichirFacture();
+  appliquerVerrou(facCourante);
+}
+
+async function creerAvoir() {
+  const r = await fetch(`${API_FAC}/${facCourante.id}/avoir-depuis-litiges`, { method: 'POST' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    alert(err.detail || 'Impossible de créer l\'avoir.');
+    return;
+  }
+  const avoir = await r.json();
+  await chargerFactures();
+  ouvrirFacture(avoir.id, avoir);   // ouvre directement l'avoir pré-rempli
 }
 
 function rendreLignes(lignes) {
@@ -368,6 +439,7 @@ async function rafraichirFacture() {
   rendreLignes(facCourante.lignes || []);
   rendreTotaux(facCourante);
   chargerSuggestionsAnnexes(facCourante);
+  appliquerVerrou(facCourante);
 }
 
 async function majLigne(input) {
@@ -385,9 +457,7 @@ async function majLigne(input) {
   });
   if (!r.ok) { alert('Échec de la mise à jour.'); return; }
   // Recharger la facture pour rafraîchir écarts + totaux (source de vérité = serveur)
-  facCourante = await fetch(`${API_FAC}/${facCourante.id}`).then(x => x.json());
-  rendreLignes(facCourante.lignes || []);
-  rendreTotaux(facCourante);
+  await rafraichirFacture();
 }
 
 // ── Bouclage : totaux papier ─────────────────────────────────
@@ -401,6 +471,7 @@ async function majPapier(champ, input) {
   if (!r.ok) { alert('Échec de l\'enregistrement du total papier.'); return; }
   facCourante = await r.json();
   rendreTotaux(facCourante);
+  appliquerVerrou(facCourante);   // le statut a pu basculer brouillon ⇄ rapprochée
 }
 
 function rendreTotaux(fac) {
@@ -445,6 +516,14 @@ function rendreTotaux(fac) {
     zone.textContent = `Reste à expliquer : ${parties.join(' · ')}`;
     zone.classList.add('fac-reste--ko');
   }
+
+  // « Solder l'écart » : correction rapide, seulement quand il y a un reste HT
+  // significatif à poser (total HT papier saisi) et que la facture est modifiable.
+  document.getElementById('btn-solder-ecart').hidden = !(
+    rec.total_ht_papier != null
+    && resteHt != null && Math.abs(resteHt) > SEUIL_ECART_TOTAL
+    && fac.statut !== 'validee'
+  );
 }
 
 // ── Litige ───────────────────────────────────────────────────
@@ -476,9 +555,7 @@ async function appliquerLitige(ligneId, statut, commentaire) {
     body: JSON.stringify(body),
   });
   if (!r.ok) { alert('Échec.'); return; }
-  facCourante = await fetch(`${API_FAC}/${facCourante.id}`).then(x => x.json());
-  rendreLignes(facCourante.lignes || []);
-  rendreTotaux(facCourante);
+  await rafraichirFacture();
 }
 
 function fermerModalLitige() {
