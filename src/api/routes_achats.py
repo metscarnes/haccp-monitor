@@ -4868,6 +4868,220 @@ async def creer_avoir_depuis_litiges(facture_id: int, personnel_id: Optional[int
     return await get_facture(avoir_id)
 
 
+# ===========================================================================
+#  Import de facture — Factur-X (XML embarqué, fiable) puis OCR (repli)
+# ===========================================================================
+#
+# Deux sources : un NOUVEAU document (PDF/image de la facture uploadé ici) ou les
+# PAGES DU BL déjà scannées à la réception. Dans les deux cas on tente d'abord
+# Factur-X (import direct, sans OCR) puis l'OCR facture. Le résultat n'écrit RIEN
+# tout seul : il est renvoyé au front pour un rapprochement ligne à ligne validé
+# par l'utilisateur (jamais d'application silencieuse — leçon du module réception).
+
+from pathlib import Path as _Path
+
+FACTURE_DOCS_DIR = _Path(__file__).parent.parent.parent / "data" / "documents_factures"
+FACTURE_DOCS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _analyser_document_facture(raw: bytes, filename: Optional[str]) -> dict:
+    """Analyse un document de facture : Factur-X d'abord, OCR ensuite.
+
+    Renvoie {source, ...données facture...} + 'has_facturx'. Un PDF Factur-X est
+    lu depuis son XML (fiable) ; un PDF/image scanné passe par l'OCR vision.
+    """
+    from src.api.routes_reception import _est_pdf, _fichier_bl_vers_jpegs
+
+    est_pdf = _est_pdf(raw, filename)
+    # 1) Factur-X : uniquement pertinent sur un PDF
+    if est_pdf:
+        try:
+            from src.facturx_reader import lire_facture_pdf, FacturXError
+            data = lire_facture_pdf(raw)
+            if data is not None:
+                data["has_facturx"] = True
+                return data
+        except FacturXError as e:
+            logger.warning("Lecture Factur-X échouée, bascule OCR : %s", e)
+
+    # 2) OCR facture (repli) : convertit le document en images puis vision
+    from src.ocr_facture import extraire_facture, OCRFactureError
+    try:
+        images = _fichier_bl_vers_jpegs(raw, filename)
+    except ValueError as e:
+        raise HTTPException(400, f"Document illisible : {e}")
+    try:
+        data = extraire_facture(images)
+    except OCRFactureError as e:
+        raise HTTPException(502, str(e))
+    data["has_facturx"] = False
+    return data
+
+
+async def _enregistrer_document(db, facture_id: int, raw: bytes, filename: Optional[str],
+                                origine: str, has_facturx: bool):
+    """Persiste le fichier importé sur disque + une ligne facture_documents
+    (conservation légale : jamais supprimé avec les lignes)."""
+    from src.api.routes_reception import _est_pdf
+    est_pdf = _est_pdf(raw, filename)
+    ext = "pdf" if est_pdf else "jpg"
+    type_mime = "application/pdf" if est_pdf else "image/jpeg"
+    nom = f"FAC-{facture_id}-{datetime.now():%Y%m%d-%H%M%S-%f}.{ext}"
+    (FACTURE_DOCS_DIR / nom).write_bytes(raw)
+    await db.execute(
+        """INSERT INTO facture_documents (facture_id, filename, type_mime, origine, has_facturx)
+           VALUES (?, ?, ?, ?, ?)""",
+        (facture_id, nom, type_mime, origine, 1 if has_facturx else 0),
+    )
+    return nom
+
+
+@router.post("/factures/{facture_id}/importer-document")
+async def importer_document_facture(
+    facture_id: int, fichier: UploadFile = File(...), personnel_id: Optional[int] = None,
+):
+    """Importe un NOUVEAU document de facture (PDF/image), l'analyse (Factur-X sinon
+    OCR) et renvoie les données extraites pour rapprochement. Le fichier est conservé.
+
+    N'écrit AUCUNE ligne de facture : le front présente l'extraction en regard des
+    lignes existantes et l'utilisateur applique ce qu'il valide.
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+
+        raw = await fichier.read()
+        if not raw:
+            raise HTTPException(400, "Fichier vide")
+        data = _analyser_document_facture(raw, fichier.filename)
+        await _enregistrer_document(
+            db, facture_id, raw, fichier.filename,
+            origine="facture", has_facturx=data.get("has_facturx", False),
+        )
+        await db.commit()
+    return data
+
+
+@router.post("/factures/{facture_id}/importer-depuis-bl")
+async def importer_depuis_bl_reception(facture_id: int):
+    """Rejoue l'analyse sur le BL déjà scanné à la réception liée (Factur-X sinon
+    OCR facture). Pratique quand le BL fait aussi office de facture. Renvoie
+    l'extraction pour rapprochement (aucune écriture automatique de lignes)."""
+    from src.api.routes_reception import PHOTOS_BL_DIR
+
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, statut, reception_id FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+        if not fac["reception_id"]:
+            raise HTTPException(400, "Cette facture n'est rattachée à aucune réception.")
+
+        # Pages du BL principal (photo_bl_filename + reception_bl_pages)
+        cur_r = await db.execute(
+            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (fac["reception_id"],)
+        )
+        rec = await cur_r.fetchone()
+        fichiers: list = []
+        if rec and rec["photo_bl_filename"]:
+            fichiers.append(rec["photo_bl_filename"])
+        cur_p = await db.execute(
+            "SELECT photo_filename FROM reception_bl_pages "
+            "WHERE reception_id = ? AND bl_supplementaire_id IS NULL ORDER BY page_num",
+            (fac["reception_id"],),
+        )
+        for r in await cur_p.fetchall():
+            if r["photo_filename"]:
+                fichiers.append(r["photo_filename"])
+        if not fichiers:
+            raise HTTPException(400, "Aucune page de BL scannée pour cette réception.")
+
+        images = []
+        for nom in fichiers:
+            chemin = PHOTOS_BL_DIR / nom
+            if chemin.exists():
+                images.append(chemin.read_bytes())
+        if not images:
+            raise HTTPException(404, "Fichiers BL introuvables sur le disque.")
+
+        from src.ocr_facture import extraire_facture, OCRFactureError
+        try:
+            data = extraire_facture(images)
+        except OCRFactureError as e:
+            raise HTTPException(502, str(e))
+        data["has_facturx"] = False
+    return data
+
+
+class ImportApplication(BaseModel):
+    """Application d'une extraction validée : remplace les lignes de la facture par
+    les lignes/annexes retenues + reporte l'entête et les totaux papier."""
+    numero_facture: Optional[str] = None
+    date_facture: Optional[str] = None
+    type_document: Optional[str] = None
+    total_ht_papier: Optional[float] = None
+    total_ttc_papier: Optional[float] = None
+    remplacer_lignes: bool = True
+    lignes: Optional[List[FactureLigneCreate]] = []
+
+
+@router.post("/factures/{facture_id}/appliquer-import")
+async def appliquer_import(facture_id: int, body: ImportApplication):
+    """Applique une extraction VALIDÉE par l'utilisateur : (option) purge les lignes
+    existantes puis insère les lignes retenues, reporte le n°/date + les totaux
+    papier pour le bouclage. Les montants passent par les calculs standard (unités,
+    arrondis, TVA) — l'import n'a pas de chemin de calcul privilégié."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, fournisseur_id, statut FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+
+        entete = {}
+        if body.numero_facture is not None:
+            await _verifier_doublon_numero_facture(
+                db, fac["fournisseur_id"], body.numero_facture, exclure_id=facture_id
+            )
+            entete["numero_facture"] = body.numero_facture
+        if body.date_facture is not None:
+            entete["date_facture"] = body.date_facture
+        if body.type_document in ("facture", "avoir"):
+            entete["type"] = body.type_document
+        if body.total_ht_papier is not None:
+            entete["total_ht_papier"] = body.total_ht_papier
+        if body.total_ttc_papier is not None:
+            entete["total_ttc_papier"] = body.total_ttc_papier
+        if entete:
+            set_clause = ", ".join(f"{k} = ?" for k in entete)
+            await db.execute(
+                f"UPDATE factures SET {set_clause} WHERE id = ?",
+                list(entete.values()) + [facture_id],
+            )
+
+        if body.remplacer_lignes:
+            await db.execute(
+                "DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,)
+            )
+        for ligne in (body.lignes or []):
+            await _inserer_facture_ligne(db, facture_id, ligne)
+
+        await _recalculer_totaux_facture(db, facture_id)
+        await _maj_statut_rapprochement(db, facture_id)
+        await db.commit()
+    return await get_facture(facture_id)
+
+
 @router.put("/factures/{facture_id}")
 async def update_facture(facture_id: int, body: FactureUpdate):
     async with get_db() as db:

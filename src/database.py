@@ -936,6 +936,23 @@ CREATE TABLE IF NOT EXISTS facture_lignes (
 CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture
     ON facture_lignes(facture_id);
 
+-- v7.4 — Documents rattachés à une facture (le PDF/l'image de la facture
+-- fournisseur, distinct du BL de réception). Conservés à valeur de pièce
+-- (obligation légale 10 ans) : jamais supprimés avec les lignes. Un document
+-- Factur-X (has_facturx=1) porte un XML structuré → import fiable sans OCR.
+CREATE TABLE IF NOT EXISTS facture_documents (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    facture_id     INTEGER NOT NULL,
+    filename       TEXT    NOT NULL,          -- nom du fichier stocké (PDF ou JPEG)
+    type_mime      TEXT,                      -- application/pdf | image/jpeg
+    origine        TEXT    DEFAULT 'facture', -- 'facture' (doc importé) | 'bl_reception'
+    has_facturx    INTEGER DEFAULT 0,         -- 1 si XML Factur-X détecté
+    importe_le     DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (facture_id) REFERENCES factures(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_facture_documents_facture
+    ON facture_documents(facture_id);
+
 -- Historique des prix d'achat constatés par article du catalogue fournisseur.
 -- Chaque réception y AJOUTE une ligne (jamais d'écrasement). Sert (1) à tracer
 -- l'évolution du prix dans le temps et (2) à journaliser la décision de mettre à
@@ -1665,6 +1682,18 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "CREATE INDEX IF NOT EXISTS idx_factures_fournisseur ON factures(fournisseur_id, date_facture DESC)",
             "CREATE INDEX IF NOT EXISTS idx_factures_reception ON factures(reception_id)",
             "CREATE INDEX IF NOT EXISTS idx_facture_lignes_facture ON facture_lignes(facture_id)",
+            # v7.4 — documents rattachés à une facture (PDF/image, conservation 10 ans)
+            """CREATE TABLE IF NOT EXISTS facture_documents (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                facture_id  INTEGER NOT NULL,
+                filename    TEXT    NOT NULL,
+                type_mime   TEXT,
+                origine     TEXT    DEFAULT 'facture',
+                has_facturx INTEGER DEFAULT 0,
+                importe_le  DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (facture_id) REFERENCES factures(id) ON DELETE CASCADE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_facture_documents_facture ON facture_documents(facture_id)",
             # v6.7 — Pages multiples par BL (un BL peut avoir plusieurs pages scannées).
             # La page 0 reste dans receptions.photo_bl_filename (rétrocompat).
             # Les pages 1+ sont stockées ici. Même structure pour les BLs supplémentaires

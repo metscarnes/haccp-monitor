@@ -164,3 +164,44 @@
 
 /* Champs désactivés (facture verrouillée) */
 .fac-input:disabled, .fac-select:disabled { background: #f3efe7; color: #9ca3af; cursor: not-allowed; }
+
+/* ── Refonte étape 4 : import Factur-X / OCR ─────────────────────────────── */
+
+.fac-import {
+  border-bottom: 2px solid #e8d9c4;
+  padding: var(--space-3) var(--space-4);
+  background: #fbf8f2;
+}
+.fac-import-barre {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.fac-import-titre { font-weight: 700; }
+.fac-import-etat { font-size: var(--text-sm); color: #6b7280; }
+.fac-import-resultat {
+  margin-top: var(--space-3);
+  border: 1px solid #e5d9c3;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: #fff;
+}
+.fac-import-entete {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: #6b7280;
+  margin-bottom: var(--space-2);
+}
+.fac-import-entete strong { color: #1f2937; }
+.fac-import-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+.fac-import-opt { font-size: var(--text-sm); color: #4b5563; display: flex; gap: .4rem; align-items: center; }

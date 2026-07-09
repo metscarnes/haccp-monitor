@@ -139,6 +139,21 @@
         <div id="fac-form-erreur" class="ach-form-erreur" hidden></div>
       </form>
 
+      <!-- Import de facture : Factur-X (XML) sinon OCR -->
+      <div class="fac-import" id="fac-import">
+        <div class="fac-import-barre">
+          <span class="fac-import-titre">📄 Importer la facture</span>
+          <label class="ach-btn" id="btn-import-doc-label">
+            Choisir un fichier (PDF/photo)
+            <input type="file" id="fac-import-fichier" accept="application/pdf,image/*" hidden>
+          </label>
+          <button type="button" class="ach-btn" id="btn-import-bl" hidden
+                  title="Réutiliser le BL déjà scanné à la réception">↳ Depuis le BL de la réception</button>
+          <span class="fac-import-etat" id="fac-import-etat"></span>
+        </div>
+        <div class="fac-import-resultat" id="fac-import-resultat" hidden></div>
+      </div>
+
       <div class="ach-lignes">
         <div class="ach-lignes-titre">Rapprochement — reçu vs facturé</div>
         <div class="fac-table-wrap">

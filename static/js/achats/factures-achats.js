@@ -64,6 +64,10 @@ function bindEvents() {
   document.getElementById('btn-solder-ecart').addEventListener('click', solderEcart);
   document.getElementById('btn-avoir-fac').addEventListener('click', creerAvoir);
   document.getElementById('btn-deverrouiller-fac').addEventListener('click', deverrouillerFacture);
+
+  // Étape 4 : import Factur-X / OCR
+  document.getElementById('fac-import-fichier').addEventListener('change', importerDocument);
+  document.getElementById('btn-import-bl').addEventListener('click', importerDepuisBl);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -201,7 +205,158 @@ async function ouvrirFacture(id, prefetch) {
   rendreTotaux(fac);
   chargerSuggestionsAnnexes(fac);
   appliquerVerrou(fac);
+  // Import « depuis le BL » : seulement si une réception est rattachée
+  document.getElementById('btn-import-bl').hidden = !fac.reception_id;
+  document.getElementById('fac-import-resultat').hidden = true;
+  document.getElementById('fac-import-etat').textContent = '';
   document.getElementById('modal-facture').hidden = false;
+}
+
+// ── Import de facture : Factur-X (fiable) sinon OCR ─────────────
+let extractionCourante = null;   // dernière extraction pour l'application
+
+async function importerDocument(e) {
+  const fichier = e.target.files && e.target.files[0];
+  if (!fichier) return;
+  const fd = new FormData();
+  fd.append('fichier', fichier);
+  await lancerImport(`${API_FAC}/${facCourante.id}/importer-document`, { body: fd });
+  e.target.value = '';   // permet de réimporter le même fichier
+}
+
+async function importerDepuisBl() {
+  await lancerImport(`${API_FAC}/${facCourante.id}/importer-depuis-bl`, { method: 'POST' });
+}
+
+async function lancerImport(url, opts) {
+  const etat = document.getElementById('fac-import-etat');
+  etat.textContent = '⏳ Analyse en cours…';
+  try {
+    const r = await fetch(url, { method: opts.method || 'POST', body: opts.body });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      etat.textContent = '❌ ' + (err.detail || 'Échec de l\'analyse.');
+      return;
+    }
+    extractionCourante = await r.json();
+    const src = extractionCourante.source === 'facturx'
+      ? '✓ Facture électronique (Factur-X) — données fiables'
+      : '✓ Lecture OCR — vérifiez les montants';
+    etat.textContent = src;
+    rendreExtraction(extractionCourante);
+  } catch (_) {
+    etat.textContent = '❌ Erreur réseau pendant l\'analyse.';
+  }
+}
+
+function rendreExtraction(data) {
+  const zone = document.getElementById('fac-import-resultat');
+  const lignes = data.lignes || [];
+  const annexes = data.annexes || [];
+  const ligneHtml = (l, i, type) => `
+    <tr>
+      <td><input type="checkbox" class="imp-check" data-type="${type}" data-i="${i}" checked></td>
+      <td>${escHtml(l.designation)}</td>
+      <td class="ach-col-num">${l.quantite != null ? l.quantite : (l.poids_facture_kg ?? '—')}</td>
+      <td class="ach-col-num">${l.prix_unitaire != null ? fmtPrix(l.prix_unitaire) : '—'}</td>
+      <td>${escHtml(l.unite_prix || (type === 'annexe' ? l.type_ligne : ''))}</td>
+      <td class="ach-col-num">${l.montant_ht != null ? fmtPrix(l.montant_ht) + ' €' : '—'}</td>
+      <td class="ach-col-num">${l.tva_pct != null ? fmtPrix(l.tva_pct) + ' %' : '—'}</td>
+    </tr>`;
+
+  zone.innerHTML = `
+    <div class="fac-import-entete">
+      <span>Fournisseur : <strong>${escHtml(data.fournisseur) || '—'}</strong></span>
+      <span>N° : <strong>${escHtml(data.numero_facture) || '—'}</strong></span>
+      <span>Date : <strong>${escHtml(data.date_facture) || '—'}</strong></span>
+      ${data.type_document === 'avoir' ? '<span class="fac-badge-avoir">↩ AVOIR</span>' : ''}
+      <span>Total TTC : <strong>${data.total_ttc != null ? fmtPrix(data.total_ttc) + ' €' : '—'}</strong></span>
+    </div>
+    <table class="ach-table fac-table">
+      <thead><tr><th>✓</th><th>Désignation</th><th class="ach-col-num">Qté</th>
+        <th class="ach-col-num">P.U.</th><th>Unité / type</th>
+        <th class="ach-col-num">Montant HT</th><th class="ach-col-num">TVA</th></tr></thead>
+      <tbody>
+        ${lignes.map((l, i) => ligneHtml(l, i, 'marchandise')).join('')}
+        ${annexes.map((l, i) => ligneHtml(l, i, 'annexe')).join('')}
+      </tbody>
+    </table>
+    <div class="fac-import-actions">
+      <label class="fac-import-opt">
+        <input type="checkbox" id="imp-remplacer" checked>
+        Remplacer les lignes actuelles de la facture
+      </label>
+      <button type="button" class="ach-btn ach-btn--primary" id="btn-appliquer-import">
+        Appliquer les lignes cochées
+      </button>
+    </div>`;
+  zone.hidden = false;
+  document.getElementById('btn-appliquer-import').addEventListener('click', appliquerImport);
+}
+
+async function appliquerImport() {
+  const data = extractionCourante;
+  if (!data) return;
+  const coche = (type, i) => document.querySelector(
+    `.imp-check[data-type="${type}"][data-i="${i}"]`)?.checked;
+
+  const lignes = [];
+  (data.lignes || []).forEach((l, i) => {
+    if (!coche('marchandise', i)) return;
+    // Marchandise : au kg → poids_facture_kg ; sinon quantité facturée.
+    const auKg = (l.unite_prix || 'kg') === 'kg';
+    lignes.push({
+      designation: l.designation,
+      code_article: l.code_article || null,
+      type_ligne: 'marchandise',
+      unite_prix: l.unite_prix || 'kg',
+      tva_pct: l.tva_pct,
+      poids_facture_kg: auKg ? (l.quantite ?? l.poids_facture_kg ?? null) : null,
+      quantite_facturee: auKg ? null : (l.quantite ?? null),
+      prix_facture_ht: l.prix_unitaire ?? null,
+      montant_facture_ht: l.prix_unitaire == null ? (l.montant_ht ?? null) : null,
+    });
+  });
+  (data.annexes || []).forEach((l, i) => {
+    if (!coche('annexe', i)) return;
+    lignes.push({
+      designation: l.designation,
+      type_ligne: l.type_ligne || 'taxe',
+      tva_pct: l.tva_pct,
+      montant_facture_ht: l.montant_ht ?? 0,
+    });
+  });
+
+  const body = {
+    numero_facture: data.numero_facture || null,
+    date_facture: data.date_facture || null,
+    type_document: data.type_document || null,
+    total_ht_papier: data.total_ht ?? null,
+    total_ttc_papier: data.total_ttc ?? null,
+    remplacer_lignes: document.getElementById('imp-remplacer').checked,
+    lignes,
+  };
+  const r = await fetch(`${API_FAC}/${facCourante.id}/appliquer-import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    alert(err.detail || 'Échec de l\'application.');
+    return;
+  }
+  facCourante = await r.json();
+  document.getElementById('fac-import-resultat').hidden = true;
+  document.getElementById('fac-import-etat').textContent = '✓ Import appliqué';
+  extractionCourante = null;
+  // Rafraîchit l'écran + les champs entête
+  document.getElementById('fac-numero').value = facCourante.numero_facture || '';
+  document.getElementById('fac-date').value = facCourante.date_facture || '';
+  rendreLignes(facCourante.lignes || []);
+  rendreTotaux(facCourante);
+  appliquerVerrou(facCourante);
+  await chargerFactures();
 }
 
 // Verrouillage visuel : facture validée = tout en lecture seule sauf le commentaire.
