@@ -47,7 +47,13 @@ _MOTS_TRANSPORT = ("transport", "port", "livraison", "fret", "freight", "franco"
 
 
 class FacturXError(Exception):
-    """Erreur fonctionnelle de lecture Factur-X (pas de XML, XML illisible…)."""
+    """Erreur fonctionnelle de lecture Factur-X (PDF/XML illisible) — repli OCR normal."""
+
+
+class FacturXIndisponible(Exception):
+    """Erreur d'ENVIRONNEMENT (PyMuPDF absent/cassé) — PAS un cas de repli normal :
+    un vrai Factur-X basculerait silencieusement sur l'OCR sans que rien ne l'indique.
+    À logger en ERROR (pas warning) et à faire remonter, pas à avaler."""
 
 
 def extraire_xml_facturx(pdf_bytes: bytes) -> bytes | None:
@@ -59,7 +65,7 @@ def extraire_xml_facturx(pdf_bytes: bytes) -> bytes | None:
     try:
         import fitz  # PyMuPDF
     except ImportError:
-        raise FacturXError("Lecture PDF indisponible (PyMuPDF non installé).")
+        raise FacturXIndisponible("Lecture PDF indisponible (PyMuPDF non installé).")
 
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")

@@ -4898,14 +4898,19 @@ def _analyser_document_facture(raw: bytes, filename: Optional[str]) -> dict:
     est_pdf = _est_pdf(raw, filename)
     # 1) Factur-X : uniquement pertinent sur un PDF
     if est_pdf:
+        from src.facturx_reader import lire_facture_pdf, FacturXError, FacturXIndisponible
         try:
-            from src.facturx_reader import lire_facture_pdf, FacturXError
             data = lire_facture_pdf(raw)
             if data is not None:
                 data["has_facturx"] = True
                 return data
+        except FacturXIndisponible as e:
+            # Erreur d'ENVIRONNEMENT (PyMuPDF cassé) : ne PAS basculer silencieusement
+            # sur l'OCR, sinon un vrai Factur-X passerait en vision sans qu'on le sache.
+            logger.error("Factur-X indisponible sur ce serveur : %s", e)
+            raise HTTPException(500, f"Lecture Factur-X indisponible : {e}")
         except FacturXError as e:
-            logger.warning("Lecture Factur-X échouée, bascule OCR : %s", e)
+            logger.warning("Pas de Factur-X exploitable, bascule OCR : %s", e)
 
     # 2) OCR facture (repli) : convertit le document en images puis vision
     from src.ocr_facture import extraire_facture, OCRFactureError
