@@ -282,3 +282,11 @@
   font-weight: 600;
   color: #4b5563;
 }
+
+/* ── Coût OCR (tokens/prix, chiffres exacts renvoyés par l'API) ─────────────── */
+.fac-import-cout {
+  font-size: var(--text-sm);
+  color: #6b7280;
+  margin: -0.25rem 0 var(--space-2);
+  padding: 0 var(--space-1);
+}

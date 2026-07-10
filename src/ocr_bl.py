@@ -21,10 +21,13 @@ logger = logging.getLogger(__name__)
 
 # Modèle par défaut : bon compromis fiabilité/prix pour des BL imprimés.
 # Surchargé par la variable d'environnement OCR_MODEL si présente.
-MODEL = os.environ.get("OCR_MODEL", "claude-sonnet-4-6")
+MODEL = os.environ.get("OCR_MODEL", "claude-sonnet-5")
 
 # Tarifs ($/million de tokens) pour journaliser le coût réel de chaque appel.
+# Sonnet 5 : tarif intro 2/10 jusqu'au 31/08/2026, puis 3/15 (standard retenu
+# ici — coût affiché légèrement surestimé pendant l'intro, jamais sous-estimé).
 _PRIX = {
+    "claude-sonnet-5":   (3.00, 15.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5":  (1.00, 5.00),
     "claude-opus-4-8":   (5.00, 25.00),

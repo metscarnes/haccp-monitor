@@ -462,6 +462,12 @@ function rendreExtraction(data) {
       ${data.type_document === 'avoir' ? '<span class="fac-badge-avoir">↩ AVOIR</span>' : ''}
       <span>Total TTC : <strong>${data.total_ttc != null ? fmtPrix(data.total_ttc) + ' €' : '—'}</strong></span>
     </div>
+    ${data._meta ? `
+    <div class="fac-import-cout">
+      🪙 OCR (${escHtml(data._meta.modele)}) : ${data._meta.tokens_entree.toLocaleString('fr-FR')} tokens entrée
+      + ${data._meta.tokens_sortie.toLocaleString('fr-FR')} tokens sortie
+      — coût ≈ $${data._meta.cout_usd.toFixed(4)}
+    </div>` : ''}
     <table class="ach-table fac-table">
       <thead><tr><th>✓</th><th>Désignation</th><th class="ach-col-num">Qté</th>
         <th class="ach-col-num">P.U.</th><th>Unité / type</th>

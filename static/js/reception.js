@@ -3293,6 +3293,15 @@ async function lancerExtractionOcr() {
       elOcrStatut.textContent = nbSuspect
         ? `✓ ${lignes.length} article(s) lus — ⚠️ ${nbSuspect} à vérifier (surlignés). Contrôlez chaque DLC.`
         : `✓ ${lignes.length} article(s) lus. Contrôlez chaque ligne avant d'enregistrer.`;
+      // Coût réel de l'appel (tokens exacts renvoyés par l'API, pas une estimation).
+      if (data._meta) {
+        const m = data._meta;
+        const petitCout = document.createElement('div');
+        petitCout.className = 'rec-ocr-cout';
+        petitCout.textContent = `🪙 ${m.tokens_entree.toLocaleString('fr-FR')} tokens entrée `
+          + `+ ${m.tokens_sortie.toLocaleString('fr-FR')} tokens sortie — coût ≈ $${m.cout_usd.toFixed(4)}`;
+        elOcrStatut.appendChild(petitCout);
+      }
     }
   } catch (err) {
     barre.annuler();

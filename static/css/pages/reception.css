@@ -1927,3 +1927,11 @@ body.rec-body {
   white-space: nowrap;
 }
 .rec-facture-lien:hover { background: #256030; }
+
+/* ── Coût OCR BL (tokens/prix, chiffres exacts renvoyés par l'API) ──────────── */
+.rec-ocr-cout {
+  font-size: .78rem;
+  color: #6b8f70;
+  margin-top: .3rem;
+  opacity: .85;
+}
