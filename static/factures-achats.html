@@ -57,6 +57,34 @@
         <option value="litige">En litige</option>
       </select>
     </div>
+    <div class="ach-filtre">
+      <label>Du</label>
+      <input type="date" id="filtre-date-debut">
+    </div>
+    <div class="ach-filtre">
+      <label>Au</label>
+      <input type="date" id="filtre-date-fin">
+    </div>
+  </div>
+
+  <!-- Synthèse HT/TTC : global + par fournisseur, sur la période/filtres actifs -->
+  <div class="fac-totaux" id="fac-totaux" hidden>
+    <div class="fac-totaux-global">
+      <div class="fac-totaux-bloc">
+        <span class="fac-totaux-lbl">Total HT</span>
+        <span class="fac-totaux-val" id="totaux-global-ht">—</span>
+      </div>
+      <div class="fac-totaux-bloc">
+        <span class="fac-totaux-lbl">Total TTC</span>
+        <span class="fac-totaux-val" id="totaux-global-ttc">—</span>
+      </div>
+      <div class="fac-totaux-bloc">
+        <span class="fac-totaux-lbl">Factures</span>
+        <span class="fac-totaux-val" id="totaux-nb">—</span>
+      </div>
+      <button type="button" class="ach-btn" id="btn-totaux-detail">Détail par fournisseur ▾</button>
+    </div>
+    <div class="fac-totaux-detail" id="fac-totaux-detail" hidden></div>
   </div>
 
   <div id="zone-erreur" class="ach-erreur" hidden></div>

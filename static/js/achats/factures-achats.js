@@ -38,6 +38,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 function bindEvents() {
   document.getElementById('filtre-fournisseur').addEventListener('change', chargerFactures);
   document.getElementById('filtre-statut').addEventListener('change', chargerFactures);
+  document.getElementById('filtre-date-debut').addEventListener('change', chargerFactures);
+  document.getElementById('filtre-date-fin').addEventListener('change', chargerFactures);
+  document.getElementById('btn-totaux-detail').addEventListener('click', () => {
+    const detail = document.getElementById('fac-totaux-detail');
+    detail.hidden = !detail.hidden;
+    document.getElementById('btn-totaux-detail').textContent =
+      detail.hidden ? 'Détail par fournisseur ▾' : 'Détail par fournisseur ▴';
+  });
   document.getElementById('btn-nouvelle-facture').addEventListener('click', ouvrirChoixReception);
 
   // Modale choix réception
@@ -112,14 +120,46 @@ async function chargerFournisseurs() {
 async function chargerFactures() {
   const fournisseur = document.getElementById('filtre-fournisseur').value;
   const statut = document.getElementById('filtre-statut').value;
+  const dateDebut = document.getElementById('filtre-date-debut').value;
+  const dateFin = document.getElementById('filtre-date-fin').value;
   const params = new URLSearchParams({ limit: '100' });
   if (fournisseur) params.set('fournisseur_id', fournisseur);
   if (statut) params.set('statut', statut);
+  if (dateDebut) params.set('date_debut', dateDebut);
+  if (dateFin) params.set('date_fin', dateFin);
 
   const r = await fetch(`${API_FAC}?${params}`);
   factures = await r.json();
   rendreFactures();
   rendreStats();
+  await chargerTotaux(params);
+}
+
+// Synthèse HT/TTC (global + par fournisseur) sur les MÊMES filtres que la liste.
+async function chargerTotaux(paramsListe) {
+  const zone = document.getElementById('fac-totaux');
+  // /factures/totaux ne connaît pas `limit` (non pertinent pour une somme).
+  const params = new URLSearchParams(paramsListe);
+  params.delete('limit');
+  try {
+    const r = await fetch(`${API_FAC}/totaux?${params}`);
+    if (!r.ok) { zone.hidden = true; return; }
+    const data = await r.json();
+    if (!data.nb_factures) { zone.hidden = true; return; }
+    zone.hidden = false;
+    document.getElementById('totaux-global-ht').textContent = fmtPrix(data.global_ht) + ' €';
+    document.getElementById('totaux-global-ttc').textContent = fmtPrix(data.global_ttc) + ' €';
+    document.getElementById('totaux-nb').textContent = data.nb_factures;
+
+    const detail = document.getElementById('fac-totaux-detail');
+    detail.innerHTML = data.fournisseurs.map(f => `
+      <div class="fac-totaux-ligne">
+        <span>${escHtml(f.fournisseur_nom)} <span class="fac-totaux-nb">(${f.nb_factures})</span></span>
+        <span>${fmtPrix(f.total_ht)} € HT · ${fmtPrix(f.total_ttc)} € TTC</span>
+      </div>`).join('');
+  } catch (_) {
+    zone.hidden = true;
+  }
 }
 
 function rendreStats() {

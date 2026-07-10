@@ -973,6 +973,60 @@ async def _achats_periode_ht(db, debut, fin):
     return {"ht": round(total, 2), "nb_lignes": nb, "nb_non_valorisees": nb_non_valo}
 
 
+async def _achats_reels_factures(db, debut, fin):
+    """Achats HT RÉELS = somme des factures VALIDÉES dont la réception rattachée
+    tombe sur [debut, fin] — cascade de vérité (facture validée > catalogue).
+
+    Filtré sur la date de RÉCEPTION (pas la date de la facture) : même principe
+    que _achats_periode_ht, pour un rattachement correct à l'exercice — la
+    marchandise devient une charge quand elle est reçue, pas quand le papier
+    arrive (qui peut être décalé de plusieurs jours). La réception d'une facture
+    est résolue comme _reception_liee_facture (routes_achats.py) : reception_id
+    direct, sinon via la commande mappée la plus récente.
+
+    Un AVOIR n'a pas de reception_id propre (il n'est pas créé « depuis une
+    réception ») : sa date de rattachement est celle de la réception de sa
+    FACTURE LIÉE (facture_liee_id) — un avoir compte sur la même période que
+    l'arrivage qu'il corrige, jamais sur sa propre date de création.
+    """
+    async with db.execute(
+        """SELECT fac.id, fac.type, fac.montant_total_ht_facture AS montant_ht,
+                  COALESCE(
+                      r_direct.date_reception,
+                      r_mappee.date_reception,
+                      r_liee_direct.date_reception,
+                      r_liee_mappee.date_reception
+                  ) AS date_reception_effective
+           FROM factures fac
+           -- Réception de LA FACTURE ELLE-MÊME (reception_id direct ou via commande)
+           LEFT JOIN receptions r_direct ON r_direct.id = fac.reception_id
+           LEFT JOIN receptions r_mappee ON r_mappee.id = (
+               SELECT reception_id FROM commande_receptions_mapping
+               WHERE commande_id = fac.commande_id
+               ORDER BY date_liaison DESC LIMIT 1
+           )
+           -- Si AVOIR sans réception propre : réception de la FACTURE LIÉE
+           LEFT JOIN factures fac_liee ON fac_liee.id = fac.facture_liee_id
+           LEFT JOIN receptions r_liee_direct ON r_liee_direct.id = fac_liee.reception_id
+           LEFT JOIN receptions r_liee_mappee ON r_liee_mappee.id = (
+               SELECT reception_id FROM commande_receptions_mapping
+               WHERE commande_id = fac_liee.commande_id
+               ORDER BY date_liaison DESC LIMIT 1
+           )
+           WHERE fac.statut = 'validee'""",
+    ) as cur:
+        toutes = [dict(r) for r in await cur.fetchall()]
+
+    factures = [f for f in toutes
+                if f["date_reception_effective"] and debut <= f["date_reception_effective"] <= fin]
+
+    total = 0.0
+    for f in factures:
+        signe = -1 if f["type"] == "avoir" else 1
+        total += signe * (f["montant_ht"] or 0.0)
+    return {"ht": round(total, 2), "nb_factures": len(factures)}
+
+
 async def _inventaire_proche(db, cible, sens):
     """Inventaire CLÔTURÉ le plus proche d'une date.
 
@@ -1023,22 +1077,32 @@ async def tableau_marge(
         ca = await _ca_periode_ht(db, date_debut, date_fin, tva_pct)
         achats_calcule = await _achats_periode_ht(db, date_debut, date_fin)
 
-        # Achats RÉELS saisis : rattachés à la PÉRIODE exacte analysée → éditables quelle
-        # que soit la période (jamais bloqué). Quand un montant réel existe pour ces dates,
-        # il PRIME mais le calcul (réceptions valorisées) reste en référence.
+        # Cascade de vérité (la plus fiable en premier) :
+        #   1. FACTURES VALIDÉES de la période (prix réellement facturé, vérifié)
+        #   2. Saisie manuelle (achats_reels_periode — secours si pas de facture)
+        #   3. Calcul catalogue (réceptions valorisées au prix de référence — repli)
+        # Chaque niveau supérieur PRIME s'il a une donnée pour cette période exacte ;
+        # le calcul catalogue reste toujours affiché en référence/comparaison.
+        achats_factures = await _achats_reels_factures(db, date_debut, date_fin)
         achats_reel_saisie = await _get_achats_reels(db, date_debut, date_fin)
         achats = dict(achats_calcule)
         achats["ht_calcule"] = achats_calcule["ht"]
         achats["saisie_possible"] = True
-        if achats_reel_saisie is not None:
-            achats["ht_reel"] = round(float(achats_reel_saisie["montant_ht"]), 2)
+        achats["ht_factures"] = achats_factures["ht"] if achats_factures["nb_factures"] else None
+        achats["nb_factures"] = achats_factures["nb_factures"]
+        achats["ht_reel"] = (round(float(achats_reel_saisie["montant_ht"]), 2)
+                             if achats_reel_saisie is not None else None)
+
+        if achats_factures["nb_factures"] > 0:
+            achats["source"] = "factures"
+            achats["ht"] = achats_factures["ht"]
+        elif achats_reel_saisie is not None:
             achats["source"] = "reel"
             achats["ht"] = achats["ht_reel"]
-            achats["ecart_reel_calcule"] = round(achats["ht_reel"] - achats_calcule["ht"], 2)
         else:
-            achats["ht_reel"] = None
             achats["source"] = "calcule"
-            achats["ecart_reel_calcule"] = None
+            achats["ht"] = achats_calcule["ht"]
+        achats["ecart_reel_calcule"] = round(achats["ht"] - achats_calcule["ht"], 2)
 
         # Stock Initial : photo ≤ veille du début (l'inventaire de DÉBUT de période).
         # On cible la veille pour capter la photo prise avant la période, mais on tolère

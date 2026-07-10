@@ -4109,6 +4109,91 @@ async def receptions_a_facturer(limit: int = Query(100)):
         return rows
 
 
+@router.get("/factures/totaux")
+async def totaux_factures(
+    date_debut: Optional[str] = Query(None, description="YYYY-MM-DD (inclus), sur date_facture"),
+    date_fin: Optional[str] = Query(None, description="YYYY-MM-DD (inclus), sur date_facture"),
+    statut: Optional[str] = Query(None, description="Filtre optionnel ; par défaut exclut 'annulee'"),
+):
+    """Total HT/TTC des factures — GLOBAL et PAR FOURNISSEUR, sur une période
+    optionnelle. Les avoirs (type='avoir') sont comptés en négatif (ils réduisent
+    le montant dû à ce fournisseur). Les factures annulées (doublons) sont
+    exclues par défaut, comme dans la liste GET /factures.
+
+    TTC : utilise total_ttc_papier quand renseigné (montant réel du document,
+    fiable) ; sinon calcule via _recap_facture (TVA par taux sur les lignes) —
+    seule approche cohérente avec le reste du module (jamais de TVA à plat)."""
+    async with get_db() as db:
+        sql = """
+            SELECT fac.id, fac.fournisseur_id, f.nom AS fournisseur_nom, fac.type,
+                   fac.montant_total_ht_facture AS total_ht, fac.total_ttc_papier
+            FROM factures fac
+            JOIN fournisseurs f ON f.id = fac.fournisseur_id
+            WHERE fac.boutique_id = 1
+        """
+        params: list = []
+        if date_debut:
+            sql += " AND fac.date_facture >= ?"
+            params.append(date_debut)
+        if date_fin:
+            sql += " AND fac.date_facture <= ?"
+            params.append(date_fin)
+        if statut:
+            sql += " AND fac.statut = ?"
+            params.append(statut)
+        else:
+            sql += " AND fac.statut <> 'annulee'"
+        cur = await db.execute(sql, params)
+        factures = [dict(r) for r in await cur.fetchall()]
+
+        # TTC manquant (pas de total papier saisi) : calculé depuis les lignes.
+        a_calculer = [f["id"] for f in factures if f["total_ttc_papier"] is None]
+        ttc_calcules: dict = {}
+        for fid in a_calculer:
+            cur_f = await db.execute("SELECT * FROM factures WHERE id = ?", (fid,))
+            fac_row = await cur_f.fetchone()
+            cur_l = await db.execute(
+                "SELECT * FROM facture_lignes WHERE facture_id = ?", (fid,)
+            )
+            lignes = [dict(r) for r in await cur_l.fetchall()]
+            recap = _recap_facture(dict(fac_row), lignes)
+            ttc_calcules[fid] = recap["total_ttc_calcule"]
+
+    par_fournisseur: dict = {}
+    global_ht = 0.0
+    global_ttc = 0.0
+    for f in factures:
+        signe = -1 if f["type"] == "avoir" else 1
+        ht = signe * (f["total_ht"] or 0.0)
+        ttc = signe * (f["total_ttc_papier"] if f["total_ttc_papier"] is not None
+                        else ttc_calcules.get(f["id"], f["total_ht"] or 0.0))
+        global_ht += ht
+        global_ttc += ttc
+        pf = par_fournisseur.setdefault(f["fournisseur_id"], {
+            "fournisseur_id": f["fournisseur_id"],
+            "fournisseur_nom": f["fournisseur_nom"],
+            "total_ht": 0.0, "total_ttc": 0.0, "nb_factures": 0,
+        })
+        pf["total_ht"] += ht
+        pf["total_ttc"] += ttc
+        pf["nb_factures"] += 1
+
+    fournisseurs = sorted(
+        (
+            {**v, "total_ht": round(v["total_ht"], 2), "total_ttc": round(v["total_ttc"], 2)}
+            for v in par_fournisseur.values()
+        ),
+        key=lambda x: x["total_ht"], reverse=True,
+    )
+    return {
+        "date_debut": date_debut, "date_fin": date_fin,
+        "nb_factures": len(factures),
+        "global_ht": round(global_ht, 2),
+        "global_ttc": round(global_ttc, 2),
+        "fournisseurs": fournisseurs,
+    }
+
+
 @router.get("/factures/annexes-frequentes")
 async def annexes_frequentes(fournisseur_id: int = Query(...), limit: int = Query(6)):
     """Lignes annexes HABITUELLES d'un fournisseur (transport, taxes…), déduites de
@@ -4188,6 +4273,8 @@ async def detecter_doublons_potentiels(fournisseur_id: Optional[int] = Query(Non
 async def get_factures(
     fournisseur_id: Optional[int] = Query(None),
     statut: Optional[str] = Query(None),
+    date_debut: Optional[str] = Query(None, description="YYYY-MM-DD (inclus), sur date_facture"),
+    date_fin: Optional[str] = Query(None, description="YYYY-MM-DD (inclus), sur date_facture"),
     limit: int = Query(50),
 ):
     async with get_db() as db:
@@ -4212,6 +4299,12 @@ async def get_factures(
             # Par défaut, les doublons annulés n'encombrent pas la liste (mais restent
             # consultables via ?statut=annulee — jamais supprimés, juste masqués).
             sql += " AND fac.statut <> 'annulee'"
+        if date_debut:
+            sql += " AND fac.date_facture >= ?"
+            params.append(date_debut)
+        if date_fin:
+            sql += " AND fac.date_facture <= ?"
+            params.append(date_fin)
         sql += " ORDER BY fac.date_facture DESC, fac.id DESC LIMIT ?"
         params.append(limit)
         cur = await db.execute(sql, params)

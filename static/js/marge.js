@@ -117,14 +117,20 @@ function rendre() {
   const a = d.achats;
   const achatsEl = $('d-achats');
   achatsEl.textContent = fmtEur(a.ht);
-  achatsEl.classList.toggle('marge-val--reel', a.source === 'reel');
-  if (a.source === 'reel') {
-    const ecart = (a.ecart_reel_calcule != null)
-      ? ` · écart calcul ${a.ecart_reel_calcule >= 0 ? '+' : ''}${fmtEur(a.ecart_reel_calcule)}` : '';
+  achatsEl.classList.toggle('marge-val--reel', a.source === 'factures' || a.source === 'reel');
+  const ecartTxt = (a.ecart_reel_calcule != null)
+    ? ` · écart vs calcul catalogue ${a.ecart_reel_calcule >= 0 ? '+' : ''}${fmtEur(a.ecart_reel_calcule)}` : '';
+  if (a.source === 'factures') {
+    // Le plus fiable : somme des factures VALIDÉES rattachées aux réceptions
+    // de la période (module Facture, cascade de vérité).
     $('d-achats-sub').textContent =
-      `📑 Réel (factures) · calcul auto : ${fmtEur(a.ht_calcule)}${ecart}`;
+      `🧾 ${a.nb_factures} facture(s) validée(s) · calcul catalogue : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
+  } else if (a.source === 'reel') {
+    // Secours : montant saisi à la main pour cette période (pas de facture validée).
+    $('d-achats-sub').textContent =
+      `📝 Saisie manuelle · calcul catalogue : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
   } else {
-    let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul auto)`;
+    let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul catalogue)`;
     if (a.nb_non_valorisees > 0) sub += ` · ⚠️ ${a.nb_non_valorisees} sans valeur`;
     $('d-achats-sub').textContent = sub;
   }
@@ -229,8 +235,11 @@ function ouvrirEditAchats() {
   if (!state.data) return;
   const a = state.data.achats;
   $('input-achats-ht').value = (a.ht_reel != null) ? a.ht_reel : '';
-  $('achats-editor-hint').textContent =
-    `Période ${$('marge-debut').value} → ${$('marge-fin').value} · base date de facture · calcul auto : ${fmtEur(a.ht_calcule)}`;
+  const base = a.source === 'factures'
+    ? `⚠️ ${a.nb_factures} facture(s) validée(s) existent déjà sur cette période et priment — `
+      + `cette saisie manuelle ne sera utilisée que si les factures sont dévalidées/absentes.`
+    : `Période ${$('marge-debut').value} → ${$('marge-fin').value} · base date de réception · calcul catalogue : ${fmtEur(a.ht_calcule)}`;
+  $('achats-editor-hint').textContent = base;
   $('editor-achats').hidden = false;
   setTimeout(() => $('input-achats-ht').focus(), 50);
 }
