@@ -94,6 +94,7 @@ function bindEvents() {
   document.getElementById('btn-bl-apercu-suiv').addEventListener('click', () => {
     if (blApercuIndex < blApercuPages.length - 1) { blApercuIndex++; afficherPageBlApercu(); }
   });
+  initZoomBlApercu();
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -292,11 +293,112 @@ function afficherPageBlApercu() {
     `Page ${blApercuIndex + 1} / ${blApercuPages.length}`;
   document.getElementById('btn-bl-apercu-prec').disabled = blApercuIndex === 0;
   document.getElementById('btn-bl-apercu-suiv').disabled = blApercuIndex === blApercuPages.length - 1;
+  resetZoomBl();
 }
 
 function fermerModalBlApercu() {
   document.getElementById('modal-bl-apercu').hidden = true;
   document.getElementById('bl-apercu-image').src = '';
+}
+
+// ── Zoom / pan de l'aperçu BL (pincement tactile + boutons + double-tap) ────
+// Surface Go 2 : écran tactile principal, le pincement natif du navigateur est
+// désactivé sur la modale (touch-action:none) pour qu'on gère nous-même zoom+pan
+// sans que la page entière ne défile pendant le geste.
+let blZoom = 1;
+let blPanX = 0;
+let blPanY = 0;
+const BL_ZOOM_MIN = 1;
+const BL_ZOOM_MAX = 4;
+
+function appliquerTransformBl() {
+  const img = document.getElementById('bl-apercu-image');
+  img.style.transform = `translate(${blPanX}px, ${blPanY}px) scale(${blZoom})`;
+}
+
+function resetZoomBl() {
+  blZoom = 1;
+  blPanX = 0;
+  blPanY = 0;
+  appliquerTransformBl();
+}
+
+function zoomerBl(delta, centre) {
+  const nouveauZoom = Math.min(BL_ZOOM_MAX, Math.max(BL_ZOOM_MIN, blZoom + delta));
+  if (nouveauZoom === blZoom) return;
+  blZoom = nouveauZoom;
+  if (blZoom === BL_ZOOM_MIN) { blPanX = 0; blPanY = 0; }
+  appliquerTransformBl();
+}
+
+function initZoomBlApercu() {
+  const corps = document.getElementById('bl-apercu-corps');
+  const img = document.getElementById('bl-apercu-image');
+
+  document.getElementById('btn-bl-zoom-plus').addEventListener('click', () => zoomerBl(0.5));
+  document.getElementById('btn-bl-zoom-moins').addEventListener('click', () => zoomerBl(-0.5));
+  document.getElementById('btn-bl-zoom-reset').addEventListener('click', resetZoomBl);
+
+  // Double-tap / double-clic : zoom rapide vers 2x, ou retour à 1x si déjà zoomé.
+  let dernierTap = 0;
+  corps.addEventListener('pointerup', (e) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    const maintenant = Date.now();
+    if (maintenant - dernierTap < 300) {
+      blZoom === 1 ? zoomerBl(1) : resetZoomBl();
+    }
+    dernierTap = maintenant;
+  });
+
+  // Pincement à deux doigts (pointer events, pas de dépendance externe).
+  const pointeurs = new Map();
+  let distanceInitiale = 0;
+  let zoomInitial = 1;
+  let panDepart = null;
+
+  corps.addEventListener('pointerdown', (e) => {
+    pointeurs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    corps.setPointerCapture(e.pointerId);
+    if (pointeurs.size === 2) {
+      const [p1, p2] = [...pointeurs.values()];
+      distanceInitiale = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      zoomInitial = blZoom;
+    } else if (pointeurs.size === 1 && blZoom > 1) {
+      panDepart = { x: e.clientX - blPanX, y: e.clientY - blPanY };
+    }
+  });
+
+  corps.addEventListener('pointermove', (e) => {
+    if (!pointeurs.has(e.pointerId)) return;
+    pointeurs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointeurs.size === 2) {
+      const [p1, p2] = [...pointeurs.values()];
+      const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (distanceInitiale > 0) {
+        blZoom = Math.min(BL_ZOOM_MAX, Math.max(BL_ZOOM_MIN, zoomInitial * (distance / distanceInitiale)));
+        appliquerTransformBl();
+      }
+    } else if (pointeurs.size === 1 && panDepart && blZoom > 1) {
+      blPanX = e.clientX - panDepart.x;
+      blPanY = e.clientY - panDepart.y;
+      appliquerTransformBl();
+    }
+  });
+
+  const relacher = (e) => {
+    pointeurs.delete(e.pointerId);
+    if (pointeurs.size < 2) distanceInitiale = 0;
+    if (pointeurs.size === 0) panDepart = null;
+  };
+  corps.addEventListener('pointerup', relacher);
+  corps.addEventListener('pointercancel', relacher);
+
+  // Molette souris (poste fixe) : zoom au curseur.
+  corps.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomerBl(e.deltaY < 0 ? 0.3 : -0.3);
+  }, { passive: false });
 }
 
 async function lancerImport(url, opts) {

@@ -260,8 +260,13 @@
         <h2 class="ach-modal-titre">Aperçu du BL</h2>
         <button class="ach-modal-fermer" id="modal-bl-apercu-fermer">✕</button>
       </header>
-      <div class="bl-apercu-corps">
-        <img id="bl-apercu-image" class="bl-apercu-image" alt="Page du BL scanné">
+      <div class="bl-apercu-corps" id="bl-apercu-corps">
+        <img id="bl-apercu-image" class="bl-apercu-image" alt="Page du BL scanné" draggable="false">
+      </div>
+      <div class="bl-apercu-zoom">
+        <button type="button" class="ach-btn bl-apercu-zoom-btn" id="btn-bl-zoom-moins">−</button>
+        <button type="button" class="ach-btn bl-apercu-zoom-btn" id="btn-bl-zoom-reset">Réinitialiser</button>
+        <button type="button" class="ach-btn bl-apercu-zoom-btn" id="btn-bl-zoom-plus">+</button>
       </div>
       <div class="bl-apercu-nav">
         <button type="button" class="ach-btn" id="btn-bl-apercu-prec">‹ Précédente</button>
