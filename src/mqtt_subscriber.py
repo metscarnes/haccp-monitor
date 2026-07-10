@@ -28,6 +28,7 @@ from src.database import (
     fermer_alerte,
     marquer_alerte_notifiee,
     get_destinataires,
+    get_parametre,
     create_enceinte,
     get_enceintes,
     get_boutiques,
@@ -36,6 +37,9 @@ from src.database import (
     RETENTION_RELEVES_JOURS,
 )
 from src.alert_manager import envoyer_alerte
+
+BOUTIQUE_ID = 1  # mono-boutique Phase 2
+CLE_ALERTES_EMAIL_ACTIF = "alertes_email_actif"
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +267,10 @@ async def _ouvrir_ou_escalader(db, enceinte_id, type_alerte, valeur, seuil,
 
     duree_s = (now - debut).total_seconds()
     if duree_s >= delai_minutes * 60:
-        destinataires = await get_destinataires(db)
-        await envoyer_alerte(enceinte, type_alerte, valeur, seuil, debut, now, destinataires)
+        destinataires  = await get_destinataires(db)
+        email_actif    = (await get_parametre(db, BOUTIQUE_ID, CLE_ALERTES_EMAIL_ACTIF, "1")) != "0"
+        await envoyer_alerte(enceinte, type_alerte, valeur, seuil, debut, now, destinataires,
+                              email_actif=email_actif)
         await marquer_alerte_notifiee(db, existante["id"])
         logger.info("📧 Alerte notifiée — %s | %s | durée=%.0fmin",
                     enceinte["nom"], type_alerte, duree_s / 60)

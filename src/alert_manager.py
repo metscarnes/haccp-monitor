@@ -177,10 +177,12 @@ async def envoyer_alerte(
     debut: datetime,
     maintenant: Optional[datetime],
     destinataires: list[dict],
+    email_actif: bool = True,
 ) -> None:
     """
     Notifie tous les destinataires actifs par email et/ou SMS.
     `destinataires` : liste de dicts {nom, email, telephone}.
+    `email_actif`   : coupe-circuit global — si False, n'envoie pas d'email (le SMS n'est pas affecté).
     """
     if not destinataires:
         logger.info("Aucun destinataire configuré — alerte non notifiée")
@@ -194,5 +196,8 @@ async def envoyer_alerte(
     emails   = [d["email"]     for d in destinataires if d.get("email")]
     numeros  = [d["telephone"] for d in destinataires if d.get("telephone")]
 
-    await _envoyer_email(emails, sujet, corps)
+    if email_actif:
+        await _envoyer_email(emails, sujet, corps)
+    else:
+        logger.info("Alertes email désactivées — email non envoyé")
     await _envoyer_sms(numeros, corps)

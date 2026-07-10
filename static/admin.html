@@ -204,6 +204,16 @@
           Ces contacts reçoivent un email automatique dès qu'une enceinte dépasse ses seuils de température (après le délai configuré).
         </p>
 
+        <!-- Activation / désactivation globale des emails -->
+        <div class="admin-form-row" style="align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <label for="dest-email-actif-toggle" style="cursor:pointer;font-weight:600">
+            Envoi des alertes par email
+          </label>
+          <button type="button" id="dest-email-actif-toggle" class="btn btn-sm btn-secondary" aria-pressed="true">
+            ⏳…
+          </button>
+        </div>
+
         <!-- Liste des destinataires -->
         <div id="dest-liste" style="margin-bottom:1rem"></div>
         <div id="dest-msg" class="admin-depan-msg" hidden></div>
@@ -816,6 +826,48 @@
 
     // ── Destinataires alertes email ────────────────────────
     let destEnEdition = null;
+
+    // Activation / désactivation globale des emails
+    function destRenderEmailToggle(actif) {
+      const btn = $('dest-email-actif-toggle');
+      btn.textContent = actif ? '✅ Activées' : '🚫 Désactivées';
+      btn.className = `btn btn-sm ${actif ? 'btn-secondary' : 'btn-danger'}`;
+      btn.setAttribute('aria-pressed', String(actif));
+      btn.dataset.actif = actif ? '1' : '0';
+    }
+
+    async function loadEmailActif() {
+      try {
+        const res = await authFetch(`${API_BASE}/api/alertes/email-actif`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        destRenderEmailToggle(data.actif);
+      } catch (err) {
+        destSetMsg('error', `Erreur chargement : ${err.message}`);
+      }
+    }
+
+    $('dest-email-actif-toggle').addEventListener('click', async () => {
+      const btn = $('dest-email-actif-toggle');
+      const nouvelEtat = btn.dataset.actif !== '1';
+      btn.disabled = true;
+      try {
+        const res = await authFetch(`${API_BASE}/api/alertes/email-actif`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actif: nouvelEtat }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        destRenderEmailToggle(nouvelEtat);
+        destSetMsg('ok', nouvelEtat ? 'Alertes email réactivées.' : 'Alertes email désactivées.');
+      } catch (err) {
+        destSetMsg('error', `Erreur : ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    loadEmailActif();
 
     function destSetMsg(type, txt) {
       const el = $('dest-msg');

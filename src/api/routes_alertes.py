@@ -7,10 +7,14 @@ from src.database import (
     get_db, get_alertes_en_cours, get_alertes_enceinte,
     get_destinataires, create_destinataire,
     update_destinataire, delete_destinataire,
+    get_parametre, set_parametre,
 )
 from src.alert_manager import envoyer_alerte, SMTP_USER, SMTP_PASSWORD
 
 router = APIRouter(tags=["alertes"])
+
+BOUTIQUE_ID = 1  # mono-boutique Phase 2
+CLE_ALERTES_EMAIL_ACTIF = "alertes_email_actif"
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +75,28 @@ async def supprimer_destinataire(dest_id: int):
         ok = await delete_destinataire(db, dest_id)
     if not ok:
         raise HTTPException(404, "Destinataire introuvable")
+
+
+# ---------------------------------------------------------------------------
+# Activation / désactivation des alertes email
+# ---------------------------------------------------------------------------
+
+class AlertesEmailActifUpdate(BaseModel):
+    actif: bool
+
+
+@router.get("/api/alertes/email-actif")
+async def get_alertes_email_actif():
+    async with get_db() as db:
+        valeur = await get_parametre(db, BOUTIQUE_ID, CLE_ALERTES_EMAIL_ACTIF, "1")
+    return {"actif": valeur != "0"}
+
+
+@router.put("/api/alertes/email-actif")
+async def set_alertes_email_actif(data: AlertesEmailActifUpdate):
+    async with get_db() as db:
+        await set_parametre(db, BOUTIQUE_ID, CLE_ALERTES_EMAIL_ACTIF, "1" if data.actif else "0")
+    return {"ok": True, "actif": data.actif}
 
 
 # ---------------------------------------------------------------------------
