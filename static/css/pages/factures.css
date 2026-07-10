@@ -205,3 +205,15 @@
   margin-top: var(--space-2);
 }
 .fac-import-opt { font-size: var(--text-sm); color: #4b5563; display: flex; gap: .4rem; align-items: center; }
+
+/* ── Alerte doublon de réception (même fournisseur + même n° de BL) ─────── */
+.fac-alerte-doublon {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3);
+  background: #fff3e0;
+  border: 1px solid #f0b25e;
+  border-radius: var(--radius-sm);
+  color: #7a4a12;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}

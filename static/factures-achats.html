@@ -139,6 +139,9 @@
         <div id="fac-form-erreur" class="ach-form-erreur" hidden></div>
       </form>
 
+      <!-- Alerte doublon : même fournisseur + même n° de BL sur une autre réception -->
+      <div class="fac-alerte-doublon" id="fac-alerte-doublon" hidden></div>
+
       <!-- Import de facture : Factur-X (XML) sinon OCR -->
       <div class="fac-import" id="fac-import">
         <div class="fac-import-barre">
@@ -147,6 +150,8 @@
             Choisir un fichier (PDF/photo)
             <input type="file" id="fac-import-fichier" accept="application/pdf,image/*" hidden>
           </label>
+          <button type="button" class="ach-btn" id="btn-voir-bl" hidden
+                  title="Ouvre les pages du BL scanné, sans lancer l'analyse">👁 Voir le BL</button>
           <button type="button" class="ach-btn" id="btn-import-bl" hidden
                   title="Réutiliser le BL déjà scanné à la réception">↳ Depuis le BL de la réception</button>
           <span class="fac-import-etat" id="fac-import-etat"></span>
@@ -230,6 +235,8 @@
       <div style="display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-4); justify-content:space-between; flex-wrap:wrap;">
         <div style="display:flex; gap:var(--space-2);">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-fac">🗑 Supprimer</button>
+          <button type="button" class="ach-btn ach-btn--danger" id="btn-doublon-fac"
+                  title="Annule cette facture SANS la supprimer (statut 'annulée', motif tracé) — pour une même livraison saisie deux fois">⚠ Marquer comme doublon</button>
           <button type="button" class="ach-btn" id="btn-export-pdf">🖨 PDF</button>
           <button type="button" class="ach-btn" id="btn-export-xlsx">📊 Excel</button>
           <button type="button" class="ach-btn" id="btn-avoir-fac" hidden
@@ -242,6 +249,34 @@
           <button type="button" class="ach-btn" id="btn-deverrouiller-fac" hidden
                   title="Une facture validée est verrouillée — le déverrouillage est une action explicite">🔓 Déverrouiller</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal annulation doublon ── -->
+  <div class="ach-modal" id="modal-doublon" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Marquer comme doublon</h2>
+        <button class="ach-modal-fermer" id="modal-doublon-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <p style="margin:0 0 var(--space-3); color:#6b7280; font-size:var(--text-sm);">
+          La facture n'est PAS supprimée : elle passe en statut « annulée », motif tracé,
+          et disparaît de la liste — utile si la même livraison a été saisie deux fois.
+        </p>
+        <div class="ach-champ">
+          <label>Motif (obligatoire)</label>
+          <textarea id="doublon-motif" placeholder="Ex : même BL que la facture #8, réception en double le 25/06…"></textarea>
+        </div>
+        <div class="ach-champ">
+          <label>N° de la facture conservée (optionnel)</label>
+          <input type="number" id="doublon-facture-conservee" placeholder="Ex : 8">
+        </div>
+      </div>
+      <div class="ach-modal-footer">
+        <button type="button" class="ach-btn" id="btn-doublon-annuler">Annuler</button>
+        <button type="button" class="ach-btn ach-btn--danger" id="btn-doublon-confirmer">Marquer comme doublon</button>
       </div>
     </div>
   </div>

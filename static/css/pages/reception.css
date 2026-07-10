@@ -1898,3 +1898,32 @@ body.rec-body {
   border-color: #e8a13a;
   box-shadow: 0 0 0 2px rgba(232,161,58,.16);
 }
+
+/* ── Bandeau « traiter la facture » (post-clôture) ───────────────────────── */
+.rec-confirm-facture {
+  margin: 1rem auto;
+  max-width: 520px;
+  text-align: left;
+  background: #EEF6EE;
+  border: 1px solid #9FCB9F;
+  border-radius: 12px;
+  padding: .9rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  flex-wrap: wrap;
+}
+.rec-facture-titre { font-weight: 700; color: #1f6b32; }
+.rec-facture-lien {
+  display: inline-block;
+  background: #2f7d3a;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: .45rem .8rem;
+  font-size: .85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rec-facture-lien:hover { background: #256030; }

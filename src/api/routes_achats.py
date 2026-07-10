@@ -3811,7 +3811,7 @@ TVA_DEFAUT_ANNEXE = 20.0
 # Cycle de vie d'une facture : brouillon ⇄ rapprochee (bouclage OK, automatique)
 # → validee (VERROUILLÉE : toute correction passe par un avoir) ; litige = état
 # posé quand des lignes sont en litige.
-STATUTS_FACTURE = ("brouillon", "rapprochee", "litige", "validee")
+STATUTS_FACTURE = ("brouillon", "rapprochee", "litige", "validee", "annulee")
 
 
 def _verifier_facture_modifiable(facture_row):
@@ -4137,6 +4137,53 @@ async def annexes_frequentes(fournisseur_id: int = Query(...), limit: int = Quer
         return [dict(r) for r in await cur.fetchall()]
 
 
+@router.get("/factures/doublons-potentiels")
+async def detecter_doublons_potentiels(fournisseur_id: Optional[int] = Query(None)):
+    """Repère les réceptions clôturées du MÊME fournisseur portant le MÊME numéro
+    de BL (renseigné) — signe quasi certain d'une même livraison saisie plusieurs
+    fois. Comparaison en lecture seule ; ne modifie rien.
+
+    Déclarée AVANT GET /factures/{facture_id} : FastAPI matche les routes dans
+    l'ordre de déclaration, sinon 'doublons-potentiels' serait pris pour un id."""
+    async with get_db() as db:
+        sql = """
+            SELECT r.fournisseur_principal_id AS fournisseur_id,
+                   f.nom AS fournisseur_nom,
+                   r.numero_bon_livraison AS bl,
+                   r.id AS reception_id, r.date_reception, r.statut,
+                   fac.id AS facture_id, fac.statut AS facture_statut
+            FROM receptions r
+            JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
+            LEFT JOIN factures fac ON fac.reception_id = r.id AND fac.statut <> 'annulee'
+            WHERE r.numero_bon_livraison IS NOT NULL
+              AND TRIM(r.numero_bon_livraison) <> ''
+              AND r.fournisseur_principal_id IN (
+                  SELECT fournisseur_principal_id FROM receptions
+                  WHERE numero_bon_livraison IS NOT NULL AND TRIM(numero_bon_livraison) <> ''
+                  GROUP BY fournisseur_principal_id, numero_bon_livraison
+                  HAVING COUNT(*) > 1
+              )
+        """
+        params: list = []
+        if fournisseur_id:
+            sql += " AND r.fournisseur_principal_id = ?"
+            params.append(fournisseur_id)
+        sql += " ORDER BY r.fournisseur_principal_id, r.numero_bon_livraison, r.date_reception"
+        cur = await db.execute(sql, params)
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        # Regroupe par (fournisseur, BL) — ne garde que les groupes réellement ≥ 2
+        groupes: dict = {}
+        for r in rows:
+            cle = (r["fournisseur_id"], r["bl"])
+            groupes.setdefault(cle, []).append(r)
+        return [
+            {"fournisseur_id": cle[0], "fournisseur_nom": recs[0]["fournisseur_nom"],
+             "numero_bon_livraison": cle[1], "receptions": recs}
+            for cle, recs in groupes.items() if len(recs) > 1
+        ]
+
+
 @router.get("/factures")
 async def get_factures(
     fournisseur_id: Optional[int] = Query(None),
@@ -4161,6 +4208,10 @@ async def get_factures(
         if statut:
             sql += " AND fac.statut = ?"
             params.append(statut)
+        else:
+            # Par défaut, les doublons annulés n'encombrent pas la liste (mais restent
+            # consultables via ?statut=annulee — jamais supprimés, juste masqués).
+            sql += " AND fac.statut <> 'annulee'"
         sql += " ORDER BY fac.date_facture DESC, fac.id DESC LIMIT ?"
         params.append(limit)
         cur = await db.execute(sql, params)
@@ -5239,6 +5290,52 @@ async def delete_facture(facture_id: int):
         await db.execute("DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,))
         await db.execute("DELETE FROM factures WHERE id = ?", (facture_id,))
         await db.commit()
+
+
+# ── Annulation tracée des factures doublon (détection : voir plus haut,
+# GET /factures/doublons-potentiels, déclarée avant /factures/{facture_id}) ──
+# Une même livraison saisie deux fois (même fournisseur, même n° de BL) génère
+# potentiellement deux factures pour le même arrivage → double comptage dans le
+# CMV/marge. On ne supprime JAMAIS une facture doublon (perte d'historique) : on
+# l'ANNULE (statut='annulee', motif obligatoire, référence à la facture conservée),
+# elle disparaît des listes/agrégats mais reste consultable pour l'audit.
+
+class AnnulationDoublon(BaseModel):
+    motif: str
+    facture_conservee_id: Optional[int] = None
+
+
+@router.post("/factures/{facture_id}/annuler-doublon")
+async def annuler_facture_doublon(facture_id: int, body: AnnulationDoublon):
+    """Annule une facture reconnue comme doublon d'une AUTRE facture déjà correcte.
+    Ne supprime rien : statut → 'annulee' + motif tracé. La réception d'origine
+    n'est pas touchée (elle peut elle-même être annotée séparément)."""
+    if not body.motif or not body.motif.strip():
+        raise HTTPException(422, "Un motif est obligatoire pour annuler une facture doublon.")
+    async with get_db() as db:
+        cur = await db.execute("SELECT id, statut FROM factures WHERE id = ?", (facture_id,))
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+        _verifier_facture_modifiable(fac)
+
+        if body.facture_conservee_id:
+            cur_c = await db.execute(
+                "SELECT id FROM factures WHERE id = ?", (body.facture_conservee_id,)
+            )
+            if not await cur_c.fetchone():
+                raise HTTPException(404, "Facture conservée introuvable.")
+
+        ref = f" (doublon de la facture #{body.facture_conservee_id})" if body.facture_conservee_id else ""
+        commentaire = f"ANNULÉE — {body.motif.strip()}{ref}"
+        await db.execute(
+            "UPDATE factures SET statut = 'annulee', commentaire = ? WHERE id = ?",
+            (commentaire, facture_id),
+        )
+        await db.commit()
+
+        cur2 = await db.execute("SELECT * FROM factures WHERE id = ?", (facture_id,))
+        return dict(await cur2.fetchone())
 
 
 # ── Exports facture (PDF imprimable + Excel) ─────────────────────────────────

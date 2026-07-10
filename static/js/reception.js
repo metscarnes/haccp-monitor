@@ -4873,6 +4873,10 @@ async function cloturerFiche() {
     demarrerCompteurConfirmation();
     // Bandeau « prix changés vs catalogue ? » (non bloquant : bonus post-clôture).
     afficherBandeauEcartsPrix(receptionId);
+    // Bandeau « traiter la facture » — la facture brouillon a déjà été générée
+    // côté serveur à la clôture (cf. cloturer_reception → _generer_facture_depuis_
+    // reception) ; ce bandeau ne fait qu'exposer le lien, aucun appel réseau de plus.
+    afficherBandeauFacture(rec.facture_auto);
 
   } catch (err) {
     elErreur4.textContent = `Erreur : ${err.message}`;
@@ -4881,6 +4885,27 @@ async function cloturerFiche() {
     elBtnCloturer.disabled = false;
     elBtnCloturer.textContent = '✔ Clôturer la fiche';
   }
+}
+
+
+// ── Bandeau « traiter la facture » ──────────────────────────────────────────
+// La clôture a déjà généré une facture BROUILLON (prix lu sur le BL, litige auto
+// si écart > 2 % vs commande) — cf. cloturer_reception côté serveur. On se
+// contente d'exposer le lien : traitement (n°, TVA, import du PDF, validation)
+// reste un geste comptable volontaire, jamais automatique ni bloquant.
+function afficherBandeauFacture(factureAuto) {
+  const zone = document.getElementById('rec-confirm-facture');
+  if (!zone) return;
+  if (!factureAuto || !factureAuto.creee || !factureAuto.facture_id) {
+    zone.hidden = true;
+    return;
+  }
+  zone.hidden = false;
+  zone.innerHTML = `
+    <div class="rec-facture-titre">🧾 Facture brouillon créée</div>
+    <a class="rec-facture-lien" href="/factures-achats.html?facture_id=${factureAuto.facture_id}">
+      Traiter la facture →
+    </a>`;
 }
 
 

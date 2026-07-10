@@ -14,6 +14,7 @@ let facCourante  = null;   // facture en cours d'édition (détail)
 
 const STATUT_LABELS = {
   brouillon: 'Brouillon', rapprochee: 'Rapprochée', validee: 'Validée', litige: 'En litige',
+  annulee: 'Annulée (doublon)',
 };
 
 // Une facture validée est VERROUILLÉE (correction = avoir) — le front grise tout.
@@ -23,6 +24,15 @@ function estVerrouillee() { return facCourante?.statut === 'validee'; }
 document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([chargerFournisseurs(), chargerFactures()]);
   bindEvents();
+  // Arrivée depuis la clôture de réception (bandeau « Traiter la facture ») :
+  // ?facture_id=123 ouvre directement la modale de cette facture.
+  const idParam = new URLSearchParams(window.location.search).get('facture_id');
+  if (idParam) {
+    const id = Number(idParam);
+    if (Number.isFinite(id)) await ouvrirFacture(id);
+    // Nettoie l'URL pour qu'un rechargement ne rouvre pas la modale.
+    window.history.replaceState({}, '', window.location.pathname);
+  }
 });
 
 function bindEvents() {
@@ -41,6 +51,7 @@ function bindEvents() {
   document.getElementById('btn-sauver-fac').addEventListener('click', () => sauverFacture(false));
   document.getElementById('btn-valider-fac').addEventListener('click', () => sauverFacture(true));
   document.getElementById('btn-supprimer-fac').addEventListener('click', supprimerFacture);
+  document.getElementById('btn-doublon-fac').addEventListener('click', ouvrirModalDoublon);
   document.getElementById('btn-export-pdf').addEventListener('click', exporterPdf);
   document.getElementById('btn-export-xlsx').addEventListener('click', exporterXlsx);
 
@@ -48,6 +59,11 @@ function bindEvents() {
   document.getElementById('modal-litige-fermer').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-annuler').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-confirmer').addEventListener('click', confirmerLitige);
+
+  // Modale doublon
+  document.getElementById('modal-doublon-fermer').addEventListener('click', fermerModalDoublon);
+  document.getElementById('btn-doublon-annuler').addEventListener('click', fermerModalDoublon);
+  document.getElementById('btn-doublon-confirmer').addEventListener('click', confirmerDoublon);
 
   // Lignes annexes : boutons d'ajout par type
   document.querySelectorAll('[data-ajout-annexe]').forEach(btn => {
@@ -68,6 +84,7 @@ function bindEvents() {
   // Étape 4 : import Factur-X / OCR
   document.getElementById('fac-import-fichier').addEventListener('change', importerDocument);
   document.getElementById('btn-import-bl').addEventListener('click', importerDepuisBl);
+  document.getElementById('btn-voir-bl').addEventListener('click', voirBl);
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -205,9 +222,12 @@ async function ouvrirFacture(id, prefetch) {
   rendreTotaux(fac);
   chargerSuggestionsAnnexes(fac);
   appliquerVerrou(fac);
-  // Import « depuis le BL » : si une réception est rattachée (directement ou via
-  // la commande mappée — reception_bl_id résout les deux cas côté serveur).
-  document.getElementById('btn-import-bl').hidden = !(fac.reception_bl_id || fac.reception_id);
+  verifierAlerteDoublon(fac);
+  // Import « depuis le BL » + aperçu : si une réception est rattachée (directement
+  // ou via la commande mappée — reception_bl_id résout les deux cas côté serveur).
+  const aBl = !!(fac.reception_bl_id || fac.reception_id);
+  document.getElementById('btn-import-bl').hidden = !aBl;
+  document.getElementById('btn-voir-bl').hidden = !aBl;
   document.getElementById('fac-import-resultat').hidden = true;
   document.getElementById('fac-import-etat').textContent = '';
   document.getElementById('modal-facture').hidden = false;
@@ -227,6 +247,25 @@ async function importerDocument(e) {
 
 async function importerDepuisBl() {
   await lancerImport(`${API_FAC}/${facCourante.id}/importer-depuis-bl`, { method: 'POST' });
+}
+
+// Ouvre les pages scannées du BL SANS lancer l'analyse — pour vérifier à l'œil
+// avant de déclencher l'OCR (qui prend 10-20 s et a un coût).
+async function voirBl() {
+  const receptionId = facCourante.reception_bl_id || facCourante.reception_id;
+  if (!receptionId) return;
+  try {
+    const r = await fetch(`/api/receptions/${receptionId}/bl-apercu`);
+    if (!r.ok) { alert('Impossible de charger l\'aperçu du BL.'); return; }
+    const data = await r.json();
+    if (!data.pages || !data.pages.length) {
+      alert('Aucune page de BL scannée pour cette réception.');
+      return;
+    }
+    data.pages.forEach(p => window.open(p.url, '_blank'));
+  } catch (_) {
+    alert('Erreur réseau pendant le chargement de l\'aperçu du BL.');
+  }
 }
 
 async function lancerImport(url, opts) {
@@ -760,6 +799,62 @@ async function supprimerFacture() {
   if (!r.ok) { alert('Échec de la suppression.'); return; }
   fermerModalFacture();
   await chargerFactures();
+}
+
+// ── Doublon : annulation tracée (jamais une suppression) ────────
+function ouvrirModalDoublon() {
+  document.getElementById('doublon-motif').value = '';
+  document.getElementById('doublon-facture-conservee').value = '';
+  document.getElementById('modal-doublon').hidden = false;
+}
+
+function fermerModalDoublon() {
+  document.getElementById('modal-doublon').hidden = true;
+}
+
+async function confirmerDoublon() {
+  const motif = document.getElementById('doublon-motif').value.trim();
+  if (!motif) { alert('Le motif est obligatoire.'); return; }
+  const conservee = document.getElementById('doublon-facture-conservee').value;
+
+  const r = await fetch(`${API_FAC}/${facCourante.id}/annuler-doublon`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      motif,
+      facture_conservee_id: conservee ? Number(conservee) : null,
+    }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    alert(err.detail || 'Échec de l\'annulation.');
+    return;
+  }
+  fermerModalDoublon();
+  fermerModalFacture();
+  await chargerFactures();
+}
+
+// Alerte doublon potentiel : même fournisseur + même n° de BL sur une AUTRE
+// réception que celle rattachée à cette facture. Purement informatif.
+async function verifierAlerteDoublon(fac) {
+  const zone = document.getElementById('fac-alerte-doublon');
+  zone.hidden = true;
+  if (!fac.fournisseur_id) return;
+  try {
+    const r = await fetch(`${API_FAC}/doublons-potentiels?fournisseur_id=${fac.fournisseur_id}`);
+    if (!r.ok) return;
+    const groupes = await r.json();
+    const receptionId = fac.reception_bl_id || fac.reception_id;
+    const groupe = groupes.find(g => g.receptions.some(x => x.reception_id === receptionId));
+    if (!groupe) return;
+    const autres = groupe.receptions.filter(x => x.reception_id !== receptionId);
+    zone.innerHTML = `⚠ Doublon possible : le n° de BL <strong>${escHtml(groupe.numero_bon_livraison)}</strong>
+      est aussi utilisé par ${autres.length} autre(s) réception(s)
+      (${autres.map(x => `#${x.reception_id} du ${x.date_reception}${x.facture_id ? ` → facture #${x.facture_id}` : ''}`).join(', ')}).
+      Vérifie qu'il ne s'agit pas de la même livraison saisie deux fois.`;
+    zone.hidden = false;
+  } catch (_) { /* alerte informative : on n'interrompt pas l'affichage sur erreur réseau */ }
 }
 
 function fermerModalFacture() {
