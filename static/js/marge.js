@@ -36,6 +36,35 @@ function toast(msg, type = '') {
 }
 
 // ── Périodes prédéfinies ─────────────────────────────────────
+// Le Stock Final n'existe que là où une photo d'inventaire a été clôturée :
+// calculer une marge jusqu'à la fin calendaire du mois quand la dernière
+// photo s'arrête plus tôt donnerait un CMV/marge non fiable (variation de
+// stock inconnue sur les jours restants). On plafonne donc la fin de période
+// à la date du dernier inventaire clôturé, jamais au-delà.
+let _dernierInventaireDate = null;   // cache : Date | null
+
+async function dernierInventaireCloture() {
+  if (_dernierInventaireDate !== null) return _dernierInventaireDate;
+  try {
+    // limit=1 ne suffit pas : la session la PLUS RÉCENTE peut être 'en_cours'
+    // (pas encore clôturée) alors qu'une plus ancienne l'est déjà — on regarde
+    // les dernières sessions pour trouver la première réellement clôturée.
+    const d = await api.get('/api/inventaire/sessions?limit=20');
+    const s = (d.sessions || []).find(s => s.statut === 'cloture');
+    _dernierInventaireDate = s ? new Date(s.date_inventaire) : undefined;
+  } catch (_) {
+    _dernierInventaireDate = undefined;   // échec réseau : pas de plafond, tant pis
+  }
+  return _dernierInventaireDate;
+}
+
+// Ramène `fin` à la date du dernier inventaire clôturé si elle est plus tôt
+// (jamais l'inverse : un inventaire fait en avance n'étend pas la période).
+async function plafonnerFin(fin) {
+  const dernier = await dernierInventaireCloture();
+  return (dernier && dernier < fin) ? dernier : fin;
+}
+
 function moisCourant() {
   const n = new Date();
   return { debut: new Date(n.getFullYear(), n.getMonth(), 1), fin: new Date(n.getFullYear(), n.getMonth() + 1, 0) };
@@ -50,9 +79,9 @@ function anneeCourante() {
 }
 
 const PRESETS = [
-  { id: 'mois', label: 'Mois en cours', calc: moisCourant },
-  { id: 'mois-1', label: 'Mois dernier', calc: moisPrecedent },
-  { id: 'annee', label: 'Année', calc: anneeCourante },
+  { id: 'mois', label: 'Mois en cours', calc: moisCourant, plafonner: true },
+  { id: 'mois-1', label: 'Mois dernier', calc: moisPrecedent, plafonner: false },
+  { id: 'annee', label: 'Année', calc: anneeCourante, plafonner: true },
 ];
 
 function rendrePresets() {
@@ -62,12 +91,20 @@ function rendrePresets() {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'marge-preset-btn'; b.textContent = p.label;
     b.setAttribute('aria-pressed', 'false');
-    b.onclick = () => {
-      const { debut, fin } = p.calc();
+    b.onclick = async () => {
+      let { debut, fin } = p.calc();
+      const finCalendaire = fin;
+      // Seuls les presets « en cours » (mois en cours, année en cours) sont
+      // plafonnés : « mois dernier » est une période close, le stock final
+      // théorique (fin de mois) doit déjà avoir sa photo si l'utilisateur la fait.
+      if (p.plafonner) fin = await plafonnerFin(fin);
       $('marge-debut').value = iso(debut);
       $('marge-fin').value = iso(fin);
       document.querySelectorAll('.marge-preset-btn').forEach((x) => x.setAttribute('aria-pressed', 'false'));
       b.setAttribute('aria-pressed', 'true');
+      if (fin < finCalendaire) {
+        toast(`Période calée au ${fin.toLocaleDateString('fr-FR')} : dernier inventaire clôturé`, '');
+      }
       calculer();
     };
     box.appendChild(b);
@@ -264,7 +301,7 @@ async function enregistrerAchats(effacer) {
 }
 
 // ── Init ─────────────────────────────────────────────────────
-function init() {
+async function init() {
   rendrePresets();
   $('marge-calc').onclick = calculer;
   $('pick-si').onchange = calculer;
@@ -284,8 +321,9 @@ function init() {
   $('clear-achats').onclick = () => enregistrerAchats(true);
 
   chargerTva();
-  // Par défaut : mois en cours
-  const { debut, fin } = moisCourant();
+  // Par défaut : mois en cours, plafonné au dernier inventaire clôturé.
+  const { debut, fin: finCalendaire } = moisCourant();
+  const fin = await plafonnerFin(finCalendaire);
   $('marge-debut').value = iso(debut);
   $('marge-fin').value = iso(fin);
   document.querySelector('.marge-preset-btn')?.setAttribute('aria-pressed', 'true');
