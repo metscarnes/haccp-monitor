@@ -200,6 +200,8 @@ const elBtnAjouterBatch   = document.getElementById('rec-btn-ajouter-batch');
 const elBatchAjoutWrap    = document.getElementById('rec-batch-ajout-wrap');
 const elBatchAjoutSearch  = document.getElementById('rec-batch-ajout-search');
 const elBatchAjoutResults = document.getElementById('rec-batch-ajout-results');
+const elBtnLotsCommandeBatch  = document.getElementById('rec-btn-lots-commande-batch');
+const elLotsCommandeHintBatch = document.getElementById('rec-lots-commande-hint-batch');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
 const elProdSelNom        = document.getElementById('rec-prod-sel-nom');
@@ -3705,6 +3707,92 @@ function sortirModeBatch() {
   if (elTotalBar)     elTotalBar.hidden = true;
 }
 
+// Génère un n° de lot interne pour une carte batch (lot principal ou sous-lot).
+// Le format serveur {BL}-{code article}-{JJMMAA} est unique par article/réception :
+// une 2ᵉ génération sur la même carte reproduirait EXACTEMENT le même numéro → on
+// suffixe côté client (-B, -C…) pour distinguer plusieurs lots internes d'un même
+// article (cas d'un article livré avec plusieurs DLC, sans n° fournisseur).
+// Retourne le n° de lot (avec suffixe éventuel), ou null si annulé/en erreur.
+async function genererLotInterneBatch(etat) {
+  if (!receptionId) return null;
+  // Le BL doit être enregistré avant de générer un lot interne (préfixe du lot).
+  if (!numeroBlValide) {
+    if ((elNumeroBl.value || '').trim()) {
+      const ok = await validerNumeroBl();
+      if (!ok) return null;
+    } else {
+      afficherHintBl('Saisir et valider le n° de BL avant de générer un lot interne.', true);
+      elNumeroBl.focus();
+      return null;
+    }
+  }
+  // Base du lot interne : réf. catalogue achats (code_article) en priorité.
+  const code = etat.ligneCmd.code_article
+    || (etat.produit && etat.produit.code_unique)
+    || 'ART';
+  try {
+    const data = await apiFetch(
+      `/api/receptions/${receptionId}/lot-interne?code_article=${encodeURIComponent(code)}`);
+    const suffixe = etat.nbLotsInternesGeneres > 0
+      ? '-' + String.fromCharCode(65 + etat.nbLotsInternesGeneres) // 1→B, 2→C, …
+      : '';
+    etat.nbLotsInternesGeneres++;
+    return data.lot_interne + suffixe;
+  } catch (e) {
+    alert(`Erreur génération lot : ${e.message}`);
+    return null;
+  }
+}
+
+// ── Lot interne sur toute la commande (mode batch) ────────────────────────
+// Applique un lot interne au lot principal de chaque carte reçue qui n'a pas
+// encore de N° de lot. Les cartes déjà tracées (lot fournisseur ou interne) ne
+// sont pas touchées, comme l'équivalent mode unitaire (POST .../lots-internes).
+if (elBtnLotsCommandeBatch) {
+  elBtnLotsCommandeBatch.addEventListener('click', async () => {
+    if (!receptionId) return;
+    if (!numeroBlValide) {
+      if ((elNumeroBl.value || '').trim()) {
+        const ok = await validerNumeroBl();
+        if (!ok) return;
+      } else {
+        afficherHintLotsCommandeBatch('Saisir et valider le n° de BL (étape précédente) avant de générer les lots internes.', true);
+        return;
+      }
+    }
+    elBtnLotsCommandeBatch.disabled = true;
+    const label = elBtnLotsCommandeBatch.textContent;
+    elBtnLotsCommandeBatch.textContent = '⏳ Génération…';
+    let generes = 0, dejaLot = 0;
+    try {
+      for (const etat of batchLignes) {
+        if (!etat.recu) continue;
+        const inpLot = etat.el.querySelector('.rec-batch-lot');
+        if ((inpLot.value || '').trim()) { dejaLot++; continue; }
+        const lot = await genererLotInterneBatch(etat);
+        if (lot == null) continue; // erreur déjà affichée par genererLotInterneBatch
+        etat.appliquerLotInternePrincipal(lot);
+        generes++;
+      }
+      majTotalReception();
+      afficherHintLotsCommandeBatch(
+        `✔ ${generes} lot(s) interne(s) généré(s)` + (dejaLot ? ` · ${dejaLot} déjà tracé(s)` : '') + '.',
+        false
+      );
+    } finally {
+      elBtnLotsCommandeBatch.disabled = false;
+      elBtnLotsCommandeBatch.textContent = label;
+    }
+  });
+}
+
+function afficherHintLotsCommandeBatch(msg, alerte) {
+  if (!elLotsCommandeHintBatch) return;
+  elLotsCommandeHintBatch.textContent = msg;
+  elLotsCommandeHintBatch.style.color = alerte ? 'var(--color-alert)' : 'var(--color-ok)';
+  elLotsCommandeHintBatch.hidden = false;
+}
+
 // Tente un rattachement souple vers un produit interne (bonus, non bloquant).
 // Le catalogue achats est la source : si rien ne matche, on garde la désignation.
 function resoudreProduit(designation) {
@@ -3760,6 +3848,7 @@ function creerCarteBatch(ligneCmd) {
       nom: (ligneCmd._fournisseur_nom || '').trim() || null,
     },
     lotInterne: false,
+    nbLotsInternesGeneres: 0,      // compteur pour suffixer les lots internes multiples (-B, -C…)
     recu: true,                    // true = reçu, false = non reçu (ligne ignorée)
     uniteprixOcr: null,            // unité du prix lu sur le BL ('kg'|'piece'|'colis')
     criteres:     { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 },
@@ -3872,60 +3961,55 @@ function creerCarteBatch(ligneCmd) {
   }
 
   // Lot interne
-  const btnLotInterne = carte.querySelector('.rec-batch-lot-interne');
-  const inpLot        = carte.querySelector('.rec-batch-lot');
+  const btnLotInterne  = carte.querySelector('.rec-batch-lot-interne');
+  const btnAnnulerLot  = carte.querySelector('.rec-batch-lot-interne-annuler');
+  const inpLot         = carte.querySelector('.rec-batch-lot');
+
+  // Revient à une saisie manuelle du lot principal : réautorise l'édition.
+  // Utilisé par le bouton « Annuler » (rattrapage d'un clic « Lot interne » par erreur).
+  function annulerLotInterneBatch() {
+    etat.lotInterne = false;
+    inpLot.value = '';
+    inpLot.readOnly = false;
+    inpLot.style.background = '';
+    btnLotInterne.hidden = false;
+    btnAnnulerLot.hidden = true;
+    majBadgeCarte(etat);
+    majTotalReception();
+  }
+
+  // Applique visuellement un lot déjà généré au champ principal (bouton individuel
+  // ou bouton « Lot interne sur toute la commande »).
+  etat.appliquerLotInternePrincipal = function (lot) {
+    inpLot.value = lot;
+    inpLot.readOnly = true;
+    inpLot.style.background = '#f0faf3';
+    etat.lotInterne = true;
+    btnLotInterne.hidden = true;
+    btnAnnulerLot.hidden = false;
+    majBadgeCarte(etat);
+  };
+
   btnLotInterne.addEventListener('click', async () => {
-    if (!receptionId) return;
-    // Le BL doit être enregistré avant de générer un lot interne (préfixe du lot).
-    if (!numeroBlValide) {
-      if ((elNumeroBl.value || '').trim()) {
-        const ok = await validerNumeroBl();
-        if (!ok) return;
-      } else {
-        afficherHintBl('Saisir et valider le n° de BL avant de générer un lot interne.', true);
-        elNumeroBl.focus();
-        return;
-      }
-    }
-    // Base du lot interne : réf. catalogue achats (code_article) en priorité.
-    const code = etat.ligneCmd.code_article
-      || (etat.produit && etat.produit.code_unique)
-      || 'ART';
-    btnLotInterne.disabled = true; btnLotInterne.textContent = '⏳';
-    try {
-      const data = await apiFetch(
-        `/api/receptions/${receptionId}/lot-interne?code_article=${encodeURIComponent(code)}`);
-      inpLot.value = data.lot_interne;
-      inpLot.readOnly = true;
-      inpLot.style.background = '#f0faf3';
-      etat.lotInterne = true;
-      // Un lot interne = un seul lot généré : on retire les lots supplémentaires.
-      const contSupp = carte.querySelector('.rec-batch-lots-supp');
-      if (contSupp) contSupp.innerHTML = '';
-      majLotsSuppHintBatch(etat);
-      const addBtn = carte.querySelector('.rec-batch-add-lot');
-      if (addBtn) addBtn.hidden = true;
-      majBadgeCarte(etat);
-    } catch (e) {
-      alert(`Erreur génération lot : ${e.message}`);
-    } finally {
-      btnLotInterne.disabled = false; btnLotInterne.textContent = 'Lot interne';
-    }
+    const lot = await genererLotInterneBatch(etat);
+    if (lot == null) return;
+    etat.appliquerLotInternePrincipal(lot);
   });
+  btnAnnulerLot.addEventListener('click', annulerLotInterneBatch);
   inpLot.addEventListener('input', () => {
     if (etat.lotInterne) {
       etat.lotInterne = false; inpLot.readOnly = false; inpLot.style.background = '';
-      // Le lot redevient un lot fournisseur saisi → on réautorise les lots multiples.
-      const addBtn = carte.querySelector('.rec-batch-add-lot');
-      if (addBtn) addBtn.hidden = false;
+      btnLotInterne.hidden = false;
+      btnAnnulerLot.hidden = true;
     }
     majBadgeCarte(etat);
   });
   carte.querySelector('.rec-batch-date').addEventListener('input', () => majBadgeCarte(etat));
 
-  // N° de lot supplémentaires : permet plusieurs lots (DLC propre par lot) sur une
-  // même carte. À la validation, 1 ligne de réception est créée par lot. Un lot
-  // interne occupe le lot principal → on masque l'ajout de lots multiples.
+  // N° de lot supplémentaires : permet plusieurs lots (DLC + poids propres par lot)
+  // sur une même carte, y compris quand le lot principal est un lot interne — chaque
+  // sous-lot peut lui aussi recevoir son propre lot interne (suffixe -B, -C… pour
+  // éviter la collision avec le lot principal, qui a le même préfixe BL/article/date).
   const elAddLotBatch = carte.querySelector('.rec-batch-add-lot');
   if (elAddLotBatch) {
     elAddLotBatch.addEventListener('click', () => ajouterChampLotSuppBatch(etat));
@@ -4070,10 +4154,14 @@ function majTotalReception() {
       if (!etat.recu) return;
       const prix = _prixCarte(etat);
       if (prix == null) return;
-      const poids = parseFloat(etat.el.querySelector('.rec-batch-poids')?.value);
-      if (isNaN(poids)) return;
-      auMoinsUnPrix = true;
-      total += prix * poids;
+      // Prix unique par article : on l'applique au poids du lot principal + celui
+      // de chaque sous-lot (même article, DLC/lot différents).
+      const poidsPrincipal = parseFloat(etat.el.querySelector('.rec-batch-poids')?.value);
+      if (!isNaN(poidsPrincipal)) { auMoinsUnPrix = true; total += prix * poidsPrincipal; }
+      etat.el.querySelectorAll('.rec-batch-lot-supp-poids').forEach(inp => {
+        const p = parseFloat(inp.value);
+        if (!isNaN(p)) { auMoinsUnPrix = true; total += prix * p; }
+      });
     });
   }
 
@@ -4103,7 +4191,48 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '')
   input.setAttribute('aria-label', 'Numéro de lot fournisseur supplémentaire');
   input.value = valeur;
   input.style.flex = '1';
-  input.addEventListener('input', () => majBadgeCarte(etat));
+  input.addEventListener('input', () => {
+    if (input.dataset.interne) { delete input.dataset.interne; input.readOnly = false; input.style.background = ''; btnLotInterneSupp.hidden = false; btnAnnulerSupp.hidden = true; }
+    majBadgeCarte(etat);
+  });
+
+  // Lot interne pour ce sous-lot précis (suffixe -B, -C… géré par genererLotInterneBatch).
+  const btnLotInterneSupp = document.createElement('button');
+  btnLotInterneSupp.type = 'button';
+  btnLotInterneSupp.className = 'rec-btn-pas-lot';
+  btnLotInterneSupp.textContent = 'Lot interne';
+  btnLotInterneSupp.style.cssText = 'flex-shrink:0;padding:.5rem .7rem;min-height:auto;font-size:.78rem;';
+
+  const btnAnnulerSupp = document.createElement('button');
+  btnAnnulerSupp.type = 'button';
+  btnAnnulerSupp.className = 'rec-btn-annuler-lot';
+  btnAnnulerSupp.textContent = '↺';
+  btnAnnulerSupp.setAttribute('aria-label', 'Annuler ce lot interne');
+  btnAnnulerSupp.style.cssText = 'flex-shrink:0;padding:.5rem .6rem;';
+  btnAnnulerSupp.hidden = true;
+
+  btnLotInterneSupp.addEventListener('click', async () => {
+    btnLotInterneSupp.disabled = true; btnLotInterneSupp.textContent = '⏳';
+    const lot = await genererLotInterneBatch(etat);
+    btnLotInterneSupp.disabled = false; btnLotInterneSupp.textContent = 'Lot interne';
+    if (lot == null) return;
+    input.value = lot;
+    input.readOnly = true;
+    input.style.background = '#f0faf3';
+    input.dataset.interne = '1';
+    btnLotInterneSupp.hidden = true;
+    btnAnnulerSupp.hidden = false;
+    majBadgeCarte(etat);
+  });
+  btnAnnulerSupp.addEventListener('click', () => {
+    input.value = '';
+    input.readOnly = false;
+    input.style.background = '';
+    delete input.dataset.interne;
+    btnLotInterneSupp.hidden = false;
+    btnAnnulerSupp.hidden = true;
+    majBadgeCarte(etat);
+  });
 
   const rm = document.createElement('button');
   rm.type = 'button';
@@ -4115,9 +4244,12 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '')
     row.remove();
     majLotsSuppHintBatch(etat);
     majBadgeCarte(etat);
+    majTotalReception();
   });
 
   lotRow.appendChild(input);
+  lotRow.appendChild(btnLotInterneSupp);
+  lotRow.appendChild(btnAnnulerSupp);
   lotRow.appendChild(rm);
 
   const dlcRow = document.createElement('div');
@@ -4158,7 +4290,7 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '')
   poidsInput.setAttribute('aria-label', 'Poids reçu pour ce lot (kg)');
   poidsInput.value = poidsVal;
   poidsInput.style.flex = '1';
-  poidsInput.addEventListener('input', () => poidsInput.classList.remove('rec-champ-invalide'));
+  poidsInput.addEventListener('input', () => { poidsInput.classList.remove('rec-champ-invalide'); majTotalReception(); });
 
   poidsRow.appendChild(poidsLabel);
   poidsRow.appendChild(poidsInput);
@@ -4171,15 +4303,22 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '')
   if (!valeur) input.focus();
 }
 
-// Lots supplémentaires saisis sur une carte batch : [{lot, dlc, poids}] (lot non vide).
+// Lots supplémentaires saisis sur une carte batch : [{lot, dlc, poids, interne}]
+// (lot non vide). `interne` reflète le lot INTERNE PROPRE À CE SOUS-LOT (peut
+// différer du lot principal : un sous-lot peut être interne alors que le lot
+// principal est un lot fournisseur, ou l'inverse).
 function lotsSuppValeursBatch(etat) {
   const cont = etat.el.querySelector('.rec-batch-lots-supp');
   if (!cont) return [];
-  return [...cont.querySelectorAll('.rec-batch-lot-supp-row')].map(row => ({
-    lot:   (row.querySelector('.rec-batch-lot-supp-input')?.value || '').trim(),
-    dlc:   (row.querySelector('.rec-batch-lot-supp-dlc')?.value   || ''),
-    poids: (row.querySelector('.rec-batch-lot-supp-poids')?.value || '').trim(),
-  })).filter(p => p.lot);
+  return [...cont.querySelectorAll('.rec-batch-lot-supp-row')].map(row => {
+    const inpLot = row.querySelector('.rec-batch-lot-supp-input');
+    return {
+      lot:     (inpLot?.value || '').trim(),
+      dlc:     (row.querySelector('.rec-batch-lot-supp-dlc')?.value   || ''),
+      poids:   (row.querySelector('.rec-batch-lot-supp-poids')?.value || '').trim(),
+      interne: !!(inpLot && inpLot.dataset.interne),
+    };
+  }).filter(p => p.lot);
 }
 
 function majLotsSuppHintBatch(etat) {
@@ -4267,16 +4406,14 @@ function pairesLotsBatch(etat) {
   const dlcPrincipale  = etat.el.querySelector('.rec-batch-date').value;
   const poidsPrincipal = etat.el.querySelector('.rec-batch-poids').value.trim();
   const seen = new Set();
-  const paires = [{ lot: lotPrincipal, dlc: dlcPrincipale, poids: poidsPrincipal }];
+  const paires = [{ lot: lotPrincipal, dlc: dlcPrincipale, poids: poidsPrincipal, interne: etat.lotInterne }];
   if (lotPrincipal) seen.add(lotPrincipal);
-  // Un lot interne occupe le lot principal : pas de lots supplémentaires possibles.
-  if (!etat.lotInterne) {
-    for (const { lot, dlc, poids } of lotsSuppValeursBatch(etat)) {
-      if (!lot || seen.has(lot)) continue;
-      seen.add(lot);
-      // Poids propre au lot ; à défaut, on retombe sur le poids principal.
-      paires.push({ lot, dlc: dlc || dlcPrincipale, poids: poids || poidsPrincipal });
-    }
+  // Sous-lots (chacun avec son propre n° — fournisseur ou interne — et sa DLC/poids).
+  for (const { lot, dlc, poids, interne } of lotsSuppValeursBatch(etat)) {
+    if (!lot || seen.has(lot)) continue;
+    seen.add(lot);
+    // Poids propre au lot ; à défaut, on retombe sur le poids principal.
+    paires.push({ lot, dlc: dlc || dlcPrincipale, poids: poids || poidsPrincipal, interne });
   }
   return paires;
 }
@@ -4290,7 +4427,7 @@ function _buildPayloadBatch(etat, paire = null) {
     consistance_conforme: etat.criteres.consistance,
     exsudat_conforme:     etat.criteres.exsudat,
     odeur_conforme:       etat.criteres.odeur,
-    lot_interne:          etat.lotInterne ? 1 : 0,
+    lot_interne:          (paire ? paire.interne : etat.lotInterne) ? 1 : 0,
     origine:              'France',
     // Article du catalogue achats : produit interne facultatif, libellé toujours envoyé.
     designation_libre:    etat.designation,

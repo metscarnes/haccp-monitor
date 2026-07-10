@@ -580,7 +580,14 @@ async def test_marge_stock_initial_zero_demarrage(app_client, db):
 
 @pytest.mark.anyio
 async def test_achats_reels_priment_sur_calcul(app_client, db):
-    """Un montant achats réel saisi (rattaché à la période) prime, calcul en référence."""
+    """Un montant achats réel SAISI À LA MAIN (rattaché à la période) prime
+    volontairement sur le calcul par réception ; celui-ci reste en référence.
+
+    Sans saisie : la réception clôturée (sans facture) contribue via le
+    calcul PAR RÉCEPTION (niveau 3 : catalogue, faute de facture ou de prix
+    BL saisi) — source='par_reception', jamais 'calcule' tant qu'il existe au
+    moins une réception dans la période (voir _achats_reels_par_reception :
+    calcul réception par réception, jamais de trou/bascule globale)."""
     fid = await _fournisseur(app_client)
     cat = await _article(app_client, fid, prix_achat_ht=10.0, format_prix="kg", famille="Viande")
     await _ca_jour(db, "2026-06-15", 1055.0)                    # CA HT 1000
@@ -588,10 +595,11 @@ async def test_achats_reels_priment_sur_calcul(app_client, db):
 
     PER = {"date_debut": "2026-06-01", "date_fin": "2026-06-30"}
 
-    # Sans saisie : source = calcul
+    # Sans saisie : source = calcul PAR RÉCEPTION (la réception existe, repli
+    # catalogue faute de facture/prix BL) — même montant que le calcul global.
     r = await app_client.get("/api/inventaire/marge", params=PER)
     d = r.json()
-    assert d["achats"]["source"] == "calcule"
+    assert d["achats"]["source"] == "par_reception"
     assert d["achats"]["ht"] == pytest.approx(300.0)
     assert d["achats"]["saisie_possible"] is True
 
@@ -606,11 +614,11 @@ async def test_achats_reels_priment_sur_calcul(app_client, db):
     assert d["achats"]["ht_calcule"] == pytest.approx(300.0)   # calcul en référence
     assert d["achats"]["ecart_reel_calcule"] == pytest.approx(-20.0)
 
-    # Effacer (montant_ht absent) → retour au calcul
+    # Effacer (montant_ht absent) → retour au calcul par réception.
     r = await app_client.put("/api/inventaire/marge/achats-reels", json=PER)
     assert r.status_code == 200
     r = await app_client.get("/api/inventaire/marge", params=PER)
-    assert r.json()["achats"]["source"] == "calcule"
+    assert r.json()["achats"]["source"] == "par_reception"
 
 
 @pytest.mark.anyio

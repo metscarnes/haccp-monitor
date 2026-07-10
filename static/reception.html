@@ -290,8 +290,11 @@
           Lit la photo du bon de livraison et pré-remplit les articles.
           <strong>Vérifiez chaque ligne</strong> avant d'enregistrer.
         </div>
-        <div class="rec-ocr-statut" id="rec-ocr-statut" hidden aria-live="polite"></div>
       </div>
+      <!-- HORS de rec-ocr-bloc (sinon le masquer masque aussi ce statut, bug -->
+      <!-- constaté : le message « ✓ X articles lus » + le coût OCR restaient -->
+      <!-- injectés dans le DOM mais invisibles car le parent était caché). -->
+      <div class="rec-ocr-statut" id="rec-ocr-statut" hidden aria-live="polite"></div>
 
       <!-- ═══ MODE LISTE COMMANDE (toutes les lignes d'un coup) ═══ -->
       <!-- Affiché uniquement quand une commande est liée ; sinon le formulaire
@@ -302,6 +305,14 @@
           Renseignez lot &amp; date pour chaque ligne. Sans info → le produit part
           « en attente » (à compléter plus tard). Le contrôle visuel est conforme par défaut.
         </div>
+
+        <!-- Lot interne sur toute la commande (fournisseur sans N° de lot) -->
+        <button type="button" class="rec-btn-lots-commande" id="rec-btn-lots-commande-batch">
+          🏷️ Lot interne sur toute la commande
+        </button>
+        <div class="rec-lots-commande-hint" id="rec-lots-commande-hint-batch" hidden
+             style="font-size:.8em;margin-bottom:.75rem;"></div>
+
         <div id="rec-batch-liste"><!-- cartes injectées par JS --></div>
 
         <!-- Ajout d'un article non prévu dans la commande -->
@@ -365,6 +376,9 @@
                        placeholder="ex : LOT-2026-001" autocomplete="off">
                 <button type="button" class="rec-btn-pas-lot rec-batch-lot-interne">
                   Lot interne
+                </button>
+                <button type="button" class="rec-btn-annuler-lot rec-batch-lot-interne-annuler" hidden>
+                  ↺ Annuler
                 </button>
               </div>
             </div>
