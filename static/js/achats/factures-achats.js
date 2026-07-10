@@ -434,6 +434,15 @@ function rendreExtraction(data) {
   const zone = document.getElementById('fac-import-resultat');
   const lignes = data.lignes || [];
   const annexes = data.annexes || [];
+
+  // Pré-remplit tout de suite les champs d'entête visibles (numéro/date) : sinon
+  // l'utilisateur voit le bon numéro dans le bandeau récap juste en dessous d'un
+  // champ resté vide et pense que l'extraction a échoué. Reste éditable/annulable
+  // avant le clic « Appliquer » (rien n'est écrit en base à ce stade).
+  const champNumero = document.getElementById('fac-numero');
+  const champDate = document.getElementById('fac-date');
+  if (data.numero_facture && !champNumero.value) champNumero.value = data.numero_facture;
+  if (data.date_facture && !champDate.value) champDate.value = data.date_facture;
   const ligneHtml = (l, i, type) => `
     <tr>
       <td><input type="checkbox" class="imp-check" data-type="${type}" data-i="${i}" checked></td>
