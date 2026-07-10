@@ -194,6 +194,12 @@ const elFournSearchWrap   = document.getElementById('rec-fourn-search-wrap');
 const elFournProduitGroupe = document.getElementById('rec-fourn-produit-groupe');
 const elFournProduitSel = document.getElementById('rec-fourn-produit-sel');
 const elNbProduits        = document.getElementById('rec-nb-produits');
+const elTotalBar          = document.getElementById('rec-total-bar');
+const elTotalHt           = document.getElementById('rec-total-ht');
+const elBtnAjouterBatch   = document.getElementById('rec-btn-ajouter-batch');
+const elBatchAjoutWrap    = document.getElementById('rec-batch-ajout-wrap');
+const elBatchAjoutSearch  = document.getElementById('rec-batch-ajout-search');
+const elBatchAjoutResults = document.getElementById('rec-batch-ajout-results');
 const elLignesListe       = document.getElementById('rec-lignes-liste');
 const elProdSel           = document.getElementById('rec-produit-selectionne-wrap');
 const elProdSelNom        = document.getElementById('rec-prod-sel-nom');
@@ -3406,6 +3412,7 @@ function prefillBatchDepuisOcr(lignes) {
   majBtnTerminerBatch();
   // Alerte d'écart prix vs catalogue, en un seul appel (non bloquant).
   comparerPrixToutesCartes();
+  majTotalReception();
 }
 
 // Normalise un libellé pour comparer deux désignations (minuscules, sans accents,
@@ -3685,6 +3692,7 @@ function entrerModeBatch() {
 
   commandeLignes.forEach(creerCarteBatch);
   majBtnTerminerBatch();
+  majTotalReception();
 }
 
 // Sort du mode batch (réception sans commande → formulaire unitaire classique).
@@ -3694,6 +3702,7 @@ function sortirModeBatch() {
   if (elFormProduit)  elFormProduit.hidden = false;
   if (elListeAjoutee) elListeAjoutee.hidden = false;
   if (elBtnAjouter)   elBtnAjouter.hidden = false;
+  if (elTotalBar)     elTotalBar.hidden = true;
 }
 
 // Tente un rattachement souple vers un produit interne (bonus, non bloquant).
@@ -3792,6 +3801,7 @@ function creerCarteBatch(ligneCmd) {
       if (elDetailToggle) { elDetailToggle.style.opacity = '0.35'; elDetailToggle.style.pointerEvents = 'none'; }
     }
     majBadgeCarte(etat);
+    majTotalReception();
   }
 
   btnRecuOui.addEventListener('click', () => appliquerEtatRecu(true));
@@ -3846,7 +3856,7 @@ function creerCarteBatch(ligneCmd) {
     elPoids.value = ligneCmd.quantite_commandee;
   }
   // Le poids étant obligatoire, on retire le marquage d'erreur dès la saisie.
-  elPoids.addEventListener('input', () => elPoids.classList.remove('rec-champ-invalide'));
+  elPoids.addEventListener('input', () => { elPoids.classList.remove('rec-champ-invalide'); majTotalReception(); });
 
   // Prix d'achat HT (indicatif) : pré-rempli depuis l'OCR, modifiable. Une saisie
   // manuelle relance la comparaison au catalogue (alerte d'écart).
@@ -3857,6 +3867,7 @@ function creerCarteBatch(ligneCmd) {
       // plus courant pour la viande) sauf si l'OCR avait détecté une autre unité.
       if (!etat.uniteprixOcr) etat.uniteprixOcr = 'kg';
       comparerPrixCarte(etat);
+      majTotalReception();
     });
   }
 
@@ -3969,6 +3980,106 @@ function creerCarteBatch(ligneCmd) {
 
   elBatchListe.appendChild(carte);
   majBadgeCarte(etat);
+}
+
+// ── Ajout d'un article non prévu dans la commande (mode batch) ──────────────
+// Ouvre/ferme la recherche catalogue sous la liste des cartes.
+if (elBtnAjouterBatch) {
+  elBtnAjouterBatch.addEventListener('click', () => {
+    const ouvre = elBatchAjoutWrap.hidden;
+    elBatchAjoutWrap.hidden = !ouvre;
+    if (ouvre) {
+      elBatchAjoutSearch.value = '';
+      elBatchAjoutResults.hidden = true;
+      elBatchAjoutSearch.focus();
+      // Le catalogue du 1ᵉʳ fournisseur est déjà chargé pour l'OCR/substitution ;
+      // s'il n'y a qu'un seul fournisseur sur la réception on peut le réutiliser tel quel.
+      if (!catalogueBl.length && fournisseurId) chargerCatalogueBl(fournisseurId);
+    }
+  });
+}
+
+function afficherResultatsAjoutBatch(articles) {
+  elBatchAjoutResults.innerHTML = '';
+  if (!articles.length) { elBatchAjoutResults.hidden = true; return; }
+  articles.slice(0, 12).forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'rec-fourn-item';
+    div.textContent = a.designation + (a.code_article ? ` · ${a.code_article}` : '');
+    div.addEventListener('click', () => ajouterArticleLibreBatch(a));
+    elBatchAjoutResults.appendChild(div);
+  });
+  elBatchAjoutResults.hidden = false;
+}
+
+if (elBatchAjoutSearch) {
+  elBatchAjoutSearch.addEventListener('input', () => {
+    const q = elBatchAjoutSearch.value.trim();
+    if (!q) { elBatchAjoutResults.hidden = true; return; }
+    afficherResultatsAjoutBatch(filtrerCatalogueBl(q));
+  });
+  elBatchAjoutSearch.addEventListener('focus', () => {
+    const q = elBatchAjoutSearch.value.trim();
+    if (q) afficherResultatsAjoutBatch(filtrerCatalogueBl(q));
+  });
+  document.addEventListener('click', e => {
+    if (!elBatchAjoutResults.contains(e.target) && e.target !== elBatchAjoutSearch) {
+      elBatchAjoutResults.hidden = true;
+    }
+  }, true);
+}
+
+// Crée une carte batch pour un article catalogue choisi hors commande (pas de
+// quantité commandée à pré-remplir — l'utilisateur saisit poids/lot/DLC/prix
+// comme pour les autres lignes).
+function ajouterArticleLibreBatch(article) {
+  const ligneLibre = {
+    designation: article.designation,
+    code_article: article.code_article || '',
+    catalogue_fournisseur_id: article.id,
+    dlc_type: article.dlc_type || null,
+    quantite_commandee: null,
+    unite: '',
+    _fournisseur_id:  article.fournisseur_id  || fournisseurId || null,
+    _fournisseur_nom: article.fournisseur_nom || null,
+  };
+  creerCarteBatch(ligneLibre);
+  majBtnTerminerBatch();
+  elBatchAjoutSearch.value = '';
+  elBatchAjoutResults.hidden = true;
+  elBatchAjoutWrap.hidden = true;
+  const nouvelleCarte = batchLignes[batchLignes.length - 1].el;
+  nouvelleCarte.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ── Total HT de la livraison ──────────────────────────────────────────────
+// Somme le montant HT (prix × poids) de chaque carte batch reçue avec un prix
+// et un poids saisis. Purement indicatif (le montant définitif vient de la
+// facture) — recalculé à chaque saisie de prix/poids/nb de colis.
+function fmtEuros(n) {
+  return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+}
+
+function majTotalReception() {
+  if (!elTotalBar) return;
+  let total = 0;
+  let auMoinsUnPrix = false;
+
+  if (modeBatch) {
+    batchLignes.forEach(etat => {
+      if (!etat.recu) return;
+      const prix = _prixCarte(etat);
+      if (prix == null) return;
+      const poids = parseFloat(etat.el.querySelector('.rec-batch-poids')?.value);
+      if (isNaN(poids)) return;
+      auMoinsUnPrix = true;
+      total += prix * poids;
+    });
+  }
+
+  if (!auMoinsUnPrix) { elTotalBar.hidden = true; return; }
+  elTotalBar.hidden = false;
+  elTotalHt.textContent = fmtEuros(total);
 }
 
 // Ajoute un champ « n° de lot + DLC + poids » supplémentaire sur une carte batch.

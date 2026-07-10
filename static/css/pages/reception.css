@@ -849,6 +849,42 @@ body.rec-body {
 }
 .rec-btn-terminer:disabled { opacity: .42; cursor: not-allowed; }
 
+/* ── Ajout d'un article libre (mode batch) ────────────────── */
+.rec-btn-ajouter-batch {
+  width: 100%;
+  margin-top: .35rem;
+  padding: .8rem;
+  background: transparent;
+  border: 1.5px dashed var(--color-secondary, #6B3A1F);
+  border-radius: var(--radius);
+  color: var(--noyer, #6B3A1F);
+  font-size: .9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rec-btn-ajouter-batch:active { background: #F0E8D4; }
+.rec-batch-ajout-wrap {
+  margin-top: .5rem;
+  position: relative;
+}
+
+/* ── Total HT de la livraison ─────────────────────────────── */
+.rec-total-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .7rem 1rem;
+  margin-bottom: 84px; /* ne pas passer sous le footer sticky (~68-84px) */
+  background: var(--color-card, #fff);
+  border-top: 1.5px solid rgba(107,58,31,.15);
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--noyer, #6B3A1F);
+}
+.rec-total-bar[hidden] { display: none; }
+#rec-total-ht { font-size: 1.05rem; }
+
 /* ── ÉTAPE 4 — Récap + Clôture ────────────────────────────── */
 #rec-step-4 {
   overflow-y: auto;

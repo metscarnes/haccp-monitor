@@ -303,6 +303,22 @@
           « en attente » (à compléter plus tard). Le contrôle visuel est conforme par défaut.
         </div>
         <div id="rec-batch-liste"><!-- cartes injectées par JS --></div>
+
+        <!-- Ajout d'un article non prévu dans la commande -->
+        <button type="button" class="rec-btn-ajouter-batch" id="rec-btn-ajouter-batch">
+          ＋ Ajouter un article
+        </button>
+        <div class="rec-batch-ajout-wrap" id="rec-batch-ajout-wrap" hidden>
+          <input type="search" class="rec-input" id="rec-batch-ajout-search"
+                 placeholder="Rechercher un article du catalogue…" autocomplete="off">
+          <div id="rec-batch-ajout-results" class="rec-fourn-results" hidden></div>
+        </div>
+      </div>
+
+      <!-- Total HT de la livraison -->
+      <div class="rec-total-bar" id="rec-total-bar" hidden>
+        <span>Total livraison HT</span>
+        <span id="rec-total-ht">0,00 €</span>
       </div>
 
       <!-- Template d'une carte produit (mode liste commande) -->
