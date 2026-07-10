@@ -161,3 +161,15 @@
 }
 .marge-toast[hidden] { display: none; }
 .marge-toast--err { background: var(--color-alert); }
+
+/* ── Anomalie : réception sans aucune facture (opérationnel, pas fiabilité chiffrée) */
+.marge-anomalie {
+  margin-top: .4rem;
+  padding: .6rem .8rem;
+  background: #fff3e0;
+  border: 1px solid #f0b25e;
+  border-radius: 8px;
+  color: #7a4a12;
+  font-size: .82rem;
+  line-height: 1.6;
+}

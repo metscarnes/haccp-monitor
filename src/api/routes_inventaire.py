@@ -973,58 +973,136 @@ async def _achats_periode_ht(db, debut, fin):
     return {"ht": round(total, 2), "nb_lignes": nb, "nb_non_valorisees": nb_non_valo}
 
 
-async def _achats_reels_factures(db, debut, fin):
-    """Achats HT RÉELS = somme des factures VALIDÉES dont la réception rattachée
-    tombe sur [debut, fin] — cascade de vérité (facture validée > catalogue).
+async def _achats_reels_par_reception(db, debut, fin):
+    """Achats HT RÉELS = somme, RÉCEPTION PAR RÉCEPTION, du montant le plus fiable
+    disponible pour chacune. Jamais de trou : chaque réception clôturée de la
+    période contribue toujours au total, avec la source la plus sûre possible.
 
-    Filtré sur la date de RÉCEPTION (pas la date de la facture) : même principe
-    que _achats_periode_ht, pour un rattachement correct à l'exercice — la
-    marchandise devient une charge quand elle est reçue, pas quand le papier
-    arrive (qui peut être décalé de plusieurs jours). La réception d'une facture
-    est résolue comme _reception_liee_facture (routes_achats.py) : reception_id
-    direct, sinon via la commande mappée la plus récente.
+    Cascade de vérité PAR RÉCEPTION (jamais globale sur la période — une bascule
+    globale ferait disparaître les réceptions qui n'ont pas le niveau le plus
+    haut, ce qui sous-compte le CMV) :
+      1. FACTURE validée OU en litige — un litige porte un montant HT bien réel
+         (ce que le fournisseur réclame aujourd'hui) ; le désaccord éventuel sera
+         réglé par un avoir plus tard, mais entre-temps le montant facturé est
+         la charge réelle. Seuls 'brouillon' (pas confirmé) et 'annulee'
+         (doublon) sont exclus.
+      2. PRIX BL saisi à la réception (reception_lignes.montant_ht /
+         prix_unitaire_ht × poids) — lu sur le vrai document papier par
+         l'opérateur au quai, avant même que la facture arrive. Plus fiable
+         qu'une estimation catalogue.
+      3. CALCUL CATALOGUE (poids × prix de référence) — dernier repli.
 
-    Un AVOIR n'a pas de reception_id propre (il n'est pas créé « depuis une
-    réception ») : sa date de rattachement est celle de la réception de sa
-    FACTURE LIÉE (facture_liee_id) — un avoir compte sur la même période que
-    l'arrivage qu'il corrige, jamais sur sa propre date de création.
+    Filtré sur la date de RÉCEPTION (pas date_facture) : la marchandise devient
+    une charge quand elle est reçue, pas quand le papier arrive (voir discussion
+    métier — rattachement correct à l'exercice comptable).
+
+    Une réception SANS AUCUNE facture (même brouillon) est une ANOMALIE
+    OPÉRATIONNELLE (le hook de clôture doit toujours en créer une) : elle est
+    quand même comptée (niveau 2 ou 3, jamais ignorée) mais SIGNALÉE dans
+    `anomalies_sans_facture` pour être corrigée.
     """
     async with db.execute(
-        """SELECT fac.id, fac.type, fac.montant_total_ht_facture AS montant_ht,
-                  COALESCE(
-                      r_direct.date_reception,
-                      r_mappee.date_reception,
-                      r_liee_direct.date_reception,
-                      r_liee_mappee.date_reception
-                  ) AS date_reception_effective
-           FROM factures fac
-           -- Réception de LA FACTURE ELLE-MÊME (reception_id direct ou via commande)
-           LEFT JOIN receptions r_direct ON r_direct.id = fac.reception_id
-           LEFT JOIN receptions r_mappee ON r_mappee.id = (
-               SELECT reception_id FROM commande_receptions_mapping
-               WHERE commande_id = fac.commande_id
-               ORDER BY date_liaison DESC LIMIT 1
-           )
-           -- Si AVOIR sans réception propre : réception de la FACTURE LIÉE
-           LEFT JOIN factures fac_liee ON fac_liee.id = fac.facture_liee_id
-           LEFT JOIN receptions r_liee_direct ON r_liee_direct.id = fac_liee.reception_id
-           LEFT JOIN receptions r_liee_mappee ON r_liee_mappee.id = (
-               SELECT reception_id FROM commande_receptions_mapping
-               WHERE commande_id = fac_liee.commande_id
-               ORDER BY date_liaison DESC LIMIT 1
-           )
-           WHERE fac.statut = 'validee'""",
+        """SELECT r.id AS reception_id, r.date_reception, f.nom AS fournisseur_nom,
+                  fac.id AS facture_id, fac.statut AS facture_statut,
+                  fac.montant_total_ht_facture AS facture_montant_ht
+           FROM receptions r
+           LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
+           LEFT JOIN factures fac ON fac.reception_id = r.id
+               AND fac.statut IN ('validee', 'litige', 'rapprochee', 'brouillon')
+           WHERE r.statut = 'cloturee'
+             AND r.date_reception >= ? AND r.date_reception <= ?
+           ORDER BY r.id, fac.id DESC""",
+        (debut, fin),
     ) as cur:
-        toutes = [dict(r) for r in await cur.fetchall()]
+        rows = [dict(r) for r in await cur.fetchall()]
 
-    factures = [f for f in toutes
-                if f["date_reception_effective"] and debut <= f["date_reception_effective"] <= fin]
+    # Une réception peut avoir plusieurs factures historiques (rare) : on ne
+    # garde que la plus utilisable (validee/litige d'abord, sinon la dernière).
+    par_reception: dict = {}
+    for r in rows:
+        rid = r["reception_id"]
+        if rid not in par_reception:
+            par_reception[rid] = r
+        elif r["facture_statut"] in ("validee", "litige") and \
+                par_reception[rid]["facture_statut"] not in ("validee", "litige"):
+            par_reception[rid] = r
 
     total = 0.0
-    for f in factures:
-        signe = -1 if f["type"] == "avoir" else 1
-        total += signe * (f["montant_ht"] or 0.0)
-    return {"ht": round(total, 2), "nb_factures": len(factures)}
+    nb_facture = nb_bl = nb_catalogue = 0
+    anomalies: list = []
+
+    for rid, r in par_reception.items():
+        montant = None
+        source_ligne = None
+
+        if r["facture_statut"] in ("validee", "litige"):
+            montant = r["facture_montant_ht"] or 0.0
+            source_ligne = "facture"
+        else:
+            # Niveau 2 : prix BL saisi à la réception (somme des lignes).
+            async with db.execute(
+                """SELECT poids_kg, prix_unitaire_ht, montant_ht,
+                          catalogue_fournisseur_id
+                   FROM reception_lignes WHERE reception_id = ?""",
+                (rid,),
+            ) as cur_l:
+                lignes = [dict(x) for x in await cur_l.fetchall()]
+
+            montant_bl = 0.0
+            bl_complet = bool(lignes)
+            for l in lignes:
+                if l["montant_ht"] is not None:
+                    montant_bl += float(l["montant_ht"])
+                elif l["prix_unitaire_ht"] is not None and l["poids_kg"] is not None:
+                    montant_bl += float(l["prix_unitaire_ht"]) * float(l["poids_kg"])
+                else:
+                    bl_complet = False  # ligne sans prix BL exploitable
+
+            if bl_complet and lignes:
+                montant = montant_bl
+                source_ligne = "bl"
+            else:
+                # Niveau 3 : catalogue (comme _achats_periode_ht), ligne par ligne.
+                montant_cat = 0.0
+                for l in lignes:
+                    cat = None
+                    if l["catalogue_fournisseur_id"]:
+                        async with db.execute(
+                            "SELECT format_prix, prix_achat_ht, poids_colis_kg, famille "
+                            "FROM catalogue_fournisseur WHERE id = ?",
+                            (l["catalogue_fournisseur_id"],),
+                        ) as cur_c:
+                            cat = await cur_c.fetchone()
+                    prix_kg = (_calc_prix_kg(cat["format_prix"], cat["prix_achat_ht"],
+                                             cat["poids_colis_kg"], cat["famille"])
+                              if cat else None)
+                    if prix_kg is not None and l["poids_kg"] is not None:
+                        montant_cat += float(l["poids_kg"]) * prix_kg
+                montant = montant_cat
+                source_ligne = "catalogue"
+
+            if r["facture_id"] is None:
+                anomalies.append({
+                    "reception_id": rid, "date_reception": r["date_reception"],
+                    "fournisseur_nom": r["fournisseur_nom"],
+                })
+
+        total += montant
+        if source_ligne == "facture":
+            nb_facture += 1
+        elif source_ligne == "bl":
+            nb_bl += 1
+        else:
+            nb_catalogue += 1
+
+    return {
+        "ht": round(total, 2),
+        "nb_receptions": len(par_reception),
+        "nb_source_facture": nb_facture,
+        "nb_source_bl": nb_bl,
+        "nb_source_catalogue": nb_catalogue,
+        "anomalies_sans_facture": anomalies,
+    }
 
 
 async def _inventaire_proche(db, cible, sens):
@@ -1077,28 +1155,32 @@ async def tableau_marge(
         ca = await _ca_periode_ht(db, date_debut, date_fin, tva_pct)
         achats_calcule = await _achats_periode_ht(db, date_debut, date_fin)
 
-        # Cascade de vérité (la plus fiable en premier) :
-        #   1. FACTURES VALIDÉES de la période (prix réellement facturé, vérifié)
-        #   2. Saisie manuelle (achats_reels_periode — secours si pas de facture)
-        #   3. Calcul catalogue (réceptions valorisées au prix de référence — repli)
-        # Chaque niveau supérieur PRIME s'il a une donnée pour cette période exacte ;
-        # le calcul catalogue reste toujours affiché en référence/comparaison.
-        achats_factures = await _achats_reels_factures(db, date_debut, date_fin)
+        # Achats RÉELS = calcul PAR RÉCEPTION (facture validée/litige > prix BL
+        # saisi > catalogue), jamais de trou — voir _achats_reels_par_reception.
+        # La saisie manuelle (achats_reels_periode) reste un OVERRIDE explicite
+        # que l'utilisateur peut poser pour une correction ponctuelle ; si
+        # présente, elle prime sur le calcul par réception (décision assumée
+        # par un clic, pas un repli silencieux).
+        achats_par_reception = await _achats_reels_par_reception(db, date_debut, date_fin)
         achats_reel_saisie = await _get_achats_reels(db, date_debut, date_fin)
         achats = dict(achats_calcule)
         achats["ht_calcule"] = achats_calcule["ht"]
         achats["saisie_possible"] = True
-        achats["ht_factures"] = achats_factures["ht"] if achats_factures["nb_factures"] else None
-        achats["nb_factures"] = achats_factures["nb_factures"]
+        achats["ht_par_reception"] = achats_par_reception["ht"]
+        achats["nb_receptions"] = achats_par_reception["nb_receptions"]
+        achats["nb_source_facture"] = achats_par_reception["nb_source_facture"]
+        achats["nb_source_bl"] = achats_par_reception["nb_source_bl"]
+        achats["nb_source_catalogue"] = achats_par_reception["nb_source_catalogue"]
+        achats["anomalies_sans_facture"] = achats_par_reception["anomalies_sans_facture"]
         achats["ht_reel"] = (round(float(achats_reel_saisie["montant_ht"]), 2)
                              if achats_reel_saisie is not None else None)
 
-        if achats_factures["nb_factures"] > 0:
-            achats["source"] = "factures"
-            achats["ht"] = achats_factures["ht"]
-        elif achats_reel_saisie is not None:
+        if achats_reel_saisie is not None:
             achats["source"] = "reel"
             achats["ht"] = achats["ht_reel"]
+        elif achats_par_reception["nb_receptions"] > 0:
+            achats["source"] = "par_reception"
+            achats["ht"] = achats_par_reception["ht"]
         else:
             achats["source"] = "calcule"
             achats["ht"] = achats_calcule["ht"]

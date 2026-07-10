@@ -154,24 +154,46 @@ function rendre() {
   const a = d.achats;
   const achatsEl = $('d-achats');
   achatsEl.textContent = fmtEur(a.ht);
-  achatsEl.classList.toggle('marge-val--reel', a.source === 'factures' || a.source === 'reel');
+  achatsEl.classList.toggle('marge-val--reel', a.source === 'par_reception' || a.source === 'reel');
   const ecartTxt = (a.ecart_reel_calcule != null)
     ? ` · écart vs calcul catalogue ${a.ecart_reel_calcule >= 0 ? '+' : ''}${fmtEur(a.ecart_reel_calcule)}` : '';
-  if (a.source === 'factures') {
-    // Le plus fiable : somme des factures VALIDÉES rattachées aux réceptions
-    // de la période (module Facture, cascade de vérité).
+  if (a.source === 'par_reception') {
+    // Calcul réception par réception : facture (validée/litige) > prix BL saisi
+    // > catalogue. Jamais de trou — chaque réception contribue toujours.
+    const compo = [];
+    if (a.nb_source_facture) compo.push(`🧾 ${a.nb_source_facture} facture(s)`);
+    if (a.nb_source_bl) compo.push(`📋 ${a.nb_source_bl} prix BL`);
+    if (a.nb_source_catalogue) compo.push(`📚 ${a.nb_source_catalogue} catalogue`);
     $('d-achats-sub').textContent =
-      `🧾 ${a.nb_factures} facture(s) validée(s) · calcul catalogue : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
+      `${compo.join(' · ')} sur ${a.nb_receptions} réception(s) · calcul catalogue seul : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
   } else if (a.source === 'reel') {
-    // Secours : montant saisi à la main pour cette période (pas de facture validée).
+    // Override manuel : montant saisi à la main pour cette période (prime volontairement).
     $('d-achats-sub').textContent =
-      `📝 Saisie manuelle · calcul catalogue : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
+      `📝 Saisie manuelle (prime sur le calcul) · calcul catalogue : ${fmtEur(a.ht_calcule)}${ecartTxt}`;
   } else {
     let sub = `${a.nb_lignes} ligne(s) de réception clôturée (calcul catalogue)`;
     if (a.nb_non_valorisees > 0) sub += ` · ⚠️ ${a.nb_non_valorisees} sans valeur`;
     $('d-achats-sub').textContent = sub;
   }
   // Le crayon achats est toujours disponible (saisie rattachée à la période exacte).
+
+  // Anomalie opérationnelle : réception clôturée sans AUCUNE facture (même
+  // brouillon). Le hook de clôture doit toujours en créer une — son absence
+  // signale un problème à corriger (créer la facture manquante), pas un cas
+  // normal. Le montant de ces réceptions reste compté (BL ou catalogue), donc
+  // la marge n'est pas faussée, mais leur prix n'est pas encore vérifié.
+  const zoneAnomalie = $('d-achats-anomalie');
+  const anomalies = a.anomalies_sans_facture || [];
+  if (zoneAnomalie) {
+    if (anomalies.length) {
+      zoneAnomalie.hidden = false;
+      zoneAnomalie.innerHTML = `⚠️ ${anomalies.length} réception(s) sans AUCUNE facture — `
+        + `anomalie à corriger dans le module Achats :<br>`
+        + anomalies.map(x => `• ${x.date_reception} — ${x.fournisseur_nom || '?'} (réception #${x.reception_id})`).join('<br>');
+    } else {
+      zoneAnomalie.hidden = true;
+    }
+  }
 
   if (d.stock_initial) {
     $('d-si').textContent = fmtEur(d.stock_initial.valeur_totale_ht);
@@ -272,9 +294,10 @@ function ouvrirEditAchats() {
   if (!state.data) return;
   const a = state.data.achats;
   $('input-achats-ht').value = (a.ht_reel != null) ? a.ht_reel : '';
-  const base = a.source === 'factures'
-    ? `⚠️ ${a.nb_factures} facture(s) validée(s) existent déjà sur cette période et priment — `
-      + `cette saisie manuelle ne sera utilisée que si les factures sont dévalidées/absentes.`
+  const base = (a.source === 'par_reception' || a.source === 'reel')
+    ? `Calcul par réception actuel : ${fmtEur(a.ht_par_reception ?? a.ht_calcule)} `
+      + `(${a.nb_source_facture || 0} facture(s), ${a.nb_source_bl || 0} prix BL, `
+      + `${a.nb_source_catalogue || 0} catalogue). Une saisie ici PRIME volontairement sur ce calcul.`
     : `Période ${$('marge-debut').value} → ${$('marge-fin').value} · base date de réception · calcul catalogue : ${fmtEur(a.ht_calcule)}`;
   $('achats-editor-hint').textContent = base;
   $('editor-achats').hidden = false;
