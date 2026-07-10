@@ -85,6 +85,15 @@ function bindEvents() {
   document.getElementById('fac-import-fichier').addEventListener('change', importerDocument);
   document.getElementById('btn-import-bl').addEventListener('click', importerDepuisBl);
   document.getElementById('btn-voir-bl').addEventListener('click', voirBl);
+
+  // Modale aperçu BL
+  document.getElementById('modal-bl-apercu-fermer').addEventListener('click', fermerModalBlApercu);
+  document.getElementById('btn-bl-apercu-prec').addEventListener('click', () => {
+    if (blApercuIndex > 0) { blApercuIndex--; afficherPageBlApercu(); }
+  });
+  document.getElementById('btn-bl-apercu-suiv').addEventListener('click', () => {
+    if (blApercuIndex < blApercuPages.length - 1) { blApercuIndex++; afficherPageBlApercu(); }
+  });
 }
 
 // ── Chargement ───────────────────────────────────────────────
@@ -249,8 +258,13 @@ async function importerDepuisBl() {
   await lancerImport(`${API_FAC}/${facCourante.id}/importer-depuis-bl`, { method: 'POST' });
 }
 
-// Ouvre les pages scannées du BL SANS lancer l'analyse — pour vérifier à l'œil
-// avant de déclencher l'OCR (qui prend 10-20 s et a un coût).
+// Aperçu du BL SANS lancer l'analyse — pour vérifier à l'œil avant de déclencher
+// l'OCR (qui prend 10-20 s et a un coût). Modale intégrée (pas de nouvel onglet) :
+// indispensable en mode kiosque plein écran sur tablette, où il n'y a pas de
+// bouton « retour » de navigateur pour fermer un onglet ouvert par window.open.
+let blApercuPages = [];
+let blApercuIndex = 0;
+
 async function voirBl() {
   const receptionId = facCourante.reception_bl_id || facCourante.reception_id;
   if (!receptionId) return;
@@ -262,10 +276,27 @@ async function voirBl() {
       alert('Aucune page de BL scannée pour cette réception.');
       return;
     }
-    data.pages.forEach(p => window.open(p.url, '_blank'));
+    blApercuPages = data.pages;
+    blApercuIndex = 0;
+    afficherPageBlApercu();
+    document.getElementById('modal-bl-apercu').hidden = false;
   } catch (_) {
     alert('Erreur réseau pendant le chargement de l\'aperçu du BL.');
   }
+}
+
+function afficherPageBlApercu() {
+  const page = blApercuPages[blApercuIndex];
+  document.getElementById('bl-apercu-image').src = page.url;
+  document.getElementById('bl-apercu-compteur').textContent =
+    `Page ${blApercuIndex + 1} / ${blApercuPages.length}`;
+  document.getElementById('btn-bl-apercu-prec').disabled = blApercuIndex === 0;
+  document.getElementById('btn-bl-apercu-suiv').disabled = blApercuIndex === blApercuPages.length - 1;
+}
+
+function fermerModalBlApercu() {
+  document.getElementById('modal-bl-apercu').hidden = true;
+  document.getElementById('bl-apercu-image').src = '';
 }
 
 async function lancerImport(url, opts) {

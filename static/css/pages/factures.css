@@ -217,3 +217,44 @@
   font-size: var(--text-sm);
   line-height: 1.5;
 }
+
+/* ── Modale aperçu BL (pages scannées, sans OCR) ─────────────────────────── */
+.bl-apercu-card {
+  max-width: min(90vw, 900px);
+  width: 100%;
+}
+.bl-apercu-corps {
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  max-height: 70vh;
+  overflow: auto;
+  padding: var(--space-2);
+}
+.bl-apercu-image {
+  max-width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+}
+.bl-apercu-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+.bl-apercu-nav .ach-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: .6rem 1.1rem;
+}
+.bl-apercu-nav .ach-btn:disabled {
+  opacity: .4;
+  cursor: default;
+}
+.bl-apercu-compteur {
+  font-weight: 600;
+  color: #4b5563;
+}

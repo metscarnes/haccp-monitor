@@ -253,6 +253,24 @@
     </div>
   </div>
 
+  <!-- ── Modal aperçu BL (pages scannées, sans lancer l'OCR) ── -->
+  <div class="ach-modal" id="modal-bl-apercu" hidden>
+    <div class="ach-modal-card bl-apercu-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Aperçu du BL</h2>
+        <button class="ach-modal-fermer" id="modal-bl-apercu-fermer">✕</button>
+      </header>
+      <div class="bl-apercu-corps">
+        <img id="bl-apercu-image" class="bl-apercu-image" alt="Page du BL scanné">
+      </div>
+      <div class="bl-apercu-nav">
+        <button type="button" class="ach-btn" id="btn-bl-apercu-prec">‹ Précédente</button>
+        <span class="bl-apercu-compteur" id="bl-apercu-compteur"></span>
+        <button type="button" class="ach-btn" id="btn-bl-apercu-suiv">Suivante ›</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Modal annulation doublon ── -->
   <div class="ach-modal" id="modal-doublon" hidden>
     <div class="ach-modal-card">
