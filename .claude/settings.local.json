@@ -176,7 +176,13 @@
       "PowerShell(python -m pytest tests/test_reception.py::test_api_creer_reception tests/test_reception_v2.py::test_get_receptions_retourne_liste -q 2>&1)",
       "PowerShell(git stash pop)",
       "PowerShell(python -m pytest tests/test_reception.py::test_api_creer_reception -q 2>&1)",
-      "PowerShell(python -m pytest tests/test_variations_prix.py tests/test_historique_prix.py tests/test_historique_prix_courbe.py tests/test_prix_reception.py -q 2>&1)"
+      "PowerShell(python -m pytest tests/test_variations_prix.py tests/test_historique_prix.py tests/test_historique_prix_courbe.py tests/test_prix_reception.py -q 2>&1)",
+      "PowerShell(python -m py_compile \"src/api/routes_reception.py\" \"src/api/routes_achats.py\" \"src/ocr_bl.py\" \"src/ocr_facture.py\"; echo \"EXIT:$LASTEXITCODE\")",
+      "PowerShell(python -m pytest tests/test_reception.py tests/test_reception_v2.py tests/test_factures.py tests/test_factures_refonte_etape4.py -q 2>&1)",
+      "PowerShell(python -m pytest tests/test_reception.py tests/test_reception_v2.py -q 2>&1)",
+      "PowerShell(Get-ChildItem -Path \"$env:LOCALAPPDATA\\\\GitHubDesktop\" -Recurse -Filter \"git.exe\" -ErrorAction SilentlyContinue | Select-Object -First 5 FullName)",
+      "PowerShell(python -m pytest tests/test_factures.py tests/test_factures_refonte_etape4.py tests/test_reception_lots_internes.py tests/test_reception_annulation.py tests/test_reception_commande_fantome.py -q 2>&1)",
+      "PowerShell(python -m pytest tests/ -q -x --deselect tests/test_reception.py::test_api_creer_reception --deselect tests/test_reception.py::test_api_ajouter_ligne_reception --deselect tests/test_reception.py::test_api_finaliser_reception --deselect tests/test_reception_v2.py::test_get_receptions_retourne_liste --deselect tests/test_reception_annulation.py::test_annuler_reception_bloquee_si_fabrication 2>&1)"
     ]
   }
 }

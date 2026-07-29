@@ -244,7 +244,11 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
         })
     contenu.append({"type": "text", "text": _INSTRUCTIONS})
 
-    client = anthropic.Anthropic(api_key=api_key)
+    # Timeout borné (le défaut du SDK est ~10 min) : sur la connexion du Pi, un
+    # incident réseau doit échouer proprement (message clair, HTTP 502) plutôt que
+    # de laisser la requête pendre — c'est ça qui, côté navigateur, finit par
+    # remonter en "Failed to fetch" sans explication après une longue attente.
+    client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=1)
     try:
         resp = client.messages.create(
             model=MODEL,

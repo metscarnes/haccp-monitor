@@ -15,6 +15,7 @@ GET    /api/receptions/{id}/photo-bl              → BL photo (FileResponse)
 GET    /api/receptions/{id}/photo-proprete        → Photo NC propreté camion (FileResponse)
 """
 
+import asyncio
 import io
 import logging
 from pathlib import Path
@@ -51,25 +52,55 @@ PHOTOS_PROPRETE_DIR.mkdir(parents=True, exist_ok=True)
 MAX_SIDE     = 1280
 JPEG_QUALITY = 80
 
+# BL / facture : résolution plus généreuse que les photos "humaines" (propreté
+# camion...) car ces images sont lues par l'OCR (Claude vision) — les petites
+# polices (n° de lot, DLC, prix) doivent rester nettes. Coût : plus de tokens/appel,
+# accepté pour la fiabilité de traçabilité HACCP.
+BL_MAX_SIDE     = 1920
+BL_JPEG_QUALITY = 85
+
 
 # ---------------------------------------------------------------------------
 # Compression photo (identique ouvertures)
 # ---------------------------------------------------------------------------
 
-def _compress_photo(raw_bytes: bytes) -> bytes:
+def _resize_si_besoin(img: Image.Image, max_side: int) -> Image.Image:
+    w, h = img.size
+    if max(w, h) <= max_side:
+        return img
+    if w >= h:
+        new_w, new_h = max_side, int(h * max_side / w)
+    else:
+        new_w, new_h = int(w * max_side / h), max_side
+    return img.resize((new_w, new_h), Image.LANCZOS)
+
+
+def _compress_photo(raw_bytes: bytes, max_side: int = MAX_SIDE, quality: int = JPEG_QUALITY) -> bytes:
     img = Image.open(io.BytesIO(raw_bytes))
     img = ImageOps.exif_transpose(img)
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
-    w, h = img.size
-    if max(w, h) > MAX_SIDE:
-        if w >= h:
-            new_w, new_h = MAX_SIDE, int(h * MAX_SIDE / w)
-        else:
-            new_w, new_h = int(w * MAX_SIDE / h), MAX_SIDE
-        img = img.resize((new_w, new_h), Image.LANCZOS)
+    img = _resize_si_besoin(img, max_side)
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+    img.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue()
+
+
+def _pixmap_vers_jpeg(pix) -> bytes:
+    """Convertit un pixmap PyMuPDF (page de PDF déjà rendue) en JPEG, à la
+    résolution BL. Construit l'image PIL directement depuis les pixels du rendu :
+    l'ancien code repassait par `pix.tobytes("png")` puis `Image.open()`, un
+    aller-retour d'encodage/décodage PNG inutile (le rendu n'a jamais existé
+    en PNG) — coûteux sur le CPU modeste du Pi et responsable d'une bonne partie
+    de la lenteur observée lors de l'ajout d'un PDF.
+    """
+    mode = "RGBA" if pix.alpha else ("L" if pix.n == 1 else "RGB")
+    img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img = _resize_si_besoin(img, BL_MAX_SIDE)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=BL_JPEG_QUALITY, optimize=True)
     return buf.getvalue()
 
 
@@ -84,6 +115,11 @@ def _fichier_bl_vers_jpegs(raw_bytes: bytes, filename: Optional[str]) -> List[by
     """Transforme un fichier BL (image OU PDF) en une liste de JPEG compressés,
     un par page. Un fichier image → 1 JPEG ; un PDF → 1 JPEG par page.
     Lève ValueError si le contenu est illisible.
+
+    Fonction bloquante et CPU-intensive (rendu PDF + redimensionnement) : à
+    appeler via `asyncio.to_thread` depuis les routes, jamais directement dans
+    une coroutine, sous peine de geler tout le serveur (un seul worker Uvicorn
+    sur le Pi) pendant toute la conversion.
     """
     if _est_pdf(raw_bytes, filename):
         try:
@@ -100,16 +136,16 @@ def _fichier_bl_vers_jpegs(raw_bytes: bytes, filename: Optional[str]) -> List[by
             mat = fitz.Matrix(2, 2)
             for page in doc:
                 pix = page.get_pixmap(matrix=mat)
-                jpegs.append(_compress_photo(pix.tobytes("png")))
+                jpegs.append(_pixmap_vers_jpeg(pix))
         finally:
             doc.close()
         if not jpegs:
             raise ValueError("PDF sans page exploitable.")
         return jpegs
 
-    # Sinon : fichier image
+    # Sinon : fichier image (résolution BL, plus généreuse — cf. BL_MAX_SIDE)
     try:
-        return [_compress_photo(raw_bytes)]
+        return [_compress_photo(raw_bytes, max_side=BL_MAX_SIDE, quality=BL_JPEG_QUALITY)]
     except Exception as e:
         raise ValueError(f"Image illisible : {e}")
 
@@ -344,7 +380,9 @@ async def creer_reception(
         for upload in photos_bl_valides:
             raw = await upload.read()
             try:
-                jpegs_bl.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+                # Conversion PDF/image CPU-intensive : déportée sur un thread pour
+                # ne pas geler le serveur (un seul worker Uvicorn sur le Pi).
+                jpegs_bl.extend(await asyncio.to_thread(_fichier_bl_vers_jpegs, raw, upload.filename))
             except ValueError as e:
                 raise HTTPException(400, str(e))
         for page_num, jpeg in enumerate(jpegs_bl):
@@ -899,7 +937,9 @@ async def ocr_bl(reception_id: int):
         raise HTTPException(404, "Fichiers photo BL introuvables sur le disque")
 
     try:
-        data = extraire_bl(images)
+        # Appel réseau à Claude (10-30 s typiques) déporté sur un thread : sinon
+        # il gèle tout le serveur (un seul worker Uvicorn) pendant toute sa durée.
+        data = await asyncio.to_thread(extraire_bl, images)
     except OCRError as e:
         raise HTTPException(502, str(e))
 
@@ -988,7 +1028,7 @@ async def ajouter_bl_pages(
         for upload in fichiers_valides:
             raw = await upload.read()
             try:
-                jpegs.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+                jpegs.extend(await asyncio.to_thread(_fichier_bl_vers_jpegs, raw, upload.filename))
             except ValueError as e:
                 raise HTTPException(400, str(e))
 
@@ -1126,7 +1166,7 @@ async def ajouter_bl_supplementaire(
         for upload in photos_valides:
             raw = await upload.read()
             try:
-                jpegs_supp.extend(_fichier_bl_vers_jpegs(raw, upload.filename))
+                jpegs_supp.extend(await asyncio.to_thread(_fichier_bl_vers_jpegs, raw, upload.filename))
             except ValueError as e:
                 raise HTTPException(400, str(e))
 

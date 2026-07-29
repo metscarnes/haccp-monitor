@@ -52,6 +52,7 @@ GET    /api/achats/pilotage/ca/stats/profil-semaine        → moyenne par jour 
 GET    /api/achats/pilotage/ca/stats/prochain-a-saisir      → jour à saisir par défaut (dernier non saisi)
 """
 
+import asyncio
 import io
 import logging
 import sqlite3
@@ -5110,7 +5111,10 @@ async def importer_document_facture(
         raw = await fichier.read()
         if not raw:
             raise HTTPException(400, "Fichier vide")
-        data = _analyser_document_facture(raw, fichier.filename)
+        # Conversion PDF/image + appel OCR (CPU + réseau) déportés sur un thread :
+        # sinon ils gèlent tout le serveur (un seul worker Uvicorn sur le Pi)
+        # pendant toute leur durée.
+        data = await asyncio.to_thread(_analyser_document_facture, raw, fichier.filename)
         await _enregistrer_document(
             db, facture_id, raw, fichier.filename,
             origine="facture", has_facturx=data.get("has_facturx", False),
@@ -5186,7 +5190,9 @@ async def importer_depuis_bl_reception(facture_id: int):
 
         from src.ocr_facture import extraire_facture, OCRFactureError
         try:
-            data = extraire_facture(images)
+            # Déporté sur un thread : appel réseau à Claude (10-30 s), sinon il
+            # gèle tout le serveur (un seul worker Uvicorn) pendant sa durée.
+            data = await asyncio.to_thread(extraire_facture, images)
         except OCRFactureError as e:
             raise HTTPException(502, str(e))
         data["has_facturx"] = False

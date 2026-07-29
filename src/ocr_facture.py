@@ -241,7 +241,9 @@ def extraire_facture(images_jpeg: list[bytes]) -> dict:
         })
     contenu.append({"type": "text", "text": _INSTRUCTIONS})
 
-    client = anthropic.Anthropic(api_key=api_key)
+    # Timeout borné (le défaut du SDK est ~10 min) : cf. ocr_bl.py — un incident
+    # réseau doit échouer proprement plutôt que de laisser la requête pendre.
+    client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=1)
     try:
         resp = client.messages.create(
             model=MODEL,
