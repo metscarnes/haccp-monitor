@@ -132,11 +132,21 @@ def _fichier_bl_vers_jpegs(raw_bytes: bytes, filename: Optional[str]) -> List[by
         except Exception as e:
             raise ValueError(f"PDF illisible : {e}")
         try:
-            # Rendu à ~150 dpi (zoom 2) : suffisant pour l'OCR, taille raisonnable.
-            mat = fitz.Matrix(2, 2)
             for page in doc:
-                pix = page.get_pixmap(matrix=mat)
+                # Rendu borné à BL_MAX_SIDE px sur le grand côté, au lieu d'un zoom
+                # fixe ×2. Un zoom fixe ×2 sur un PDF dont la page est définie en très
+                # grand format (certains scanners écrivent la mediabox à la taille
+                # physique en points) produit un pixmap de plusieurs centaines de Mo,
+                # ce qui fait sauter le worker Uvicorn par OOM sur le Pi (512 Mo) —
+                # cause directe des "Failed to fetch". Borné à ×2 max pour ne pas
+                # suragrandir un petit PDF vectoriel. Pour une page A4 normale, zoom
+                # reste ×2 (comportement inchangé) ; seuls les PDF pathologiques sont
+                # réduits. Effet de bord bienvenu : l'ajout de PDF est plus rapide.
+                cote = max(page.rect.width, page.rect.height) or 1.0
+                zoom = min(BL_MAX_SIDE / cote, 2.0)
+                pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
                 jpegs.append(_pixmap_vers_jpeg(pix))
+                pix = None  # libère le buffer de rendu avant la page suivante
         finally:
             doc.close()
         if not jpegs:
