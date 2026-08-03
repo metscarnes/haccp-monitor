@@ -5954,13 +5954,41 @@ async def get_ca_par_periode(
             r["evolution_label"]  = "vs S-1"
     else:
         # Semaine/Mois : vs période précédente (ligne suivante car tri desc).
+        # Comparaison à périmètre égal : si la période courante est EN COURS
+        # (non terminée), on ne compare que contre les N premiers jours de la
+        # période précédente (N = nb de jours écoulés dans la période
+        # courante), pas contre le total du mois/semaine précédent entier —
+        # sinon 3 jours d'août seraient comparés aux 31 jours de juillet.
+        today = date.today()
         for i, r in enumerate(rows):
             prec = rows[i + 1] if i + 1 < len(rows) else None
             prec_ca     = prec["total_ttc"] if prec else None
             prec_panier = prec["panier_moyen"] if prec else None
+
+            debut_courant = date.fromisoformat(r["date_debut"])
+            fin_courant   = date.fromisoformat(r["date_fin"])
+            en_cours = fin_courant >= today and i == 0
+            if prec is not None and en_cours:
+                jours_ecoules = (min(fin_courant, today) - debut_courant).days
+                debut_prec = date.fromisoformat(prec["date_debut"])
+                fin_tronquee = (debut_prec + timedelta(days=jours_ecoules)).isoformat()
+                async with get_db() as db:
+                    cur = await db.execute(
+                        """SELECT COALESCE(SUM(montant_ttc), 0) AS total_ttc,
+                                  COALESCE(SUM(nb_tickets), 0)  AS total_tickets
+                           FROM ca_journalier
+                           WHERE boutique_id = 1 AND date_ca BETWEEN ? AND ?""",
+                        (prec["date_debut"], fin_tronquee),
+                    )
+                    tronque = dict(await cur.fetchone())
+                prec_ca     = tronque["total_ttc"]
+                prec_panier = _panier(tronque["total_ttc"], tronque["total_tickets"])
+                r["evolution_label"] = "vs préc. (périmètre égal)"
+            else:
+                r["evolution_label"] = "vs préc."
+
             r["evolution"]        = _evolution(r["total_ttc"], prec_ca) if prec_ca is not None else {"delta": None, "pct": None}
             r["evolution_panier"] = _evolution(r["panier_moyen"], prec_panier) if (r["panier_moyen"] is not None and prec_panier is not None) else {"delta": None, "pct": None}
-            r["evolution_label"]  = "vs préc."
 
     return {"granularite": gran, "lignes": rows}
 
