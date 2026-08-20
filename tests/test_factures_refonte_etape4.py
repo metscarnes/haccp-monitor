@@ -233,6 +233,84 @@ async def test_appliquer_import_preserve_lien_catalogue(app_client, db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("code_papier", ["0ART01", "ART-01", " art01 "])
+async def test_appliquer_import_lien_catalogue_code_non_strict(app_client, db, code_papier):
+    """Le code IMPRIMÉ sur le papier n'est pas celui du catalogue : constaté en prod
+    2026-08 sur les 2 principaux fournisseurs (Elivia catalogue « 07991-07 » / papier
+    « 7991-7 » ; Saveur d'Antoine catalogue « 1295 » / papier « 001295 »), où le
+    réappariement en code STRICT ne récupérait aucune ligne. Zéros de tête, séparateurs
+    et casse ne doivent donc pas faire perdre le lien catalogue."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    r = await app_client.post(
+        f"/api/achats/factures/{fac['id']}/appliquer-import",
+        json={
+            "remplacer_lignes": True,
+            "lignes": [
+                {"designation": "Libelle papier different", "code_article": code_papier,
+                 "type_ligne": "marchandise", "unite_prix": "kg",
+                 "poids_facture_kg": 9.4, "prix_facture_ht": 12.0, "tva_pct": 5.5},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    apres = [l for l in r.json()["lignes"] if l["type_ligne"] == "marchandise"][0]
+    assert apres["catalogue_fournisseur_id"] == ids["cat_id"]
+
+
+@pytest.mark.asyncio
+async def test_appliquer_import_lien_catalogue_par_designation(app_client, db):
+    """Dernier repli quand l'OCR n'a extrait AUCUN code (129 lignes dans le cas réel) :
+    la désignation identique suffit à retrouver le lien. C'est le critère qui a récupéré
+    le plus de lignes lors du rattrapage 2026-08."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    r = await app_client.post(
+        f"/api/achats/factures/{fac['id']}/appliquer-import",
+        json={
+            "remplacer_lignes": True,
+            "lignes": [
+                {"designation": "  ARTICLE REFONTE  ", "type_ligne": "marchandise",
+                 "unite_prix": "kg", "poids_facture_kg": 9.4,
+                 "prix_facture_ht": 12.0, "tva_pct": 5.5},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    apres = [l for l in r.json()["lignes"] if l["type_ligne"] == "marchandise"][0]
+    assert apres["catalogue_fournisseur_id"] == ids["cat_id"]
+
+
+@pytest.mark.asyncio
+async def test_appliquer_import_pas_de_lien_invente(app_client, db):
+    """Garde-fou : ni le code ni la désignation ne correspondent → on laisse le lien à
+    NULL plutôt que de rattacher au hasard un article de la facture (un faux lien
+    fausserait l'analyse achats plus discrètement qu'une ligne orpheline)."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    r = await app_client.post(
+        f"/api/achats/factures/{fac['id']}/appliquer-import",
+        json={
+            "remplacer_lignes": True,
+            "lignes": [
+                {"designation": "Article jamais vu", "code_article": "ZZ999",
+                 "type_ligne": "marchandise", "unite_prix": "kg",
+                 "poids_facture_kg": 5.0, "prix_facture_ht": 8.0, "tva_pct": 5.5},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    apres = [l for l in r.json()["lignes"] if l["type_ligne"] == "marchandise"][0]
+    assert apres["catalogue_fournisseur_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_import_respecte_verrou(app_client, db):
     ids = await _setup(app_client, db)
     fac = (await app_client.post(

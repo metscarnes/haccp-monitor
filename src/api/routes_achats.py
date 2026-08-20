@@ -3828,6 +3828,25 @@ def _verifier_facture_modifiable(facture_row):
         )
 
 
+def _cles_code_article(code) -> list:
+    """Formes comparables d'un code article entre le CATALOGUE et le PAPIER du
+    fournisseur, qui ne l'impriment pas pareil. Deux normalisations, car le tiret
+    est tantôt un séparateur de segments tantôt un simple ornement :
+      - par segment, zéros de tête ôtés : « 07991-07 » et « 7991-7 » → « 7991-7 »
+        (Elivia) ; « 001295 » et « 1295 » → « 1295 » (Saveur d'Antoine) ;
+      - tiret retiré puis zéros de tête ôtés : « ART-01 » et « ART01 » → « ART01 ».
+    Sert au réappariement du lien catalogue lors d'un import OCR, jamais à écrire
+    un code en base."""
+    brut = (code or "").strip().upper()
+    for sep in (" ", ".", "/"):
+        brut = brut.replace(sep, "")
+    if not brut:
+        return []
+    par_segment = "-".join(seg.lstrip("0") or "0" for seg in brut.split("-"))
+    sans_tiret = brut.replace("-", "").lstrip("0") or "0"
+    return [par_segment] if par_segment == sans_tiret else [par_segment, sans_tiret]
+
+
 def _arrondi_commercial(x, decimales: int = 2):
     """Arrondi « facture » : ROUND_HALF_UP (2,675 → 2,68), à la différence du
     round() de Python (arrondi bancaire : 2,675 → 2,67). Passe par Decimal(str(x))
@@ -5248,32 +5267,53 @@ async def appliquer_import(facture_id: int, body: ImportApplication):
             )
 
         # Avant de purger, on sauvegarde le lien catalogue_fournisseur_id/reception_ligne_id
-        # des anciennes lignes (posé par la génération auto depuis la réception) par
-        # code_article : l'OCR relit le papier et ne connaît que le texte/code, jamais ces
-        # ID internes — sans ce réappariement, remplacer_lignes les perdrait silencieusement
+        # des anciennes lignes (posé par la génération auto depuis la réception) : l'OCR
+        # relit le papier et ne connaît que le texte/code, jamais ces ID internes — sans ce
+        # réappariement, remplacer_lignes les perdrait silencieusement
         # (cf. rétro-rattachement 2026-08 : 707 lignes/38 245 € orphelines sur ~2 mois).
-        liens_par_code = {}
+        #
+        # Le code_article SEUL ne suffit pas : le code imprimé sur le papier n'est pas
+        # celui du catalogue (constaté 2026-08 sur les 2 principaux fournisseurs —
+        # Elivia catalogue « 07991-07 » vs papier « 7991-7 » ; Saveur d'Antoine catalogue
+        # « 1295 » vs papier « 001295 » : 0 ligne appariée en strict). D'où 3 clés, de la
+        # plus sûre à la moins sûre : code exact → code normalisé (zéros de tête) →
+        # désignation. Sur le rattrapage réel, la désignation a récupéré le plus de lignes.
+        liens_par_code, liens_par_code_norm, liens_par_desig = {}, {}, {}
         if body.remplacer_lignes:
             cur_anciennes = await db.execute(
-                """SELECT code_article, catalogue_fournisseur_id, reception_ligne_id
+                """SELECT code_article, designation, catalogue_fournisseur_id,
+                          reception_ligne_id
                    FROM facture_lignes
-                   WHERE facture_id = ? AND code_article IS NOT NULL AND code_article != ''
-                     AND catalogue_fournisseur_id IS NOT NULL""",
+                   WHERE facture_id = ? AND catalogue_fournisseur_id IS NOT NULL""",
                 (facture_id,),
             )
             for row in await cur_anciennes.fetchall():
-                liens_par_code[row["code_article"]] = (
-                    row["catalogue_fournisseur_id"], row["reception_ligne_id"]
-                )
+                lien = (row["catalogue_fournisseur_id"], row["reception_ligne_id"])
+                if (row["code_article"] or "").strip():
+                    liens_par_code[row["code_article"]] = lien
+                    for cle in _cles_code_article(row["code_article"]):
+                        liens_par_code_norm.setdefault(cle, lien)
+                if (row["designation"] or "").strip():
+                    liens_par_desig.setdefault(
+                        row["designation"].strip().upper(), lien
+                    )
             await db.execute(
                 "DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,)
             )
         for ligne in (body.lignes or []):
-            if ligne.catalogue_fournisseur_id is None and ligne.code_article in liens_par_code:
-                cat_id, recep_ligne_id = liens_par_code[ligne.code_article]
-                ligne.catalogue_fournisseur_id = cat_id
-                if ligne.reception_ligne_id is None:
-                    ligne.reception_ligne_id = recep_ligne_id
+            if ligne.catalogue_fournisseur_id is None:
+                code = (ligne.code_article or "").strip()
+                desig = (ligne.designation or "").strip().upper()
+                lien = liens_par_code.get(code)
+                for cle in (_cles_code_article(code) if not lien else []):
+                    lien = liens_par_code_norm.get(cle)
+                    if lien:
+                        break
+                lien = lien or liens_par_desig.get(desig)
+                if lien:
+                    ligne.catalogue_fournisseur_id = lien[0]
+                    if ligne.reception_ligne_id is None:
+                        ligne.reception_ligne_id = lien[1]
             await _inserer_facture_ligne(db, facture_id, ligne)
 
         await _recalculer_totaux_facture(db, facture_id)

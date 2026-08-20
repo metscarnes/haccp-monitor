@@ -107,16 +107,107 @@ comme confirmé par l'utilisateur), mais un vrai bug de perte de lien au remplac
   après exécution. Aucune ligne supprimée, aucun montant/poids modifié, uniquement le
   lien catalogue complété.
 
+### 5. Cause racine du "code sans fiche catalogue" : padding des zéros (trouvée le 20/08/2026)
+
+Le diagnostic initial "aucune fiche catalogue pour ce code" était une fausse piste. Les
+tests menés le 20/08 ont montré :
+
+- match sur code normalisé (espaces/tirets/points retirés), même fournisseur : **0 ligne** ;
+- match sur code exact chez un autre fournisseur : **0 ligne** ;
+- orphelines dont la facture est rattachée à une réception : **662 / 665** ;
+- match par **désignation exacte** via la réception liée, candidat unique : **310 lignes**.
+
+Exemple décisif : catalogue Elivia `07991-07` = "BATEAU PAD BOVIN L" ; ligne facture OCR
+`7991-7` = "BATEAU PAD BOVIN L". **Même article, désignation identique, code différant
+uniquement par les zéros de tête.**
+
+Deux conventions de codage en cause :
+
+| Fournisseur | Catalogue | Lu par l'OCR sur le papier |
+|---|---|---|
+| Elivia/Selvi | `0XXXXX-0Y` (zéros de tête sur les 2 segments) | `XXXXX-Y` |
+| Saveur d'Antoine | `NNNN` (sans zéros) | `00NNNN` (avec zéros) |
+
+Ce n'était donc ni un catalogue incomplet, ni une coquille OCR, mais une **différence de
+format de code entre le catalogue et le papier fournisseur**.
+
+### 6. Rattrapage rétroactif — deuxième passe via la réception (faite le 20/08/2026)
+
+- **Sauvegarde préalable** : `backups/haccp_avant_rattrapage_via_reception_20260820_142502.db`
+  (24 Mo) sur le Pi.
+- **Critère de rattachement (double preuve, non ambigu)** : ligne facture orpheline dont
+  la facture porte un `reception_id`, avec **un seul** article de cette réception dont la
+  `designation` catalogue est identique (UPPER/TRIM) à celle de la ligne facture, **ET**
+  dont le `code_article` est compatible une fois les zéros de tête retirés segment par
+  segment.
+- **Résultat** : **283 lignes rattachées (16 798,73 € HT)** — `changes()` = 283.
+- `UPDATE` borné par `AND catalogue_fournisseur_id IS NULL` (impossible d'écraser un lien
+  existant), colonne `catalogue_fournisseur_id` seule modifiée : aucun montant, poids ni
+  libellé touché.
+
+**État après cette passe : 382 lignes orphelines / 19 334,56 € HT** (contre 665 / 36 133 €).
+
+### 7. Le correctif de code b520984 était INSUFFISANT — corrigé le 20/08/2026
+
+Le correctif initial réappariait le lien catalogue par **`code_article` en égalité
+stricte**. Or la cause racine découverte au §5 est justement que le code du papier n'est
+jamais celui du catalogue chez les 2 principaux fournisseurs : **le réappariement ne
+récupérait donc 0 ligne** sur Elivia et Saveur d'Antoine (test A : 0 match strict). Le
+bug était corrigé sur le papier, pas dans les faits.
+
+Efficacité réelle mesurée des critères, sur les données de prod :
+
+| Critère | Lignes récupérées |
+|---|---|
+| `code_article` strict | **0** |
+| code normalisé (zéros de tête) | 89 |
+| **désignation exacte via la réception** | **310** |
+
+`appliquer_import` (`src/api/routes_achats.py`) applique désormais les 3 critères en
+cascade, du plus sûr au moins sûr : **code exact → code normalisé → désignation**.
+Helper `_cles_code_article()` : deux normalisations (par segment pour `07991-07`↔`7991-7`,
+et sans tiret pour `ART-01`↔`ART01`).
+
+Garde-fou : si aucun critère ne correspond, le lien reste `NULL` — jamais de rattachement
+au hasard (un faux lien fausserait l'analyse plus discrètement qu'une ligne orpheline).
+
+Tests ajoutés (`tests/test_factures_refonte_etape4.py`) :
+`test_appliquer_import_lien_catalogue_code_non_strict` (paramétré `0ART01` / `ART-01` /
+` art01 `), `test_appliquer_import_lien_catalogue_par_designation`,
+`test_appliquer_import_pas_de_lien_invente`. Suite facture : **73/73 passent**.
+
+**À déployer sur le Pi** (non commité à ce stade).
+
+### 8. Vérification par les PDF fournisseur (27 factures Elivia, 10/06→17/08)
+
+Les PDF originaux (`OneDrive\Les lilas\fournisseur\Alimentaire\EliviaSelvi\Factures`)
+confirment deux points :
+
+- **La ligne « art8 » à 1 499,82 € n'est PAS un artefact OCR.** Facture 26481608 du
+  10/08/2026 : `ART8 BOVIN / VBF / 26504-1 / 119,000 kg / 12,50 €/kg = 1 487,50 € HT`
+  (+2,50 transport +9,82 taxes). C'est le vrai libellé Elivia, le candidat catalogue
+  `26504-1` est le bon → rattachable sans risque.
+- **Le suffixe du code Elivia n'est pas un identifiant produit stable** : le même article
+  part sous plusieurs suffixes selon la livraison, à prix identique — TENDE TRANCHE
+  `43549-1` et `43549-2` (13,65 €/kg dans les deux cas), AGNEAU ENTIER `2802-4` et
+  `2802-1`, RUMSTECK `7983-1` et `7983-2`, TRAVERS `79111-4` et `79111-2`, LONGE
+  `76803-4`/`76803-2`, BARDE `70297-5`/`70297-1`, CARRE FILET `26501-3`/`26501-1`,
+  MLTC `43514-1`/`43514-3`. Rattacher `43549-1` à la fiche `43549-02` est donc **correct
+  au niveau produit** — la réserve du §"passe 2" est levée.
+
 ---
 
 ## À FAIRE — CRITIQUE, à traiter en priorité
 
-### Reste : 665 lignes orphelines (665 = 707 − 42), à ventiler ainsi :
+### Reste : 382 lignes orphelines / 19 334,56 € HT
+
+Décomposition connue au 20/08/2026 après la passe via réception :
 
 | Sous-cause | Lignes | Montant HT | Piste de résolution |
 |---|---|---|---|
-| `code_article` présent mais aucune fiche catalogue pour ce fournisseur | 536 | ≈ 34 360 € | Voir pistes ci-dessous |
-| Pas de `code_article` du tout (OCR n'a rien extrait) | 129 | ≈ 1 773 € | Correction plus manuelle, désignation texte |
+| Désignation identique via réception mais **code divergent** (suffixe de variante : `43549-1` vs `43549-02`, `86878-2` vs `86878-01`) | 26 | ≈ 3 455 € | Rattachement recommandé (même article, variante de calibre/conditionnement) — à valider |
+| Ligne "art8" sans code, montant élevé | 1 | 1 499,82 € | **Suspecte** : désignation = artefact OCR, match par désignation accidentel. NE PAS rattacher sans vérification à l'écran |
+| Reste : pas de candidat unique par désignation, ou pas de `code_article` du tout | ≈ 355 | ≈ 14 380 € | Rapprochement par poids/prix via la réception liée, puis validation manuelle |
 
 **Sous-question à trancher en premier** : comme le workflow (catalogue → commande →
 réception) garantit que l'article existe forcément au catalogue au moment de la
