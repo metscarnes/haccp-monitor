@@ -106,13 +106,18 @@
           <th>Commande</th>
           <th class="ach-col-num">Articles</th>
           <th class="ach-col-num">Facturé HT</th>
-          <th class="ach-col-num">Écart HT</th>
+          <!-- Écart HT retiré : trompeur hors rapprochement. L'attendu vaut 0 dès qu'une
+               ligne n'a ni poids reçu ni prix commande (facture sans réception, ligne
+               ajoutée à la main, article hors commande) → l'écart affichait alors le
+               montant facturé ENTIER. Purement décoratif : aucun statut, total ou
+               agrégat ne s'en sert. Le vrai contrôle est le bouclage vs total papier,
+               dans la modale. La colonne reste en base et dans les exports. -->
           <th>Statut</th>
           <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="tbody-factures">
-        <tr><td colspan="9" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="8" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>
@@ -390,6 +395,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/factures-achats.js?v=3"></script>
+  <script src="/static/js/achats/factures-achats.js?v=4"></script>
 </body>
 </html>

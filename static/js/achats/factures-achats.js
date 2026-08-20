@@ -217,14 +217,12 @@ function rendreFactures() {
     ? factures.filter(f => f.nb_non_rattachees > 0)
     : factures;
   if (!liste.length) {
-    tbody.innerHTML = `<tr><td colspan="9" class="ach-vide">${filtreOrphelines
+    tbody.innerHTML = `<tr><td colspan="8" class="ach-vide">${filtreOrphelines
       ? 'Aucune facture avec des lignes non rattachées 🎉'
       : 'Aucune facture. Cliquez sur « + Nouvelle facture ».'}</td></tr>`;
     return;
   }
   tbody.innerHTML = liste.map(f => {
-    const ecart = f.ecart_total_ht ?? 0;
-    const cls = classeEcart(ecart);
     return `
       <tr data-id="${f.id}" style="cursor:pointer;">
         <td>${f.type === 'avoir' ? '<span class="fac-badge-avoir">↩ AVOIR</span> ' : ''}${escHtml(f.numero_facture) || '<em style="color:#9ca3af;">— à saisir —</em>'}</td>
@@ -235,7 +233,6 @@ function rendreFactures() {
           ? ` <span class="fac-badge-orph" title="${f.nb_non_rattachees} ligne(s) sans article catalogue (${fmtPrix(f.montant_non_rattache)} € HT) — invisibles dans l'analyse achats par produit">🔗${f.nb_non_rattachees}</span>`
           : ''}</td>
         <td class="ach-col-num">${fmtPrix(f.montant_total_ht_facture)} €</td>
-        <td class="ach-col-num fac-ecart ${cls}">${signe(ecart)}${fmtPrix(Math.abs(ecart))} €</td>
         <td><span class="ach-badge ach-badge--${f.statut}">${STATUT_LABELS[f.statut] || f.statut}${f.nb_litiges ? ` · ${f.nb_litiges}⚠` : ''}</span></td>
         <td class="ach-col-actions"><button class="ach-btn" data-open="${f.id}">Ouvrir</button></td>
       </tr>`;

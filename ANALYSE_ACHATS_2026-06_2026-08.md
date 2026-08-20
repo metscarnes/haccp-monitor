@@ -1,9 +1,10 @@
 # Analyse achats/marge — période 10/06/2026 → 20/08/2026
 
-**Statut : rattachement catalogue TERMINÉ (20/08/2026) — 99,4 % du montant récupéré.**
-L'analyse achats par produit/famille sur la période est désormais fiable ; reliquat
-assumé de 11 lignes / 237,16 € (0,6 %). Le bug de perte du lien à l'import OCR est
-corrigé ET déployé (§7). Reste à mener : l'analyse achats elle-même.
+**Statut : rattachement catalogue TERMINÉ (20/08/2026) — 100 % du montant récupéré.**
+Il ne reste que 2 lignes marchandise orphelines, à 0,00 €. L'analyse achats par
+produit/famille sur la période est pleinement fiable. Le bug de perte du lien à l'import
+OCR est corrigé et déployé (§7), et la prévention couvre désormais tous les chemins de
+création de ligne (§11). Reste à mener : l'analyse achats elle-même.
 
 ---
 
@@ -304,10 +305,15 @@ Point de retour disponible à chaque étape. (Piège à éviter : `ls | tail` tr
 | Racine de code, passe 4 (§10) | −29 | −4 611,40 € |
 | Cuisses Bourdicaud, rattachement manuel (§13) | −3 | −130,85 € |
 | Fiches catalogue créées puis rattachées, passe 5 (§13) | −3 | −1 830,05 € |
-| **Reste marchandise** | **11** | **237,16 €** |
+| Fiches restantes créées par l'utilisateur (fin de session) | −9 | −237,16 € |
+| **Reste marchandise** | **2** | **0,00 €** |
+| Reste taxes/transport/remises/ajustement | 127 | 273,57 € net |
 
-**99,4 % du montant orphelin récupéré**, sans aucun rattachement douteux.
-→ **Le rattrapage est terminé.** L'analyse achats par produit/famille est exploitable.
+**100 % du montant orphelin récupéré**, sans aucun rattachement douteux. Les 2 dernières
+lignes marchandise (Fuet catalan `020639`/`020643`, Saveur d'Antoine) sont à **0,00 €** —
+échantillons ou offerts, impact nul sur toute analyse.
+→ **Le rattrapage est TERMINÉ.** L'analyse achats par produit/famille est pleinement
+exploitable sur la période.
 
 ### 13. Fin du rattrapage — fiches manquantes (20/08/2026)
 
