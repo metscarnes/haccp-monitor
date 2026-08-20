@@ -230,6 +230,9 @@ class FactureUpdate(BaseModel):
 
 
 class FactureLigneUpdate(BaseModel):
+    # Rattachement manuel à un article du catalogue (écran « lignes non rattachées ») :
+    # sans lui, la ligne reste invisible dans l'analyse achats par produit/famille.
+    catalogue_fournisseur_id: Optional[int] = None
     poids_facture_kg: Optional[float] = None
     prix_facture_ht: Optional[float] = None
     montant_facture_ht: Optional[float] = None  # saisie directe du montant ligne (prioritaire)
@@ -1086,6 +1089,59 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
         await db.commit()
 
     return stats
+
+
+@router.get("/catalogue/recherche")
+async def rechercher_catalogue(fournisseur_id: int, q: str = "", limite: int = 20):
+    """Recherche d'articles du catalogue d'un fournisseur, pour rattacher une ligne
+    facture à la main. Classement : correspondance texte, puis FRÉQUENCE DE RÉCEPTION
+    sur 6 mois — « on commande toujours la même chose », donc l'article reçu 18 fois
+    doit arriver avant celui reçu une fois. Sans terme de recherche, renvoie
+    directement les plus reçus.
+
+    (Déclarée AVANT /catalogue/{article_id} : FastAPI résout dans l'ordre, une route
+    littérale placée après serait capturée par le paramètre de chemin.)"""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM fournisseurs WHERE id = ? AND boutique_id = 1", (fournisseur_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(404, "Fournisseur introuvable")
+
+        articles = await db.execute_fetchall(
+            """SELECT id, code_article, designation, prix_achat_ht, famille,
+                      sous_famille, actif
+               FROM catalogue_fournisseur WHERE fournisseur_id = ?""",
+            (fournisseur_id,),
+        )
+        freq = await _frequences_reception(db, fournisseur_id)
+        terme = (q or "").strip()
+        tokens = _normaliser_texte(terme)
+
+        resultats = []
+        for a in articles:
+            item = dict(a)
+            item["nb_receptions_6mois"] = freq.get(a["id"], 0)
+            if terme:
+                tokens_art = _normaliser_texte(a["designation"] or "")
+                code_norm = set(_cles_code_article(a["code_article"]))
+                correspond = (
+                    bool(tokens and tokens <= tokens_art)
+                    or bool(code_norm & set(_cles_code_article(terme)))
+                    or terme.lower() in (a["designation"] or "").lower()
+                    or terme.lower() in (a["code_article"] or "").lower()
+                )
+                if not correspond:
+                    continue
+                item["similarite"] = round(_similarite(terme, a["designation"] or ""), 3)
+            else:
+                item["similarite"] = 0.0
+            resultats.append(item)
+
+        resultats.sort(key=lambda r: (-r["similarite"], -r["nb_receptions_6mois"],
+                                      r["designation"] or ""))
+        return {"fournisseur_id": fournisseur_id, "q": terme,
+                "nb": len(resultats), "articles": resultats[:limite]}
 
 
 @router.get("/catalogue/variations-prix")
@@ -3847,6 +3903,125 @@ def _cles_code_article(code) -> list:
     return [par_segment] if par_segment == sans_tiret else [par_segment, sans_tiret]
 
 
+async def _frequences_reception(db, fournisseur_id: int, mois: int = 6) -> dict:
+    """{catalogue_fournisseur_id: nb de réceptions} sur une fenêtre glissante.
+
+    La RÉCEPTION est la source de fréquence : c'est ce qui a été physiquement reçu
+    (95 % de ses lignes portent le lien catalogue), indépendamment des factures — donc
+    non affectée par le bug de perte de lien à l'import OCR. Fenêtre glissante pour
+    qu'un article sorti de la gamme cesse de remonter dans les suggestions."""
+    depuis = (date.today() - timedelta(days=30 * mois)).isoformat()
+    rows = await db.execute_fetchall(
+        """SELECT rl.catalogue_fournisseur_id AS cat_id, COUNT(*) AS nb
+           FROM reception_lignes rl
+           JOIN receptions r ON r.id = rl.reception_id
+           JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+           WHERE cf.fournisseur_id = ? AND rl.catalogue_fournisseur_id IS NOT NULL
+             AND DATE(r.created_at) >= ?
+           GROUP BY rl.catalogue_fournisseur_id""",
+        (fournisseur_id, depuis),
+    )
+    return {r["cat_id"]: r["nb"] for r in rows}
+
+
+async def _suggerer_articles_catalogue(db, fournisseur_id: int, code_article: str,
+                                       designation: str, limite: int = 5) -> list:
+    """Articles catalogue les plus probables pour une ligne facture non rattachée.
+
+    Score = similarité de désignation (Jaccard sur tokens, accents neutralisés) + bonus
+    de fréquence de réception. « On commande toujours la même chose » : à libellé
+    également proche, l'article reçu 18 fois passe devant celui reçu une fois. Le bonus
+    est plafonné pour qu'il départage sans jamais imposer un article au libellé éloigné.
+    """
+    articles = await db.execute_fetchall(
+        """SELECT id, code_article, designation, prix_achat_ht, actif
+           FROM catalogue_fournisseur WHERE fournisseur_id = ?""",
+        (fournisseur_id,),
+    )
+    if not articles:
+        return []
+    freq = await _frequences_reception(db, fournisseur_id)
+    freq_max = max(freq.values()) if freq else 0
+    cles_ligne = set(_cles_code_article(code_article))
+
+    suggestions = []
+    for a in articles:
+        sim = _similarite(designation or "", a["designation"] or "")
+        nb = freq.get(a["id"], 0)
+        bonus = 0.25 * (nb / freq_max) if freq_max else 0.0
+        # Racine de code identique = signal fort (le suffixe fournisseur n'est pas un
+        # identifiant produit stable, cf. Elivia 43549-1 / 43549-02 sur le même article).
+        meme_racine = bool(cles_ligne & set(_cles_code_article(a["code_article"])))
+        if meme_racine:
+            bonus += 0.5
+        score = sim + bonus
+        if score <= 0:
+            continue
+        suggestions.append({
+            "catalogue_fournisseur_id": a["id"],
+            "code_article": a["code_article"],
+            "designation": a["designation"],
+            "prix_achat_ht": a["prix_achat_ht"],
+            "actif": a["actif"],
+            "nb_receptions_6mois": nb,
+            "similarite": round(sim, 3),
+            "score": round(min(score, 1.0), 3),
+        })
+    suggestions.sort(key=lambda s: (-s["score"], -s["nb_receptions_6mois"]))
+    return suggestions[:limite]
+
+
+async def _resoudre_lien_catalogue(db, fournisseur_id: int, ligne) -> None:
+    """Rattache une ligne MARCHANDISE au catalogue du fournisseur quand le front n'a pas
+    fourni le lien (saisie manuelle, ajout de ligne, import). Ne touche jamais aux
+    annexes (transport/taxe/... n'ont légitimement aucun article).
+
+    Cascade éprouvée sur le rattrapage 2026-08, du plus sûr au moins sûr :
+    code exact → code normalisé → racine de code → désignation identique. Chaque niveau
+    exige un candidat UNIQUE : en cas d'ambiguïté on laisse NULL et l'appelant proposera
+    des suggestions plutôt que de rattacher au hasard (un faux lien fausse l'analyse
+    achats plus discrètement qu'une ligne orpheline)."""
+    if (ligne.type_ligne or "marchandise").strip().lower() != "marchandise":
+        return
+    if ligne.catalogue_fournisseur_id is not None:
+        return
+
+    code = (ligne.code_article or "").strip()
+    desig = (ligne.designation or "").strip()
+    if not code and not desig:
+        return
+
+    articles = await db.execute_fetchall(
+        "SELECT id, code_article, designation FROM catalogue_fournisseur WHERE fournisseur_id = ?",
+        (fournisseur_id,),
+    )
+    if not articles:
+        return
+
+    def _unique(candidats):
+        ids = {c["id"] for c in candidats}
+        return candidats[0]["id"] if len(ids) == 1 else None
+
+    trouve = None
+    if code:
+        trouve = _unique([a for a in articles if (a["code_article"] or "").strip() == code])
+        if trouve is None:
+            cles = set(_cles_code_article(code))
+            trouve = _unique([a for a in articles
+                              if cles & set(_cles_code_article(a["code_article"]))])
+        if trouve is None:
+            racine = _cles_code_article(code)[0].split("-")[0] if code else ""
+            trouve = _unique([a for a in articles
+                              if racine and _cles_code_article(a["code_article"])
+                              and _cles_code_article(a["code_article"])[0].split("-")[0] == racine])
+    if trouve is None and desig:
+        cible = desig.upper()
+        trouve = _unique([a for a in articles
+                          if (a["designation"] or "").strip().upper() == cible])
+    if trouve is not None:
+        ligne.catalogue_fournisseur_id = trouve
+
+
 def _arrondi_commercial(x, decimales: int = 2):
     """Arrondi « facture » : ROUND_HALF_UP (2,675 → 2,68), à la différence du
     round() de Python (arrondi bancaire : 2,675 → 2,67). Passe par Decimal(str(x))
@@ -4802,6 +4977,32 @@ async def _verifier_doublon_numero_facture(db, fournisseur_id, numero_facture,
         )
 
 
+async def _verifier_coherence_catalogue(db, facture_id: int, catalogue_fournisseur_id) -> None:
+    """422 si l'article catalogue n'appartient pas au fournisseur de la facture.
+
+    Incohérence jamais légitime (elle imputerait l'achat au mauvais fournisseur et
+    fausserait le comparatif), et jusqu'ici rien ne l'empêchait. Ne bloque que ce cas :
+    une ligne SANS lien reste acceptée (annexes, article hors catalogue en cours de
+    saisie) — c'est `_resoudre_lien_catalogue` + les suggestions qui la traitent."""
+    if catalogue_fournisseur_id is None:
+        return
+    cur = await db.execute(
+        """SELECT cf.fournisseur_id AS cat_fid, f.fournisseur_id AS fac_fid
+           FROM factures f LEFT JOIN catalogue_fournisseur cf ON cf.id = ?
+           WHERE f.id = ?""",
+        (catalogue_fournisseur_id, facture_id),
+    )
+    row = await cur.fetchone()
+    if not row or row["cat_fid"] is None:
+        raise HTTPException(422, "Article catalogue introuvable.")
+    if row["cat_fid"] != row["fac_fid"]:
+        raise HTTPException(
+            422,
+            "Article catalogue d'un autre fournisseur que celui de la facture : "
+            "l'achat serait imputé au mauvais fournisseur.",
+        )
+
+
 async def _inserer_facture_ligne(db, facture_id: int, ligne: FactureLigneCreate) -> int:
     """Insère une ligne (marchandise OU annexe) avec ses calculs, renvoie son id.
 
@@ -4814,6 +5015,7 @@ async def _inserer_facture_ligne(db, facture_id: int, ligne: FactureLigneCreate)
     type_ligne = (ligne.type_ligne or "marchandise").strip().lower()
     if type_ligne not in TYPES_LIGNE:
         raise HTTPException(422, f"type_ligne invalide : {type_ligne} (attendu : {', '.join(TYPES_LIGNE)})")
+    await _verifier_coherence_catalogue(db, facture_id, ligne.catalogue_fournisseur_id)
     u = (ligne.unite_prix or "kg").strip().lower()
     unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
 
@@ -4892,6 +5094,7 @@ async def create_facture(body: FactureCreate):
         facture_id = cur.lastrowid
 
         for ligne in (body.lignes or []):
+            await _resoudre_lien_catalogue(db, body.fournisseur_id, ligne)
             await _inserer_facture_ligne(db, facture_id, ligne)
 
         await _recalculer_totaux_facture(db, facture_id)
@@ -4906,20 +5109,29 @@ async def ajouter_facture_ligne(facture_id: int, body: FactureLigneCreate):
     total, mais aussi une marchandise oubliée sur le BL."""
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT id, statut FROM factures WHERE id = ?", (facture_id,)
+            "SELECT id, statut, fournisseur_id FROM factures WHERE id = ?", (facture_id,)
         )
         fac = await cur.fetchone()
         if not fac:
             raise HTTPException(404, "Facture introuvable")
         _verifier_facture_modifiable(fac)
 
+        await _resoudre_lien_catalogue(db, fac["fournisseur_id"], body)
         ligne_id = await _inserer_facture_ligne(db, facture_id, body)
         await _recalculer_totaux_facture(db, facture_id)
         await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
 
         cur2 = await db.execute("SELECT * FROM facture_lignes WHERE id = ?", (ligne_id,))
-        return dict(await cur2.fetchone())
+        ligne = dict(await cur2.fetchone())
+        # Marchandise restée non rattachée : on laisse passer (jamais de blocage en
+        # saisie) mais on renvoie de quoi la rattacher en un clic.
+        if (ligne["type_ligne"] == "marchandise"
+                and ligne["catalogue_fournisseur_id"] is None):
+            ligne["suggestions_catalogue"] = await _suggerer_articles_catalogue(
+                db, fac["fournisseur_id"], ligne["code_article"], ligne["designation"]
+            )
+        return ligne
 
 
 @router.post("/factures/{facture_id}/solder-ecart", status_code=201)
@@ -5314,12 +5526,59 @@ async def appliquer_import(facture_id: int, body: ImportApplication):
                     ligne.catalogue_fournisseur_id = lien[0]
                     if ligne.reception_ligne_id is None:
                         ligne.reception_ligne_id = lien[1]
+                else:
+                    # Aucune ancienne ligne ne correspond (facture sans réception, ou
+                    # article absent du brouillon) : on cherche dans le catalogue.
+                    await _resoudre_lien_catalogue(db, fac["fournisseur_id"], ligne)
             await _inserer_facture_ligne(db, facture_id, ligne)
 
         await _recalculer_totaux_facture(db, facture_id)
         await _maj_statut_rapprochement(db, facture_id)
         await db.commit()
     return await get_facture(facture_id)
+
+
+@router.get("/factures/{facture_id}/lignes-non-rattachees")
+async def lignes_non_rattachees(facture_id: int):
+    """Lignes MARCHANDISE sans article catalogue, avec les suggestions de rattachement.
+
+    Ce que l'écran affiche pour corriger avant de valider : on n'a jamais bloqué la
+    saisie (une livraison ne doit pas être bloquée parce qu'un article manque au
+    catalogue), mais une ligne non rattachée reste invisible dans l'analyse achats —
+    d'où ce signalement. Les annexes (transport/taxe/...) sont exclues : elles n'ont
+    légitimement aucun article."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id, fournisseur_id FROM factures WHERE id = ?", (facture_id,)
+        )
+        fac = await cur.fetchone()
+        if not fac:
+            raise HTTPException(404, "Facture introuvable")
+
+        rows = await db.execute_fetchall(
+            """SELECT id, code_article, designation, poids_facture_kg, prix_facture_ht,
+                      montant_facture_ht
+               FROM facture_lignes
+               WHERE facture_id = ? AND type_ligne = 'marchandise'
+                 AND catalogue_fournisseur_id IS NULL
+               ORDER BY montant_facture_ht DESC""",
+            (facture_id,),
+        )
+        lignes = []
+        for r in rows:
+            ligne = dict(r)
+            ligne["suggestions"] = await _suggerer_articles_catalogue(
+                db, fac["fournisseur_id"], r["code_article"], r["designation"]
+            )
+            lignes.append(ligne)
+        return {
+            "facture_id": facture_id,
+            "nb": len(lignes),
+            "montant_ht": _arrondi_commercial(
+                sum(l["montant_facture_ht"] or 0 for l in lignes)
+            ),
+            "lignes": lignes,
+        }
 
 
 @router.put("/factures/{facture_id}")
@@ -5403,6 +5662,11 @@ async def update_facture_ligne(facture_id: int, ligne_id: int, body: FactureLign
             if u not in ("kg",) + UNITES_PRIX_QUANTITE:
                 raise HTTPException(422, "unite_prix doit être 'kg', 'colis' ou 'piece'")
             fields["unite_prix"] = u
+
+        if "catalogue_fournisseur_id" in fields:
+            await _verifier_coherence_catalogue(
+                db, facture_id, fields["catalogue_fournisseur_id"]
+            )
 
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [ligne_id]

@@ -1,8 +1,9 @@
 # Analyse achats/marge — période 10/06/2026 → 20/08/2026
 
-**Statut : EN COURS — bloquée sur le rattachement catalogue (voir "À FAIRE" en bas).**
-**Priorité : CRITIQUE.** Sans le rattachement des 665 lignes restantes, aucune analyse
-achats par produit/famille sur cette période (~3 mois de données) n'est fiable.
+**Statut : rattachement catalogue TERMINÉ (20/08/2026) — 99,4 % du montant récupéré.**
+L'analyse achats par produit/famille sur la période est désormais fiable ; reliquat
+assumé de 11 lignes / 237,16 € (0,6 %). Le bug de perte du lien à l'import OCR est
+corrigé ET déployé (§7). Reste à mener : l'analyse achats elle-même.
 
 ---
 
@@ -195,19 +196,166 @@ confirment deux points :
   MLTC `43514-1`/`43514-3`. Rattacher `43549-1` à la fiche `43549-02` est donc **correct
   au niveau produit** — la réserve du §"passe 2" est levée.
 
+### 9. Rattrapage — passe 3 par code normalisé (faite le 20/08/2026)
+
+- **Sauvegarde** : `backups/haccp_avant_passe3_code_normalise_20260820_150453.db`.
+- **Critère** : ligne orpheline de type `marchandise` avec un `code_article`, rattachée à
+  la fiche `catalogue_fournisseur` du **même fournisseur** dont le code est identique
+  après neutralisation des séparateurs et des zéros de tête (les deux normalisations du
+  helper `_cles_code_article`), **candidat unique** exigé.
+- Aperçu vérifié avant écriture : padding de zéros systématique côté Saveur d'Antoine
+  (`001004`↔`1004`, `019423`↔`19423`, `000071`↔`71`), désignations concordantes ; 3 paires
+  à libellé différent contrôlées et validées (`002910` 10 FLT POULET BLANC IGP ↔ `2910`
+  Filet poulet Gretel IGP ; `004000` FILET DE DINDE S/VID ↔ `4000` Filet Dinde S/V ;
+  `000291` Rillette canard TG 2KG ↔ `291` Rillette canard).
+- **Résultat** : **182 lignes rattachées (7 296,10 € HT)**.
+
+### 10. Rattrapage — passe 4 par racine de code (faite le 20/08/2026)
+
+- **Sauvegarde** : `backups/haccp_avant_passe4_racine_code_20260820_151015.db`.
+- **Motif** : le catalogue Elivia ne compte que **42 fiches** alors que les PDF montrent
+  bien plus de références achetées → catalogue partiel. Mais plusieurs articles y étaient
+  bien présents, sous un **suffixe différent** seulement (`43514-1` facturé vs `43514-01`
+  au catalogue). La requête SQL de la passe 3 était plus faible que le helper Python
+  déployé : son `LTRIM(code,'0')` s'applique à la chaîne entière, pas segment par segment,
+  donc `43514-01` et `43514-1` n'y étaient pas reconnus égaux.
+- **Critère** : appariement sur la **racine du code** (partie avant le tiret, zéros
+  neutralisés), même fournisseur, candidat unique — légitime car les PDF ont établi que
+  le suffixe Elivia n'est pas un identifiant produit stable (§8).
+- Les 15 paires ont été contrôlées une par une avant écriture ; désignations concordantes
+  partout, y compris les variantes d'écriture (`FRANÇAIS`/`FRANCAIS`, `PALERON SP BOVIN
+  SV`/`SY` — coquille catalogue, `FOIE EXTRA VEAU NSV`/`Foie de veau`).
+- **Résultat** : **29 lignes rattachées (4 611,40 € HT)**.
+
+### 11. Prévention : plus aucune ligne orpheline ne doit se créer (20/08/2026)
+
+Le rattrapage règle le passé ; il fallait fermer les robinets. Cartographie des chemins
+qui créent une ligne de facture, et état de chacun **avant** :
+
+| Chemin | Lien catalogue | Risque |
+|---|---|---|
+| clôture réception → facture auto | copié de la réception | nul |
+| import OCR / Factur-X | cascade (§7) | résiduel |
+| `POST /factures` (saisie manuelle) | ce que le front envoie | **non protégé** |
+| `POST /factures/{id}/lignes` | ce que le front envoie | **non protégé** |
+| `solder-ecart` / `avoir-depuis-litiges` | NULL volontaire | nul (annexes) |
+
+**Choix retenu : assistance, PAS blocage.** Un blocage dur aurait cassé trois usages
+légitimes : les annexes (transport/taxe n'ont aucun article), `solder-ecart` (crée exprès
+une ligne d'ajustement), et surtout la saisie d'un article hors catalogue en pleine
+réception — bouchon inacceptable à 6 h du matin.
+
+1. **Rattrapage serveur avant insertion** (`_resoudre_lien_catalogue`) sur les chemins
+   manuels et l'import : cascade code exact → code normalisé → racine → désignation,
+   candidat **unique** exigé à chaque niveau, sinon NULL.
+2. **Seul blocage ajouté** (`_verifier_coherence_catalogue`, 422) : article catalogue
+   appartenant à un AUTRE fournisseur que la facture — incohérence jamais légitime, qui
+   imputerait l'achat au mauvais fournisseur. Rien ne l'empêchait auparavant.
+3. **Suggestions classées** (`_suggerer_articles_catalogue`) : similarité de libellé
+   (Jaccard, accents neutralisés → `FRANÇAIS` trouve `FRANCAIS`) + bonus de **fréquence
+   de réception sur 6 mois glissants** + bonus fort si racine de code commune. Fondement :
+   « on commande toujours la même chose », donc l'article reçu 18 fois passe devant celui
+   reçu une fois. La fréquence vient des RÉCEPTIONS (95 % ont le lien, non affectées par
+   le bug facture).
+
+**Endpoints** : `GET /factures/{id}/lignes-non-rattachees` (lignes + suggestions +
+montant), `GET /catalogue/recherche?fournisseur_id=&q=` (recherche libre, les plus reçus
+en tête ; déclarée AVANT `/catalogue/{article_id}` sinon FastAPI la capture).
+`FactureLigneUpdate` accepte désormais `catalogue_fournisseur_id` (rattachement manuel).
+
+**Écran** (`factures-achats.html`) : bandeau bleu dans la modale facture listant les
+lignes non rattachées avec leur montant, bouton « Rattacher… » par ligne ouvrant une
+modale (suggestions d'abord, recherche libre ensuite). Masqué sur facture validée
+(verrouillée) : le constat reste visible pour l'audit, l'action est retirée.
+
+Tests : `tests/test_factures_rattachement_catalogue.py` — 13 tests (rattachement sur les
+4 formats de code réels, par désignation, non-blocage d'un article inconnu, annexes
+jamais rattachées, refus inter-fournisseur, classement des suggestions, priorisation par
+fréquence, rattachement manuel). **110/110 sur tout le périmètre achats.**
+
+### 12. Intégrité des sauvegardes — vérifiée le 20/08/2026
+
+`PRAGMA integrity_check` = `ok` sur les 5 sauvegardes, et le nombre d'orphelines de chacune
+correspond exactement à l'état attendu au moment de sa création :
+
+| Heure | Sauvegarde | Orphelines |
+|---|---|---|
+| 13:56 | `haccp_avant_rattrapage_catalogue_20260820_135630.db` | 707 |
+| 14:25 | `haccp_avant_rattrapage_via_reception_20260820_142502.db` | 665 |
+| 14:42 | `haccp_avant_passe2_suffixes_20260820_144226.db` | 382 |
+| 15:01 | `haccp_avant_passe2_suffixes_20260820_150156.db` | 355 |
+| 15:04 | `haccp_avant_passe3_code_normalise_20260820_150453.db` | 355 |
+| 15:10 | `haccp_avant_passe4_racine_code_20260820_151015.db` | 173 |
+| — | base actuelle | **144** |
+
+Point de retour disponible à chaque étape. (Piège à éviter : `ls | tail` trie par ordre
+**alphabétique** — utiliser `ls -lht` pour un tri chronologique réel.)
+
 ---
 
-## À FAIRE — CRITIQUE, à traiter en priorité
+## Bilan du rattrapage
 
-### Reste : 382 lignes orphelines / 19 334,56 € HT
+| Étape | Lignes | Montant HT |
+|---|---|---|
+| Départ | 707 | 38 244,62 € |
+| Code strict (§4) | −42 | −2 111,33 € |
+| Via réception, passes 1+2 (§6) | −310 | −21 754,16 € |
+| Code normalisé, passe 3 (§9) | −182 | −7 296,10 € |
+| Racine de code, passe 4 (§10) | −29 | −4 611,40 € |
+| Cuisses Bourdicaud, rattachement manuel (§13) | −3 | −130,85 € |
+| Fiches catalogue créées puis rattachées, passe 5 (§13) | −3 | −1 830,05 € |
+| **Reste marchandise** | **11** | **237,16 €** |
 
-Décomposition connue au 20/08/2026 après la passe via réception :
+**99,4 % du montant orphelin récupéré**, sans aucun rattachement douteux.
+→ **Le rattrapage est terminé.** L'analyse achats par produit/famille est exploitable.
 
-| Sous-cause | Lignes | Montant HT | Piste de résolution |
-|---|---|---|---|
-| Désignation identique via réception mais **code divergent** (suffixe de variante : `43549-1` vs `43549-02`, `86878-2` vs `86878-01`) | 26 | ≈ 3 455 € | Rattachement recommandé (même article, variante de calibre/conditionnement) — à valider |
-| Ligne "art8" sans code, montant élevé | 1 | 1 499,82 € | **Suspecte** : désignation = artefact OCR, match par désignation accidentel. NE PAS rattacher sans vérification à l'écran |
-| Reste : pas de candidat unique par désignation, ou pas de `code_article` du tout | ≈ 355 | ≈ 14 380 € | Rapprochement par poids/prix via la réception liée, puis validation manuelle |
+### 13. Fin du rattrapage — fiches manquantes (20/08/2026)
+
+Le reliquat de la passe 4 était constitué d'articles **réellement achetés mais absents du
+catalogue** (Elivia n'avait que 42 fiches pour bien plus de références facturées).
+
+- **Cuisses Bourdicaud** (lignes 727, 882, 1298 — `025201`, 3 × 8,95 €/kg, 130,85 €) :
+  rattachées manuellement à la fiche existante **id 2432** (code article `2480`, « Cuisse
+  Poulet Blanc Fermier Label Rouge IDF », 8,95 €/kg — prix catalogue identique au prix
+  facturé). ⚠️ Piège évité : l'ID interne 2480 correspond à une tout autre fiche (« Filet
+  Pintade Sans/Peau S/V », 20 €, inactive) — ne pas confondre `code_article` et `id`.
+- **Fiches créées par l'utilisateur** puis rattachées par la même règle que la passe 4 :
+  `47049-02` PAN EPAULE PAD VEAU PCA (id 3194, 2 lignes, 1 685,75 €) et `81109-08` COTE
+  BOVIN S/V (id 3195, 1 ligne, 144,30 €). Prix relevés sur les PDF : 13,75 €/kg et
+  19,50 €/kg.
+
+---
+
+## À FAIRE
+
+### Reliquat accepté : 11 lignes marchandise / 237,16 € (0,6 %)
+
+Non bloquant. Composition : 3 lignes à 0,00 € (TARTARE DE TOMATES, 2 Fuet catalan),
+2 petites lignes Saveur d'Antoine (48 €), filets mignons Elivia (`76548-5`/`76548-1`,
+`70451-2`), `43662-2` ONGLET SP X2, `43471-1` GORGE S/COUENNE. À traiter seulement si de
+nouvelles fiches catalogue sont créées pour ces références.
+
+### Point de vigilance : prestations comptées en marchandise
+
+`PREST DESOSSAGE VX PAD` (`99864-01`) est rattachée mais porte `type_ligne='marchandise'`
+alors que c'est une **prestation de service** — elle gonfle artificiellement le volume
+d'achat produit. À reclasser avant une analyse fine par produit.
+
+Les 127 autres lignes orphelines (taxe 102, transport 20, remise 4, ajustement 1 — soit
+≈ 274 € net) **n'ont pas vocation à être rattachées** : ce sont des annexes de facture
+(Transport, INTERBEV, REDEVANCE SANITAIRE DE DECOUPE, CVO/CSE INAPORC, PREST DESOSSAGE)
+qui n'ont légitimement aucun article catalogue. À exclure du dénominateur, pas à réparer.
+
+Pour les 46 marchandises restantes (sans `code_article` exploitable, ou à candidats
+multiples) : rattrapage par **désignation normalisée** (accents compris — la base contient
+`AGNEAU ENTIER FRANCAIS U` et `AGNEAU ENTIER FRANÇAIS U`, `10 FLT POULET BLANC IGP` et
+`10 FLT POULET BLANC IGP - Né, élevé, abattu...`), avec validation ligne par ligne.
+
+### Déploiement en attente
+
+Le correctif du §7 (cascade code exact → code normalisé → désignation) est **déployé sur
+le Pi** (`ade39b7`, restart confirmé). Sa validation réelle viendra du prochain import OCR
+de facture : vérifier alors que les lignes gardent leur `catalogue_fournisseur_id`.
 
 **Sous-question à trancher en premier** : comme le workflow (catalogue → commande →
 réception) garantit que l'article existe forcément au catalogue au moment de la

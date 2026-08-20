@@ -170,6 +170,11 @@
       <!-- Alerte doublon : même fournisseur + même n° de BL sur une autre réception -->
       <div class="fac-alerte-doublon" id="fac-alerte-doublon" hidden></div>
 
+      <!-- Lignes marchandise sans article catalogue : elles n'apparaissent dans
+           AUCUNE analyse achats par produit/famille tant qu'elles ne sont pas
+           rattachées. Signalement seulement — la saisie n'est jamais bloquée. -->
+      <div class="fac-alerte-orphelines" id="fac-alerte-orphelines" hidden></div>
+
       <!-- Import de facture : Factur-X (XML) sinon OCR -->
       <div class="fac-import" id="fac-import">
         <div class="fac-import-barre">
@@ -332,6 +337,31 @@
     </div>
   </div>
 
+  <!-- ── Modal rattachement d'une ligne à un article du catalogue ──
+       Suggestions classées par ressemblance du libellé PUIS par fréquence de
+       réception (on commande toujours la même chose : l'article reçu 18 fois
+       doit passer devant celui reçu une fois), + recherche libre en secours. -->
+  <div class="ach-modal" id="modal-rattacher" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Rattacher au catalogue</h2>
+        <button class="ach-modal-fermer" id="modal-rattacher-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <input type="hidden" id="rattacher-ligne-id">
+        <div class="rat-ligne-source" id="rat-ligne-source"></div>
+        <div class="ach-champ" style="margin:var(--space-3) 0;">
+          <label>Rechercher un article (libellé ou code)</label>
+          <input type="search" id="rat-recherche" placeholder="Ex : entrecote, 7991-7…" autocomplete="off">
+        </div>
+        <div class="rat-resultats" id="rat-resultats"></div>
+      </div>
+      <div class="ach-modal-footer">
+        <button type="button" class="ach-btn" id="btn-rattacher-annuler">Fermer</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Modal commentaire litige ── -->
   <div class="ach-modal" id="modal-litige" hidden>
     <div class="ach-modal-card">
@@ -353,6 +383,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/factures-achats.js?v=1"></script>
+  <script src="/static/js/achats/factures-achats.js?v=2"></script>
 </body>
 </html>

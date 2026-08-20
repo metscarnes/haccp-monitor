@@ -68,6 +68,24 @@ function bindEvents() {
   document.getElementById('btn-litige-annuler').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-confirmer').addEventListener('click', confirmerLitige);
 
+  // Modale rattachement au catalogue
+  const fermerRattacher = () => { document.getElementById('modal-rattacher').hidden = true; };
+  document.getElementById('modal-rattacher-fermer').addEventListener('click', fermerRattacher);
+  document.getElementById('btn-rattacher-annuler').addEventListener('click', fermerRattacher);
+  document.getElementById('rat-recherche').addEventListener('input', (e) => {
+    // Débounce : la recherche parcourt tout le catalogue du fournisseur côté serveur.
+    clearTimeout(ratRechercheTimer);
+    const terme = e.target.value.trim();
+    ratRechercheTimer = setTimeout(() => {
+      if (terme.length >= 2) rechercherCatalogue(terme);
+      else {
+        const l = orphelinesCourantes.find(
+          x => x.id === Number(document.getElementById('rattacher-ligne-id').value));
+        rendreResultatsRattachement((l && l.suggestions) || [], true);
+      }
+    }, 250);
+  });
+
   // Modale doublon
   document.getElementById('modal-doublon-fermer').addEventListener('click', fermerModalDoublon);
   document.getElementById('btn-doublon-annuler').addEventListener('click', fermerModalDoublon);
@@ -273,6 +291,7 @@ async function ouvrirFacture(id, prefetch) {
   chargerSuggestionsAnnexes(fac);
   appliquerVerrou(fac);
   verifierAlerteDoublon(fac);
+  verifierLignesNonRattachees(fac);
   // Import « depuis le BL » + aperçu : si une réception est rattachée (directement
   // ou via la commande mappée — reception_bl_id résout les deux cas côté serveur).
   const aBl = !!(fac.reception_bl_id || fac.reception_id);
@@ -1043,6 +1062,131 @@ async function verifierAlerteDoublon(fac) {
       Vérifie qu'il ne s'agit pas de la même livraison saisie deux fois.`;
     zone.hidden = false;
   } catch (_) { /* alerte informative : on n'interrompt pas l'affichage sur erreur réseau */ }
+}
+
+// ── Lignes non rattachées au catalogue ───────────────────────
+// Une ligne marchandise sans catalogue_fournisseur_id n'apparaît dans AUCUNE analyse
+// achats par produit/famille : elle est payée mais invisible (707 lignes / 38 245 €
+// s'étaient accumulées ainsi sur ~2 mois avant le correctif d'import). On la SIGNALE
+// sans jamais bloquer la saisie : un article hors catalogue en pleine réception doit
+// pouvoir être saisi, quitte à le rattacher après.
+let orphelinesCourantes = [];
+
+async function verifierLignesNonRattachees(fac) {
+  const zone = document.getElementById('fac-alerte-orphelines');
+  zone.hidden = true;
+  orphelinesCourantes = [];
+  if (!fac || !fac.id) return;
+  try {
+    const r = await fetch(`${API_FAC}/${fac.id}/lignes-non-rattachees`);
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.nb) return;
+    orphelinesCourantes = data.lignes;
+    // Facture validée = verrouillée : le PUT de rattachement serait refusé (409).
+    // On garde le CONSTAT visible (utile à l'audit) mais on retire l'action.
+    const verrou = fac.statut === 'validee';
+    zone.innerHTML = `
+      <div class="fac-orph-titre">
+        🔗 ${data.nb} ligne(s) sans article catalogue — ${fmtPrix(data.montant_ht)} € HT
+        <span class="fac-orph-aide">ces montants n'apparaîtront pas dans l'analyse achats par produit</span>
+      </div>
+      <div class="fac-orph-liste">
+        ${data.lignes.map(l => `
+          <div class="fac-orph-item">
+            <span class="fac-orph-lbl">
+              ${escHtml(l.designation)}
+              ${l.code_article ? `<span class="fac-choix-meta">${escHtml(l.code_article)}</span>` : ''}
+            </span>
+            <span class="fac-orph-montant">${fmtPrix(l.montant_facture_ht)} €</span>
+            <button type="button" class="ach-btn ach-btn--primary fac-orph-btn"
+                    data-rattacher="${l.id}" ${verrou ? 'hidden' : ''}>Rattacher…</button>
+          </div>`).join('')}
+      </div>`;
+    zone.querySelectorAll('[data-rattacher]').forEach(btn => {
+      btn.addEventListener('click', () => ouvrirModalRattacher(Number(btn.dataset.rattacher)));
+    });
+    zone.hidden = false;
+  } catch (_) { /* signalement informatif : une panne réseau ne doit pas gêner la saisie */ }
+}
+
+function ouvrirModalRattacher(ligneId) {
+  const ligne = orphelinesCourantes.find(l => l.id === ligneId);
+  if (!ligne) return;
+  document.getElementById('rattacher-ligne-id').value = ligneId;
+  document.getElementById('rat-ligne-source').innerHTML = `
+    <div class="rat-source-titre">${escHtml(ligne.designation)}</div>
+    <div class="fac-choix-meta">
+      ${ligne.code_article ? 'Code facture : ' + escHtml(ligne.code_article) + ' · ' : ''}
+      ${fmtPrix(ligne.montant_facture_ht)} € HT
+    </div>`;
+  document.getElementById('rat-recherche').value = '';
+  // Les suggestions du serveur d'abord : elles combinent ressemblance du libellé et
+  // fréquence de réception, donc elles sont presque toujours meilleures qu'une
+  // recherche tapée à la main.
+  rendreResultatsRattachement(ligne.suggestions || [], true);
+  document.getElementById('modal-rattacher').hidden = false;
+  document.getElementById('rat-recherche').focus();
+}
+
+function rendreResultatsRattachement(articles, sontSuggestions) {
+  const zone = document.getElementById('rat-resultats');
+  if (!articles.length) {
+    zone.innerHTML = `<div class="ach-vide">Aucun article trouvé.
+      ${sontSuggestions ? 'Cherchez ci-dessus, ou créez la fiche dans le catalogue achats.' : ''}</div>`;
+    return;
+  }
+  zone.innerHTML = `
+    ${sontSuggestions ? '<div class="rat-section">Suggestions</div>' : ''}
+    ${articles.map(a => `
+      <button type="button" class="rat-item" data-cat-id="${a.catalogue_fournisseur_id || a.id}">
+        <span class="rat-item-lbl">
+          ${escHtml(a.designation)}
+          ${a.actif === 0 ? '<span class="rat-badge rat-badge--inactif">inactif</span>' : ''}
+        </span>
+        <span class="fac-choix-meta">
+          ${escHtml(a.code_article)}
+          ${a.prix_achat_ht != null ? ' · ' + fmtPrix(a.prix_achat_ht) + ' €' : ''}
+          ${a.nb_receptions_6mois ? ` · reçu ${a.nb_receptions_6mois}× sur 6 mois` : ''}
+        </span>
+      </button>`).join('')}`;
+  zone.querySelectorAll('[data-cat-id]').forEach(btn => {
+    btn.addEventListener('click', () => rattacherLigne(Number(btn.dataset.catId)));
+  });
+}
+
+let ratRechercheTimer = null;
+async function rechercherCatalogue(terme) {
+  if (!facCourante) return;
+  const url = `/api/achats/catalogue/recherche?fournisseur_id=${facCourante.fournisseur_id}`
+            + `&q=${encodeURIComponent(terme)}`;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return;
+    const data = await r.json();
+    rendreResultatsRattachement(data.articles || [], false);
+  } catch (_) { /* recherche best-effort */ }
+}
+
+async function rattacherLigne(catalogueId) {
+  const ligneId = Number(document.getElementById('rattacher-ligne-id').value);
+  if (!ligneId || !facCourante) return;
+  const r = await fetch(`${API_FAC}/${facCourante.id}/lignes/${ligneId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ catalogue_fournisseur_id: catalogueId }),
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    alert(err.detail || 'Rattachement impossible.');
+    return;
+  }
+  document.getElementById('modal-rattacher').hidden = true;
+  // Recharge la facture : la ligne rattachée disparaît du signalement.
+  const fac = await fetch(`${API_FAC}/${facCourante.id}`).then(x => x.json());
+  facCourante = fac;
+  rendreLignes(fac.lignes || []);
+  await verifierLignesNonRattachees(fac);
 }
 
 function fermerModalFacture() {

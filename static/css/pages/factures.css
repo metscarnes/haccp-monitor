@@ -324,3 +324,68 @@
   padding: .2rem 0;
 }
 .fac-totaux-nb { color: #9ca3af; }
+
+/* ── Lignes marchandise sans article catalogue ────────────────────────────
+   Signalement (jamais un blocage) : une ligne non rattachée est payée mais
+   invisible dans l'analyse achats par produit/famille. Ton bleu et non rouge :
+   c'est une correction à faire, pas une erreur bloquante. */
+.fac-alerte-orphelines {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3);
+  background: #eef4fb;
+  border: 1px solid #9db8d6;
+  border-radius: var(--radius-sm);
+  color: #274b73;
+  font-size: var(--text-sm);
+}
+.fac-orph-titre { font-weight: 600; margin-bottom: var(--space-2); }
+.fac-orph-aide { font-weight: normal; color: #5b7fa6; display: block; font-size: var(--text-xs); }
+.fac-orph-liste { display: flex; flex-direction: column; gap: var(--space-1); }
+.fac-orph-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-top: 1px solid #d6e2f0;
+}
+.fac-orph-lbl { flex: 1; min-width: 0; }
+.fac-orph-montant { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fac-orph-btn { flex-shrink: 0; }
+
+/* ── Modale de rattachement au catalogue ─────────────────────────────────── */
+.rat-ligne-source {
+  padding: var(--space-2) var(--space-3);
+  background: #f9f5ef;
+  border-radius: var(--radius-sm);
+}
+.rat-source-titre { font-weight: 600; }
+.rat-resultats { max-height: 46vh; overflow-y: auto; }
+.rat-section {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: #6b7280;
+  padding: var(--space-1) 0;
+}
+.rat-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  background: #fff;
+  border: 1px solid #e8d9c4;
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+  cursor: pointer;
+  font: inherit;
+}
+.rat-item:hover, .rat-item:focus-visible { background: #f4ece0; border-color: #c9a86a; }
+.rat-item-lbl { display: block; font-weight: 500; }
+.rat-badge {
+  display: inline-block;
+  padding: 0 .4em;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  margin-left: var(--space-1);
+}
+.rat-badge--inactif { background: #eee; color: #6b7280; }
