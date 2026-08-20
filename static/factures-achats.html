@@ -38,6 +38,13 @@
       <div class="ach-stat-num" id="stat-litige">—</div>
       <div class="ach-stat-lbl">En litige</div>
     </div>
+    <!-- Lignes payées mais absentes de l'analyse achats par produit : cliquer
+         filtre la liste sur les factures concernées. -->
+    <div class="ach-stat ach-stat--lien" id="stat-orph-tuile" hidden
+         title="Cliquer pour n'afficher que les factures concernées">
+      <div class="ach-stat-num" id="stat-orphelines">—</div>
+      <div class="ach-stat-lbl">Non rattachées <span id="stat-orph-montant"></span></div>
+    </div>
   </div>
 
   <div class="ach-filtres">
@@ -383,6 +390,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/factures-achats.js?v=2"></script>
+  <script src="/static/js/achats/factures-achats.js?v=3"></script>
 </body>
 </html>

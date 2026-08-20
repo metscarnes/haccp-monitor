@@ -153,6 +153,34 @@ async def test_suggestions_classees_par_similarite(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_liste_factures_signale_les_non_rattachees(app_client, db):
+    """La LISTE des factures porte le compte et le montant non rattachés : sans ça il
+    faudrait ouvrir chaque facture une par une pour savoir lesquelles corriger."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+
+    r = await app_client.get("/api/achats/factures")
+    ligne_liste = [f for f in r.json() if f["id"] == fac["id"]][0]
+    assert ligne_liste["nb_non_rattachees"] == 0
+    assert ligne_liste["montant_non_rattache"] == 0
+
+    await app_client.post(f"/api/achats/factures/{fac['id']}/lignes", json={
+        "designation": "Article hors catalogue", "code_article": "ZZ999",
+        "type_ligne": "marchandise", "unite_prix": "kg",
+        "poids_facture_kg": 2.0, "prix_facture_ht": 10.0})
+    # Une annexe ne doit PAS être comptée (transport/taxe n'ont aucun article).
+    await app_client.post(f"/api/achats/factures/{fac['id']}/lignes", json={
+        "designation": "Frais de port", "type_ligne": "transport",
+        "montant_facture_ht": 12.0})
+
+    r = await app_client.get("/api/achats/factures")
+    ligne_liste = [f for f in r.json() if f["id"] == fac["id"]][0]
+    assert ligne_liste["nb_non_rattachees"] == 1
+    assert ligne_liste["montant_non_rattache"] == 20.0
+
+
+@pytest.mark.asyncio
 async def test_recherche_catalogue_priorise_les_plus_recus(app_client, db):
     """« On commande toujours la même chose » : à défaut de terme de recherche, les
     articles les plus RÉCEPTIONNÉS sur 6 mois remontent en tête."""

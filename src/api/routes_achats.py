@@ -4506,14 +4506,25 @@ async def get_factures(
         factures = [dict(r) for r in await cur.fetchall()]
 
         for fac in factures:
+            # nb_non_rattachees : lignes MARCHANDISE sans article catalogue — payées mais
+            # invisibles dans l'analyse achats par produit/famille. Compté ici pour que la
+            # LISTE les signale, sans avoir à ouvrir chaque facture une par une.
             cur2 = await db.execute(
-                "SELECT COUNT(*) AS n, COALESCE(SUM(statut_ligne = 'litige'), 0) AS litiges "
-                "FROM facture_lignes WHERE facture_id = ?",
+                """SELECT COUNT(*) AS n,
+                          COALESCE(SUM(statut_ligne = 'litige'), 0) AS litiges,
+                          COALESCE(SUM(type_ligne = 'marchandise'
+                                       AND catalogue_fournisseur_id IS NULL), 0) AS non_rattachees,
+                          COALESCE(SUM(CASE WHEN type_ligne = 'marchandise'
+                                             AND catalogue_fournisseur_id IS NULL
+                                        THEN montant_facture_ht ELSE 0 END), 0) AS montant_non_rattache
+                   FROM facture_lignes WHERE facture_id = ?""",
                 (fac["id"],),
             )
             r2 = await cur2.fetchone()
             fac["nb_lignes"] = r2["n"]
             fac["nb_litiges"] = r2["litiges"]
+            fac["nb_non_rattachees"] = r2["non_rattachees"]
+            fac["montant_non_rattache"] = _arrondi_commercial(r2["montant_non_rattache"])
 
         return factures
 

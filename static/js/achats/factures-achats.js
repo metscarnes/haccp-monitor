@@ -68,6 +68,10 @@ function bindEvents() {
   document.getElementById('btn-litige-annuler').addEventListener('click', fermerModalLitige);
   document.getElementById('btn-litige-confirmer').addEventListener('click', confirmerLitige);
 
+  // Tuile « Non rattachées » : filtre la liste sur les factures concernées
+  document.getElementById('stat-orph-tuile')
+    .addEventListener('click', basculerFiltreOrphelines);
+
   // Modale rattachement au catalogue
   const fermerRattacher = () => { document.getElementById('modal-rattacher').hidden = true; };
   document.getElementById('modal-rattacher-fermer').addEventListener('click', fermerRattacher);
@@ -185,15 +189,40 @@ function rendreStats() {
   document.getElementById('stat-brouillon').textContent = par('brouillon');
   document.getElementById('stat-validee').textContent   = par('validee');
   document.getElementById('stat-litige').textContent    = par('litige');
+
+  // Lignes payées mais absentes de l'analyse achats par produit : la tuile n'apparaît
+  // que s'il y en a (sinon c'est du bruit permanent à l'écran).
+  const concernees = factures.filter(f => f.nb_non_rattachees > 0);
+  const nbLignes = concernees.reduce((s, f) => s + f.nb_non_rattachees, 0);
+  const montant  = concernees.reduce((s, f) => s + (f.montant_non_rattache || 0), 0);
+  document.getElementById('stat-orphelines').textContent = nbLignes;
+  document.getElementById('stat-orph-montant').textContent =
+    montant ? `· ${fmtPrix(montant)} €` : '';
+  document.getElementById('stat-orph-tuile').hidden = !nbLignes;
+}
+
+// Filtre local (pas un aller-retour serveur) : n'affiche que les factures ayant des
+// lignes non rattachées, pour les traiter à la suite.
+let filtreOrphelines = false;
+
+function basculerFiltreOrphelines() {
+  filtreOrphelines = !filtreOrphelines;
+  document.getElementById('stat-orph-tuile').classList.toggle('actif', filtreOrphelines);
+  rendreFactures();
 }
 
 function rendreFactures() {
   const tbody = document.getElementById('tbody-factures');
-  if (!factures.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="ach-vide">Aucune facture. Cliquez sur « + Nouvelle facture ».</td></tr>';
+  const liste = filtreOrphelines
+    ? factures.filter(f => f.nb_non_rattachees > 0)
+    : factures;
+  if (!liste.length) {
+    tbody.innerHTML = `<tr><td colspan="9" class="ach-vide">${filtreOrphelines
+      ? 'Aucune facture avec des lignes non rattachées 🎉'
+      : 'Aucune facture. Cliquez sur « + Nouvelle facture ».'}</td></tr>`;
     return;
   }
-  tbody.innerHTML = factures.map(f => {
+  tbody.innerHTML = liste.map(f => {
     const ecart = f.ecart_total_ht ?? 0;
     const cls = classeEcart(ecart);
     return `
@@ -202,7 +231,9 @@ function rendreFactures() {
         <td>${escHtml(f.date_facture || '')}</td>
         <td>${escHtml(f.fournisseur_nom || '')}</td>
         <td>${escHtml(f.numero_commande) || '<span style="color:#9ca3af;">—</span>'}</td>
-        <td class="ach-col-num">${f.nb_lignes ?? 0}</td>
+        <td class="ach-col-num">${f.nb_lignes ?? 0}${f.nb_non_rattachees
+          ? ` <span class="fac-badge-orph" title="${f.nb_non_rattachees} ligne(s) sans article catalogue (${fmtPrix(f.montant_non_rattache)} € HT) — invisibles dans l'analyse achats par produit">🔗${f.nb_non_rattachees}</span>`
+          : ''}</td>
         <td class="ach-col-num">${fmtPrix(f.montant_total_ht_facture)} €</td>
         <td class="ach-col-num fac-ecart ${cls}">${signe(ecart)}${fmtPrix(Math.abs(ecart))} €</td>
         <td><span class="ach-badge ach-badge--${f.statut}">${STATUT_LABELS[f.statut] || f.statut}${f.nb_litiges ? ` · ${f.nb_litiges}⚠` : ''}</span></td>
