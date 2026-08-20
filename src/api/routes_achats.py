@@ -5247,11 +5247,33 @@ async def appliquer_import(facture_id: int, body: ImportApplication):
                 list(entete.values()) + [facture_id],
             )
 
+        # Avant de purger, on sauvegarde le lien catalogue_fournisseur_id/reception_ligne_id
+        # des anciennes lignes (posé par la génération auto depuis la réception) par
+        # code_article : l'OCR relit le papier et ne connaît que le texte/code, jamais ces
+        # ID internes — sans ce réappariement, remplacer_lignes les perdrait silencieusement
+        # (cf. rétro-rattachement 2026-08 : 707 lignes/38 245 € orphelines sur ~2 mois).
+        liens_par_code = {}
         if body.remplacer_lignes:
+            cur_anciennes = await db.execute(
+                """SELECT code_article, catalogue_fournisseur_id, reception_ligne_id
+                   FROM facture_lignes
+                   WHERE facture_id = ? AND code_article IS NOT NULL AND code_article != ''
+                     AND catalogue_fournisseur_id IS NOT NULL""",
+                (facture_id,),
+            )
+            for row in await cur_anciennes.fetchall():
+                liens_par_code[row["code_article"]] = (
+                    row["catalogue_fournisseur_id"], row["reception_ligne_id"]
+                )
             await db.execute(
                 "DELETE FROM facture_lignes WHERE facture_id = ?", (facture_id,)
             )
         for ligne in (body.lignes or []):
+            if ligne.catalogue_fournisseur_id is None and ligne.code_article in liens_par_code:
+                cat_id, recep_ligne_id = liens_par_code[ligne.code_article]
+                ligne.catalogue_fournisseur_id = cat_id
+                if ligne.reception_ligne_id is None:
+                    ligne.reception_ligne_id = recep_ligne_id
             await _inserer_facture_ligne(db, facture_id, ligne)
 
         await _recalculer_totaux_facture(db, facture_id)

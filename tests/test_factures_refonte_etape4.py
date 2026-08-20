@@ -201,6 +201,38 @@ async def test_reception_bl_id_expose_pour_bouton_bl(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_appliquer_import_preserve_lien_catalogue(app_client, db):
+    """L'import OCR (remplacer_lignes) ne connaît que le texte/code du papier, jamais
+    l'ID interne catalogue_fournisseur_id — sans réappariement par code_article, il
+    écraserait le lien posé par la génération auto depuis la réception (régression
+    constatée en prod : 707 lignes / 38 245 € orphelines sur ~2 mois). Ici le code
+    article OCR ("ART01") matche celui de l'article catalogue de la réception → le
+    lien doit être retrouvé et reporté sur la nouvelle ligne."""
+    ids = await _setup(app_client, db)
+    fac = (await app_client.post(
+        f"/api/achats/factures/depuis-reception/{ids['reception_id']}")).json()
+    avant = [l for l in fac["lignes"] if l["type_ligne"] == "marchandise"][0]
+    assert avant["catalogue_fournisseur_id"] == ids["cat_id"]
+
+    r = await app_client.post(
+        f"/api/achats/factures/{fac['id']}/appliquer-import",
+        json={
+            "numero_facture": "FA-2026-042",
+            "remplacer_lignes": True,
+            "lignes": [
+                {"designation": "Article refonte (papier)", "code_article": "ART01",
+                 "type_ligne": "marchandise", "unite_prix": "kg",
+                 "poids_facture_kg": 9.4, "prix_facture_ht": 12.0, "tva_pct": 5.5},
+            ],
+        },
+    )
+    assert r.status_code == 200, r.text
+    apres = [l for l in r.json()["lignes"] if l["type_ligne"] == "marchandise"][0]
+    assert apres["catalogue_fournisseur_id"] == ids["cat_id"]
+    assert apres["reception_ligne_id"] == avant["reception_ligne_id"]
+
+
+@pytest.mark.asyncio
 async def test_import_respecte_verrou(app_client, db):
     ids = await _setup(app_client, db)
     fac = (await app_client.post(
