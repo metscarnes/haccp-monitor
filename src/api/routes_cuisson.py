@@ -6,6 +6,7 @@ Cible réglementaire : ≥ 75 °C à cœur.
 
 GET  /api/cuisson/enregistrements?type=rotissoire&limit=50
 POST /api/cuisson/enregistrements
+GET  /api/cuisson/a-traiter
 """
 
 import logging
@@ -331,3 +332,45 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
         fabrications = [dict(r) for r in await cur.fetchall()]
 
     return receptions + fabrications
+
+
+# ---------------------------------------------------------------------------
+# GET /api/cuisson/a-traiter
+# Lots de produits "suivi cuisson auto" (reçus déjà préparés) pas encore cuits.
+# Alimente la tuile Hub "🍽 À CUIRE" — voir routes_hub.py.
+# ---------------------------------------------------------------------------
+
+@router.get("/a-traiter")
+async def lots_a_traiter():
+    """
+    Réceptions closes, conformes, non refusées, d'un produit marqué
+    `suivi_cuisson_auto = 1` (ex. Lasagne, Gratin dauphinois, Parmentier de
+    canard — reçus tout prêts, sans étape de fabrication), et n'ayant pas
+    encore de cuisson liée. Triés par DLC croissante (le plus urgent d'abord).
+    """
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT rl.id              AS reception_ligne_id,
+                   rl.produit_id,
+                   p.nom              AS produit_nom,
+                   rl.numero_lot,
+                   COALESCE(rl.dlc, rl.dluo) AS dlc,
+                   r.date_reception,
+                   f.nom              AS fournisseur_nom
+            FROM   reception_lignes rl
+            JOIN   receptions r ON r.id = rl.reception_id
+            JOIN   produits   p ON p.id = rl.produit_id
+            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            WHERE  p.suivi_cuisson_auto = 1
+              AND  r.statut = 'cloturee'
+              AND  rl.conforme = 1
+              AND  r.livraison_refusee = 0
+              AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
+            ORDER BY CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
+                     COALESCE(rl.dlc, rl.dluo) ASC,
+                     r.date_reception ASC
+            """
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]

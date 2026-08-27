@@ -52,6 +52,7 @@ class ProduitCreate(BaseModel):
     conditionnement: Optional[str] = "SOUS_VIDE"
     format_etiquette: Optional[str] = "standard_60x40"
     type_produit: Optional[str] = "brut"
+    suivi_cuisson_auto: Optional[bool] = False
 
 
 class ProduitUpdate(BaseModel):
@@ -67,6 +68,7 @@ class ProduitUpdate(BaseModel):
     format_etiquette: Optional[str] = None
     type_produit: Optional[str] = None
     actif: Optional[bool] = None
+    suivi_cuisson_auto: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------

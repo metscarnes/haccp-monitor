@@ -251,6 +251,37 @@ async def taches_resume():
         except Exception as exc:
             logger.warning("hub résumé dlc : %s", exc)
 
+        # ── 5. Production à cuire (produits reçus déjà préparés) ─
+        # Ex. Lasagne / Gratin dauphinois / Parmentier de canard, marqués
+        # `suivi_cuisson_auto` dans le catalogue (voir routes_produits.py) —
+        # cf. GET /api/cuisson/a-traiter pour la liste détaillée des lots.
+        try:
+            rows = await db.execute_fetchall(
+                """
+                SELECT COUNT(*)
+                FROM   reception_lignes rl
+                JOIN   receptions r ON r.id = rl.reception_id
+                JOIN   produits   p ON p.id = rl.produit_id
+                WHERE  p.suivi_cuisson_auto = 1
+                  AND  r.statut = 'cloturee'
+                  AND  rl.conforme = 1
+                  AND  r.livraison_refusee = 0
+                  AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
+                """
+            )
+            n_a_cuire = rows[0][0] if rows else 0
+            if n_a_cuire:
+                aujourd_hui.append({
+                    "code":    "production_a_cuire",
+                    "libelle": "Production à cuire",
+                    "url":     "/production-a-cuire.html",
+                    "icone":   "🍽",
+                    "etat":    "a_faire",
+                    "detail":  f"{n_a_cuire} lot(s) reçu(s) en attente de cuisson",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé production à cuire : %s", exc)
+
     return {
         "date":        today.isoformat(),
         "aujourd_hui": aujourd_hui,

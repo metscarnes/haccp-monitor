@@ -1806,6 +1806,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
                 FOREIGN KEY (personnel_id) REFERENCES personnel(id)
             )""",
+            # v7.2 — Suivi cuisson automatique : produits reçus déjà préparés (ex.
+            # Lasagne, Gratin dauphinois, Parmentier de canard) dont chaque lot reçu
+            # doit déclencher une tâche "à cuire" sur le Hub (cf. GET /api/cuisson/a-traiter).
+            "ALTER TABLE produits ADD COLUMN suivi_cuisson_auto INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             try:
@@ -3207,7 +3211,7 @@ async def get_produit(db: aiosqlite.Connection, produit_id: int) -> Optional[dic
 PRODUIT_COLONNES_EDITABLES = (
     "nom", "code_unique", "espece", "etape", "coupe_niveau",
     "conditionnement", "categorie", "dlc_jours", "temperature_conservation",
-    "format_etiquette", "type_produit", "actif",
+    "format_etiquette", "type_produit", "actif", "suivi_cuisson_auto",
 )
 
 

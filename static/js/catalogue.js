@@ -123,6 +123,7 @@ const f = {
   dlc:     $('cat-f-dlc'),
   temp:    $('cat-f-temp'),
   actif:   $('cat-f-actif'),
+  suiviCuissonAuto: $('cat-f-suivi-cuisson-auto'),
 };
 
 // ── Chargement initial ─────────────────────────────────────
@@ -260,6 +261,7 @@ function ouvrirModalCreation() {
   f.dlc.value = 0;
   f.temp.value = '0°C à +4°C';
   f.actif.checked = true;
+  f.suiviCuissonAuto.checked = false;
   rafraichirCodePreview();
   elModal.hidden = false;
   setTimeout(() => f.nom.focus(), 50);
@@ -282,6 +284,7 @@ function ouvrirModalEdition(id) {
   f.dlc.value = p.dlc_jours ?? 0;
   f.temp.value = p.temperature_conservation || '0°C à +4°C';
   f.actif.checked = !!p.actif;
+  f.suiviCuissonAuto.checked = !!p.suivi_cuisson_auto;
   elModal.hidden = false;
   setTimeout(() => f.nom.focus(), 50);
 }
@@ -301,6 +304,7 @@ function lirePayload() {
     dlc_jours: f.dlc.value === '' ? 0 : parseInt(f.dlc.value, 10),
     temperature_conservation: f.temp.value || null,
     actif: f.actif.checked,
+    suivi_cuisson_auto: f.suiviCuissonAuto.checked,
   };
   // null → champs omis (POST/PUT acceptent omission)
   Object.keys(data).forEach(k => {

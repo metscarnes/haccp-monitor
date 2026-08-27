@@ -188,7 +188,17 @@
       "PowerShell(Start-Sleep -Seconds 3; try { $r = Invoke-WebRequest -Uri http://127.0.0.1:8000/nettoyage.html -UseBasicParsing -TimeoutSec 10; \"STATUS:$\\($r.StatusCode\\) LEN:$\\($r.Content.Length\\)\" } catch { \"ERR: $_\" })",
       "PowerShell(Get-Command chromium-cli -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Command npx -ErrorAction SilentlyContinue)",
-      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\query_backfill.py\")"
+      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\query_backfill.py\")",
+      "PowerShell(python \"scripts\\\\rattrapage_cuisson_refroidissement.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\setup_test_db.py\")",
+      "PowerShell(python \"scripts\\\\rattrapage_cuisson_refroidissement.py\" \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\test_haccp.db\" --personnel-prenom UlysseTest)",
+      "PowerShell(python \"scripts\\\\rattrapage_cuisson_refroidissement.py\" \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\test_haccp.db\" --personnel-prenom UlysseTest --commit)",
+      "PowerShell(python -m uvicorn src.main:app --port 8010 2>&1 | Out-File -FilePath \"$env:TEMP\\\\uvicorn_test.log\" -Encoding utf8)",
+      "PowerShell(Test-NetConnection -ComputerName 192.168.1.83 -Port 8081 -WarningAction SilentlyContinue)",
+      "PowerShell(python -m pytest tests/test_production_a_cuire.py -v 2>&1)",
+      "PowerShell(python -m pytest tests/test_reception.py::test_api_ajouter_ligne_reception -v 2>&1)",
+      "PowerShell(python -m pytest tests/test_reception.py -v 2>&1)",
+      "PowerShell(python -m pytest tests/test_api.py -q 2>&1)"
     ]
   }
 }
