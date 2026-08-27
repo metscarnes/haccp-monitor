@@ -155,6 +155,54 @@ def main():
     print("    le script de rattrapage ne trouvera AUCUN candidat : il faut d'abord")
     print("    corriger la rupture avant de lancer le rattrapage.")
 
+    # ── 5. Liaison vente ↔ achat (comparatif) ────────────────────────────
+    # Le déclencheur du cycle doit partir du catalogue de VENTE (ce qu'on produit)
+    # et retrouver les articles d'ACHAT qui l'alimentent, via :
+    #   catalogue_vente → comparatif_groupe_vente → comparatif_groupe
+    #                   → comparatif_groupe_ligne → catalogue_fournisseur
+    section("5. LIAISON VENTE ↔ ACHAT — le déclencheur est-il branchable ?")
+    try:
+        n_vente   = cur.execute("SELECT COUNT(*) FROM catalogue_vente WHERE actif=1").fetchone()[0]
+        n_groupes = cur.execute("SELECT COUNT(*) FROM comparatif_groupe").fetchone()[0]
+        n_liens_v = cur.execute("SELECT COUNT(*) FROM comparatif_groupe_vente").fetchone()[0]
+        n_liens_a = cur.execute("SELECT COUNT(*) FROM comparatif_groupe_ligne").fetchone()[0]
+        print(f"  produits de vente actifs        : {n_vente}")
+        print(f"  groupes de comparaison          : {n_groupes}")
+        print(f"  liens groupe → produit de vente : {n_liens_v}")
+        print(f"  liens groupe → article d'achat  : {n_liens_a}")
+
+        print()
+        print("  Produits de vente correspondant aux plats visés,")
+        print("  avec le nombre d'articles d'achat réellement reliés :")
+        rows = cur.execute(
+            """
+            SELECT v.id, v.nom, v.famille,
+                   gv.groupe_id,
+                   (SELECT COUNT(*) FROM comparatif_groupe_ligne gl
+                     WHERE gl.groupe_id = gv.groupe_id) AS nb_achats
+            FROM catalogue_vente v
+            LEFT JOIN comparatif_groupe_vente gv ON gv.catalogue_vente_id = v.id
+            WHERE LOWER(v.nom) LIKE '%lasagne%'
+               OR LOWER(v.nom) LIKE '%gratin%'
+               OR LOWER(v.nom) LIKE '%parmentier%'
+               OR LOWER(v.nom) LIKE '%rosbeef%' OR LOWER(v.nom) LIKE '%rosbif%'
+            ORDER BY v.nom
+            """
+        ).fetchall()
+        if not rows:
+            print("    (aucun) ← ces plats ne sont PAS dans le catalogue de vente :")
+            print("      il faudra les y créer avant de pouvoir déclencher le cycle.")
+        for r in rows:
+            if r["groupe_id"] is None:
+                etat = "NON RELIÉ à un groupe → déclencheur inopérant"
+            elif not r["nb_achats"]:
+                etat = f"groupe #{r['groupe_id']} mais 0 article d'achat → inopérant"
+            else:
+                etat = f"groupe #{r['groupe_id']} · {r['nb_achats']} article(s) d'achat ✓"
+            print(f"    id={r['id']:<5} {(r['nom'] or '')[:44]:<44} {etat}")
+    except sqlite3.OperationalError as e:
+        print(f"  ERREUR (tables comparatif absentes ?) : {e}")
+
     con.close()
     print()
     print("Fin de l'audit (lecture seule — rien n'a été modifié).")

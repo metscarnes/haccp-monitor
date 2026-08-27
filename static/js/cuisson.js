@@ -481,9 +481,20 @@ async function selectionnerProduit(id, nom) {
       elLotWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (err) {
+    // Un échec ici laisse state.produitChoisi sans lot source : la cuisson serait
+    // enregistrée sans lien de traçabilité et avec une DLC non plafonnée par la
+    // DLC d'origine. On ne bloque pas la production, mais l'opérateur DOIT le voir
+    // — un registre HACCP incomplet sans signal visible est le pire des cas.
     console.warn('[cuisson] Historique réceptions KO :', err);
     majBandeau();
-    setTimeout(() => goStep(3), 120);
+    setTimeout(() => {
+      goStep(3);
+      afficherErreur(
+        "⚠ Lots indisponibles — impossible de charger les lots de ce produit. " +
+        "La cuisson sera enregistrée SANS N° de lot ni traçabilité amont, et sa DLC " +
+        "ne sera pas plafonnée par la DLC d'origine. Signalez-le au responsable."
+      );
+    }, 120);
   }
 }
 

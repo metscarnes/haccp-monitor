@@ -302,6 +302,12 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
         receptions = [dict(r) for r in await cur.fetchall()]
 
         # ── Lots issus de fabrication ─────────────────────────────────────────
+        # Depuis la migration v6.0, une recette pointe son produit fini vers le
+        # catalogue de VENTE (`recettes.catalogue_vente_id`) et non plus vers
+        # `produits` (`produit_fini_id`, colonne supprimée). Le `produit_id` reçu
+        # ici est donc à interpréter comme un `catalogue_vente.id` pour les lots
+        # de fabrication — c'est déjà la convention de get_stock_unifie(), qui
+        # expose `cv.id AS produit_id` pour cette source.
         cur = await db.execute(
             """
             SELECT 'fabrication'        AS source_type,
@@ -317,7 +323,7 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
                    'Fabrication maison' AS fournisseur_nom
             FROM   fabrications fab
             JOIN   recettes rec ON rec.id = fab.recette_id
-            WHERE  rec.produit_fini_id = ?
+            WHERE  rec.catalogue_vente_id = ?
               AND  fab.dlc_finale IS NOT NULL
               AND  fab.dlc_finale >= DATE('now')
               AND NOT EXISTS (
