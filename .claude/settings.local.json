@@ -199,7 +199,9 @@
       "PowerShell(python -m pytest tests/test_reception.py::test_api_ajouter_ligne_reception -v 2>&1)",
       "PowerShell(python -m pytest tests/test_reception.py -v 2>&1)",
       "PowerShell(python -m pytest tests/test_api.py -q 2>&1)",
-      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\diag_rupture.py\")"
+      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\diag_rupture.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\Ulysse\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Ulysse-OneDrive-Cr-ation-d-entreprise-Boucherie-SoftWare-haccp-monitor\\\\10f1bbf9-8d6f-40e9-b873-640fa09dbb71\\\\scratchpad\\\\test_rupture_live.py\" 2>&1)",
+      "PowerShell(python \"scripts\\\\diag_rupture_reception_cuisson.py\" 2>&1)"
     ]
   }
 }
