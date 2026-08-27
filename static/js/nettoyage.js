@@ -20,7 +20,9 @@ function toLocalDate(d) {
 let zonesData    = [];   // données API
 let todayIndex   = 0;    // 0=Dim, 1=Lun … 6=Sam
 let allTaskIds   = [];   // [{id, freq}] pour toutes les lignes
-let weekDates    = {};   // {jsDay: "YYYY-MM-DD"} pour la semaine en cours
+let weekDates    = {};   // {jsDay: "YYYY-MM-DD"} pour la semaine affichée
+let weekOffset   = 0;    // 0 = semaine en cours, -1 = précédente, +1 = suivante…
+let isCurrentWeek = true;
 
 // ── DOM ──────────────────────────────────────────────────────
 const elDate     = document.getElementById('display-date');
@@ -28,6 +30,10 @@ const elSelect   = document.getElementById('operator-select');
 const elBtn      = document.getElementById('btn-valider');
 const elTbody    = document.getElementById('table-body');
 const elToast    = document.getElementById('nett-toast');
+const elBtnPrev  = document.getElementById('btn-week-prev');
+const elBtnNext  = document.getElementById('btn-week-next');
+const elBtnToday = document.getElementById('btn-week-today');
+const elWeekLabel = document.getElementById('week-label');
 
 // Modale gestion tâches
 const elBtnGerer      = document.getElementById('btn-gerer');
@@ -64,7 +70,6 @@ async function chargerPersonnel() {
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  computeWeekDates();
   identifierJour();
   chargerPersonnel();
   chargerTaches(); // restaurerEtat() est appelé après la génération du tableau
@@ -88,26 +93,53 @@ document.addEventListener('DOMContentLoaded', () => {
   elModal.addEventListener('click', e => { if (e.target === elModal) fermerModalGerer(); });
   elBtnSave.addEventListener('click', sauverTache);
   elBtnCancel.addEventListener('click', reinitFormTache);
+
+  // Navigation semaine (correction d'un oubli sur une semaine passée)
+  elBtnPrev.addEventListener('click', () => chargerSemaine(weekOffset - 1));
+  elBtnNext.addEventListener('click', () => chargerSemaine(weekOffset + 1));
+  elBtnToday.addEventListener('click', () => chargerSemaine(0));
 });
 
-// ── Calcul des dates de la semaine courante ───────────────────
-function computeWeekDates() {
+// ── Calcul des dates de la semaine affichée (offset en semaines / semaine courante) ──
+function computeWeekDates(offset = 0) {
   const today = new Date();
   const dow = today.getDay(); // 0=Dim, 1=Lun…
   // Lundi = premier jour de semaine
   const daysFromMonday = dow === 0 ? 6 : dow - 1;
   const monday = new Date(today);
-  monday.setDate(today.getDate() - daysFromMonday);
+  monday.setDate(today.getDate() - daysFromMonday + offset * 7);
   monday.setHours(0, 0, 0, 0);
 
+  weekDates = {};
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
     weekDates[d.getDay()] = toLocalDate(d); // toISOString() donne UTC → décalage en UTC+x
   }
+  return monday;
 }
 
-// ── Jour actuel ──────────────────────────────────────────────
+// ── Numéro de semaine ISO 8601 pour une date donnée ──────────
+function isoWeekInfo(refDate) {
+  const d = new Date(Date.UTC(refDate.getFullYear(), refDate.getMonth(), refDate.getDate()));
+  const dayNum = d.getUTCDay() || 7; // 1=lun, 7=dim
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // Aller au jeudi de la semaine
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return { isoYear: d.getUTCFullYear(), weekNum };
+}
+
+// ── Libellé lisible de la semaine affichée ───────────────────
+function formatWeekLabel(monday) {
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const sameMonth = monday.getMonth() === sunday.getMonth();
+  const startStr = monday.toLocaleDateString('fr-FR', sameMonth ? { day: 'numeric' } : { day: 'numeric', month: 'short' });
+  const endStr = sunday.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `Semaine du ${startStr} au ${endStr}`;
+}
+
+// ── Jour actuel (fixe, indépendant de la semaine affichée) ───
 function identifierJour() {
   const d = new Date();
   todayIndex = d.getDay(); // 0=Dim … 6=Sam
@@ -117,10 +149,35 @@ function identifierJour() {
   elDate.textContent = 'Aujourd\'hui : ' + txt.charAt(0).toUpperCase() + txt.slice(1);
 
   elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
+}
 
-  // Surligner les en-têtes du jour
-  document.querySelectorAll(`th[data-day="${todayIndex}"]`)
-    .forEach(th => th.classList.add('nett-today-col'));
+// ── Mise à jour de la barre de navigation semaine ─────────────
+function updateWeekUI(monday) {
+  elWeekLabel.textContent = formatWeekLabel(monday);
+  document.querySelector('.nett-bar').classList.toggle('nett-bar--correction', !isCurrentWeek);
+  elBtnNext.disabled = weekOffset >= 0;
+  elBtnToday.hidden = isCurrentWeek;
+
+  // Surligner les en-têtes du jour uniquement sur la semaine en cours
+  document.querySelectorAll('th[data-day]').forEach(th => th.classList.remove('nett-today-col'));
+  if (isCurrentWeek) {
+    document.querySelectorAll(`th[data-day="${todayIndex}"]`)
+      .forEach(th => th.classList.add('nett-today-col'));
+  }
+
+  // La validation groupée du jour ne concerne que la semaine en cours ;
+  // sur une semaine passée on corrige case par case (clic direct).
+  if (isCurrentWeek) {
+    elBtn.disabled = false;
+    elBtn.title = '';
+    elBtn.classList.remove('nett-btn-valider--done');
+    elBtn.textContent = `✅ VALIDER LE NETTOYAGE DU ${JOURS[todayIndex].toUpperCase()}`;
+  } else {
+    elBtn.disabled = true;
+    elBtn.textContent = '🔒 Validation dispo sur la semaine en cours';
+    elBtn.title = "Revenez à la semaine en cours pour valider toute la journée. Cliquez sur une case pour corriger un oubli sur cette semaine.";
+    toast('✏️ Semaine passée — cliquez sur une case pour corriger un oubli.');
+  }
 }
 
 // ── Charger depuis l'API ─────────────────────────────────────
@@ -129,40 +186,38 @@ async function chargerTaches() {
     const res = await fetch('/api/nettoyage/taches');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     zonesData = await res.json();
-    genererTableau();
-    await chargerHistoriqueSemaine(); // charge les validations passées de la semaine
-    await restaurerEtat(); // restaure l'état "Validé" si déjà fait aujourd'hui
+    await chargerSemaine(weekOffset); // conserve la semaine actuellement affichée (0 au premier chargement)
   } catch (err) {
     elTbody.innerHTML = `<tr><td colspan="11" style="padding:2rem;text-align:center;color:#888;">
       Erreur : ${err.message}</td></tr>`;
   }
 }
 
+// ── Charger/afficher une semaine donnée (0 = en cours, -1 = précédente…) ──
+async function chargerSemaine(offset) {
+  weekOffset = offset;
+  isCurrentWeek = offset === 0;
+
+  const monday = computeWeekDates(offset);
+  genererTableau();
+  updateWeekUI(monday);
+
+  await chargerHistoriqueSemaine(monday); // charge les validations de la semaine affichée
+
+  if (isCurrentWeek) {
+    await restaurerEtat(); // restaure l'état "Validé" si déjà fait aujourd'hui
+  }
+}
+
 // ── Charger l'historique de la semaine complète ──────────────
-async function chargerHistoriqueSemaine() {
-  const today = new Date();
-
-  // Calcul de semaine ISO 8601
-  const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
-  const dayNum = d.getUTCDay() || 7; // 1=lun, 7=dim
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // Aller au jeudi de la semaine
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
-  const isoYear = d.getUTCFullYear();
-
-  console.log('🔍 Date du jour:', today.toISOString().split('T')[0]);
-  console.log('🔍 Semaine ISO:', isoYear, 'Semaine:', weekNum);
+async function chargerHistoriqueSemaine(monday) {
+  const { isoYear, weekNum } = isoWeekInfo(monday);
 
   try {
     const url = `/api/nettoyage/historique/semaine?annee_iso=${isoYear}&semaine=${weekNum}`;
-    console.log('🌐 Fetching:', url);
     const res = await fetch(url);
-    if (!res.ok) {
-      console.warn('API error:', res.status);
-      return;
-    }
+    if (!res.ok) return;
     const data = await res.json();
-    console.log('📊 Données API reçues:', data);
 
     // Pour chaque date de la semaine, remplir les cellules validées
     data.zones.forEach(zone => {
@@ -173,16 +228,11 @@ async function chargerHistoriqueSemaine() {
           const d = new Date(dateStr + 'T00:00:00');
           const dayOfWeek = d.getDay();
 
-          console.log(`Tâche ${task.id} - ${dateStr} (${dayOfWeek}): ${signet}`);
-
           const cell = document.querySelector(
             `td.nett-day-cell[data-day="${dayOfWeek}"][data-id="${task.id}"]`
           );
           if (cell) {
-            console.log(`✅ Cellule trouvée et remplie`);
             cell.innerHTML = `<span class="nett-check">✅</span><span class="nett-initial">${signet}</span>`;
-          } else {
-            console.warn(`❌ Cellule introuvable pour jour=${dayOfWeek}, id=${task.id}`);
           }
         });
       });
@@ -249,7 +299,7 @@ function genererTableau() {
       // 7 colonnes jour (Lun=1, Mar=2 … Sam=6, Dim=0)
       const dayOrder = [1, 2, 3, 4, 5, 6, 0];
       dayOrder.forEach(day => {
-        const isToday = day === todayIndex;
+        const isToday = isCurrentWeek && day === todayIndex;
         const todayCls = isToday ? ' nett-today-col' : '';
         html += `<td class="nett-day-cell${todayCls}" data-day="${day}" data-id="${task.id}" data-freq="${task.frequence}" data-date="${weekDates[day] || ''}"></td>`;
       });
@@ -426,6 +476,8 @@ async function toggleCell(cell) {
 
 // ── Mise à jour dynamique du bouton VALIDER ───────────────────
 function mettreAJourBouton() {
+  if (!isCurrentWeek) return; // le bouton groupé ne concerne que la semaine en cours
+
   const cells = document.querySelectorAll(`td.nett-day-cell[data-day="${todayIndex}"]`);
   let total = 0, coches = 0;
   cells.forEach(cell => {
