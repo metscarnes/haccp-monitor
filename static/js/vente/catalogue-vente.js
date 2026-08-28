@@ -92,6 +92,7 @@ function bindEvents() {
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-inactifs').addEventListener('change', charger);
   document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
+  document.getElementById('filtre-non-relies').addEventListener('change', filtrer);
   document.getElementById('filtre-famille').addEventListener('change', () => {
     const fam = document.getElementById('filtre-famille').value;
     const sel = document.getElementById('filtre-sous-famille');
@@ -165,11 +166,13 @@ function filtrer() {
   const famille     = document.getElementById('filtre-famille').value;
   const sousFamille = document.getElementById('filtre-sous-famille').value;
   const sansPrixOnly = document.getElementById('filtre-sans-prix').checked;
+  const nonReliesOnly = document.getElementById('filtre-non-relies').checked;
 
   listeFiltree = produits.filter(p => {
     if (famille     && p.famille     !== famille)      return false;
     if (sousFamille && p.sous_famille !== sousFamille)  return false;
     if (sansPrixOnly && p.prix_vente_ttc > 0)           return false;
+    if (nonReliesOnly && p.liaison_achat !== 'non_relie') return false;
     if (search && !(p.nom || '').toLowerCase().includes(search)
                && !(p.code_vente || '').toLowerCase().includes(search)) return false;
     return true;
