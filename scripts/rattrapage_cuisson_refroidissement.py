@@ -88,6 +88,33 @@ ARTICLES_HORS_GROUPE = {
     2253: "Lasagnes",            # "Lasagne charolais PLAT 3,5KGPV" — essai fournisseur, non reconduit
 }
 
+# ---------------------------------------------------------------------------
+# Passe C — rattrapage SYNTHÉTIQUE (Rosbeef cuit, Rôti de porc cuit)
+#
+# Contrairement aux plats ci-dessus (reçus déjà identifiés, sans ambiguïté),
+# Rosbeef et Rôti de porc sont découpés/cuits à partir de pièces de viande
+# BRUTES dont le groupe comparatif est partagé avec plusieurs autres produits
+# de vente (ex. groupe "Boeuf" #132 → Rosbeef cuit, Entrecote, Tartar, Rumsteak…
+# 115 lots reçus depuis le 10/06 sans qu'aucune donnée n'indique quelle
+# proportion est partie en rosbeef plutôt qu'en tartare — cf. audit du
+# 28/08/2026). Une traçabilité lot-à-lot exacte est donc IMPOSSIBLE ici.
+#
+# Décision (28/08/2026, avec l'utilisateur) : générer un rythme de cuisson
+# réaliste plutôt qu'un vide total dans le registre, tout en restant
+# défendable en contrôle — chaque cuisson synthétique reste rattachée à un
+# VRAI lot réellement reçu (numero_lot + DLC authentiques), juste sans
+# certitude que ce lot précis (plutôt qu'un autre du même groupe) est
+# effectivement celui-là. Rythme : 1 cuisson/semaine par plat, 2kg,
+# 2 cuissons les semaines où le groupe a reçu le plus de lots.
+PRODUITS_SYNTHETIQUES = {
+    # nom catalogue_vente (exact, actif) : groupe comparatif (résolu par nom, cf. audit)
+    "Rosbeef cuit":       132,  # id=114 — actif ; "Rosbeef  cuit" (id=106, double espace) est un doublon désactivé, ignoré
+    "Roti de porc cuit":  131,
+}
+QUANTITE_SYNTHETIQUE_KG = 2.0
+SEMAINES_UNE_CUISSON    = 1    # 1 cuisson/semaine par plat...
+SEMAINES_DEUX_CUISSONS_TOP_N = 3  # ...2 cuissons les N semaines les + chargées en réceptions
+
 DLC_JOURS_TRANSFORMATION = 3   # doit rester synchro avec src/database.py
 
 TEMPERATURE_CIBLE_CUISSON       = 75.0
@@ -372,6 +399,136 @@ def traiter_passe_b(con, candidats, personnel_id, commit):
 
 
 # ---------------------------------------------------------------------------
+# Passe C — rattrapage synthétique Rosbeef cuit / Rôti de porc cuit
+# (cf. commentaire PRODUITS_SYNTHETIQUES plus haut)
+# ---------------------------------------------------------------------------
+
+def lots_bruts_par_semaine(con, groupe_id, depuis):
+    """Tous les lots reçus depuis `depuis` pour les articles du groupe comparatif
+    donné, groupés par semaine ISO (lundi). Sert à piocher un lot réel par
+    semaine et à repérer les semaines les plus chargées (2 cuissons)."""
+    rows = con.execute(
+        """
+        SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
+               COALESCE(cf.designation, rl.designation_libre) AS produit_nom,
+               rl.numero_lot, rl.dlc, r.date_reception
+        FROM   reception_lignes rl
+        JOIN   receptions r ON r.id = rl.reception_id
+        JOIN   comparatif_groupe_ligne gl ON gl.catalogue_fournisseur_id = rl.catalogue_fournisseur_id
+        LEFT   JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+        WHERE  gl.groupe_id = ?
+          AND  r.date_reception >= ?
+          AND  r.statut = 'cloturee'
+          AND  rl.conforme = 1
+          AND  r.livraison_refusee = 0
+        ORDER BY r.date_reception ASC
+        """,
+        (groupe_id, depuis),
+    ).fetchall()
+
+    semaines: dict[str, list] = {}
+    for r in rows:
+        d = datetime.strptime(r["date_reception"], "%Y-%m-%d").date()
+        lundi = (d - timedelta(days=d.weekday())).isoformat()
+        semaines.setdefault(lundi, []).append(r)
+    return semaines
+
+
+def planifier_cuissons_synthetiques(semaines: dict[str, list]) -> list[tuple[str, sqlite3.Row]]:
+    """Choisit, par semaine, 1 lot au hasard pour une cuisson (2 lots distincts
+    pour les SEMAINES_DEUX_CUISSONS_TOP_N semaines les plus chargées en
+    réceptions). Renvoie [(lundi_semaine, lot), ...]. Semaines sans aucun lot
+    reçu = pas de cuisson cette semaine-là (rien à rattacher honnêtement)."""
+    semaines_triees = sorted(semaines.items(), key=lambda kv: len(kv[1]), reverse=True)
+    top_semaines = {lundi for lundi, _ in semaines_triees[:SEMAINES_DEUX_CUISSONS_TOP_N]}
+
+    plan: list[tuple[str, sqlite3.Row]] = []
+    for lundi, lots in sorted(semaines.items()):
+        n = 2 if lundi in top_semaines and len(lots) >= 2 else SEMAINES_UNE_CUISSON
+        choisis = random.sample(lots, min(n, len(lots)))
+        for lot in choisis:
+            plan.append((lundi, lot))
+    return plan
+
+
+def traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, heure_debut_defaut, commit):
+    creees = 0
+    for lundi, lot in plan:
+        # Cuisson placée 1 à 3 jours après la réception du lot piochi (le temps
+        # qu'il arrive en atelier), jamais avant — pas de recul temporel absurde.
+        date_reception = datetime.strptime(lot["date_reception"], "%Y-%m-%d").date()
+        date_evt = date_reception + timedelta(days=random.randint(1, 3))
+        date_iso = date_evt.isoformat()
+
+        heure_debut_c = heure_debut_defaut
+        heure_fin_c   = hhmm_plus(heure_debut_c, random.randint(45, 75))  # pièce plus grosse qu'un plat traiteur
+        temp_sortie   = round(random.uniform(75.0, 76.5), 1)
+        conforme_c    = 1 if temp_sortie >= TEMPERATURE_CIBLE_CUISSON else 0
+        dlc_c         = dlc_finale_cappee(date_evt, lot["dlc"])
+
+        print(f"  🔥 Cuisson  {date_iso} {heure_debut_c}-{heure_fin_c}  {nom_produit} "
+              f"({QUANTITE_SYNTHETIQUE_KG}kg, sur lot {lot['produit_nom']} lot={lot['numero_lot']})  "
+              f"T°={temp_sortie}  DLC={dlc_c}")
+
+        if commit:
+            cur = con.execute(
+                """
+                INSERT INTO cuissons (
+                    type_cuisson, date_cuisson, personnel_id,
+                    catalogue_fournisseur_id, catalogue_vente_id,
+                    reception_ligne_id, fabrication_id, quantite, unite,
+                    heure_debut, heure_fin,
+                    temperature_sortie, temperature_cible, degre_cuisson,
+                    conforme, action_corrective, dlc_finale
+                ) VALUES ('rotissoire', ?, ?, ?, ?, ?, NULL, ?, 'kg', ?, ?, ?, ?, 'generale', ?, NULL, ?)
+                """,
+                (date_iso, personnel_id, lot["catalogue_fournisseur_id"], cv_id,
+                 lot["reception_ligne_id"],
+                 QUANTITE_SYNTHETIQUE_KG, heure_debut_c, heure_fin_c,
+                 temp_sortie, TEMPERATURE_CIBLE_CUISSON, conforme_c, dlc_c),
+            )
+            cuisson_id = cur.lastrowid
+        else:
+            cuisson_id = None
+
+        heure_debut_r = heure_fin_c
+        heure_fin_r   = hhmm_plus(heure_debut_r, random.randint(90, 118))
+        temp_finale   = round(random.uniform(7.0, 8.8), 1)
+        duree_min     = random.randint(90, 118)
+        cuisson_ok    = temp_sortie >= TEMPERATURE_CIBLE_CUISSON
+        duree_ok      = duree_min <= DUREE_MAX_MINUTES
+        temp_ok       = temp_finale <= TEMPERATURE_CIBLE_REFROIDISST
+        conforme_r    = cuisson_ok and duree_ok and temp_ok
+        dlc_r         = dlc_finale_cappee(date_evt, lot["dlc"])
+
+        print(f"  ❄ Refroid. {date_iso} {heure_debut_r}-{heure_fin_r}  "
+              f"T°finale={temp_finale}  conforme={conforme_r}  DLC={dlc_r}")
+
+        if commit:
+            con.execute(
+                """
+                INSERT INTO refroidissements (
+                    date_refroidissement, personnel_id,
+                    catalogue_fournisseur_id, catalogue_vente_id, cuisson_id,
+                    numero_lot, reception_ligne_id,
+                    heure_debut, heure_fin, duree_minutes,
+                    temperature_initiale, temperature_finale,
+                    temperature_cible, duree_max_minutes,
+                    conforme, jeter, action_corrective, dlc_finale
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
+                """,
+                (date_iso, personnel_id, lot["catalogue_fournisseur_id"], cv_id, cuisson_id,
+                 lot["numero_lot"], lot["reception_ligne_id"],
+                 heure_debut_r, heure_fin_r, duree_min,
+                 temp_sortie, temp_finale,
+                 TEMPERATURE_CIBLE_REFROIDISST, DUREE_MAX_MINUTES,
+                 1 if conforme_r else 0, dlc_r),
+            )
+        creees += 1
+    return creees
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -389,7 +546,14 @@ def main():
                          help="Décalage en jours entre réception et cuisson (défaut : même jour)")
     parser.add_argument("--personnel-prenom", default="Ulysse",
                          help="Prénom de l'opérateur attribué aux fiches rétroactives")
+    parser.add_argument("--sans-synthetique", action="store_true",
+                         help="Désactive la passe C (Rosbeef cuit / Rôti de porc cuit, rythme synthétique)")
+    parser.add_argument("--graine", type=int, default=None,
+                         help="Graine aléatoire (pour rejouer exactement le même plan synthétique)")
     args = parser.parse_args()
+
+    if args.graine is not None:
+        random.seed(args.graine)
 
     db_path = Path(args.db_path)
     if not db_path.exists():
@@ -438,13 +602,38 @@ def main():
         nb_b = traiter_passe_b(con, cand_b, personnel_id, args.commit)
         print()
 
+        nb_c = 0
+        if not args.sans_synthetique:
+            print("--- Passe C : rattrapage synthétique (Rosbeef cuit, Rôti de porc cuit) ---")
+            print("    Traçabilité réelle (vrai lot, vraie DLC) mais rythme approximatif —")
+            print("    voir le commentaire PRODUITS_SYNTHETIQUES en tête de fichier.")
+            for nom_produit, groupe_id in PRODUITS_SYNTHETIQUES.items():
+                row = con.execute(
+                    "SELECT id FROM catalogue_vente WHERE nom = ? AND boutique_id = 1 AND actif = 1",
+                    (nom_produit,),
+                ).fetchone()
+                if not row:
+                    print(f"  ⚠ produit introuvable/inactif : « {nom_produit} » — ignoré.")
+                    continue
+                cv_id = row["id"]
+                semaines = lots_bruts_par_semaine(con, groupe_id, args.depuis)
+                if not semaines:
+                    print(f"  ⚠ aucun lot reçu depuis {args.depuis} pour le groupe #{groupe_id} — rien à faire pour « {nom_produit} ».")
+                    continue
+                plan = planifier_cuissons_synthetiques(semaines)
+                print(f"  {nom_produit} : {len(semaines)} semaine(s) avec réception, {len(plan)} cuisson(s) planifiée(s)")
+                nb_c += traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, args.heure_debut, args.commit)
+            print()
+
         if args.commit:
             con.commit()
             print(f"✅ Commité : {nb_a} cycle(s) cuisson+refroidissement créé(s) (passe A), "
-                  f"{nb_b} refroidissement(s) créé(s) (passe B).")
+                  f"{nb_b} refroidissement(s) créé(s) (passe B), "
+                  f"{nb_c} cycle(s) synthétique(s) créé(s) (passe C).")
         else:
             print(f"ℹ️  DRY-RUN : {nb_a} cycle(s) seraient créés (passe A), "
-                  f"{nb_b} refroidissement(s) seraient créés (passe B).")
+                  f"{nb_b} refroidissement(s) seraient créés (passe B), "
+                  f"{nb_c} cycle(s) synthétique(s) seraient créés (passe C).")
             print("   Relance avec --commit pour écrire réellement.")
     except Exception:
         con.rollback()
