@@ -78,6 +78,16 @@
 .ach-btn--small { padding: .35rem .7rem; font-size: var(--text-sm); min-height: 0; }
 .ach-btn:disabled { opacity: .45; cursor: not-allowed; }
 
+/* ── Catalogue vente : état de liaison achat (bouton 🔗) ─────── */
+.ach-btn--liaison-partielle { background: #fef3c7; border-color: #fcd34d; }
+.ach-btn--liaison-partielle:hover { background: #fde68a; }
+.ach-btn--liaison-ok { background: #dcfce7; border-color: #86efac; }
+.ach-btn--liaison-ok:hover { background: #bbf7d0; }
+
+/* ── Catalogue vente : colonne Marge % ────────────────────────── */
+.ach-marge-pct { font-weight: 700; color: var(--color-ok, #2f7d43); }
+.ach-marge-pct--neg { color: #991b1b; }
+
 /* ── Stats ────────────────────────────────────────────────── */
 .ach-stats {
   display: grid;

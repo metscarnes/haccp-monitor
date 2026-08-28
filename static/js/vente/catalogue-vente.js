@@ -24,11 +24,19 @@ const COLONNES = [
   { key: 'code_vente',               label: 'Code' },
   { key: 'prix_vente_ttc',           label: 'Prix TTC' },
   { key: 'tva_percent',              label: 'TVA' },
+  { key: 'marge',                    label: 'Marge' },
   { key: 'dlc_jours',               label: 'DLC (j)' },
   { key: 'temperature_conservation', label: 'Température' },
   { key: 'famille',                  label: 'Famille' },
   { key: 'sous_famille',             label: 'Sous-famille' },
 ];
+
+// État de liaison achat (cf. GET /api/vente/catalogue) → aspect du bouton 🔗
+const LIAISON_ICONES = {
+  non_relie:            { icone: '🔗', classe: '', titre: "Relier à un article d'achat (suivi de marge)" },
+  relie_sans_reference:  { icone: '🔗', classe: 'ach-btn--liaison-partielle', titre: "Relié, mais aucune ligne d'achat de référence choisie — marge indisponible" },
+  relie_avec_marge:      { icone: '🔗', classe: 'ach-btn--liaison-ok', titre: 'Relié à un article d\'achat — marge suivie' },
+};
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -217,7 +225,12 @@ function afficherTable(liste) {
     tbody.innerHTML = `<tr><td colspan="${COLONNES.length + 2}" class="ach-vide">Aucun produit fini trouvé</td></tr>`;
     return;
   }
-  tbody.innerHTML = liste.map(p => `
+  tbody.innerHTML = liste.map(p => {
+    const liaison = LIAISON_ICONES[p.liaison_achat] || LIAISON_ICONES.non_relie;
+    const tauxMarge = p.marge && p.marge.taux_marge != null
+      ? `<span class="ach-marge-pct${p.marge.taux_marge < 0 ? ' ach-marge-pct--neg' : ''}">${(p.marge.taux_marge * 100).toFixed(0)}%</span>`
+      : '<span style="color:#9ca3af">—</span>';
+    return `
     <tr class="${!p.actif ? 'ach-row--inactif' : ''}">
       <td style="width:36px;text-align:center;padding:0 8px;">
         <input type="checkbox" class="chk-produit" data-id="${p.id}"
@@ -230,20 +243,22 @@ function afficherTable(liste) {
       <td>${p.code_vente ? `<code>${escHtml(p.code_vente)}</code>` : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${p.prix_vente_ttc != null ? p.prix_vente_ttc.toFixed(2) + ' €' : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${fmtTva(p.tva_percent)}%</td>
+      <td class="ach-col-num">${tauxMarge}</td>
       <td class="ach-col-num">${p.dlc_jours ?? '—'}</td>
       <td>${escHtml(p.temperature_conservation || '—')}</td>
       <td>${p.famille ? escHtml(p.famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
-        <button class="ach-btn ach-btn--small" onclick="ouvrirModalAchatLie(${p.id})" title="Relier à un article d'achat (suivi de marge)">🔗</button>
+        <button class="ach-btn ach-btn--small ${liaison.classe}" onclick="ouvrirModalAchatLie(${p.id})" title="${liaison.titre}">${liaison.icone}</button>
         <button class="ach-btn ach-btn--small btn-etiq-prix" data-id="${p.id}" title="Imprimer étiquette prix">🏷️</button>
         ${p.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${p.id}, false)" title="Désactiver">✕</button>`
           : `<button class="ach-btn ach-btn--small ach-btn--ok" onclick="toggleActif(${p.id}, true)" title="Réactiver">↺</button>`
         }
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   // Stocker les données produit pour les boutons étiquette
   liste.forEach(p => { _etiqMap.set(p.id, p); });

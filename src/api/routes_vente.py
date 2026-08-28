@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.routes_auth import require_admin
+from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
 from src.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -83,7 +84,48 @@ async def liste_catalogue_vente(
             params.append(f"%{q}%")
         sql += " ORDER BY famille, sous_famille, nom"
         cur = await db.execute(sql, params)
-        return [dict(r) for r in await cur.fetchall()]
+        produits = [dict(r) for r in await cur.fetchall()]
+
+        # État de liaison + marge (réutilise le calcul du comparateur achats) :
+        #   'non_relie'            — aucun groupe comparatif, bouton 🔗 vide
+        #   'relie_sans_reference' — groupe présent mais aucune ligne d'achat choisie
+        #                            (gv.ligne_choisie_id NULL) → marge non calculable
+        #   'relie_avec_marge'     — ligne de référence choisie ET marge calculable
+        cur_liaison = await db.execute(
+            """
+            SELECT gv.catalogue_vente_id, gv.ligne_choisie_id,
+                   cf.format_prix, cf.prix_achat_ht, cf.poids_colis_kg, cf.famille,
+                   cf.poids_unitaire_kg, cf.qte_par_colis
+            FROM   comparatif_groupe_vente gv
+            LEFT   JOIN catalogue_fournisseur cf ON cf.id = gv.ligne_choisie_id
+            """
+        )
+        liaisons = {r["catalogue_vente_id"]: dict(r) for r in await cur_liaison.fetchall()}
+
+        for p in produits:
+            liaison = liaisons.get(p["id"])
+            if liaison is None:
+                p["liaison_achat"] = "non_relie"
+                p["marge"] = None
+                continue
+            if liaison.get("ligne_choisie_id") is None:
+                p["liaison_achat"] = "relie_sans_reference"
+                p["marge"] = None
+                continue
+            achat_ref_kg    = _prix_kg_article(liaison)
+            achat_ref_piece = _prix_piece_article(liaison)
+            marge = _calc_marge(
+                p.get("prix_vente_ttc"),
+                p.get("tva_percent"),
+                achat_ref_kg,
+                unite_vente=p.get("unite_vente") or "kg",
+                poids_piece_kg=p.get("poids_piece_kg"),
+                achat_ref_piece=achat_ref_piece,
+            )
+            p["liaison_achat"] = "relie_avec_marge" if marge else "relie_sans_reference"
+            p["marge"] = marge
+
+        return produits
 
 
 @router.get("/catalogue/export")
