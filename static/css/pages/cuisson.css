@@ -851,6 +851,26 @@
   border-radius: 8px;
   padding: .5rem .85rem;
 }
+
+/* ── Modale "ça devient quel produit ?" (cuisson brute → produit fini) ── */
+.cu-pf-source {
+  text-align: center;
+  font-size: .9rem;
+  font-weight: 700;
+  color: #6B3A1F;
+  background: #f5ede0;
+  border-radius: 8px;
+  padding: .5rem .85rem;
+  margin: 0 0 .85rem;
+}
+#cu-pf-grid {
+  max-height: 45vh;
+  overflow-y: auto;
+  margin: .85rem 0;
+}
+#cu-pf-confirmer {
+  width: 100%;
+}
 .cu-choix-grid {
   display: flex;
   flex-direction: column;

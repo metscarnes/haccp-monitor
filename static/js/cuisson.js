@@ -122,6 +122,12 @@ const elChoixNouvelle = $('cu-choix-nouvelle');
 const elChoixHub      = $('cu-choix-hub');
 const elChoixRefroid  = $('cu-choix-refroid');
 
+const elModalPF     = $('cu-modal-produit-fini');
+const elPFSource    = $('cu-pf-source');
+const elPFSearch    = $('cu-pf-search');
+const elPFGrid      = $('cu-pf-grid');
+const elPFConfirmer = $('cu-pf-confirmer');
+
 // ── Horloge ────────────────────────────────────────────────
 (function majHorloge() {
   elHorloge.textContent = new Date().toLocaleTimeString('fr-FR', {
@@ -469,7 +475,7 @@ async function selectionnerProduit(prod) {
     if (state.lotsProduit.length === 0) {
       // Pas de réception enregistrée — on avance quand même
       majBandeau();
-      setTimeout(() => goStep(3), 120);
+      setTimeout(() => avancerVersEtape3(), 120);
       return;
     }
 
@@ -488,7 +494,7 @@ async function selectionnerProduit(prod) {
     if (state.lotsProduit.length === 1) {
       appliquerLotChoisi(state.lotsProduit[0]);
       majBandeau();
-      setTimeout(() => goStep(3), 120);
+      setTimeout(() => avancerVersEtape3(), 120);
     } else {
       // Plusieurs lots → on affiche le sélecteur, l'utilisateur clique "Suivant"
       elLotWrap.hidden = false;
@@ -562,7 +568,96 @@ elLotSelect.addEventListener('change', () => {
   if (lot) appliquerLotChoisi(lot);
 });
 
-elBtnStep2Next.addEventListener('click', () => goStep(3));
+// ── Modale "ça devient quel produit ?" ──────────────────────
+// Un article du catalogue ACHATS (matière brute reçue, ex. ART8) ne dit pas
+// quel produit du catalogue VENTE il devient une fois cuit (ex. "Rosbeef
+// cuit") — rien ne les distingue côté schéma achats. On le demande donc
+// systématiquement avant l'étape 3, avec suggestions (dernier choix pour cet
+// article + produits du même groupe comparatif) et recherche libre.
+let pfChoixCourant = null;
+
+async function avancerVersEtape3() {
+  const p = state.produitChoisi;
+  const doitDemander = p && p.cle_type === 'achat' && !p.catalogue_vente_id;
+  if (!doitDemander) {
+    goStep(3);
+    return;
+  }
+  await ouvrirModalProduitFini(p);
+}
+
+async function ouvrirModalProduitFini(produitBrut) {
+  pfChoixCourant = null;
+  elPFConfirmer.disabled = true;
+  elPFSource.textContent = `Matière reçue : ${produitBrut.nom}`;
+  elPFSearch.value = '';
+  elPFGrid.innerHTML = `<div class="cu-tuiles-vide">Chargement…</div>`;
+  elModalPF.hidden = false;
+
+  try {
+    const res = await apiFetch(
+      `/api/cuisson/produits-vente-suggeres?catalogue_fournisseur_id=${produitBrut.cle_id}`
+    );
+    const suggestions = [];
+    if (res.dernier_choix) suggestions.push({ ...res.dernier_choix, dernier: true });
+    (res.groupe ?? []).forEach(g => {
+      if (!suggestions.some(s => s.id === g.id)) suggestions.push(g);
+    });
+    afficherPFGrid(suggestions);
+  } catch (err) {
+    console.warn('[cuisson] Suggestions produit fini KO :', err);
+    afficherPFGrid([]);
+  }
+}
+
+function afficherPFGrid(liste) {
+  if (!liste.length) {
+    elPFGrid.innerHTML = `<div class="cu-tuiles-vide">Aucune suggestion — cherchez le produit ci-dessus.</div>`;
+    return;
+  }
+  elPFGrid.innerHTML = liste.map(p => `
+    <button type="button" class="cu-tuile${pfChoixCourant?.id === p.id ? ' cu-tuile--selected' : ''}"
+            role="listitem" data-pf-id="${p.id}" data-pf-nom="${escHtml(p.nom)}">
+      ${p.dernier ? '<div class="cu-tuile-badge">⭐ Dernier choix</div>' : ''}
+      <div class="cu-tuile-icone">🍽</div>
+      <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
+    </button>
+  `).join('');
+}
+
+elPFGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.cu-tuile[data-pf-id]');
+  if (!tuile) return;
+  pfChoixCourant = { id: Number(tuile.dataset.pfId), nom: tuile.dataset.pfNom };
+  elPFGrid.querySelectorAll('.cu-tuile').forEach(t => t.classList.toggle('cu-tuile--selected', t === tuile));
+  elPFConfirmer.disabled = false;
+});
+
+let pfSearchTimer = null;
+elPFSearch.addEventListener('input', () => {
+  clearTimeout(pfSearchTimer);
+  const terme = elPFSearch.value;
+  pfSearchTimer = setTimeout(async () => {
+    try {
+      const rows = await apiFetch(`/api/cuisson/produits-vente-recherche?q=${encodeURIComponent(terme)}`);
+      afficherPFGrid(rows);
+    } catch (err) {
+      console.warn('[cuisson] Recherche produit fini KO :', err);
+    }
+  }, 250);
+});
+
+elPFConfirmer.addEventListener('click', () => {
+  if (!pfChoixCourant) return;
+  state.produitChoisi.catalogue_vente_id = pfChoixCourant.id;
+  // Le nom de la tuile affiché en bandeau reste celui de la matière brute reçue
+  // (ex. "ART8") : c'est le lot réellement tracé. Le produit fini choisi n'apparaît
+  // qu'au moment de l'étiquette / de l'historique.
+  elModalPF.hidden = true;
+  goStep(3);
+});
+
+elBtnStep2Next.addEventListener('click', () => avancerVersEtape3());
 
 // Historique réception produit — modale
 elBtnHisto.addEventListener('click', async () => {

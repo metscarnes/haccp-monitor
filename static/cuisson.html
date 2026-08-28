@@ -278,6 +278,31 @@
     </div>
   </div>
 
+  <!-- ── Modal "ça devient quel produit ?" — matière brute → produit fini ── -->
+  <div id="cu-modal-produit-fini" class="cu-modal" hidden role="dialog" aria-modal="true"
+       aria-labelledby="cu-pf-titre">
+    <div class="cu-modal-panel">
+      <div class="cu-modal-head">
+        <div class="cu-modal-titre" id="cu-pf-titre">Ça devient quel produit ?</div>
+      </div>
+      <div class="cu-modal-corps">
+        <p class="cu-pf-source" id="cu-pf-source"></p>
+
+        <input id="cu-pf-search" type="search" class="cu-filter-input"
+               placeholder="Chercher un autre produit du catalogue vente…"
+               autocomplete="off" inputmode="text" aria-label="Chercher un produit fini">
+
+        <div id="cu-pf-grid" class="cu-tuiles-grid" role="list">
+          <div class="cu-tuiles-vide">Chargement…</div>
+        </div>
+
+        <button type="button" id="cu-pf-confirmer" class="cu-btn-primaire" disabled>
+          Confirmer →
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Gabarit ticket thermique (invisible à l'écran, imprimé via @media print) ── -->
   <div id="print-label-transforme">
     <div style="text-align:center;border:2px solid black;border-radius:6px;padding:4px;margin-bottom:6px;">

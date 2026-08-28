@@ -7,6 +7,7 @@ Cible réglementaire : ≥ 75 °C à cœur.
 GET  /api/cuisson/enregistrements?type=rotissoire&limit=50
 POST /api/cuisson/enregistrements
 GET  /api/cuisson/a-traiter
+GET  /api/cuisson/produits-vente-suggeres
 """
 
 import logging
@@ -475,5 +476,91 @@ async def lots_a_traiter():
                      r.date_reception ASC
             """
         )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/cuisson/produits-vente-suggeres
+# Alimente la modale "ça devient quel produit ?" à l'étape 2 du wizard : on ne
+# sait pas encore, pour un article de matière brute reçu, quel produit du
+# catalogue de VENTE en résultera une fois cuit (aucun champ ne le distingue
+# côté catalogue achats — cf. décision du 28/08/2026, volontairement pas de
+# nouveau champ pour rester simple).
+# ---------------------------------------------------------------------------
+
+@router.get("/produits-vente-suggeres")
+async def produits_vente_suggeres(catalogue_fournisseur_id: int = Query(...)):
+    """
+    Suggestions de produit fini pour un article du catalogue d'achats :
+      1. `dernier_choix` — le catalogue_vente_id utilisé la dernière fois qu'une
+         cuisson a été enregistrée pour ce même article (mémorisation simple,
+         sans nouvelle table : on relit l'historique `cuissons`).
+      2. `groupe` — les produits de vente actifs du groupe comparatif auquel
+         appartient l'article (ex. groupe "Boeuf" → Rosbeef cuit, Entrecote…),
+         via comparatif_groupe_ligne → comparatif_groupe_vente.
+    Le front complète toujours avec une recherche libre sur tout le catalogue
+    vente : ces suggestions n'ont rien d'exhaustif ni d'obligatoire.
+    """
+    async with get_db() as db:
+        cur_dernier = await db.execute(
+            """
+            SELECT c.catalogue_vente_id, cv.nom
+            FROM   cuissons c
+            JOIN   catalogue_vente cv ON cv.id = c.catalogue_vente_id
+            WHERE  c.catalogue_fournisseur_id = ?
+              AND  c.catalogue_vente_id IS NOT NULL
+            ORDER BY c.id DESC
+            LIMIT 1
+            """,
+            (catalogue_fournisseur_id,),
+        )
+        dernier = await cur_dernier.fetchone()
+
+        cur_groupe = await db.execute(
+            """
+            SELECT DISTINCT cv.id, cv.nom
+            FROM   comparatif_groupe_ligne gl
+            JOIN   comparatif_groupe_vente gv ON gv.groupe_id = gl.groupe_id
+            JOIN   catalogue_vente cv         ON cv.id        = gv.catalogue_vente_id
+            WHERE  gl.catalogue_fournisseur_id = ?
+              AND  cv.actif = 1
+            ORDER BY cv.nom COLLATE NOCASE
+            """,
+            (catalogue_fournisseur_id,),
+        )
+        groupe = await cur_groupe.fetchall()
+
+    return {
+        "dernier_choix": (
+            {"id": dernier["catalogue_vente_id"], "nom": dernier["nom"]}
+            if dernier else None
+        ),
+        "groupe": [{"id": r["id"], "nom": r["nom"]} for r in groupe],
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/cuisson/produits-vente-recherche
+# Recherche libre dans le catalogue vente pour la même modale, quand les
+# suggestions ci-dessus ne contiennent pas le bon produit. Pas d'auth admin :
+# utilisé depuis le wizard cuisson en atelier (opérateur, pas un gestionnaire).
+# ---------------------------------------------------------------------------
+
+@router.get("/produits-vente-recherche")
+async def produits_vente_recherche(q: str = Query("", description="Terme de recherche (nom)")):
+    terme = (q or "").strip()
+    async with get_db() as db:
+        sql = """
+            SELECT id, nom
+            FROM   catalogue_vente
+            WHERE  boutique_id = 1 AND actif = 1
+        """
+        params: list = []
+        if terme:
+            sql += " AND nom LIKE ?"
+            params.append(f"%{terme}%")
+        sql += " ORDER BY nom COLLATE NOCASE LIMIT 30"
+        cur = await db.execute(sql, params)
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
