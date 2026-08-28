@@ -99,18 +99,24 @@ ARTICLES_HORS_GROUPE = {
 # proportion est partie en rosbeef plutôt qu'en tartare — cf. audit du
 # 28/08/2026). Une traçabilité lot-à-lot exacte est donc IMPOSSIBLE ici.
 #
+# IMPORTANT : piocher n'importe quel article du GROUPE entier est incohérent
+# (un rosbeef ne se fait pas avec un os à moelle ni des travers — testé en
+# dry-run le 28/08/2026, résultat absurde). On se restreint donc à la seule
+# `ligne_choisie_id` de chaque produit (comparatif_groupe_vente) — la même
+# référence déjà utilisée pour calculer sa marge, donc la pièce réellement
+# considérée comme correspondant à ce plat précis.
+#
 # Décision (28/08/2026, avec l'utilisateur) : générer un rythme de cuisson
 # réaliste plutôt qu'un vide total dans le registre, tout en restant
 # défendable en contrôle — chaque cuisson synthétique reste rattachée à un
-# VRAI lot réellement reçu (numero_lot + DLC authentiques), juste sans
-# certitude que ce lot précis (plutôt qu'un autre du même groupe) est
-# effectivement celui-là. Rythme : 1 cuisson/semaine par plat, 2kg,
-# 2 cuissons les semaines où le groupe a reçu le plus de lots.
-PRODUITS_SYNTHETIQUES = {
-    # nom catalogue_vente (exact, actif) : groupe comparatif (résolu par nom, cf. audit)
-    "Rosbeef cuit":       132,  # id=114 — actif ; "Rosbeef  cuit" (id=106, double espace) est un doublon désactivé, ignoré
-    "Roti de porc cuit":  131,
-}
+# VRAI lot réellement reçu (numero_lot + DLC authentiques) de cette référence
+# précise, juste sans certitude que CE lot-là (plutôt qu'un autre du même
+# article) est effectivement celui transformé. Rythme : 1 cuisson/semaine par
+# plat, 2kg, 2 cuissons les semaines où la référence a reçu le plus de lots.
+PRODUITS_SYNTHETIQUES = [
+    "Rosbeef cuit",       # id=114 — ligne_choisie_id=2137 (Tende tranche pad bovin)
+    "Roti de porc cuit",  # id=32  — ligne_choisie_id=3126 (Longe Francilin)
+]
 QUANTITE_SYNTHETIQUE_KG = 2.0
 SEMAINES_UNE_CUISSON    = 1    # 1 cuisson/semaine par plat...
 SEMAINES_DEUX_CUISSONS_TOP_N = 3  # ...2 cuissons les N semaines les + chargées en réceptions
@@ -403,10 +409,23 @@ def traiter_passe_b(con, candidats, personnel_id, commit):
 # (cf. commentaire PRODUITS_SYNTHETIQUES plus haut)
 # ---------------------------------------------------------------------------
 
-def lots_bruts_par_semaine(con, groupe_id, depuis):
-    """Tous les lots reçus depuis `depuis` pour les articles du groupe comparatif
-    donné, groupés par semaine ISO (lundi). Sert à piocher un lot réel par
-    semaine et à repérer les semaines les plus chargées (2 cuissons)."""
+def resoudre_ligne_choisie(con, cv_id):
+    """catalogue_fournisseur_id de la ligne de référence choisie pour ce produit
+    de vente (comparatif_groupe_vente.ligne_choisie_id) — c'est la SEULE pièce
+    d'achat que le rattrapage synthétique doit piocher (cf. commentaire plus
+    haut : le groupe entier contient des pièces sans rapport, ex. os/travers)."""
+    row = con.execute(
+        "SELECT ligne_choisie_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+        (cv_id,),
+    ).fetchone()
+    return row["ligne_choisie_id"] if row else None
+
+
+def lots_bruts_par_semaine(con, catalogue_fournisseur_id, depuis):
+    """Tous les lots reçus depuis `depuis` pour CET article d'achat précis (la
+    ligne de référence choisie du produit, pas tout le groupe comparatif),
+    groupés par semaine ISO (lundi). Sert à piocher un lot réel par semaine et
+    à repérer les semaines les plus chargées (2 cuissons)."""
     rows = con.execute(
         """
         SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
@@ -414,16 +433,15 @@ def lots_bruts_par_semaine(con, groupe_id, depuis):
                rl.numero_lot, rl.dlc, r.date_reception
         FROM   reception_lignes rl
         JOIN   receptions r ON r.id = rl.reception_id
-        JOIN   comparatif_groupe_ligne gl ON gl.catalogue_fournisseur_id = rl.catalogue_fournisseur_id
         LEFT   JOIN catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
-        WHERE  gl.groupe_id = ?
+        WHERE  rl.catalogue_fournisseur_id = ?
           AND  r.date_reception >= ?
           AND  r.statut = 'cloturee'
           AND  rl.conforme = 1
           AND  r.livraison_refusee = 0
         ORDER BY r.date_reception ASC
         """,
-        (groupe_id, depuis),
+        (catalogue_fournisseur_id, depuis),
     ).fetchall()
 
     semaines: dict[str, list] = {}
@@ -612,9 +630,9 @@ def main():
         nb_c = 0
         if not args.sans_synthetique:
             print("--- Passe C : rattrapage synthétique (Rosbeef cuit, Rôti de porc cuit) ---")
-            print("    Traçabilité réelle (vrai lot, vraie DLC) mais rythme approximatif —")
-            print("    voir le commentaire PRODUITS_SYNTHETIQUES en tête de fichier.")
-            for nom_produit, groupe_id in PRODUITS_SYNTHETIQUES.items():
+            print("    Traçabilité réelle (vrai lot, vraie DLC), restreinte à la ligne de")
+            print("    référence choisie du produit — voir PRODUITS_SYNTHETIQUES en tête de fichier.")
+            for nom_produit in PRODUITS_SYNTHETIQUES:
                 row = con.execute(
                     "SELECT id FROM catalogue_vente WHERE nom = ? AND boutique_id = 1 AND actif = 1",
                     (nom_produit,),
@@ -623,12 +641,17 @@ def main():
                     print(f"  ⚠ produit introuvable/inactif : « {nom_produit} » — ignoré.")
                     continue
                 cv_id = row["id"]
-                semaines = lots_bruts_par_semaine(con, groupe_id, args.depuis)
+                cf_id = resoudre_ligne_choisie(con, cv_id)
+                if not cf_id:
+                    print(f"  ⚠ « {nom_produit} » n'a pas de ligne_choisie_id définie — impossible de "
+                          f"savoir quel article d'achat correspond à ce plat. Ignoré.")
+                    continue
+                semaines = lots_bruts_par_semaine(con, cf_id, args.depuis)
                 if not semaines:
-                    print(f"  ⚠ aucun lot reçu depuis {args.depuis} pour le groupe #{groupe_id} — rien à faire pour « {nom_produit} ».")
+                    print(f"  ⚠ aucun lot reçu depuis {args.depuis} pour l'article id={cf_id} — rien à faire pour « {nom_produit} ».")
                     continue
                 plan = planifier_cuissons_synthetiques(semaines)
-                print(f"  {nom_produit} : {len(semaines)} semaine(s) avec réception, {len(plan)} cuisson(s) planifiée(s)")
+                print(f"  {nom_produit} (article id={cf_id}) : {len(semaines)} semaine(s) avec réception, {len(plan)} cuisson(s) planifiée(s)")
                 nb_c += traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, args.heure_debut, args.commit)
             print()
 
