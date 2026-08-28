@@ -98,17 +98,39 @@ Les plats visés sont **tous déjà reliés** : Lasagnes (groupe #7, 3 achats), 
 espace, id=114), et il **partage le groupe #132 avec « Rosbeef cru »** — un lot reçu peut donc
 alimenter l'un ou l'autre ; le déclencheur ne peut pas deviner lequel.
 
+## API rebranchée sur les catalogues — fait le 2026-08-28
+
+Clé d'identité désormais **composite** `(cle_type, cle_id)` avec `cle_type ∈ {produit, vente,
+achat}`, côté API comme côté JS. `produit_id` seul ne pouvait plus servir de clé : il vaut NULL
+pour 99 % du stock, donc tous ces lots s'écrasaient dans une unique entrée `None` — un seul
+produit remontait au lieu de plusieurs centaines.
+
+- `CuissonCreate` / `RefroidissementCreate` : `produit_id` devient optionnel, ajout de
+  `catalogue_fournisseur_id` et `catalogue_vente_id`. Au moins un des trois est exigé (422 sinon)
+  — une cuisson sans identité serait intraçable.
+- Le refroidissement **hérite** l'identité de sa cuisson quand `cuisson_id` est fourni.
+- Nouvel endpoint `GET /api/cuisson/lots?<referentiel>_id=…` (exactement un identifiant, 422
+  sinon). L'ancienne route `/produits/{id}/receptions` est conservée pour compatibilité.
+- `get_stock_unifie` : les branches **cuisson et refroidissement** passent de `JOIN produits` à
+  `LEFT JOIN` + COALESCE sur les catalogues. Sans ça une cuisson issue du catalogue d'achats
+  n'apparaissait pas en stock, donc jamais dans le module Refroidissement : **la chaîne HACCP
+  s'arrêtait silencieusement après la cuisson**.
+- `cuisson.js` : tuiles identifiées par `data-cle-type`/`data-cle-id`. Attention au piège corrigé
+  — la comparaison `state.produitChoisi.id === p.id` sélectionnait TOUTES les tuiles catalogue
+  d'un coup, puisque `null === null` est vrai.
+
+Validé par un test de bout en bout (réception → cuisson → refroidissement sur un lot catalogue,
+n° de lot conservé) ; suite de tests inchangée : 33 échecs préexistants / 283 OK.
+
 ## Reste à faire
 
-1. `POST /api/cuisson/enregistrements` et `/api/refroidissement/enregistrements` : accepter
-   `catalogue_fournisseur_id` / `catalogue_vente_id` (aujourd'hui `produit_id: int` obligatoire
-   → HTTP 422 sur tout lot du catalogue achats).
-2. `GET /api/cuisson/produits-disponibles` : les lots sans produit interne remontent avec
-   `produit_id=None` et s'écrasent entre eux (dict keyé sur cette valeur).
-3. Re-cibler la détection auto sur `catalogue_vente.suivi_cuisson_auto` + la chaîne comparatif ;
+1. Re-cibler la détection auto sur `catalogue_vente.suivi_cuisson_auto` + la chaîne comparatif ;
    déplacer la case à cocher de `catalogue.html` (table `produits`) vers le catalogue de vente.
-4. Corriger `scripts/rattrapage_cuisson_refroidissement.py` (joint encore `produits`), puis le
+2. `refroidissement.js` : même bascule que `cuisson.js` (envoie encore `produit_id` seul).
+3. Corriger `scripts/rattrapage_cuisson_refroidissement.py` (joint encore `produits`), puis le
    lancer sur le Pi pour la période depuis le 2026-06-10.
+4. Arbitrage produit : dédoublonner « Rosbeef cuit » (id 106/114) et décider comment distinguer
+   cuit/cru, qui partagent le groupe #132.
 
 **Why:** ces chiffres viennent d'un audit ponctuel sur la base de prod, non déductibles du code ;
 et le piège (travail déjà écrit mais mal ciblé) ferait perdre du temps ou produirait un

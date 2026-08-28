@@ -17,6 +17,7 @@ déploiement, que les correctifs sont bien en place. Il ne modifie RIEN.
 Sans argument : haccp.db à la racine du dépôt.
 """
 
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -129,8 +130,9 @@ def main():
     api_ok = False
     if src.exists():
         txt_api = src.read_text(encoding="utf-8", errors="replace")
-        api_ok = ("produit_id:         Optional[int]" in txt_api
-                  or "produit_id: Optional[int]" in txt_api)
+        # Regex plutôt qu'égalité de chaîne : l'alignement des annotations varie.
+        api_ok = bool(re.search(r"produit_id\s*:\s*Optional\[int\]", txt_api)) and \
+                 "catalogue_fournisseur_id" in txt_api
     print()
     if stock_sans and not api_ok:
         print("  ⚠ ÉTAT INTERMÉDIAIRE : le schéma accepte ces lots (v7.4 ✓) mais l'API les")

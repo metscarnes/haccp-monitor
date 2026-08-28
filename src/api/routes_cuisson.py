@@ -35,7 +35,13 @@ class CuissonCreate(BaseModel):
     type_cuisson:       str   = Field(..., description="'rotissoire' pour l'instant")
     date_cuisson:       str   = Field(..., description="YYYY-MM-DD")
     personnel_id:       int
-    produit_id:         int
+    # v7.4 — trois espaces d'identifiants possibles, au moins un requis (cf. validation
+    # dans creer_cuisson). `produit_id` est l'ancien modèle interne, conservé pour
+    # l'historique ; le stock réel s'identifie par le catalogue d'ACHATS, et ce que l'on
+    # produit par le catalogue de VENTE.
+    produit_id:               Optional[int] = None
+    catalogue_fournisseur_id: Optional[int] = None
+    catalogue_vente_id:       Optional[int] = None
     reception_ligne_id: Optional[int]   = None     # source = lot de réception (brut)
     fabrication_id:     Optional[int]   = None     # source = lot de fabrication (fini cru)
     quantite:           Optional[float] = None
@@ -64,6 +70,15 @@ async def creer_cuisson(body: CuissonCreate):
         raise HTTPException(
             status_code=422,
             detail="Une cuisson ne peut pas être liée simultanément à une réception et à une fabrication.",
+        )
+
+    # Le produit cuit doit être identifiable dans au moins un des trois référentiels,
+    # sinon la cuisson serait intraçable (exigence HACCP).
+    if not (body.produit_id or body.catalogue_fournisseur_id or body.catalogue_vente_id):
+        raise HTTPException(
+            status_code=422,
+            detail="Produit non identifié : renseignez produit_id, "
+                   "catalogue_fournisseur_id ou catalogue_vente_id.",
         )
 
     # DLC J+3 calculée côté serveur (règle HACCP transformation)
@@ -107,17 +122,20 @@ async def creer_cuisson(body: CuissonCreate):
             """
             INSERT INTO cuissons (
                 type_cuisson, date_cuisson, personnel_id, produit_id,
+                catalogue_fournisseur_id, catalogue_vente_id,
                 reception_ligne_id, fabrication_id, quantite, unite,
                 heure_debut, heure_fin,
                 temperature_sortie, temperature_cible,
                 conforme, action_corrective, dlc_finale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.type_cuisson.lower(),
                 body.date_cuisson,
                 body.personnel_id,
                 body.produit_id,
+                body.catalogue_fournisseur_id,
+                body.catalogue_vente_id,
                 body.reception_ligne_id,
                 body.fabrication_id,
                 body.quantite,
@@ -135,8 +153,9 @@ async def creer_cuisson(body: CuissonCreate):
         nouveau_id = cur.lastrowid
 
     logger.info(
-        "Cuisson %s #%d — produit=%d T°=%.1f conforme=%s",
-        body.type_cuisson, nouveau_id, body.produit_id,
+        "Cuisson %s #%d — produit=%s/%s/%s T°=%.1f conforme=%s",
+        body.type_cuisson, nouveau_id,
+        body.produit_id, body.catalogue_fournisseur_id, body.catalogue_vente_id,
         body.temperature_sortie, bool(conforme),
     )
     return {
@@ -222,15 +241,36 @@ async def produits_disponibles_pour_cuisson():
 
     # get_stock_unifie est déjà trié par DLC croissante, date_origine croissante.
     # On garde le premier lot rencontré pour chaque produit (= FIFO).
-    par_produit: dict[int, dict] = {}
+    #
+    # Clé d'identité : depuis la v6, `produit_id` est NULL pour 99 % des lots (le stock
+    # vient du catalogue d'achats). S'en servir seul faisait s'écraser TOUS ces lots dans
+    # une unique entrée `None` — un seul produit remontait au lieu de plusieurs centaines.
+    # On identifie donc par (espace d'identifiants, valeur).
+    par_produit: dict[tuple[str, int], dict] = {}
     for lot in stock:
-        pid = lot["produit_id"]
-        if pid in par_produit:
+        pid = lot.get("produit_id")
+        cfid = lot.get("catalogue_fournisseur_id")
+        cvid = lot.get("catalogue_vente_id")
+        if pid is not None:
+            cle = ("produit", pid)
+        elif cvid is not None:
+            cle = ("vente", cvid)
+        elif cfid is not None:
+            cle = ("achat", cfid)
+        else:
+            continue        # lot non identifiable : on ne peut pas le proposer à la cuisson
+        if cle in par_produit:
             continue
         src_type = lot["source_type"]
         src_id   = lot["source_id"]
-        par_produit[pid] = {
+        par_produit[cle] = {
+            # `id` reste l'identifiant historique (produits) quand il existe, sinon None :
+            # le front s'appuie désormais sur cle_type/cle_id pour désigner un produit.
             "id":                 pid,
+            "cle_type":           cle[0],
+            "cle_id":             cle[1],
+            "catalogue_fournisseur_id": cfid,
+            "catalogue_vente_id":       cvid,
             "nom":                lot["produit_nom"],
             "espece":             lot.get("espece"),
             "categorie":          lot.get("categorie"),
@@ -255,6 +295,48 @@ async def produits_disponibles_pour_cuisson():
 
 @router.get("/produits/{produit_id}/receptions")
 async def historique_receptions_produit(produit_id: int, limit: int = Query(20, ge=1, le=100)):
+    """Lots d'un produit identifié par l'ancien référentiel `produits` (compatibilité).
+
+    Conservé pour ne pas casser les appels existants ; le wizard utilise désormais
+    GET /api/cuisson/lots, qui accepte aussi les identifiants catalogue.
+    """
+    return await _lots_disponibles(produit_id=produit_id, limit=limit)
+
+
+@router.get("/lots")
+async def lots_disponibles_pour_cuisson(
+    produit_id:               Optional[int] = Query(None),
+    catalogue_fournisseur_id: Optional[int] = Query(None),
+    catalogue_vente_id:       Optional[int] = Query(None),
+    limit:                    int = Query(20, ge=1, le=100),
+):
+    """Lots disponibles à cuire pour un produit, quel que soit son référentiel.
+
+    Depuis la v6, un produit peut être identifié par `produits` (historique),
+    par le catalogue d'ACHATS (le stock réel) ou par le catalogue de VENTE
+    (les fabrications). Exactement un de ces identifiants est attendu.
+    """
+    fournis = [x for x in (produit_id, catalogue_fournisseur_id, catalogue_vente_id) if x]
+    if len(fournis) != 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Fournissez exactement un identifiant : produit_id, "
+                   "catalogue_fournisseur_id ou catalogue_vente_id.",
+        )
+    return await _lots_disponibles(
+        produit_id=produit_id,
+        catalogue_fournisseur_id=catalogue_fournisseur_id,
+        catalogue_vente_id=catalogue_vente_id,
+        limit=limit,
+    )
+
+
+async def _lots_disponibles(
+    produit_id:               Optional[int] = None,
+    catalogue_fournisseur_id: Optional[int] = None,
+    catalogue_vente_id:       Optional[int] = None,
+    limit:                    int = 20,
+):
     """
     Lots disponibles pour cuisson : DLC non dépassée ET non traitée via le calendrier DLC.
 
@@ -265,6 +347,19 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
     Chaque lot expose `source_type` + `source_id` (à privilégier) ainsi que
     `reception_ligne_id` (legacy, conservé pour l'affichage).
     """
+    # Le filtre porte sur la colonne correspondant au référentiel demandé.
+    # Un identifiant de vente ne désigne aucune ligne de réception : dans ce cas
+    # seules les fabrications remontent (clause volontairement impossible).
+    if catalogue_fournisseur_id:
+        filtre_reception, param_reception = "rl.catalogue_fournisseur_id = ?", catalogue_fournisseur_id
+    elif produit_id:
+        filtre_reception, param_reception = "rl.produit_id = ?", produit_id
+    else:
+        filtre_reception, param_reception = "1 = 0", None
+
+    # Les fabrications sont rattachées au catalogue de VENTE via la recette.
+    param_fabrication = catalogue_vente_id or produit_id
+
     async with get_db() as db:
         # ── Lots issus de réception ───────────────────────────────────────────
         cur = await db.execute(
@@ -284,7 +379,7 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             FROM   reception_lignes rl
             JOIN   receptions  r ON r.id = rl.reception_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
-            WHERE  rl.produit_id = ?
+            WHERE  """ + filtre_reception + """
               AND r.statut = 'cloturee'
               AND rl.conforme = 1
               AND r.livraison_refusee = 0
@@ -297,7 +392,7 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             ORDER BY r.date_reception DESC, r.id DESC
             LIMIT ?
             """,
-            (produit_id, limit),
+            ((param_reception, limit) if param_reception is not None else (limit,)),
         )
         receptions = [dict(r) for r in await cur.fetchall()]
 
@@ -333,7 +428,7 @@ async def historique_receptions_produit(produit_id: int, limit: int = Query(20, 
             ORDER BY fab.date DESC, fab.id DESC
             LIMIT ?
             """,
-            (produit_id, limit),
+            (param_fabrication, limit),
         )
         fabrications = [dict(r) for r in await cur.fetchall()]
 

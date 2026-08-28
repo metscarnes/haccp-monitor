@@ -238,10 +238,18 @@ function appliquerPrefill(data) {
   }
 
   if (data.produit_id) {
-    const prod = state.produits.find(p => p.id === Number(data.produit_id));
+    // Le pré-remplissage peut viser l'un ou l'autre référentiel selon le module
+    // d'origine (fabrication → vente, réception → achat, historique → produits).
+    const prod = state.produits.find(p =>
+         (data.catalogue_fournisseur_id != null
+            && Number(p.catalogue_fournisseur_id) === Number(data.catalogue_fournisseur_id))
+      || (data.catalogue_vente_id != null
+            && Number(p.catalogue_vente_id) === Number(data.catalogue_vente_id))
+      || (data.produit_id != null && p.id != null
+            && Number(p.id) === Number(data.produit_id)));
     if (prod) {
       // Réutilise tout le pipeline (chargement des lots, FIFO, navigation step 3)
-      selectionnerProduit(prod.id, prod.nom);
+      selectionnerProduit(prod);
     } else {
       // Produit non en stock — on garde au moins l'opérateur pré-sélectionné
       majBandeau();
@@ -365,7 +373,13 @@ function afficherProduits() {
   elProduitsGrid.innerHTML = liste.map(p => {
     const classes = ['cu-tuile'];
     if (p.en_stock) classes.push('cu-tuile--stock');
-    if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
+    // Comparaison sur la clé composite : `id` vaut null pour tout le stock issu du
+    // catalogue, et null === null aurait sélectionné toutes ces tuiles à la fois.
+    if (state.produitChoisi
+        && state.produitChoisi.cle_type === (p.cle_type ?? 'produit')
+        && Number(state.produitChoisi.cle_id) === Number(p.cle_id ?? p.id)) {
+      classes.push('cu-tuile--selected');
+    }
     const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
     const dlc   = p.en_stock && p.dlc
       ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
@@ -376,7 +390,8 @@ function afficherProduits() {
     const icone = ESPECES_ICONES[p.espece] ?? '🥩';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
-              data-prod-id="${p.id}" data-prod-nom="${escHtml(p.nom)}">
+              data-cle-type="${p.cle_type ?? 'produit'}" data-cle-id="${p.cle_id ?? p.id}"
+              data-prod-nom="${escHtml(p.nom)}">
         ${badge}
         <div class="cu-tuile-icone">${icone}</div>
         <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
@@ -390,12 +405,18 @@ function afficherProduits() {
 elProdSearch.addEventListener('input', afficherProduits);
 
 elProduitsGrid.addEventListener('click', e => {
-  const tuile = e.target.closest('.cu-tuile[data-prod-id]');
+  const tuile = e.target.closest('.cu-tuile[data-cle-id]');
   if (!tuile) return;
-  const id  = Number(tuile.dataset.prodId);
-  const nom = tuile.dataset.prodNom;
-  selectionnerProduit(id, nom);
+  // Un produit s'identifie par (cle_type, cle_id) : depuis la v6, `id` (table
+  // produits) est null pour la quasi-totalité du stock, qui vient du catalogue.
+  const prod = trouverProduit(tuile.dataset.cleType, Number(tuile.dataset.cleId));
+  if (prod) selectionnerProduit(prod);
 });
+
+function trouverProduit(cleType, cleId) {
+  return state.produits.find(p =>
+    (p.cle_type ?? 'produit') === cleType && Number(p.cle_id ?? p.id) === cleId) ?? null;
+}
 
 function lotKey(lot) {
   if (!lot) return null;
@@ -405,9 +426,16 @@ function lotKey(lot) {
   return (t && i != null) ? `${t}:${i}` : null;
 }
 
-async function selectionnerProduit(id, nom) {
+async function selectionnerProduit(prod) {
+  const cleType = prod.cle_type ?? 'produit';
+  const cleId   = Number(prod.cle_id ?? prod.id);
   state.produitChoisi = {
-    id, nom,
+    id:   prod.id ?? null,
+    nom:  prod.nom,
+    cle_type: cleType,
+    cle_id:   cleId,
+    catalogue_fournisseur_id: prod.catalogue_fournisseur_id ?? null,
+    catalogue_vente_id:       prod.catalogue_vente_id ?? null,
     numero_lot:         null,
     dlc:                null,
     source_type:        null,
@@ -420,7 +448,8 @@ async function selectionnerProduit(id, nom) {
 
   // MAJ visuelle des tuiles
   elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t => {
-    t.classList.toggle('cu-tuile--selected', Number(t.dataset.prodId) === id);
+    t.classList.toggle('cu-tuile--selected',
+      t.dataset.cleType === cleType && Number(t.dataset.cleId) === cleId);
   });
 
   // Reset panneau lot
@@ -430,7 +459,11 @@ async function selectionnerProduit(id, nom) {
   elProdDlc.textContent = '';
 
   try {
-    const receptions = await apiFetch(`/api/cuisson/produits/${id}/receptions?limit=50`);
+    // Un seul identifiant est transmis, celui du référentiel dont vient le produit.
+    const champ = cleType === 'achat' ? 'catalogue_fournisseur_id'
+                : cleType === 'vente' ? 'catalogue_vente_id'
+                : 'produit_id';
+    const receptions = await apiFetch(`/api/cuisson/lots?${champ}=${cleId}&limit=50`);
     state.lotsProduit = receptions ?? [];
 
     if (state.lotsProduit.length === 0) {
@@ -797,7 +830,12 @@ elForm.addEventListener('submit', async e => {
     type_cuisson:       'rotissoire',
     date_cuisson:       elDate.value,
     personnel_id:       Number(state.operateurChoisi.id),
-    produit_id:         Number(state.produitChoisi.id),
+    produit_id:         state.produitChoisi.id != null
+                         ? Number(state.produitChoisi.id) : null,
+    catalogue_fournisseur_id: state.produitChoisi.catalogue_fournisseur_id != null
+                         ? Number(state.produitChoisi.catalogue_fournisseur_id) : null,
+    catalogue_vente_id: state.produitChoisi.catalogue_vente_id != null
+                         ? Number(state.produitChoisi.catalogue_vente_id) : null,
     reception_ligne_id: state.produitChoisi.reception_ligne_id
                          ? Number(state.produitChoisi.reception_ligne_id) : null,
     fabrication_id:     state.produitChoisi.fabrication_id

@@ -6256,6 +6256,11 @@ async def get_stock_unifie(
                 'reception_ligne'  AS source_type,
                 rl.id              AS source_id,
                 p.id               AS produit_id,
+                -- Depuis la v6, l'identité d'un lot vient du catalogue d'achats :
+                -- produit_id est NULL pour 99 % des lignes. Les consommateurs doivent
+                -- s'identifier sur catalogue_fournisseur_id (cf. module Cuisson).
+                cf.id              AS catalogue_fournisseur_id,
+                NULL               AS catalogue_vente_id,
                 COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
                 COALESCE(p.categorie, 'matiere_premiere') AS categorie,
                 COALESCE(p.type_produit, 'brut')          AS type_produit,
@@ -6300,6 +6305,8 @@ async def get_stock_unifie(
                 'fabrication'      AS source_type,
                 fab.id             AS source_id,
                 cv.id              AS produit_id,
+                NULL               AS catalogue_fournisseur_id,
+                cv.id              AS catalogue_vente_id,
                 COALESCE(cv.nom, rec.nom) AS produit_nom,
                 cv.famille         AS categorie,
                 'transforme'       AS type_produit,
@@ -6335,9 +6342,14 @@ async def get_stock_unifie(
                 'cuisson'             AS source_type,
                 c.id                  AS source_id,
                 p.id                  AS produit_id,
-                p.nom                 AS produit_nom,
-                p.categorie           AS categorie,
-                p.type_produit        AS type_produit,
+                c.catalogue_fournisseur_id AS catalogue_fournisseur_id,
+                c.catalogue_vente_id  AS catalogue_vente_id,
+                -- LEFT JOIN + COALESCE (v7.4) : une cuisson issue du catalogue d'achats
+                -- n'a pas de produit interne. Avec l'ancien JOIN strict elle disparaissait
+                -- du stock, donc du module Refroidissement — la chaîne HACCP s'arrêtait là.
+                COALESCE(p.nom, cv_c.nom, cf_c.designation, 'Produit cuit') AS produit_nom,
+                COALESCE(p.categorie, cv_c.famille, cf_c.famille) AS categorie,
+                COALESCE(p.type_produit, 'transforme') AS type_produit,
                 p.espece              AS espece,
                 c.dlc_finale          AS dlc,
                 COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
@@ -6348,7 +6360,9 @@ async def get_stock_unifie(
                 c.heure_fin           AS heure_origine,
                 NULL                  AS fournisseur_nom
             FROM cuissons c
-            JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN catalogue_vente cv_c ON cv_c.id = c.catalogue_vente_id
+            LEFT JOIN catalogue_fournisseur cf_c ON cf_c.id = c.catalogue_fournisseur_id
             LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
             LEFT JOIN fabrications fab ON fab.id = c.fabrication_id
             WHERE c.boutique_id = ?
@@ -6375,9 +6389,13 @@ async def get_stock_unifie(
                 'refroidissement'      AS source_type,
                 rf.id                  AS source_id,
                 p.id                   AS produit_id,
-                p.nom                  AS produit_nom,
-                p.categorie            AS categorie,
-                p.type_produit         AS type_produit,
+                rf.catalogue_fournisseur_id AS catalogue_fournisseur_id,
+                rf.catalogue_vente_id  AS catalogue_vente_id,
+                -- Même correction v7.4 que la branche cuisson : sans LEFT JOIN, un produit
+                -- refroidi issu du catalogue d'achats n'apparaîtrait jamais en stock.
+                COALESCE(p.nom, cv_r.nom, cf_r.designation, 'Produit refroidi') AS produit_nom,
+                COALESCE(p.categorie, cv_r.famille, cf_r.famille) AS categorie,
+                COALESCE(p.type_produit, 'transforme') AS type_produit,
                 p.espece               AS espece,
                 rf.dlc_finale          AS dlc,
                 COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
@@ -6388,7 +6406,9 @@ async def get_stock_unifie(
                 rf.heure_fin           AS heure_origine,
                 NULL                   AS fournisseur_nom
             FROM refroidissements rf
-            JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN catalogue_vente cv_r ON cv_r.id = rf.catalogue_vente_id
+            LEFT JOIN catalogue_fournisseur cf_r ON cf_r.id = rf.catalogue_fournisseur_id
             LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
             LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
             LEFT JOIN fabrications fab ON fab.id = c2.fabrication_id

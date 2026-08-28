@@ -55,7 +55,10 @@ def _duree_minutes(heure_debut: str, heure_fin: str) -> int:
 class RefroidissementCreate(BaseModel):
     date_refroidissement: str   = Field(..., description="YYYY-MM-DD")
     personnel_id:         int
-    produit_id:           int
+    # v7.4 — mêmes trois espaces d'identifiants que la Cuisson (au moins un requis).
+    produit_id:               Optional[int] = None
+    catalogue_fournisseur_id: Optional[int] = None
+    catalogue_vente_id:       Optional[int] = None
     cuisson_id:           Optional[int] = None
     heure_debut:          str   = Field(..., description="HH:MM mise en refroidissement")
     heure_fin:            str   = Field(..., description="HH:MM fin de refroidissement")
@@ -87,14 +90,31 @@ async def lister_produits_cuisson():
             sources=["cuisson"],
         )
 
-    par_produit: dict[int, dict] = {}
+    # Même clé d'identité composite que le module Cuisson : `produit_id` est NULL pour
+    # les cuissons issues du catalogue d'achats, et les regrouper dessus les ferait
+    # toutes fusionner en une seule entrée.
+    par_produit: dict[tuple[str, int], dict] = {}
     for lot in stock:
-        pid = lot["produit_id"]
-        if pid in par_produit:
-            par_produit[pid]["nb_cuissons_disponibles"] += 1
+        pid = lot.get("produit_id")
+        cfid = lot.get("catalogue_fournisseur_id")
+        cvid = lot.get("catalogue_vente_id")
+        if pid is not None:
+            cle = ("produit", pid)
+        elif cvid is not None:
+            cle = ("vente", cvid)
+        elif cfid is not None:
+            cle = ("achat", cfid)
+        else:
             continue
-        par_produit[pid] = {
+        if cle in par_produit:
+            par_produit[cle]["nb_cuissons_disponibles"] += 1
+            continue
+        par_produit[cle] = {
             "id":                       pid,
+            "cle_type":                 cle[0],
+            "cle_id":                   cle[1],
+            "catalogue_fournisseur_id": cfid,
+            "catalogue_vente_id":       cvid,
             "nom":                      lot["produit_nom"],
             "espece":                   lot.get("espece"),
             "cuisson_id":               lot["source_id"],     # FIFO (plus pressé)
@@ -154,12 +174,17 @@ async def creer_refroidissement(body: RefroidissementCreate):
         numero_lot = None
         reception_ligne_id = None
         dlc_origine = None  # DLC du lot amont (réception OU fabrication)
+        # Identifiants produit : hérités de la cuisson si le client ne les fournit pas.
+        produit_id = body.produit_id
+        cat_fournisseur_id = body.catalogue_fournisseur_id
+        cat_vente_id = body.catalogue_vente_id
 
         # Récupérer la traçabilité depuis la cuisson
         if body.cuisson_id:
             cur_cuisson = await db.execute(
                 """
-                SELECT c.reception_ligne_id, c.fabrication_id
+                SELECT c.reception_ligne_id, c.fabrication_id,
+                       c.produit_id, c.catalogue_fournisseur_id, c.catalogue_vente_id
                 FROM cuissons c
                 WHERE c.id = ?
                 """,
@@ -167,6 +192,14 @@ async def creer_refroidissement(body: RefroidissementCreate):
             )
             cuisson = await cur_cuisson.fetchone()
             if cuisson:
+                # Le refroidissement porte sur le produit qui vient d'être cuit :
+                # on reprend son identité plutôt que de la faire redéclarer au front.
+                if produit_id is None:
+                    produit_id = cuisson["produit_id"]
+                if cat_fournisseur_id is None:
+                    cat_fournisseur_id = cuisson["catalogue_fournisseur_id"]
+                if cat_vente_id is None:
+                    cat_vente_id = cuisson["catalogue_vente_id"]
                 if cuisson["reception_ligne_id"]:
                     reception_ligne_id = cuisson["reception_ligne_id"]
                     cur_reception = await db.execute(
@@ -197,21 +230,34 @@ async def creer_refroidissement(body: RefroidissementCreate):
             dlc_ajustee = True
         dlc_finale_iso = dlc_finale.isoformat()
 
+        # Après héritage depuis la cuisson : le produit doit rester identifiable,
+        # sinon le refroidissement serait intraçable (exigence HACCP).
+        if not (produit_id or cat_fournisseur_id or cat_vente_id):
+            raise HTTPException(
+                status_code=422,
+                detail="Produit non identifié : renseignez produit_id, "
+                       "catalogue_fournisseur_id ou catalogue_vente_id "
+                       "(ou un cuisson_id valide dont ils seront hérités).",
+            )
+
         cur = await db.execute(
             """
             INSERT INTO refroidissements (
-                date_refroidissement, personnel_id, produit_id, cuisson_id,
+                date_refroidissement, personnel_id, produit_id,
+                catalogue_fournisseur_id, catalogue_vente_id, cuisson_id,
                 numero_lot, reception_ligne_id,
                 heure_debut, heure_fin, duree_minutes,
                 temperature_initiale, temperature_finale,
                 temperature_cible, duree_max_minutes,
                 conforme, jeter, action_corrective, dlc_finale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.date_refroidissement,
                 body.personnel_id,
-                body.produit_id,
+                produit_id,
+                cat_fournisseur_id,
+                cat_vente_id,
                 body.cuisson_id,
                 numero_lot,
                 reception_ligne_id,
@@ -247,8 +293,9 @@ async def creer_refroidissement(body: RefroidissementCreate):
         await db.commit()
 
     logger.info(
-        "Refroidissement #%d — produit=%d durée=%dmin T°init=%.1f T°=%.1f conforme=%s jeter=%s jeter_action=%s",
-        nouveau_id, body.produit_id, duree, temp_init, body.temperature_finale,
+        "Refroidissement #%d — produit=%s/%s/%s durée=%dmin T°init=%.1f T°=%.1f conforme=%s jeter=%s jeter_action=%s",
+        nouveau_id, produit_id, cat_fournisseur_id, cat_vente_id,
+        duree, temp_init, body.temperature_finale,
         conforme, jeter, body.jeter_action,
     )
     return {
