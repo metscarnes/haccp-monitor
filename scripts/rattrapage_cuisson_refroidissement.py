@@ -453,11 +453,18 @@ def planifier_cuissons_synthetiques(semaines: dict[str, list]) -> list[tuple[str
 
 def traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, heure_debut_defaut, commit):
     creees = 0
+    aujourdhui = date.today()
     for lundi, lot in plan:
         # Cuisson placée 1 à 3 jours après la réception du lot piochi (le temps
         # qu'il arrive en atelier), jamais avant — pas de recul temporel absurde.
+        # Plafonnée à aujourd'hui : un lot reçu dans les tout derniers jours ne
+        # doit jamais produire une cuisson dans le FUTUR (incohérent en contrôle).
         date_reception = datetime.strptime(lot["date_reception"], "%Y-%m-%d").date()
-        date_evt = date_reception + timedelta(days=random.randint(1, 3))
+        decalage_max = min(3, (aujourdhui - date_reception).days)
+        if decalage_max < 1:
+            date_evt = aujourdhui  # lot reçu aujourd'hui/hier : cuisson aujourd'hui, pas de recul possible
+        else:
+            date_evt = date_reception + timedelta(days=random.randint(1, decalage_max))
         date_iso = date_evt.isoformat()
 
         heure_debut_c = heure_debut_defaut
