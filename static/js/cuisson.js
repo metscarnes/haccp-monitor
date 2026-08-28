@@ -13,6 +13,17 @@
 const TEMP_CIBLE = 75.0;
 const ACTION_DEFAUT = 'Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu\'à l\'atteinte de la température de 75 °C à cœur';
 
+// Exception "viande rouge en pièce entière" (affiche interne 28/08/2026) : Bœuf/Agneau
+// non haché/non injecté peut être cuit sous 75 °C selon le degré visé. Le sélecteur de
+// degré n'apparaît que pour ces espèces — les autres restent sur la règle générale.
+const ESPECES_DEGRE_CUISSON = ['Bœuf', 'Boeuf', 'Agneau'];
+const DEGRES_CUISSON = {
+  saignant:  { temp: 55, label: 'Saignant 55°C' },
+  a_point:   { temp: 63, label: 'À point 63°C' },
+  bien_cuit: { temp: 75, label: 'Bien cuit 75°C' },
+  generale:  { temp: 75, label: 'Règle générale 75°C' },
+};
+
 // ── Helpers ────────────────────────────────────────────────
 function escHtml(str) {
   return String(str ?? '')
@@ -95,6 +106,10 @@ const elQuantite     = $('cu-quantite');
 const elUnite        = $('cu-unite');
 const elHeureDebut   = $('cu-heure-debut');
 const elHeureFin     = $('cu-heure-fin');
+const elDegreWrap    = $('cu-degre-wrap');
+const elDegreChoix   = $('cu-degre-choix');
+const elCibleTexte   = $('cu-cible-texte');
+const elActionHint   = $('cu-action-hint');
 const elTemperature  = $('cu-temperature');
 const elQuickTemp    = $('cu-quick-temp');
 const elDureeH       = $('cu-duree-h');
@@ -159,6 +174,7 @@ const state = {
   lotsProduit:       [],
   fifoLotKey:        null,   // clé composite "source_type:source_id" du lot FIFO
   especeFiltre:      null,   // null = toutes
+  degreChoisi:       'generale',  // exception viande rouge — 'generale' = 75 °C comme avant
   derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
 };
 
@@ -451,6 +467,14 @@ async function selectionnerProduit(prod) {
   };
   state.lotsProduit = [];
   state.fifoLotKey  = null;
+
+  // Exception viande rouge : sélecteur de degré visible uniquement pour Bœuf/Agneau,
+  // réinitialisé à 'generale' (75 °C) à chaque nouveau produit choisi.
+  state.degreChoisi = 'generale';
+  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.toggle('cu-quick-btn--actif', b.dataset.degre === 'generale'));
+  elDegreWrap.hidden = !ESPECES_DEGRE_CUISSON.includes(prod.espece);
+  majCibleAffichee();
 
   // MAJ visuelle des tuiles
   elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t => {
@@ -863,27 +887,51 @@ elDureeAppliquer.addEventListener('click', () => {
 });
 
 // ── Conformité température — live ────────────────────────
+function cibleActuelle() {
+  return DEGRES_CUISSON[state.degreChoisi]?.temp ?? TEMP_CIBLE;
+}
+
 function majConformite() {
+  const cible = cibleActuelle();
   const v = parseFloat(elTemperature.value);
   if (isNaN(v)) {
     elConformite.hidden = true;
     elActionWrap.hidden = true;
     return;
   }
-  const ok = v >= TEMP_CIBLE;
+  const ok = v >= cible;
   elConformite.hidden = false;
   elConformite.classList.toggle('cu-conformite--ok', ok);
   elConformite.classList.toggle('cu-conformite--ko', !ok);
   elConfTxt.textContent = ok
-    ? `✓ Conforme — ${v.toFixed(1)} °C ≥ ${TEMP_CIBLE} °C`
-    : `⚠ Non conforme — ${v.toFixed(1)} °C < ${TEMP_CIBLE} °C — action corrective requise`;
+    ? `✓ Conforme — ${v.toFixed(1)} °C ≥ ${cible} °C`
+    : `⚠ Non conforme — ${v.toFixed(1)} °C < ${cible} °C — action corrective requise`;
   elActionWrap.hidden = ok;
+  elActionHint.textContent = `(T° < ${cible} °C)`;
+  const actionDefaut = cible === TEMP_CIBLE
+    ? ACTION_DEFAUT
+    : `Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu'à l'atteinte de la température de ${cible} °C à cœur`;
   if (!ok && !elAction.value.trim()) {
-    elAction.value = ACTION_DEFAUT;
-  } else if (ok && elAction.value === ACTION_DEFAUT) {
+    elAction.value = actionDefaut;
+  } else if (ok && elAction.value.startsWith('Remettre le produit en cuisson')) {
     elAction.value = '';
   }
 }
+
+function majCibleAffichee() {
+  const cible = cibleActuelle();
+  elCibleTexte.textContent = `🎯 Cible ${state.degreChoisi === 'generale' ? 'réglementaire' : 'choisie'} : ≥ ${cible} °C`;
+}
+
+elDegreChoix.addEventListener('click', e => {
+  const btn = e.target.closest('.cu-quick-btn[data-degre]');
+  if (!btn) return;
+  state.degreChoisi = btn.dataset.degre;
+  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.toggle('cu-quick-btn--actif', b === btn));
+  majCibleAffichee();
+  majConformite();
+});
 elTemperature.addEventListener('input', () => {
   elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
     b.classList.remove('cu-quick-btn--actif'));
@@ -923,8 +971,9 @@ elForm.addEventListener('submit', async e => {
   if (isNaN(temp)) {
     return afficherErreur('Température de sortie requise.');
   }
-  if (temp < TEMP_CIBLE && !elAction.value.trim()) {
-    return afficherErreur('Action corrective obligatoire si T° < 75 °C.');
+  const cible = cibleActuelle();
+  if (temp < cible && !elAction.value.trim()) {
+    return afficherErreur(`Action corrective obligatoire si T° < ${cible} °C.`);
   }
 
   const payload = {
@@ -946,6 +995,7 @@ elForm.addEventListener('submit', async e => {
     heure_debut:        elHeureDebut.value,
     heure_fin:          elHeureFin.value,
     temperature_sortie: temp,
+    degre_cuisson:      state.degreChoisi,
     action_corrective:  elAction.value.trim() || null,
   };
 
@@ -1007,6 +1057,7 @@ function resetWizard() {
   state.produitChoisi   = null;
   state.lotsProduit     = [];
   state.fifoLotKey      = null;
+  state.degreChoisi     = 'generale';
 
   elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
     t.classList.remove('cu-tuile--selected'));
@@ -1034,6 +1085,10 @@ function resetWizard() {
     b.classList.remove('cu-quick-btn--actif'));
   elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
     b.classList.remove('cu-quick-btn--actif'));
+  elDegreWrap.hidden = true;
+  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.toggle('cu-quick-btn--actif', b.dataset.degre === 'generale'));
+  majCibleAffichee();
 
   goStep(1);
 }

@@ -177,6 +177,23 @@
             </label>
           </div>
 
+          <!-- Degré de cuisson — exception viande rouge en pièce entière (Bœuf/Agneau) -->
+          <div class="cu-row" id="cu-degre-wrap" hidden>
+            <label class="cu-champ">
+              <span class="cu-label">Degré de cuisson</span>
+              <div class="cu-quick-row" id="cu-degre-choix" role="group" aria-label="Degré de cuisson">
+                <button type="button" class="cu-quick-btn" data-degre="saignant">Saignant 55°C</button>
+                <button type="button" class="cu-quick-btn" data-degre="a_point">À point 63°C</button>
+                <button type="button" class="cu-quick-btn" data-degre="bien_cuit">Bien cuit 75°C</button>
+                <button type="button" class="cu-quick-btn cu-quick-btn--actif" data-degre="generale">Règle générale 75°C</button>
+              </div>
+              <div class="cu-label-hint">
+                Exception viande rouge (bœuf/agneau, pièce entière, non hachée, non injectée) —
+                cuisson selon le degré souhaité, conformément à la procédure interne.
+              </div>
+            </label>
+          </div>
+
           <!-- Température -->
           <div class="cu-row">
             <label class="cu-champ">
@@ -187,7 +204,7 @@
                        inputmode="decimal" required>
                 <span class="cu-unite-fixe">°C</span>
               </div>
-              <div class="cu-cible">🎯 Cible réglementaire : ≥ 75 °C</div>
+              <div class="cu-cible" id="cu-cible-texte">🎯 Cible réglementaire : ≥ 75 °C</div>
               <div class="cu-quick-row" id="cu-quick-temp" role="group" aria-label="Température rapide">
                 <button type="button" class="cu-quick-btn" data-temp="75">75°C</button>
               </div>
@@ -202,7 +219,7 @@
           <div id="cu-action-wrap" class="cu-champ" hidden>
             <span class="cu-label">
               Action corrective <span class="cu-req">*</span>
-              <span class="cu-label-hint">(T° &lt; 75 °C)</span>
+              <span class="cu-label-hint" id="cu-action-hint">(T° &lt; 75 °C)</span>
             </span>
             <textarea id="cu-action" class="cu-input cu-textarea"
                       placeholder="Remettre le produit en cuisson et prolonger jusqu'à 75 °C à cœur…"

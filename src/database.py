@@ -1843,6 +1843,14 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # de VENTE (ce qu'on produit), pas par l'article d'achat : un même achat
             # peut alimenter plusieurs produits de vente (cf. comparatif v6.4).
             "ALTER TABLE catalogue_vente  ADD COLUMN suivi_cuisson_auto INTEGER NOT NULL DEFAULT 0",
+            # v7.5 — Exception "viande rouge en pièce entière" de la procédure de
+            # cuisson (28/08/2026) : Bœuf/Agneau non haché/non injecté peut être
+            # cuit à 55 °C (saignant) ou 63 °C (à point) au lieu du minimum général
+            # de 75 °C, conformément à l'affiche interne (plus exigeante que le GBPH
+            # 70°C/10min). `degre_cuisson` trace le choix fait par l'opérateur
+            # ('saignant'|'a_point'|'bien_cuit'|'generale') — temperature_cible
+            # (déjà existante) porte la valeur numérique correspondante.
+            "ALTER TABLE cuissons ADD COLUMN degre_cuisson TEXT",
         ]
         for sql in migrations:
             try:

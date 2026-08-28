@@ -27,6 +27,17 @@ router = APIRouter(prefix="/api/cuisson", tags=["cuisson"])
 
 TEMPERATURE_CIBLE = 75.0
 
+# Exception "viande rouge en pièce entière" (28/08/2026) — cf. affiche interne
+# "Règle de cuisson simplifiée" : Bœuf/Agneau, pièces entières, non hachées,
+# non injectées, peuvent être cuits en dessous de 75 °C selon le degré visé.
+# Plus exigeant que le GBPH Bouchers Charcutiers Traiteurs (70 °C / 10 min).
+DEGRES_CUISSON = {
+    "saignant": 55.0,
+    "a_point":  63.0,
+    "bien_cuit": 75.0,
+    "generale": TEMPERATURE_CIBLE,
+}
+
 
 # ---------------------------------------------------------------------------
 # Schémas Pydantic
@@ -50,6 +61,9 @@ class CuissonCreate(BaseModel):
     heure_debut:        str   = Field(..., description="HH:MM")
     heure_fin:          str   = Field(..., description="HH:MM")
     temperature_sortie: float
+    # v7.5 — degré de cuisson choisi par l'opérateur pour l'exception viande rouge
+    # (cf. DEGRES_CUISSON). None ou absent = règle générale (75 °C), comme avant.
+    degre_cuisson:       Optional[str]   = None
     action_corrective:  Optional[str]   = None
 
 
@@ -59,11 +73,19 @@ class CuissonCreate(BaseModel):
 
 @router.post("/enregistrements", status_code=201)
 async def creer_cuisson(body: CuissonCreate):
-    conforme = 1 if body.temperature_sortie >= TEMPERATURE_CIBLE else 0
+    degre = body.degre_cuisson or "generale"
+    if degre not in DEGRES_CUISSON:
+        raise HTTPException(
+            status_code=422,
+            detail=f"degre_cuisson invalide : {degre!r} (attendu : {', '.join(DEGRES_CUISSON)}).",
+        )
+    temperature_cible = DEGRES_CUISSON[degre]
+
+    conforme = 1 if body.temperature_sortie >= temperature_cible else 0
     if not conforme and not (body.action_corrective and body.action_corrective.strip()):
         raise HTTPException(
             status_code=422,
-            detail="Action corrective obligatoire si température < 75 °C",
+            detail=f"Action corrective obligatoire si température < {temperature_cible:.0f} °C",
         )
 
     # Une cuisson ne peut pas avoir deux sources amont en même temps
@@ -126,9 +148,9 @@ async def creer_cuisson(body: CuissonCreate):
                 catalogue_fournisseur_id, catalogue_vente_id,
                 reception_ligne_id, fabrication_id, quantite, unite,
                 heure_debut, heure_fin,
-                temperature_sortie, temperature_cible,
+                temperature_sortie, temperature_cible, degre_cuisson,
                 conforme, action_corrective, dlc_finale
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 body.type_cuisson.lower(),
@@ -144,7 +166,8 @@ async def creer_cuisson(body: CuissonCreate):
                 body.heure_debut,
                 body.heure_fin,
                 body.temperature_sortie,
-                TEMPERATURE_CIBLE,
+                temperature_cible,
+                degre,
                 conforme,
                 (body.action_corrective or "").strip() or None,
                 dlc_finale_iso,
@@ -154,15 +177,17 @@ async def creer_cuisson(body: CuissonCreate):
         nouveau_id = cur.lastrowid
 
     logger.info(
-        "Cuisson %s #%d — produit=%s/%s/%s T°=%.1f conforme=%s",
+        "Cuisson %s #%d — produit=%s/%s/%s degré=%s T°cible=%.1f T°=%.1f conforme=%s",
         body.type_cuisson, nouveau_id,
         body.produit_id, body.catalogue_fournisseur_id, body.catalogue_vente_id,
-        body.temperature_sortie, bool(conforme),
+        degre, temperature_cible, body.temperature_sortie, bool(conforme),
     )
     return {
         "ok": True,
         "id": nouveau_id,
         "conforme": bool(conforme),
+        "temperature_cible": temperature_cible,
+        "degre_cuisson": degre,
         "dlc_ajustee": dlc_ajustee,
         "dlc_origine": dlc_origine.isoformat() if dlc_origine else None,
     }
