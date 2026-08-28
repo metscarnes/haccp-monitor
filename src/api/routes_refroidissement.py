@@ -222,10 +222,26 @@ async def creer_refroidissement(body: RefroidissementCreate):
                         if fab["dlc_finale"]:
                             dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
 
-        # Règle métier absolue : la DLC ne peut pas dépasser la DLC du lot d'origine
+        # Règle métier absolue : la DLC ne peut pas dépasser la DLC du lot d'origine.
+        # Exception "suivi cuisson auto" (Lasagnes, Gratin dauphinois, Parmentier canard…) :
+        # produit reçu déjà fini, la cuisson/le refroidissement ne sont qu'un réchauffage
+        # avant vente — la DLC fournisseur reste seule valable, jamais ré-augmentée à J+3
+        # (même règle que routes_cuisson.py, cf. commentaire là-bas).
+        reste_produit_fini = False
+        if dlc_origine and cat_vente_id:
+            cur_sca = await db.execute(
+                "SELECT suivi_cuisson_auto FROM catalogue_vente WHERE id = ?",
+                (cat_vente_id,),
+            )
+            cv = await cur_sca.fetchone()
+            reste_produit_fini = bool(cv and cv["suivi_cuisson_auto"])
+
         dlc_finale = dlc_calculee
         dlc_ajustee = False
-        if dlc_origine and dlc_calculee > dlc_origine:
+        if reste_produit_fini:
+            dlc_finale = dlc_origine
+            dlc_ajustee = dlc_calculee != dlc_origine
+        elif dlc_origine and dlc_calculee > dlc_origine:
             dlc_finale = dlc_origine
             dlc_ajustee = True
         dlc_finale_iso = dlc_finale.isoformat()

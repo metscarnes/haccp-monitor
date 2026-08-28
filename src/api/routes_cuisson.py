@@ -135,7 +135,24 @@ async def creer_cuisson(body: CuissonCreate):
             if fab and fab["dlc_finale"]:
                 dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
 
-        if dlc_origine and dlc_calculee > dlc_origine:
+        # Produit marqué "suivi cuisson auto" (ex. Lasagnes, Gratin dauphinois, Parmentier
+        # canard) : reçu déjà fini, la cuisson n'est qu'un RÉCHAUFFAGE avant vente, pas une
+        # transformation. La DLC fournisseur reste seule valable — on ne lui ajoute jamais
+        # J+3 (28/08/2026 : la règle J+3-cappée écourtait à tort la DLC d'origine dès qu'elle
+        # dépassait 3 jours après la date de cuisson).
+        reste_produit_fini = False
+        if dlc_origine and body.catalogue_vente_id:
+            cur_sca = await db.execute(
+                "SELECT suivi_cuisson_auto FROM catalogue_vente WHERE id = ?",
+                (body.catalogue_vente_id,),
+            )
+            cv = await cur_sca.fetchone()
+            reste_produit_fini = bool(cv and cv["suivi_cuisson_auto"])
+
+        if reste_produit_fini:
+            dlc_finale = dlc_origine
+            dlc_ajustee = dlc_calculee != dlc_origine
+        elif dlc_origine and dlc_calculee > dlc_origine:
             dlc_finale = dlc_origine
             dlc_ajustee = True
 
