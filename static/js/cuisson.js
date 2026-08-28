@@ -259,9 +259,13 @@ function appliquerPrefill(data) {
     elUnite.value = data.unite;
   }
 
-  if (data.produit_id) {
+  if (data.produit_id != null || data.catalogue_fournisseur_id != null || data.catalogue_vente_id != null) {
     // Le pré-remplissage peut viser l'un ou l'autre référentiel selon le module
     // d'origine (fabrication → vente, réception → achat, historique → produits).
+    // Ne pas exiger produit_id seul : la quasi-totalité du stock réel n'a que
+    // catalogue_fournisseur_id/catalogue_vente_id (produit_id vaut null depuis
+    // la v6.0) — cf. bug production-a-cuire.js du 28/08/2026 (étape 2 redemandée
+    // au lieu de sauter directement à l'étape 3).
     const prod = state.produits.find(p =>
          (data.catalogue_fournisseur_id != null
             && Number(p.catalogue_fournisseur_id) === Number(data.catalogue_fournisseur_id))
