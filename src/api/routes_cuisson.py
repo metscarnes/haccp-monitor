@@ -530,6 +530,7 @@ async def lots_a_traiter():
               AND  r.statut = 'cloturee'
               AND  rl.conforme = 1
               AND  r.livraison_refusee = 0
+              AND  (COALESCE(rl.dlc, rl.dluo) IS NULL OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
             GROUP BY rl.id
             ORDER BY CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,

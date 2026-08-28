@@ -176,6 +176,7 @@ const state = {
   especeFiltre:      null,   // null = toutes
   degreChoisi:       'generale',  // exception viande rouge — 'generale' = 75 °C comme avant
   derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
+  produitPreselectionne: null,  // { prod, catalogue_vente_id } — pré-rempli sans opérateur (production-a-cuire.js)
 };
 
 const ESPECES_ICONES = {
@@ -273,9 +274,23 @@ function appliquerPrefill(data) {
             && Number(p.catalogue_vente_id) === Number(data.catalogue_vente_id))
       || (data.produit_id != null && p.id != null
             && Number(p.id) === Number(data.produit_id)));
-    if (prod) {
-      // Réutilise tout le pipeline (chargement des lots, FIFO, navigation step 3)
-      selectionnerProduit(prod);
+    if (prod && state.operateurChoisi) {
+      // Réutilise tout le pipeline (chargement des lots, FIFO, navigation step 3).
+      // Une tuile catalogue ACHATS n'a jamais catalogue_vente_id renseigné
+      // (get_stock_unifie ne le déduit pas pour une réception brute) — si le
+      // module d'origine (ex. production-a-cuire.js, via le groupe comparatif)
+      // le connaît déjà, on le transmet ici. Sinon avancerVersEtape3() (appelée
+      // en interne par selectionnerProduit, de façon asynchrone) rouvrirait à
+      // tort la modale "ça devient quel produit ?" avec une réponse qui existait
+      // déjà, provoquant une boucle sans fin (28/08/2026).
+      selectionnerProduit(prod, { catalogue_vente_id: data.catalogue_vente_id });
+    } else if (prod) {
+      // Produit connu mais PAS d'opérateur (ex. production-a-cuire.js, qui ne le
+      // connaît pas à l'avance) : on garde le produit en mémoire pour le
+      // ré-appliquer une fois l'opérateur choisi, plutôt que de sauter à
+      // l'étape 3 sans opérateur (le formulaire recale à la soumission → boucle).
+      state.produitPreselectionne = { prod, catalogue_vente_id: data.catalogue_vente_id };
+      goStep(1);
     } else {
       // Produit non en stock — on garde au moins l'opérateur pré-sélectionné
       majBandeau();
@@ -365,6 +380,17 @@ elOperateursGrid.addEventListener('click', e => {
   };
   elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
     t.classList.toggle('cu-tuile--selected', t === tuile));
+
+  // Produit déjà connu via un pré-remplissage sans opérateur (ex.
+  // production-a-cuire.js) : on l'applique maintenant plutôt que de
+  // redemander le produit à l'étape 2.
+  if (state.produitPreselectionne) {
+    const { prod, catalogue_vente_id } = state.produitPreselectionne;
+    state.produitPreselectionne = null;
+    setTimeout(() => selectionnerProduit(prod, { catalogue_vente_id }), 150);
+    return;
+  }
+
   setTimeout(() => goStep(2), 150);
 });
 
@@ -452,7 +478,7 @@ function lotKey(lot) {
   return (t && i != null) ? `${t}:${i}` : null;
 }
 
-async function selectionnerProduit(prod) {
+async function selectionnerProduit(prod, prefill = {}) {
   const cleType = prod.cle_type ?? 'produit';
   const cleId   = Number(prod.cle_id ?? prod.id);
   state.produitChoisi = {
@@ -461,7 +487,9 @@ async function selectionnerProduit(prod) {
     cle_type: cleType,
     cle_id:   cleId,
     catalogue_fournisseur_id: prod.catalogue_fournisseur_id ?? null,
-    catalogue_vente_id:       prod.catalogue_vente_id ?? null,
+    // Complété par le prefill si connu (ex. production-a-cuire.js, via le
+    // groupe comparatif) : la tuile catalogue achats elle-même ne l'a jamais.
+    catalogue_vente_id:       prod.catalogue_vente_id ?? prefill.catalogue_vente_id ?? null,
     numero_lot:         null,
     dlc:                null,
     source_type:        null,
@@ -1062,6 +1090,7 @@ function resetWizard() {
   state.lotsProduit     = [];
   state.fifoLotKey      = null;
   state.degreChoisi     = 'generale';
+  state.produitPreselectionne = null;
 
   elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
     t.classList.remove('cu-tuile--selected'));
