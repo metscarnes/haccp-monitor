@@ -178,11 +178,22 @@ function filtrer() {
   trier();
 }
 
+// `marge` est un objet ({taux_marge, ...}) ou null — pas un scalaire trié directement.
+// Les produits sans marge calculable passent toujours en fin de liste, quel que soit
+// le sens du tri (ni la meilleure ni la pire marge, on ne les mélange pas aux vraies valeurs).
+function valeurTri(produit, cle) {
+  if (cle === 'marge') return produit.marge?.taux_marge ?? null;
+  return produit[cle] ?? '';
+}
+
 function trier() {
   const k = triColonne;
   listeFiltree.sort((a, b) => {
-    let va = a[k] ?? '';
-    let vb = b[k] ?? '';
+    let va = valeurTri(a, k);
+    let vb = valeurTri(b, k);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
     if (typeof va === 'number' && typeof vb === 'number') {
       return triSens === 'asc' ? va - vb : vb - va;
     }
