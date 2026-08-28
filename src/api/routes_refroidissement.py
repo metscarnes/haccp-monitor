@@ -337,7 +337,7 @@ async def lister_refroidissements(
         cur = await db.execute(
             f"""
             SELECT r.*,
-                   p.nom        AS produit_nom,
+                   COALESCE(p.nom, cv.nom, cf.designation) AS produit_nom,
                    p.espece     AS espece,
                    TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_prenom,
                    rl.numero_lot AS reception_numero_lot,
@@ -345,6 +345,8 @@ async def lister_refroidissements(
                    rl.reception_id AS reception_id
             FROM   refroidissements r
             LEFT   JOIN produits  p    ON p.id    = r.produit_id
+            LEFT   JOIN catalogue_vente cv   ON cv.id   = r.catalogue_vente_id
+            LEFT   JOIN catalogue_fournisseur cf ON cf.id = r.catalogue_fournisseur_id
             LEFT   JOIN personnel pers ON pers.id = r.personnel_id
             LEFT   JOIN reception_lignes rl ON rl.id = r.reception_ligne_id
             {where_sql}

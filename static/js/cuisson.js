@@ -685,7 +685,13 @@ elChoixRefroid.addEventListener('click', () => {
   sessionStorage.setItem('refroidissement_prefill', JSON.stringify({
     operateur_id:       operateur.id,
     operateur_prenom:   operateur.prenom,
+    // Clé composite : `id` (table produits) est null pour le stock issu du catalogue —
+    // le refroidissement doit recevoir cle_type/cle_id pour retrouver la bonne tuile.
     produit_id:         produit.id,
+    cle_type:           produit.cle_type ?? 'produit',
+    cle_id:             produit.cle_id ?? produit.id,
+    catalogue_fournisseur_id: produit.catalogue_fournisseur_id ?? null,
+    catalogue_vente_id:       produit.catalogue_vente_id ?? null,
     produit_nom:        produit.nom,
     cuisson_id:         cuisson_id ?? null,
     temperature_sortie: temperature_sortie ?? null,

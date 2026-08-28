@@ -195,7 +195,7 @@ async def lister_cuissons(
         cur = await db.execute(
             f"""
             SELECT c.*,
-                   p.nom       AS produit_nom,
+                   COALESCE(p.nom, cv.nom, cf.designation) AS produit_nom,
                    p.espece    AS espece,
                    TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_prenom,
                    COALESCE(rl.numero_lot, fab.lot_interne) AS numero_lot,
@@ -203,6 +203,8 @@ async def lister_cuissons(
                    rl.reception_id AS reception_id
             FROM   cuissons c
             LEFT   JOIN produits        p    ON p.id    = c.produit_id
+            LEFT   JOIN catalogue_vente cv   ON cv.id   = c.catalogue_vente_id
+            LEFT   JOIN catalogue_fournisseur cf ON cf.id = c.catalogue_fournisseur_id
             LEFT   JOIN personnel       pers ON pers.id = c.personnel_id
             LEFT   JOIN reception_lignes rl  ON rl.id   = c.reception_ligne_id
             LEFT   JOIN fabrications    fab  ON fab.id  = c.fabrication_id

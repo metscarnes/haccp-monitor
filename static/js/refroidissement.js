@@ -160,14 +160,20 @@ function setJeterConfirme(val) {
 elBtnJeter.addEventListener('click', () => setJeterConfirme(true));
 elBtnJeterAnnuler.addEventListener('click', () => setJeterConfirme(false));
 
-async function recupererDerniereCuisson(produitId, cuissonId) {
+async function recupererDerniereCuisson(produitChoisi, cuissonId) {
   try {
     const rows = await apiFetch('/api/cuisson/enregistrements?type=rotissoire&limit=50');
     if (cuissonId) {
       const exact = rows.find(r => Number(r.id) === Number(cuissonId));
       if (exact) return exact;
     }
-    return rows.find(r => Number(r.produit_id) === Number(produitId)) || null;
+    // Clé composite : `produit_id` est NULL pour les cuissons issues du catalogue,
+    // donc on retrouve la cuisson via le même identifiant que celui de la tuile choisie.
+    return rows.find(r =>
+      (produitChoisi.cle_type === 'vente'  && Number(r.catalogue_vente_id)       === produitChoisi.cle_id) ||
+      (produitChoisi.cle_type === 'achat'  && Number(r.catalogue_fournisseur_id) === produitChoisi.cle_id) ||
+      (produitChoisi.cle_type === 'produit' && Number(r.produit_id)              === produitChoisi.cle_id)
+    ) || null;
   } catch (err) {
     console.warn('[refroidissement] Lecture cuisson KO :', err);
     return null;
@@ -184,7 +190,7 @@ if (elBtnRecuire) {
     let ctx = state.cuissonContext || {};
     if (ctx.quantite == null) {
       const cuisson = await recupererDerniereCuisson(
-        state.produitChoisi.id,
+        state.produitChoisi,
         state.produitChoisi.cuisson_id,
       );
       if (cuisson) {
@@ -199,7 +205,9 @@ if (elBtnRecuire) {
     const payload = {
       operateur_id:     state.operateurChoisi ? state.operateurChoisi.id     : null,
       operateur_prenom: state.operateurChoisi ? state.operateurChoisi.prenom : null,
-      produit_id:       state.produitChoisi.id,
+      produit_id:               state.produitChoisi.id ?? null,
+      catalogue_fournisseur_id: state.produitChoisi.catalogue_fournisseur_id ?? null,
+      catalogue_vente_id:       state.produitChoisi.catalogue_vente_id ?? null,
       produit_nom:      state.produitChoisi.nom,
       quantite:         ctx.quantite ?? null,
       unite:            ctx.unite    ?? null,
@@ -270,21 +278,22 @@ function appliquerPrefill(data) {
     }
   }
 
-  if (data.produit_id) {
-    const tuile = elProduitsGrid.querySelector(`.cu-tuile[data-prod-id="${data.produit_id}"]`);
-    if (tuile) {
-      state.produitChoisi = {
-        id:         Number(tuile.dataset.prodId),
-        nom:        tuile.dataset.prodNom,
-        cuisson_id: data.cuisson_id != null
-          ? Number(data.cuisson_id)
-          : (tuile.dataset.cuissonId ? Number(tuile.dataset.cuissonId) : null),
-      };
-      tuile.classList.add('cu-tuile--selected');
+  // Clé composite : `produit_id` (table produits) vaut null pour le stock catalogue —
+  // on retrouve la tuile par (cle_type, cle_id), avec repli sur produit_id (legacy).
+  const cleType = data.cle_type ?? 'produit';
+  const cleId   = data.cle_id ?? data.produit_id;
+  if (cleId != null) {
+    const prod = trouverProduit(cleType, Number(cleId));
+    if (prod) {
+      selectionnerProduitTuile(prod, data.cuisson_id != null ? Number(data.cuisson_id) : null);
     } else if (data.produit_nom) {
       // Produit absent de la grille (cuisson tout juste enregistrée non encore remontée)
       state.produitChoisi = {
-        id:         Number(data.produit_id),
+        id:         data.produit_id != null ? Number(data.produit_id) : null,
+        cle_type:   cleType,
+        cle_id:     Number(cleId),
+        catalogue_fournisseur_id: data.catalogue_fournisseur_id ?? null,
+        catalogue_vente_id:       data.catalogue_vente_id ?? null,
         nom:        data.produit_nom,
         cuisson_id: data.cuisson_id != null ? Number(data.cuisson_id) : null,
       };
@@ -379,7 +388,13 @@ function afficherProduits() {
   }
   elProduitsGrid.innerHTML = liste.map(p => {
     const classes = ['cu-tuile'];
-    if (state.produitChoisi && state.produitChoisi.id === p.id) classes.push('cu-tuile--selected');
+    // Comparaison sur la clé composite : `id` vaut null pour tout produit issu du
+    // catalogue, et null === null aurait sélectionné toutes ces tuiles à la fois.
+    if (state.produitChoisi
+        && state.produitChoisi.cle_type === (p.cle_type ?? 'produit')
+        && Number(state.produitChoisi.cle_id) === Number(p.cle_id ?? p.id)) {
+      classes.push('cu-tuile--selected');
+    }
     const metaParts = [];
     if (p.cuisson_date) metaParts.push(`Cuisson du ${formatDate(p.cuisson_date)}`);
     if (p.numero_lot)   {
@@ -391,7 +406,7 @@ function afficherProduits() {
       : '';
     return `
       <button type="button" class="${classes.join(' ')}" role="listitem"
-              data-prod-id="${p.id}"
+              data-cle-type="${p.cle_type ?? 'produit'}" data-cle-id="${p.cle_id ?? p.id}"
               data-prod-nom="${escHtml(p.nom)}"
               data-cuisson-id="${p.cuisson_id ?? ''}">
         <div class="cu-tuile-icone">🥩</div>
@@ -404,16 +419,34 @@ function afficherProduits() {
 
 elProdSearch.addEventListener('input', afficherProduits);
 
-elProduitsGrid.addEventListener('click', e => {
-  const tuile = e.target.closest('.cu-tuile[data-prod-id]');
-  if (!tuile) return;
+function trouverProduit(cleType, cleId) {
+  return state.produits.find(p =>
+    (p.cle_type ?? 'produit') === cleType && Number(p.cle_id ?? p.id) === cleId) ?? null;
+}
+
+function selectionnerProduitTuile(prod, cuissonIdOverride) {
+  const cleType = prod.cle_type ?? 'produit';
+  const cleId   = Number(prod.cle_id ?? prod.id);
   state.produitChoisi = {
-    id:         Number(tuile.dataset.prodId),
-    nom:        tuile.dataset.prodNom,
-    cuisson_id: tuile.dataset.cuissonId ? Number(tuile.dataset.cuissonId) : null,
+    id:   prod.id ?? null,
+    nom:  prod.nom,
+    cle_type: cleType,
+    cle_id:   cleId,
+    catalogue_fournisseur_id: prod.catalogue_fournisseur_id ?? null,
+    catalogue_vente_id:       prod.catalogue_vente_id ?? null,
+    cuisson_id: cuissonIdOverride ?? (prod.cuisson_id ?? null),
   };
   elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t =>
-    t.classList.toggle('cu-tuile--selected', t === tuile));
+    t.classList.toggle('cu-tuile--selected',
+      t.dataset.cleType === cleType && Number(t.dataset.cleId) === cleId));
+}
+
+elProduitsGrid.addEventListener('click', e => {
+  const tuile = e.target.closest('.cu-tuile[data-cle-id]');
+  if (!tuile) return;
+  const prod = trouverProduit(tuile.dataset.cleType, Number(tuile.dataset.cleId));
+  if (!prod) return;
+  selectionnerProduitTuile(prod);
   majBandeau();
   setTimeout(() => goStep(3), 150);
 });
@@ -562,7 +595,12 @@ elForm.addEventListener('submit', async e => {
   const payload = {
     date_refroidissement:  elDate.value,
     personnel_id:          Number(state.operateurChoisi.id),
-    produit_id:            Number(state.produitChoisi.id),
+    produit_id:               state.produitChoisi.id != null
+                               ? Number(state.produitChoisi.id) : null,
+    catalogue_fournisseur_id: state.produitChoisi.catalogue_fournisseur_id != null
+                               ? Number(state.produitChoisi.catalogue_fournisseur_id) : null,
+    catalogue_vente_id:       state.produitChoisi.catalogue_vente_id != null
+                               ? Number(state.produitChoisi.catalogue_vente_id) : null,
     cuisson_id:            state.produitChoisi.cuisson_id ?? null,
     heure_debut:           elHeureDebut.value,
     heure_fin:             elHeureFin.value,
