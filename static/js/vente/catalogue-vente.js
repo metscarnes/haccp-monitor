@@ -506,6 +506,7 @@ function ouvrirEdition(id) {
   peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), p.famille || '');
   majSousFamille(p.famille || '', document.getElementById('v-sous-famille'), p.sous_famille || '');
   document.getElementById('v-code').value = p.code_vente || '';
+  document.getElementById('v-suivi-cuisson-auto').checked = !!p.suivi_cuisson_auto;
   document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('btn-relier-achat').hidden = false;
   document.getElementById('form-erreur').hidden = true;
@@ -528,6 +529,7 @@ function viderForm() {
   document.getElementById('v-temp').value = '0°C à +4°C';
   document.getElementById('v-format').value = 'standard_60x40';
   document.getElementById('v-code').value = '';
+  document.getElementById('v-suivi-cuisson-auto').checked = false;
   document.getElementById('form-erreur').hidden = true;
 }
 
@@ -550,6 +552,7 @@ async function sauver(e) {
     famille:                  document.getElementById('v-famille').value || null,
     sous_famille:             document.getElementById('v-sous-famille').value || null,
     code_vente:               document.getElementById('v-code').value.trim() || null,
+    suivi_cuisson_auto:       document.getElementById('v-suivi-cuisson-auto').checked,
   };
 
   try {

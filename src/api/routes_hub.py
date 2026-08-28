@@ -253,16 +253,20 @@ async def taches_resume():
 
         # ── 5. Production à cuire (produits reçus déjà préparés) ─
         # Ex. Lasagne / Gratin dauphinois / Parmentier de canard, marqués
-        # `suivi_cuisson_auto` dans le catalogue (voir routes_produits.py) —
-        # cf. GET /api/cuisson/a-traiter pour la liste détaillée des lots.
+        # `suivi_cuisson_auto` sur le produit de VENTE (catalogue_vente), relié
+        # à l'article d'achat reçu via le groupe comparatif — même règle que
+        # GET /api/cuisson/a-traiter (v7.6, 28/08/2026 : la v7.4 interrogeait
+        # encore `produits.suivi_cuisson_auto`, vide pour le stock réel).
         try:
             rows = await db.execute_fetchall(
                 """
-                SELECT COUNT(*)
+                SELECT COUNT(DISTINCT rl.id)
                 FROM   reception_lignes rl
                 JOIN   receptions r ON r.id = rl.reception_id
-                JOIN   produits   p ON p.id = rl.produit_id
-                WHERE  p.suivi_cuisson_auto = 1
+                JOIN   comparatif_groupe_ligne gl ON gl.catalogue_fournisseur_id = rl.catalogue_fournisseur_id
+                JOIN   comparatif_groupe_vente gv ON gv.groupe_id = gl.groupe_id
+                JOIN   catalogue_vente cv ON cv.id = gv.catalogue_vente_id
+                WHERE  cv.suivi_cuisson_auto = 1
                   AND  r.statut = 'cloturee'
                   AND  rl.conforme = 1
                   AND  r.livraison_refusee = 0

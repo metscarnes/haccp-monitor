@@ -90,7 +90,12 @@ function envoyerEnCuisson(lot) {
   sessionStorage.setItem('cuisson_prefill', JSON.stringify({
     operateur_id:     null,
     operateur_prenom: null,
-    produit_id:       lot.produit_id,
+    // Le lot vient du catalogue ACHATS (réception) — catalogue_fournisseur_id
+    // est l'identifiant fiable pour retrouver la tuile (cf. cuisson.js
+    // appliquerPrefill). produit_id (legacy) est quasi toujours vide.
+    catalogue_fournisseur_id: lot.catalogue_fournisseur_id,
+    catalogue_vente_id:       lot.catalogue_vente_id ?? null,
+    produit_id:       lot.produit_id ?? null,
     produit_nom:      lot.produit_nom,
   }));
   window.location.href = '/cuisson.html';

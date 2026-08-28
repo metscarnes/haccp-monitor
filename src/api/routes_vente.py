@@ -48,6 +48,9 @@ class ProduitVenteCreate(BaseModel):
     format_etiquette: Optional[str] = "standard_60x40"
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
+    # v7.4 : produit reçu déjà préparé (plat traiteur), à réchauffer/refroidir sans
+    # transformation — alimente GET /api/cuisson/a-traiter (tuile Hub "À CUIRE").
+    suivi_cuisson_auto: Optional[bool] = False
 
 
 class ProduitVenteUpdate(BaseModel):
@@ -63,6 +66,7 @@ class ProduitVenteUpdate(BaseModel):
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
     actif: Optional[bool] = None
+    suivi_cuisson_auto: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -571,11 +575,12 @@ async def creer_produit_vente(body: ProduitVenteCreate, _=Depends(require_admin)
             """INSERT INTO catalogue_vente
                    (boutique_id, nom, code_vente, prix_vente_ttc, unite_vente, poids_piece_kg,
                     tva_percent, dlc_jours, temperature_conservation, format_etiquette,
-                    famille, sous_famille)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    famille, sous_famille, suivi_cuisson_auto)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.nom, body.code_vente, body.prix_vente_ttc, unite, poids,
              body.tva_percent, body.dlc_jours, body.temperature_conservation,
-             body.format_etiquette, body.famille, body.sous_famille),
+             body.format_etiquette, body.famille, body.sous_famille,
+             1 if body.suivi_cuisson_auto else 0),
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (cur.lastrowid,))

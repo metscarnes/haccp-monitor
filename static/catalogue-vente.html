@@ -271,6 +271,13 @@
           <label>Code de vente</label>
           <input type="text" id="v-code" placeholder="(facultatif)">
         </div>
+        <div class="ach-champ ach-champ--full" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="v-suivi-cuisson-auto"
+                 style="width:18px;height:18px;accent-color:var(--color-accent);">
+          <label for="v-suivi-cuisson-auto" style="margin:0;">
+            🔥 Suivi cuisson automatique (produit reçu déjà préparé — ex. plat traiteur à réchauffer)
+          </label>
+        </div>
         <div id="form-erreur" class="ach-form-erreur" hidden></div>
         <div class="ach-modal-footer" style="justify-content:space-between;">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer" hidden>Supprimer</button>

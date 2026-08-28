@@ -489,30 +489,49 @@ async def _lots_disponibles(
 @router.get("/a-traiter")
 async def lots_a_traiter():
     """
-    Réceptions closes, conformes, non refusées, d'un produit marqué
-    `suivi_cuisson_auto = 1` (ex. Lasagne, Gratin dauphinois, Parmentier de
-    canard — reçus tout prêts, sans étape de fabrication), et n'ayant pas
+    Réceptions closes, conformes, non refusées, d'un article catalogue ACHATS
+    dont le produit de vente correspondant (via le groupe comparatif) est
+    marqué `suivi_cuisson_auto = 1` (ex. Lasagne, Gratin dauphinois, Parmentier
+    de canard — reçus tout prêts, sans étape de fabrication), et n'ayant pas
     encore de cuisson liée. Triés par DLC croissante (le plus urgent d'abord).
+
+    v7.6 (28/08/2026) : réécrit sur le catalogue achats/vente. La v7.4 gardait
+    `p.suivi_cuisson_auto` sur l'ancienne table `produits`, vide pour 99% du
+    stock réel depuis la v6.0 — cette route ne trouvait donc jamais rien.
+    Le lien passe par comparatif_groupe_ligne → comparatif_groupe_vente, comme
+    la modale "ça devient quel produit ?" du wizard Cuisson.
+
+    Un même lot reçu peut en théorie matcher PLUSIEURS produits de vente
+    marqués suivi_cuisson_auto=1 s'ils partagent le même groupe comparatif
+    (ex. un groupe à la fois "plat traiteur A" et "plat traiteur B" reliés
+    au même article d'achat — cas non rencontré à ce jour, les plats visés
+    par ce flag ont chacun leur groupe dédié). GROUP BY ci-dessous évite un
+    doublon de tâche Hub dans ce cas plutôt que de planter ou dupliquer.
     """
     async with get_db() as db:
         cur = await db.execute(
             """
-            SELECT rl.id              AS reception_ligne_id,
-                   rl.produit_id,
-                   p.nom              AS produit_nom,
+            SELECT rl.id                       AS reception_ligne_id,
+                   rl.catalogue_fournisseur_id,
+                   MIN(cv.id)                   AS catalogue_vente_id,
+                   COALESCE(MIN(cv.nom), cf.designation) AS produit_nom,
                    rl.numero_lot,
-                   COALESCE(rl.dlc, rl.dluo) AS dlc,
+                   COALESCE(rl.dlc, rl.dluo)    AS dlc,
                    r.date_reception,
-                   f.nom              AS fournisseur_nom
+                   f.nom                        AS fournisseur_nom
             FROM   reception_lignes rl
             JOIN   receptions r ON r.id = rl.reception_id
-            JOIN   produits   p ON p.id = rl.produit_id
+            JOIN   catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+            JOIN   comparatif_groupe_ligne gl ON gl.catalogue_fournisseur_id = rl.catalogue_fournisseur_id
+            JOIN   comparatif_groupe_vente gv ON gv.groupe_id = gl.groupe_id
+            JOIN   catalogue_vente cv ON cv.id = gv.catalogue_vente_id
             LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
-            WHERE  p.suivi_cuisson_auto = 1
+            WHERE  cv.suivi_cuisson_auto = 1
               AND  r.statut = 'cloturee'
               AND  rl.conforme = 1
               AND  r.livraison_refusee = 0
               AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
+            GROUP BY rl.id
             ORDER BY CASE WHEN COALESCE(rl.dlc, rl.dluo) IS NOT NULL THEN 0 ELSE 1 END,
                      COALESCE(rl.dlc, rl.dluo) ASC,
                      r.date_reception ASC
