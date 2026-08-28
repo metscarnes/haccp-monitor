@@ -6272,7 +6272,11 @@ async def get_stock_unifie(
                 COALESCE(p.nom, cf.designation, rl.designation_libre) AS produit_nom,
                 COALESCE(p.categorie, 'matiere_premiere') AS categorie,
                 COALESCE(p.type_produit, 'brut')          AS type_produit,
-                p.espece           AS espece,
+                -- `espece` n'existe que sur l'ancienne table `produits` (vide pour 99 %
+                -- du stock réel, cf. v6.0). Le catalogue achats porte la même info sous
+                -- famille='Viande'/sous_famille=Boeuf|Veau|Agneau|Porc|Volaille|Cheval —
+                -- on la réutilise telle quelle plutôt que d'ajouter un nouveau champ.
+                COALESCE(p.espece, CASE WHEN cf.famille = 'Viande' THEN cf.sous_famille END) AS espece,
                 COALESCE(rl.dlc, rl.dluo) AS dlc,
                 rl.dlc IS NULL AND rl.dluo IS NOT NULL AS est_dluo,
                 rl.numero_lot      AS numero_lot,
@@ -6358,7 +6362,7 @@ async def get_stock_unifie(
                 COALESCE(p.nom, cv_c.nom, cf_c.designation, 'Produit cuit') AS produit_nom,
                 COALESCE(p.categorie, cv_c.famille, cf_c.famille) AS categorie,
                 COALESCE(p.type_produit, 'transforme') AS type_produit,
-                p.espece              AS espece,
+                COALESCE(p.espece, CASE WHEN cf_c.famille = 'Viande' THEN cf_c.sous_famille END) AS espece,
                 c.dlc_finale          AS dlc,
                 COALESCE(rl.numero_lot, fab.lot_interne, 'C-' || c.id) AS numero_lot,
                 rl.origine            AS origine,
@@ -6404,7 +6408,7 @@ async def get_stock_unifie(
                 COALESCE(p.nom, cv_r.nom, cf_r.designation, 'Produit refroidi') AS produit_nom,
                 COALESCE(p.categorie, cv_r.famille, cf_r.famille) AS categorie,
                 COALESCE(p.type_produit, 'transforme') AS type_produit,
-                p.espece               AS espece,
+                COALESCE(p.espece, CASE WHEN cf_r.famille = 'Viande' THEN cf_r.sous_famille END) AS espece,
                 rf.dlc_finale          AS dlc,
                 COALESCE(rf.numero_lot, rl.numero_lot, fab.lot_interne, 'R-' || rf.id) AS numero_lot,
                 rl.origine             AS origine,
