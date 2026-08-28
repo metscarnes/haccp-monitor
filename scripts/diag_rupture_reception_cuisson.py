@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-diag_rupture_reception_cuisson.py — Audit de la rupture Réception → Cuisson
+diag_rupture_reception_cuisson.py — Audit Réception → Cuisson → Refroidissement
 
 Contexte : la migration v6.0 a basculé la Production vers les catalogues
 Achats/Vente (`recettes.produit_fini_id` → `recettes.catalogue_vente_id`,
 `reception_lignes.produit_id` devenu nullable au profit de
-`catalogue_fournisseur_id`). Les modules Cuisson et Refroidissement, eux,
-sont restés sur l'ancien modèle `produits` :
+`catalogue_fournisseur_id`), mais avait laissé Cuisson et Refroidissement sur
+l'ancien modèle `produits` — rendant 100 % du stock réel non cuisinable.
 
-  • cuissons.produit_id / refroidissements.produit_id sont NOT NULL → FK produits
-  • routes_cuisson.py interroge encore `rec.produit_fini_id` (colonne disparue)
-
-Ce script mesure l'ampleur réelle des dégâts sur la base de PROD. Il ne
-modifie RIEN (lecture seule).
+Ce script CONSTATE l'état réel (schéma + données + code source) au lieu de le
+supposer : il sert aussi bien à diagnostiquer la rupture qu'à vérifier, après
+déploiement, que les correctifs sont bien en place. Il ne modifie RIEN.
 
     python3 scripts/diag_rupture_reception_cuisson.py [chemin/vers/haccp.db]
 
@@ -60,13 +58,49 @@ def main():
     print(f"  recettes         : {'catalogue_vente_id (v6 ✓)' if migre_v6 else 'produit_fini_id (pré-v6)'}")
     print(f"  reception_lignes : produit_id={'oui' if 'produit_id' in cols_rl else 'NON'}, "
           f"catalogue_fournisseur_id={'oui' if 'catalogue_fournisseur_id' in cols_rl else 'NON'}")
-    print(f"  cuissons         : produit_id → produits (ancien modèle)")
 
-    if migre_v6:
-        print()
-        print("  ⚠ INCOHÉRENCE : recettes est en v6 mais routes_cuisson.py interroge")
-        print("    encore `rec.produit_fini_id` → GET /api/cuisson/produits/{id}/receptions")
-        print("    renvoie HTTP 500 à CHAQUE appel (chemin critique du wizard Cuisson).")
+    # Migration v7.4 : cuissons/refroidissements rejoignent les catalogues.
+    # On VÉRIFIE l'état réel plutôt que de l'annoncer — l'audit doit refléter la base,
+    # pas ce qu'on croit avoir déployé.
+    v74_ok = True
+    for t in ("cuissons", "refroidissements"):
+        infos = list(cur.execute(f"PRAGMA table_info({t})"))
+        noms = {r[1] for r in infos}
+        pid = next((r for r in infos if r[1] == "produit_id"), None)
+        nullable = pid is not None and pid[3] == 0
+        a_achat  = "catalogue_fournisseur_id" in noms
+        a_vente  = "catalogue_vente_id" in noms
+        ok = nullable and a_achat and a_vente
+        v74_ok = v74_ok and ok
+        print(f"  {t:<17}: produit_id {'nullable ✓' if nullable else 'NOT NULL ✗'} · "
+              f"catalogue_fournisseur_id {'✓' if a_achat else '✗'} · "
+              f"catalogue_vente_id {'✓' if a_vente else '✗'}")
+
+    print()
+    if v74_ok:
+        print("  ✓ Migration v7.4 appliquée : le schéma accepte les lots du catalogue achats.")
+    else:
+        print("  ✗ Migration v7.4 NON appliquée — redémarrer le backend (elle tourne au")
+        print("    démarrage). Vérifier les logs : journalctl -u haccp-backend | grep 'v7.4'")
+
+    # Vérification du code source : le bug rec.produit_fini_id est-il corrigé ?
+    src = Path(__file__).parent.parent / "src" / "api" / "routes_cuisson.py"
+    if src.exists():
+        txt = src.read_text(encoding="utf-8", errors="replace")
+        if "rec.produit_fini_id" in txt:
+            print()
+            print("  ✗ routes_cuisson.py interroge encore `rec.produit_fini_id` (colonne")
+            print("    disparue en v6) → GET /api/cuisson/produits/{id}/receptions = HTTP 500.")
+        elif "rec.catalogue_vente_id" in txt:
+            print("  ✓ routes_cuisson.py utilise rec.catalogue_vente_id (bug HTTP 500 corrigé).")
+
+    js = Path(__file__).parent.parent / "static" / "js" / "cuisson.js"
+    if js.exists():
+        txt_js = js.read_text(encoding="utf-8", errors="replace")
+        if "Lots indisponibles" in txt_js:
+            print("  ✓ cuisson.js alerte l'opérateur si les lots ne se chargent pas.")
+        else:
+            print("  ✗ cuisson.js avale encore l'erreur de chargement des lots (silencieux).")
 
     # ── 2. Lignes de réception orphelines ────────────────────────────────
     section("2. RÉCEPTIONS — combien de lots sont invisibles pour la Cuisson ?")
@@ -88,7 +122,24 @@ def main():
     stock_sans = cur.execute("SELECT COUNT(*) " + stock_sql + " AND rl.produit_id IS NULL").fetchone()[0]
     print()
     print(f"  EN STOCK VIVANT aujourd'hui  : {stock_tot}")
-    print(f"  dont NON CUISINABLES         : {stock_sans}   ← produit_id NULL, POST cuisson = HTTP 422")
+    print(f"  dont sans produit interne    : {stock_sans}")
+
+    # Le schéma migré ne suffit pas : l'API valide encore `produit_id: int`.
+    # Tant que ce contrat n'a pas bougé, ces lots restent refusés en HTTP 422.
+    api_ok = False
+    if src.exists():
+        txt_api = src.read_text(encoding="utf-8", errors="replace")
+        api_ok = ("produit_id:         Optional[int]" in txt_api
+                  or "produit_id: Optional[int]" in txt_api)
+    print()
+    if stock_sans and not api_ok:
+        print("  ⚠ ÉTAT INTERMÉDIAIRE : le schéma accepte ces lots (v7.4 ✓) mais l'API les")
+        print("    refuse encore — CuissonCreate exige `produit_id: int` → HTTP 422.")
+        print("    Ces lots ne sont donc PAS encore cuisinables. Étape suivante prévue.")
+    elif stock_sans and api_ok:
+        print("  ✓ Schéma ET API acceptent les lots du catalogue achats.")
+    else:
+        print("  ✓ Aucun lot bloqué.")
 
     if stock_sans:
         print()
@@ -202,6 +253,29 @@ def main():
             print(f"    id={r['id']:<5} {(r['nom'] or '')[:44]:<44} {etat}")
     except sqlite3.OperationalError as e:
         print(f"  ERREUR (tables comparatif absentes ?) : {e}")
+
+    # ── 6. Verdict ───────────────────────────────────────────────────────
+    section("6. VERDICT")
+    etapes = [
+        ("Bug HTTP 500 (rec.produit_fini_id)",
+         src.exists() and "rec.produit_fini_id" not in src.read_text(encoding="utf-8", errors="replace")),
+        ("Alerte opérateur si lots non chargés",
+         js.exists() and "Lots indisponibles" in js.read_text(encoding="utf-8", errors="replace")),
+        ("Migration v7.4 (schéma cuissons/refroidissements)", v74_ok),
+        ("API accepte les lots du catalogue achats", api_ok),
+    ]
+    for libelle, ok in etapes:
+        print(f"  [{'✓' if ok else ' '}] {libelle}")
+
+    restant = [l for l, ok in etapes if not ok]
+    print()
+    if restant:
+        print("  Reste à faire :")
+        for l in restant:
+            print(f"    • {l}")
+    else:
+        print("  Tout est en place — la chaîne Réception → Cuisson → Refroidissement")
+        print("  est opérationnelle sur le stock réel.")
 
     con.close()
     print()
