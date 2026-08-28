@@ -27,15 +27,29 @@ Via `scripts/diag_rupture_reception_cuisson.py` (lecture seule, à relancer pour
 - Lasagne / Gratin dauphinois / Parmentier de canard : **0 dans `produits`**, 29 dans
   `catalogue_fournisseur` (9 + 12 + 8)
 
-## Les deux bugs
+## Les deux bugs — CORRIGÉS le 2026-08-27
 
-1. **`src/api/routes_cuisson.py:320`** interroge `rec.produit_fini_id`, colonne supprimée par
-   la v6 → `GET /api/cuisson/produits/{id}/receptions` renvoie **HTTP 500 systématiquement**.
-   C'est le chemin critique du wizard (`static/js/cuisson.js:433`, à la sélection du produit).
-2. **`static/js/cuisson.js:483`** avale l'erreur (`console.warn` seul) et avance quand même à
-   l'étape 3 → la cuisson est enregistrée avec `reception_ligne_id = NULL`.
-   Conséquence HACCP : **traçabilité amont perdue et DLC non plafonnée par la DLC source**,
-   sans aucun signal visible pour l'opérateur.
+1. ~~**`src/api/routes_cuisson.py:320`** interrogeait `rec.produit_fini_id`~~ → corrigé en
+   `rec.catalogue_vente_id`. Vérifié : l'endpoint passe de HTTP 500 à HTTP 200.
+   Convention retenue : pour les lots de **fabrication**, le `produit_id` de l'URL est un
+   `catalogue_vente.id` — c'est déjà ce que fait `get_stock_unifie` (`cv.id AS produit_id`).
+2. ~~**`static/js/cuisson.js:483`** avalait l'erreur~~ → affiche désormais un message explicite
+   nommant la conséquence (pas de lot, DLC non plafonnée). La production n'est pas bloquée,
+   mais le silence — pire cas pour un registre HACCP — est supprimé.
+
+## Migration v7.4 — faite le 2026-08-27
+
+`cuissons` et `refroidissements` ont désormais `catalogue_fournisseur_id` (le lot d'achat cuit)
+et `catalogue_vente_id` (ce qu'on produit) ; `produit_id` est passé **nullable** (rebuild de
+table, SQLite ne sait pas retirer un NOT NULL). `catalogue_vente.suivi_cuisson_auto` ajouté.
+
+**Piège rencontré, à ne pas réintroduire :** le rebuild ne peut PAS tourner dans le bloc
+principal de `init_db()`. La connexion d'init garde ~100 curseurs ouverts (la liste `migrations`)
+et un DROP/CREATE la laisse verrouillée → les migrations suivantes (v4.2, v5.8, v5.9, tolérances)
+échouent toutes en « database is locked ». Le rebuild vit donc dans
+`_migrer_cuisson_catalogues_v74()`, appelée **après** l'init sur une connexion dédiée — même
+parade que la v6.0. Validé sur une base rétrogradée à l'ancien schéma : données préservées,
+idempotent, sans table orpheline, et suite de tests inchangée (33 échecs préexistants / 283 OK).
 
 ## ⚠️ Travail existant à NE PAS lancer tel quel
 
@@ -63,11 +77,38 @@ qu'**après** la reconnexion (sinon rien à rattacher).
 - Valeurs de rattrapage : ~75–76,5 °C en cuisson, ~7–8,8 °C en refroidissement, durée < 2 h,
   avec variation réaliste (jamais une colonne de valeurs identiques). Opérateur = Ulysse.
 
-## Prochaine étape
+## Liaison vente ↔ achat — confirmée exploitable (audit Pi 2026-08-27)
 
-Lire comment le comparatif achats relie vente ↔ achat (vraie table de liaison ou matching par
-nom à la volée ?) avant de concevoir le déclencheur. Puis : corriger les 2 bugs, migrer le
-schéma, re-cibler la détection, et seulement ensuite lancer le rattrapage depuis le 2026-06-10.
+Il existe une vraie chaîne de liaison, pas un matching par nom :
+
+```
+catalogue_vente  --comparatif_groupe_vente-->  comparatif_groupe
+                 --comparatif_groupe_ligne-->  catalogue_fournisseur
+```
+
+`comparatif_groupe_vente` a un `ligne_choisie_id` = l'article d'achat de référence **propre à
+chaque produit de vente** (v6.5). Le commentaire de la v6.4 décrit exactement le cas d'Ulysse :
+« un même achat sert PLUSIEURS produits de vente (cuisse → steak haché, rôti, bourguignon…) ».
+
+État mesuré : 181 produits de vente actifs, 116 groupes, 176 liens vente, 292 liens achat.
+Les plats visés sont **tous déjà reliés** : Lasagnes (groupe #7, 3 achats), Gratin dauphinois
+(#12), Parmentier canard (#8, 4 achats), Rosbeef cuit (#132, 14 achats).
+
+⚠️ Deux points à arbitrer avec Ulysse : « Rosbeef cuit » existe en doublon (id=106 avec double
+espace, id=114), et il **partage le groupe #132 avec « Rosbeef cru »** — un lot reçu peut donc
+alimenter l'un ou l'autre ; le déclencheur ne peut pas deviner lequel.
+
+## Reste à faire
+
+1. `POST /api/cuisson/enregistrements` et `/api/refroidissement/enregistrements` : accepter
+   `catalogue_fournisseur_id` / `catalogue_vente_id` (aujourd'hui `produit_id: int` obligatoire
+   → HTTP 422 sur tout lot du catalogue achats).
+2. `GET /api/cuisson/produits-disponibles` : les lots sans produit interne remontent avec
+   `produit_id=None` et s'écrasent entre eux (dict keyé sur cette valeur).
+3. Re-cibler la détection auto sur `catalogue_vente.suivi_cuisson_auto` + la chaîne comparatif ;
+   déplacer la case à cocher de `catalogue.html` (table `produits`) vers le catalogue de vente.
+4. Corriger `scripts/rattrapage_cuisson_refroidissement.py` (joint encore `produits`), puis le
+   lancer sur le Pi pour la période depuis le 2026-06-10.
 
 **Why:** ces chiffres viennent d'un audit ponctuel sur la base de prod, non déductibles du code ;
 et le piège (travail déjà écrit mais mal ciblé) ferait perdre du temps ou produirait un

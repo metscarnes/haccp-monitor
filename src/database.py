@@ -546,7 +546,12 @@ CREATE TABLE IF NOT EXISTS cuissons (
     type_cuisson        TEXT    NOT NULL,           -- 'rotissoire', ...
     date_cuisson        DATE    NOT NULL,
     personnel_id        INTEGER NOT NULL,
-    produit_id          INTEGER NOT NULL,
+    -- produit_id : ancien modèle `produits`, nullable depuis la v7.4. Le stock réel
+    -- vient désormais du catalogue d'ACHATS ; ce que l'on produit est identifié par
+    -- le catalogue de VENTE. Le lien entre les deux passe par le comparatif achats.
+    produit_id               INTEGER,
+    catalogue_fournisseur_id INTEGER,                -- article d'achat réellement cuit
+    catalogue_vente_id       INTEGER,                -- ce que l'on produit (ex. Rosbeef cuit)
     reception_ligne_id  INTEGER,                     -- source = lot de réception (brut)
     fabrication_id      INTEGER,                     -- source = lot de fabrication (produit fini cru)
     quantite            REAL,
@@ -559,11 +564,13 @@ CREATE TABLE IF NOT EXISTS cuissons (
     action_corrective   TEXT,
     dlc_finale          DATE,                        -- date_cuisson + DLC_JOURS_TRANSFORMATION
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
-    FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
-    FOREIGN KEY (produit_id)         REFERENCES produits(id),
-    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id),
-    FOREIGN KEY (fabrication_id)     REFERENCES fabrications(id)
+    FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id),
+    FOREIGN KEY (fabrication_id)           REFERENCES fabrications(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cuissons_type_date
@@ -578,7 +585,9 @@ CREATE TABLE IF NOT EXISTS refroidissements (
     boutique_id           INTEGER NOT NULL DEFAULT 1,
     date_refroidissement  DATE    NOT NULL,
     personnel_id          INTEGER NOT NULL,
-    produit_id            INTEGER NOT NULL,
+    produit_id               INTEGER,          -- nullable depuis v7.4 (cf. cuissons)
+    catalogue_fournisseur_id INTEGER,
+    catalogue_vente_id       INTEGER,
     cuisson_id            INTEGER,
     numero_lot            TEXT,
     reception_ligne_id    INTEGER,
@@ -594,11 +603,13 @@ CREATE TABLE IF NOT EXISTS refroidissements (
     action_corrective     TEXT,
     dlc_finale            DATE,                       -- date_refroidissement + DLC_JOURS_TRANSFORMATION
     created_at            DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (boutique_id)        REFERENCES boutiques(id),
-    FOREIGN KEY (personnel_id)       REFERENCES personnel(id),
-    FOREIGN KEY (produit_id)         REFERENCES produits(id),
-    FOREIGN KEY (cuisson_id)         REFERENCES cuissons(id),
-    FOREIGN KEY (reception_ligne_id) REFERENCES reception_lignes(id)
+    FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id),
+    FOREIGN KEY (cuisson_id)               REFERENCES cuissons(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_refroidissements_date
@@ -1809,7 +1820,29 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v7.2 — Suivi cuisson automatique : produits reçus déjà préparés (ex.
             # Lasagne, Gratin dauphinois, Parmentier de canard) dont chaque lot reçu
             # doit déclencher une tâche "à cuire" sur le Hub (cf. GET /api/cuisson/a-traiter).
+            # NB : porté sur catalogue_vente en v7.4 — la colonne ci-dessous n'est plus
+            # utilisée (99 % du stock réel n'a pas de produit interne). Conservée pour
+            # ne pas casser les bases déjà migrées.
             "ALTER TABLE produits ADD COLUMN suivi_cuisson_auto INTEGER NOT NULL DEFAULT 0",
+            # ===================================================================
+            # v7.4 — Cuisson/Refroidissement rejoignent les catalogues Achats/Vente.
+            # La v6.0 avait basculé Réception et Production, mais pas ces deux modules,
+            # restés sur `produits` : 99 % des lignes de réception n'ayant pas de
+            # produit interne, 100 % du stock réel était devenu non cuisinable.
+            #   • catalogue_fournisseur_id = le lot d'ACHAT réellement cuit (source)
+            #   • catalogue_vente_id       = ce que l'on produit (Lasagnes, Rosbeef cuit)
+            # Le lien entre les deux est porté par le comparatif achats
+            # (comparatif_groupe_vente → comparatif_groupe → comparatif_groupe_ligne).
+            # `produit_id` devient nullable plus bas (rebuild de table).
+            # ===================================================================
+            "ALTER TABLE cuissons         ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
+            "ALTER TABLE cuissons         ADD COLUMN catalogue_vente_id       INTEGER REFERENCES catalogue_vente(id)",
+            "ALTER TABLE refroidissements ADD COLUMN catalogue_fournisseur_id INTEGER REFERENCES catalogue_fournisseur(id)",
+            "ALTER TABLE refroidissements ADD COLUMN catalogue_vente_id       INTEGER REFERENCES catalogue_vente(id)",
+            # Suivi automatique du cycle cuisson→refroidissement, porté par le produit
+            # de VENTE (ce qu'on produit), pas par l'article d'achat : un même achat
+            # peut alimenter plusieurs produits de vente (cf. comparatif v6.4).
+            "ALTER TABLE catalogue_vente  ADD COLUMN suivi_cuisson_auto INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             try:
@@ -1905,6 +1938,13 @@ PRAGMA foreign_keys=ON;
                 await db.commit()
         except Exception as e:
             logger.warning("Migration v5.6 produit_id nullable : %s", e)
+
+        # NB : le passage de cuissons/refroidissements.produit_id en nullable (v7.4)
+        # exige un rebuild de table (DROP/CREATE). Il ne peut pas se faire ici : la
+        # connexion d'init garde des curseurs ouverts et le DROP la laisserait dans un
+        # état verrouillé, faisant échouer toutes les migrations suivantes (v4.2, v5.8,
+        # v5.9…). Il tourne donc sur une connexion dédiée, APRÈS l'init — voir
+        # _migrer_cuisson_catalogues_v74(), appelée en fin de init_db().
 
         # Migration v3.5 — baseline historique du statut réception
         # ALTER TABLE remplit les lignes existantes avec 'en_cours' (default),
@@ -2476,6 +2516,144 @@ PRAGMA foreign_keys=ON;
                 logger.info("Migration v6.0 : terminée")
     except Exception as e:
         logger.warning("Migration v6.0 production catalogues : %s", e)
+
+    # ===================================================================
+    # Migration v7.4 — Cuisson/Refroidissement rejoignent les catalogues.
+    # La v6.0 avait migré Réception et Production, mais pas ces deux modules :
+    # `produit_id` y était NOT NULL alors que 99 % des lignes de réception n'ont
+    # plus de produit interne → tout le stock réel était devenu non cuisinable.
+    # Idempotent : ne recrée la table que si produit_id est encore NOT NULL.
+    # Connexion DÉDIÉE post-init, pour la même raison que la v6.0.
+    # ===================================================================
+    await _migrer_cuisson_catalogues_v74()
+
+
+_V74_TABLES = (
+    (
+        "cuissons",
+        """
+CREATE TABLE cuissons_v74 (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
+    type_cuisson             TEXT    NOT NULL,
+    date_cuisson             DATE    NOT NULL,
+    personnel_id             INTEGER NOT NULL,
+    produit_id               INTEGER,
+    catalogue_fournisseur_id INTEGER,
+    catalogue_vente_id       INTEGER,
+    reception_ligne_id       INTEGER,
+    fabrication_id           INTEGER,
+    quantite                 REAL,
+    unite                    TEXT    DEFAULT 'kg',
+    heure_debut              TEXT    NOT NULL,
+    heure_fin                TEXT    NOT NULL,
+    temperature_sortie       REAL    NOT NULL,
+    temperature_cible        REAL    NOT NULL DEFAULT 75.0,
+    conforme                 INTEGER NOT NULL,
+    action_corrective        TEXT,
+    dlc_finale               DATE,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id),
+    FOREIGN KEY (fabrication_id)           REFERENCES fabrications(id)
+);
+""",
+        "id, boutique_id, type_cuisson, date_cuisson, personnel_id, produit_id, "
+        "catalogue_fournisseur_id, catalogue_vente_id, reception_ligne_id, fabrication_id, "
+        "quantite, unite, heure_debut, heure_fin, temperature_sortie, temperature_cible, "
+        "conforme, action_corrective, dlc_finale, created_at",
+    ),
+    (
+        "refroidissements",
+        """
+CREATE TABLE refroidissements_v74 (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
+    date_refroidissement     DATE    NOT NULL,
+    personnel_id             INTEGER NOT NULL,
+    produit_id               INTEGER,
+    catalogue_fournisseur_id INTEGER,
+    catalogue_vente_id       INTEGER,
+    cuisson_id               INTEGER,
+    numero_lot               TEXT,
+    reception_ligne_id       INTEGER,
+    heure_debut              TEXT    NOT NULL,
+    heure_fin                TEXT    NOT NULL,
+    duree_minutes            INTEGER NOT NULL,
+    temperature_initiale     REAL    DEFAULT 75.0,
+    temperature_finale       REAL    NOT NULL,
+    temperature_cible        REAL    NOT NULL DEFAULT 10.0,
+    duree_max_minutes        INTEGER NOT NULL DEFAULT 120,
+    conforme                 INTEGER NOT NULL,
+    jeter                    INTEGER NOT NULL DEFAULT 0,
+    action_corrective        TEXT,
+    dlc_finale               DATE,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id),
+    FOREIGN KEY (cuisson_id)               REFERENCES cuissons(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id)
+);
+""",
+        "id, boutique_id, date_refroidissement, personnel_id, produit_id, "
+        "catalogue_fournisseur_id, catalogue_vente_id, cuisson_id, numero_lot, "
+        "reception_ligne_id, heure_debut, heure_fin, duree_minutes, "
+        "temperature_initiale, temperature_finale, temperature_cible, "
+        "duree_max_minutes, conforme, jeter, action_corrective, dlc_finale, created_at",
+    ),
+)
+
+
+async def _migrer_cuisson_catalogues_v74() -> None:
+    """Rend `produit_id` nullable dans cuissons/refroidissements (rebuild de table).
+
+    SQLite ne sait pas retirer un NOT NULL → recréation complète, comme la v5.6 pour
+    reception_lignes. Tourne sur une connexion dédiée, hors de l'init : un DROP/CREATE
+    laisserait la connexion d'init verrouillée et ferait échouer les migrations suivantes.
+    Idempotent : ne fait rien si produit_id est déjà nullable.
+    """
+    for table, ddl, colonnes in _V74_TABLES:
+        try:
+            async with get_db() as db:
+                async with db.execute(f"PRAGMA table_info({table})") as cur_t:
+                    cols_t = await cur_t.fetchall()
+                # PRAGMA table_info : (cid, name, type, notnull, dflt_value, pk)
+                if not any(r[1] == "produit_id" and r[3] == 1 for r in cols_t):
+                    continue
+                logger.info("Migration v7.4 : produit_id → nullable dans %s", table)
+                await db.executescript(
+                    "PRAGMA foreign_keys=OFF;\n"
+                    f"DROP TABLE IF EXISTS {table}_v74;\n"
+                    f"{ddl}"
+                    f"INSERT INTO {table}_v74 ({colonnes}) SELECT {colonnes} FROM {table};\n"
+                    f"DROP TABLE {table};\n"
+                    f"ALTER TABLE {table}_v74 RENAME TO {table};\n"
+                    "PRAGMA foreign_keys=ON;\n"
+                )
+                await db.commit()
+                logger.info("Migration v7.4 : %s migrée", table)
+        except Exception as e:
+            logger.warning("Migration v7.4 %s : %s", table, e)
+
+    # Les index sont perdus par le RENAME : on les recrée systématiquement.
+    try:
+        async with get_db() as db:
+            for idx_sql in (
+                "CREATE INDEX IF NOT EXISTS idx_cuissons_type_date ON cuissons(type_cuisson, date_cuisson)",
+                "CREATE INDEX IF NOT EXISTS idx_refroidissements_date ON refroidissements(date_refroidissement)",
+                "CREATE INDEX IF NOT EXISTS idx_cuissons_cat_fourn ON cuissons(catalogue_fournisseur_id)",
+            ):
+                await db.execute(idx_sql)
+            await db.commit()
+    except Exception as e:
+        logger.warning("Migration v7.4 index : %s", e)
 
 
 def _normaliser_nom(s: str) -> str:
