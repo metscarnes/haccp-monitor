@@ -1,6 +1,6 @@
 # Point d'étape — Chaîne Réception → Cuisson → Refroidissement
 
-> **Dernière mise à jour :** 28/08/2026
+> **Dernière mise à jour :** 28/08/2026 (soir)
 > **Objectif initial :** mettre en place un cycle automatique cuisson/refroidissement
 > déclenché par les réceptions et les n° de lot (lasagnes, gratin dauphinois,
 > parmentier de canard).
@@ -13,8 +13,9 @@ Le besoin de départ était un **déclencheur automatique**. L'analyse a révél
 bien plus profond en amont : le module Cuisson était **inutilisable sur la totalité du
 stock réel**. Il fallait donc réparer la chaîne avant de pouvoir automatiser quoi que ce soit.
 
-À ce jour, la chaîne est réparée et fonctionnelle de bout en bout. Le déclencheur
-automatique reste à brancher.
+À ce jour, la chaîne est réparée, fonctionnelle de bout en bout, testée à l'écran, et le
+registre HACCP a été rattrapé rétroactivement depuis le 10/06 (42 cycles cuisson+refroidissement).
+**Seule la détection automatique elle-même reste à brancher — c'est le prochain chantier.**
 
 | Verrou | État |
 |---|---|
@@ -22,8 +23,14 @@ automatique reste à brancher.
 | Perte silencieuse de traçabilité | ✅ Corrigé |
 | Schéma incompatible avec le stock réel (migration v7.4) | ✅ Corrigé — appliqué en prod |
 | API refusant les lots du catalogue achats | ✅ Corrigé |
-| Détection automatique « à cuire » | ⬜ À faire |
-| Rattrapage depuis le 10/06 | ⬜ À faire |
+| `refroidissement.js` sur clé composite | ✅ Corrigé |
+| Noms produits vides (historiques + étiquette) | ✅ Corrigé |
+| Modale "ça devient quel produit ?" (matière brute → produit fini) | ✅ Codée + déployée |
+| Exception cuisson viande rouge (55/63/75°C) | ✅ Codée + déployée |
+| `espece` manquant côté catalogue achats | ✅ Corrigé |
+| Doublon Rosbeef cuit | ✅ Résolu (soft-delete par l'utilisateur, hors ce document) |
+| Rattrapage depuis le 10/06 | ✅ **Fait — 42 cycles créés en base (28/08/2026)** |
+| Détection automatique « à cuire » | ⬜ **Prochain chantier** |
 
 ---
 
@@ -150,37 +157,52 @@ concernent des tests écrits contre le schéma pré-v6.)*
 
 ## 5. Ce qui reste à faire
 
-1. **Détection automatique « à cuire »** — à brancher sur `catalogue_vente.suivi_cuisson_auto`
-   et la chaîne du comparatif achats. La case à cocher doit être déplacée de `catalogue.html`
-   (table `produits`, vide pour ces plats) vers le catalogue de vente.
-2. **`refroidissement.js`** — même bascule que `cuisson.js` : il envoie encore l'ancien
-   identifiant seul.
-3. **Rattrapage depuis le 10/06** — `scripts/rattrapage_cuisson_refroidissement.py` joint
-   encore `produits` et ne trouverait aucun candidat. À corriger avant tout lancement.
-4. **Arbitrage produit** (décision métier, voir §6).
+**Un seul chantier : la détection automatique « à cuire ».**
+
+Le flag existe déjà en base (`catalogue_vente.suivi_cuisson_auto`, ajouté en v7.4) et le
+pattern de requête existe déjà — `routes_cuisson.py` (`GET /api/cuisson/a-traiter`) et
+`routes_hub.py` savent déjà lire un flag `suivi_cuisson_auto`, mais **sur la mauvaise
+table** : ils interrogent encore `produits.suivi_cuisson_auto`, vide pour tout le stock
+réel (héritage pré-v6). Il faut :
+
+1. **Écran** — ajouter la case à cocher "Suivi cuisson auto" sur `catalogue-vente.html`
+   (elle n'existe aujourd'hui que sur `catalogue.html`, table `produits`).
+2. **Backend** — dupliquer/adapter les requêtes de `GET /api/cuisson/a-traiter` et du résumé
+   Hub pour lire `catalogue_vente.suivi_cuisson_auto` au lieu de `produits.suivi_cuisson_auto`.
+3. **Ambiguïté groupe partagé** (ex. groupe #132 "Boeuf", 16 produits de vente pour les
+   mêmes 15 articles d'achat) — c'est justement le flag par produit qui doit la lever :
+   un lot de bœuf brut reçu ne doit proposer que les produits du groupe où
+   `suivi_cuisson_auto = 1` (probablement aucun pour l'instant côté bœuf/porc, le flag
+   étant surtout pensé pour les plats reçus tout prêts comme Lasagnes/Gratin/Parmentier —
+   à confirmer avec l'utilisateur avant de l'étendre à la découpe).
+
+Tous les points bloquants précédents (doublon Rosbeef, `refroidissement.js`, rattrapage)
+sont réglés — voir tableau §1.
 
 ---
 
-## 6. Décision qui t'appartient
+## 6. Rattrapage effectué (28/08/2026)
 
-La liaison vente ↔ achat est en place et exploitable :
+`scripts/rattrapage_cuisson_refroidissement.py` réécrit sur le catalogue achats/vente
+(l'original joignait sur `produits`, vide → 0 candidat trouvé). **42 cycles créés en base**,
+`--commit` déjà lancé sur le Pi :
 
-```
-catalogue_vente  --comparatif_groupe_vente-->  comparatif_groupe
-                 --comparatif_groupe_ligne-->  catalogue_fournisseur
-```
-
-Tes plats cibles sont **tous déjà reliés** : Lasagnes (groupe #7), Gratin dauphinois (#12),
-Parmentier canard (#8), Rosbeef cuit (#132, 14 articles d'achat).
-
-Deux points bloquent la suite :
-
-- **« Rosbeef cuit » existe en double** — id 106 (avec un double espace dans le nom) et id 114.
-- **« Rosbeef cuit » et « Rosbeef cru » partagent le groupe #132.** Un lot reçu peut donc
-  alimenter l'un ou l'autre : le déclencheur ne peut pas deviner lequel.
-
-→ Soit on dédoublonne et on sépare les groupes, soit le système propose les deux et
-l'opérateur choisit. À trancher avant de brancher la détection automatique.
+- **Passe A (26 cycles)** — Lasagnes, Gratin dauphinois, Parmentier canard : chaque lot
+  brut reçu = LE plat fini, sans ambiguïté (barquettes traiteur déjà prêtes). Sélection
+  automatique via groupe comparatif + 2 exceptions ponctuelles codées en dur
+  (`ARTICLES_HORS_GROUPE` : Gratin PEKA erreur de saisie, Lasagne charolais essai non
+  reconduit — volontairement jamais rattachées à un groupe).
+- **Passe C (16 cycles)** — Rosbeef cuit, Rôti de porc cuit : traçabilité lot-à-lot exacte
+  **impossible** (groupe comparatif partagé entre plusieurs produits de vente pour les
+  mêmes pièces brutes). Rythme synthétique réaliste (1 cuisson/semaine/plat, 2kg),
+  restreint à la seule `ligne_choisie_id` de chaque produit pour rester cohérent
+  (Tende tranche pour Rosbeef, Longe Francilin pour Rôti de porc). Chaque cuisson reste
+  rattachée à un vrai lot reçu (DLC authentique, jamais dépassée, jamais dans le futur).
+- **Bug latent découvert en vérifiant le stock/calendrier DLC post-rattrapage** : 6 entrées
+  `dlc_devenir` fantômes (orphelines depuis le rebuild `refroidissements_v74`) bloquaient
+  à tort 3 des nouveaux refroidissements à cause d'une collision d'id AUTOINCREMENT.
+  Nettoyées via `scripts/nettoyage_dlc_devenir_fantomes.py`. Vérifié après coup : les
+  4 cycles encore sous DLC valide apparaissent bien dans le stock et le calendrier DLC.
 
 ---
 
