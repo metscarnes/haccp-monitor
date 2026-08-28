@@ -471,18 +471,31 @@ def planifier_cuissons_synthetiques(semaines: dict[str, list]) -> list[tuple[str
 
 def traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, heure_debut_defaut, commit):
     creees = 0
+    ignores = 0
     aujourdhui = date.today()
     for lundi, lot in plan:
         # Cuisson placée 1 à 3 jours après la réception du lot piochi (le temps
         # qu'il arrive en atelier), jamais avant — pas de recul temporel absurde.
-        # Plafonnée à aujourd'hui : un lot reçu dans les tout derniers jours ne
-        # doit jamais produire une cuisson dans le FUTUR (incohérent en contrôle).
+        # Plafonnée à aujourd'hui (pas de cuisson dans le FUTUR) ET à la DLC du
+        # lot brut moins 1 jour (on ne cuit jamais une matière première déjà
+        # périmée — bug réel observé le 28/08/2026 : cuisson après la DLC).
         date_reception = datetime.strptime(lot["date_reception"], "%Y-%m-%d").date()
-        decalage_max = min(3, (aujourdhui - date_reception).days)
+        bornes = [aujourdhui]
+        if lot["dlc"]:
+            try:
+                bornes.append(datetime.strptime(lot["dlc"], "%Y-%m-%d").date() - timedelta(days=1))
+            except ValueError:
+                pass
+        date_limite = min(bornes)
+        decalage_max = min(3, (date_limite - date_reception).days)
         if decalage_max < 1:
-            date_evt = aujourdhui  # lot reçu aujourd'hui/hier : cuisson aujourd'hui, pas de recul possible
-        else:
-            date_evt = date_reception + timedelta(days=random.randint(1, decalage_max))
+            # Le lot n'a aucune fenêtre honnête (DLC trop courte ou déjà dépassée
+            # aujourd'hui) : on ne force pas une date incohérente, on saute ce lot.
+            print(f"  ⚠ lot {lot['numero_lot']} (reçu {lot['date_reception']}, DLC {lot['dlc']}) "
+                  f"ignoré : aucune fenêtre de cuisson honnête avant sa DLC.")
+            ignores += 1
+            continue
+        date_evt = date_reception + timedelta(days=random.randint(1, decalage_max))
         date_iso = date_evt.isoformat()
 
         heure_debut_c = heure_debut_defaut
@@ -550,6 +563,8 @@ def traiter_passe_c(con, nom_produit, cv_id, plan, personnel_id, heure_debut_def
                  1 if conforme_r else 0, dlc_r),
             )
         creees += 1
+    if ignores:
+        print(f"  ({ignores} lot(s) ignoré(s) faute de fenêtre de cuisson honnête avant leur DLC)")
     return creees
 
 
