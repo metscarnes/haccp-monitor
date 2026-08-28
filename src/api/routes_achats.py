@@ -2639,16 +2639,20 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
     - `achat_ref_kg` = €/kg HT de la ligne fournisseur CHOISIE (⭐), normalisé par
       `_calc_prix_kg`.
     - `achat_ref_piece` = prix d'achat d'UNE pièce dérivé du colis (prix_colis ÷ qte_par_colis,
-      via `_calc_prix_piece`). PRIORITAIRE pour une vente à la pièce : c'est le coût honnête,
-      sans dépendre du poids (souvent mal saisi). None si non dérivable.
+      ou achat_€/kg × poids_unitaire_kg de l'article ACHAT, via `_calc_prix_piece`). Utilisé en
+      repli seulement (voir plus bas) : `poids_unitaire_kg` côté catalogue achats est souvent un
+      résidu de saisie sans rapport avec le poids d'une pièce vendue (ex. poids du COLIS entier
+      copié par erreur — cas réel « Tende tranche » 18 kg → marge Carpaccio à -238 €/pièce,
+      28/08/2026), donc pas fiable pour arbitrer une marge.
     - `prix_vente_ttc` = prix de vente, exprimé dans l'unité de vente (€/kg ou €/pièce).
     - `unite_vente` : 'kg' (défaut) ou 'piece'.
-    - `poids_piece_kg` : poids d'une pièce vendue, utilisé pour ramener l'achat €/kg à un
-      coût/pièce UNIQUEMENT en repli quand `achat_ref_piece` n'est pas dérivable (achat au kg).
+    - `poids_piece_kg` : poids d'une pièce vendue, saisi côté catalogue VENTE (sous contrôle
+      direct, fiable) — PRIORITAIRE pour dériver le coût matière d'une vente à la pièce.
 
     Le calcul se fait DANS l'unité de vente :
       - kg    : coût matière = achat €/kg ; marge = vente HT/kg − coût.
-      - pièce : coût matière = prix pièce (dérivé du colis) SINON achat €/kg × poids_piece_kg.
+      - pièce : coût matière = achat €/kg × poids_piece_kg (catalogue vente) SINON prix pièce
+                dérivé du colis achat (repli, seulement si le poids vente est absent).
     Renvoie un dict {unite, base_label, prix_vente_ht, cout_matiere, marge, taux_marge,
     coef, achat_ref_kg, ...} ou None.
     """
@@ -2667,14 +2671,15 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
     prix_vente_ht = ttc / (1.0 + tva / 100.0)
 
     if unite_vente == "piece":
-        # Voie privilégiée : prix d'UNE pièce dérivé du colis (pas de poids dans l'équation).
-        if achat_ref_piece is not None:
-            cout_matiere = float(achat_ref_piece)
-        elif achat is not None and poids_piece_kg and float(poids_piece_kg) > 0:
-            # Repli : achat au kg × poids d'une pièce vendue.
+        # Voie privilégiée : achat €/kg (fiable) × poids de la pièce VENDUE (catalogue vente,
+        # sous contrôle direct) — n'introduit aucune donnée résiduelle du catalogue achats.
+        if achat is not None and poids_piece_kg and float(poids_piece_kg) > 0:
             cout_matiere = achat * float(poids_piece_kg)
+        elif achat_ref_piece is not None:
+            # Repli : prix d'UNE pièce dérivé du colis/poids unitaire côté achat.
+            cout_matiere = float(achat_ref_piece)
         else:
-            return None  # ni prix pièce dérivable ni (€/kg + poids) → marge incalculable
+            return None  # ni (€/kg + poids vente) ni prix pièce dérivable → marge incalculable
         base_label = "€/pièce"
     else:
         if achat is None:
