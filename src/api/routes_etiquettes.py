@@ -212,7 +212,7 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
                    s.heure_fin     AS heure_action,
                    s.produit_id    AS produit_id,
                    s.dlc_finale    AS dlc,
-                   p.nom           AS produit_nom,
+                   COALESCE(p.nom, cv.nom, cf.designation) AS produit_nom,
                    p.temperature_conservation AS temperature_conservation,
                    TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS operateur,
                    {lot_select},
@@ -220,6 +220,8 @@ async def imprimer_etiquette_transforme(body: EtiquetteTransforme):
                    {temp_select}
             FROM   {cfg['table']} s
             LEFT   JOIN produits  p    ON p.id    = s.produit_id
+            LEFT   JOIN catalogue_vente cv   ON cv.id = s.catalogue_vente_id
+            LEFT   JOIN catalogue_fournisseur cf ON cf.id = s.catalogue_fournisseur_id
             LEFT   JOIN personnel pers ON pers.id = ?
             {extra_join}
             WHERE  s.id = ?
