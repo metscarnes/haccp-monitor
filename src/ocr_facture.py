@@ -247,7 +247,7 @@ def extraire_facture(images_jpeg: list[bytes]) -> dict:
     try:
         resp = client.messages.create(
             model=MODEL,
-            max_tokens=8000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": contenu}],
             output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
         )
@@ -255,11 +255,20 @@ def extraire_facture(images_jpeg: list[bytes]) -> dict:
         logger.error("Appel OCR facture échoué : %s", e)
         raise OCRFactureError(f"Appel à l'API Claude échoué : {e}")
 
+    texte = None
     try:
         texte = next(b.text for b in resp.content if b.type == "text")
         brut = json.loads(texte)
     except (StopIteration, json.JSONDecodeError) as e:
-        logger.error("Réponse OCR facture illisible : %s", e)
+        logger.error(
+            "Réponse OCR facture illisible : %s | stop_reason=%s | extrait=%r",
+            e, resp.stop_reason, texte[-300:] if texte else None,
+        )
+        if resp.stop_reason == "max_tokens":
+            raise OCRFactureError(
+                "La facture est trop volumineuse pour l'OCR (réponse tronquée). "
+                "Essaie de la scinder ou de saisir cette facture manuellement."
+            )
         raise OCRFactureError("Réponse de l'OCR illisible.")
 
     prix_in, prix_out = _PRIX.get(MODEL, (3.00, 15.00))

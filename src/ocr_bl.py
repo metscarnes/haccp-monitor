@@ -252,7 +252,7 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
     try:
         resp = client.messages.create(
             model=MODEL,
-            max_tokens=8000,
+            max_tokens=16000,
             messages=[{"role": "user", "content": contenu}],
             output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
         )
@@ -260,11 +260,20 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
         logger.error("Appel OCR échoué : %s", e)
         raise OCRError(f"Appel à l'API Claude échoué : {e}")
 
+    texte = None
     try:
         texte = next(b.text for b in resp.content if b.type == "text")
         data = json.loads(texte)
     except (StopIteration, json.JSONDecodeError) as e:
-        logger.error("Réponse OCR illisible : %s", e)
+        logger.error(
+            "Réponse OCR illisible : %s | stop_reason=%s | extrait=%r",
+            e, resp.stop_reason, texte[-300:] if texte else None,
+        )
+        if resp.stop_reason == "max_tokens":
+            raise OCRError(
+                "Le BL est trop volumineux pour l'OCR (réponse tronquée). "
+                "Essaie de le scinder ou de saisir ce BL manuellement."
+            )
         raise OCRError("Réponse de l'OCR illisible.")
 
     # Coût réel, pour journalisation et suivi
