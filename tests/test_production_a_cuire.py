@@ -233,3 +233,20 @@ async def test_exclusion_retire_le_lot_et_reintegration_le_remet(app_client, db)
 async def test_exclure_lot_inexistant_404(app_client):
     r = await app_client.post("/api/cuisson/a-traiter/999999/exclure", json={})
     assert r.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_exclusion_retire_aussi_la_tuile_hub(app_client, db):
+    # Régression : la tuile Hub "Production à cuire" a longtemps recompté les
+    # lots via une requête dupliquée qui n'excluait pas exclu_cuisson_auto.
+    achat, vente = await _creer_plat_suivi_auto(app_client, "Lasagne (test G)", "LASA-G")
+    reception_ligne_id, _ = await _creer_lot_recu_et_cloture(app_client, db, achat, "LOT-G-001")
+
+    r = await app_client.get("/api/hub/taches-resume")
+    assert "production_a_cuire" in [t["code"] for t in r.json()["aujourd_hui"]]
+
+    rex = await app_client.post(f"/api/cuisson/a-traiter/{reception_ligne_id}/exclure", json={})
+    assert rex.status_code == 200, rex.text
+
+    r2 = await app_client.get("/api/hub/taches-resume")
+    assert "production_a_cuire" not in [t["code"] for t in r2.json()["aujourd_hui"]]

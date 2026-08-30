@@ -257,6 +257,9 @@ async def taches_resume():
         # à l'article d'achat reçu via le groupe comparatif — même règle que
         # GET /api/cuisson/a-traiter (v7.6, 28/08/2026 : la v7.4 interrogeait
         # encore `produits.suivi_cuisson_auto`, vide pour le stock réel).
+        # exclu_cuisson_auto = 0 (v7.6, 30/08/2026) : un lot exclu manuellement
+        # depuis l'écran "À cuire" ne doit pas non plus compter ici, sinon la
+        # tuile Hub reste allumée pour un lot qu'on a volontairement écarté.
         try:
             rows = await db.execute_fetchall(
                 """
@@ -270,6 +273,7 @@ async def taches_resume():
                   AND  r.statut = 'cloturee'
                   AND  rl.conforme = 1
                   AND  r.livraison_refusee = 0
+                  AND  rl.exclu_cuisson_auto = 0
                   AND  (COALESCE(rl.dlc, rl.dluo) IS NULL OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
                   AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
                 """
