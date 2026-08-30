@@ -193,6 +193,7 @@ async def test_a_traiter_expose_le_produit_receptionne(app_client, db):
     assert lot["article_designation"] == "Gratin dauphinois (test E)"
     assert lot["article_code"] == "GRAT-E"
     assert lot["produit_nom"] == "Gratin dauphinois (test E)"
+    assert lot["reception_id"] is not None
 
 
 @pytest.mark.anyio

@@ -32,6 +32,7 @@ const elDetailReception = document.getElementById('pac-detail-reception');
 const elDetailFournisseur = document.getElementById('pac-detail-fournisseur');
 const elDetailExclure  = document.getElementById('pac-detail-exclure');
 const elDetailCuisiner = document.getElementById('pac-detail-cuisiner');
+const elDetailFiche    = document.getElementById('pac-detail-fiche');
 
 let lotsCourants = [];
 let lotSelectionne = null;
@@ -95,6 +96,9 @@ function rendre(lots) {
   elListe.innerHTML = lots.map((lot, i) => `
     <div class="card pac-carte" role="listitem" data-index="${i}" tabindex="0">
       <div class="pac-carte-titre">${escHtml(lot.produit_nom)}</div>
+      ${lot.article_designation && lot.article_designation !== lot.produit_nom ? `
+        <div class="pac-carte-recu">📦 Reçu : ${escHtml(lot.article_designation)}</div>
+      ` : ''}
       <div class="pac-carte-sous">
         Lot <b>${escHtml(lot.numero_lot || '—')}</b> ·
         DLC <b>${formatDate(lot.dlc)}</b> ·
@@ -125,6 +129,12 @@ function ouvrirDetail(lot) {
   elDetailDlc.textContent = formatDate(lot.dlc);
   elDetailReception.textContent = formatDate(lot.date_reception);
   elDetailFournisseur.textContent = lot.fournisseur_nom || '—';
+  if (lot.reception_id) {
+    elDetailFiche.href = `/reception-detail.html?id=${lot.reception_id}`;
+    elDetailFiche.hidden = false;
+  } else {
+    elDetailFiche.hidden = true;
+  }
   elModalDetail.hidden = false;
 }
 

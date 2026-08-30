@@ -521,6 +521,7 @@ async def lots_a_traiter():
         cur = await db.execute(
             """
             SELECT rl.id                       AS reception_ligne_id,
+                   r.id                         AS reception_id,
                    rl.catalogue_fournisseur_id,
                    MIN(cv.id)                   AS catalogue_vente_id,
                    COALESCE(MIN(cv.nom), cf.designation) AS produit_nom,
@@ -576,6 +577,7 @@ async def lots_exclus():
         cur = await db.execute(
             """
             SELECT rl.id                       AS reception_ligne_id,
+                   r.id                         AS reception_id,
                    rl.catalogue_fournisseur_id,
                    MIN(cv.id)                   AS catalogue_vente_id,
                    COALESCE(MIN(cv.nom), cf.designation) AS produit_nom,
