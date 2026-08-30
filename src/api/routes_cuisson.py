@@ -7,6 +7,9 @@ Cible réglementaire : ≥ 75 °C à cœur.
 GET  /api/cuisson/enregistrements?type=rotissoire&limit=50
 POST /api/cuisson/enregistrements
 GET  /api/cuisson/a-traiter
+GET  /api/cuisson/a-traiter/exclusions
+POST /api/cuisson/a-traiter/{reception_ligne_id}/exclure
+POST /api/cuisson/a-traiter/{reception_ligne_id}/reintegrer
 GET  /api/cuisson/produits-vente-suggeres
 """
 
@@ -507,6 +510,12 @@ async def lots_a_traiter():
     au même article d'achat — cas non rencontré à ce jour, les plats visés
     par ce flag ont chacun leur groupe dédié). GROUP BY ci-dessous évite un
     doublon de tâche Hub dans ce cas plutôt que de planter ou dupliquer.
+
+    v7.6 (30/08/2026) : exclut les lots marqués `exclu_cuisson_auto = 1`
+    (cf. POST .../exclure) et renvoie en plus `article_designation` — le nom
+    de l'article tel que reçu au catalogue ACHATS, potentiellement différent
+    du nom du produit fini `produit_nom` (catalogue VENTE). Utile à l'écran
+    pour vérifier qu'un lot n'est pas mal rattaché avant de le cuisiner.
     """
     async with get_db() as db:
         cur = await db.execute(
@@ -515,6 +524,8 @@ async def lots_a_traiter():
                    rl.catalogue_fournisseur_id,
                    MIN(cv.id)                   AS catalogue_vente_id,
                    COALESCE(MIN(cv.nom), cf.designation) AS produit_nom,
+                   cf.designation                AS article_designation,
+                   cf.code_article                AS article_code,
                    rl.numero_lot,
                    COALESCE(rl.dlc, rl.dluo)    AS dlc,
                    r.date_reception,
@@ -530,6 +541,7 @@ async def lots_a_traiter():
               AND  r.statut = 'cloturee'
               AND  rl.conforme = 1
               AND  r.livraison_refusee = 0
+              AND  rl.exclu_cuisson_auto = 0
               AND  (COALESCE(rl.dlc, rl.dluo) IS NULL OR COALESCE(rl.dlc, rl.dluo) >= DATE('now'))
               AND  NOT EXISTS (SELECT 1 FROM cuissons c WHERE c.reception_ligne_id = rl.id)
             GROUP BY rl.id
@@ -540,6 +552,87 @@ async def lots_a_traiter():
         )
         rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Exclusion manuelle de la liste "À cuire"
+# GET  /api/cuisson/a-traiter/exclusions
+# POST /api/cuisson/a-traiter/{reception_ligne_id}/exclure
+# POST /api/cuisson/a-traiter/{reception_ligne_id}/reintegrer
+# ---------------------------------------------------------------------------
+
+class ExclureLotBody(BaseModel):
+    motif: Optional[str] = None
+
+
+@router.get("/a-traiter/exclusions")
+async def lots_exclus():
+    """Lots actuellement exclus de la liste "À cuire" (pour l'écran de gestion
+    des exclusions : vérifier/réintégrer). Même jointure que `/a-traiter`,
+    sans le filtre `exclu_cuisson_auto = 0` ni le filtre DLC/cuisson déjà faite
+    (un lot exclu reste dans la liste même après sa DLC passée ou une fois cuit,
+    tant qu'il n'est pas explicitement réintégré)."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT rl.id                       AS reception_ligne_id,
+                   rl.catalogue_fournisseur_id,
+                   MIN(cv.id)                   AS catalogue_vente_id,
+                   COALESCE(MIN(cv.nom), cf.designation) AS produit_nom,
+                   cf.designation                AS article_designation,
+                   cf.code_article                AS article_code,
+                   rl.numero_lot,
+                   COALESCE(rl.dlc, rl.dluo)    AS dlc,
+                   r.date_reception,
+                   f.nom                        AS fournisseur_nom,
+                   rl.exclu_cuisson_auto_motif   AS motif
+            FROM   reception_lignes rl
+            JOIN   receptions r ON r.id = rl.reception_id
+            JOIN   catalogue_fournisseur cf ON cf.id = rl.catalogue_fournisseur_id
+            JOIN   comparatif_groupe_ligne gl ON gl.catalogue_fournisseur_id = rl.catalogue_fournisseur_id
+            JOIN   comparatif_groupe_vente gv ON gv.groupe_id = gl.groupe_id
+            JOIN   catalogue_vente cv ON cv.id = gv.catalogue_vente_id
+            LEFT JOIN fournisseurs f ON f.id = rl.fournisseur_id
+            WHERE  cv.suivi_cuisson_auto = 1
+              AND  rl.exclu_cuisson_auto = 1
+            GROUP BY rl.id
+            ORDER BY r.date_reception DESC
+            """
+        )
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.post("/a-traiter/{reception_ligne_id}/exclure")
+async def exclure_lot(reception_ligne_id: int, body: ExclureLotBody):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM reception_lignes WHERE id = ?", (reception_ligne_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(status_code=404, detail="Ligne de réception introuvable")
+        await db.execute(
+            "UPDATE reception_lignes SET exclu_cuisson_auto = 1, exclu_cuisson_auto_motif = ? WHERE id = ?",
+            (body.motif.strip() if body.motif else None, reception_ligne_id),
+        )
+        await db.commit()
+    return {"ok": True}
+
+
+@router.post("/a-traiter/{reception_ligne_id}/reintegrer")
+async def reintegrer_lot(reception_ligne_id: int):
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT id FROM reception_lignes WHERE id = ?", (reception_ligne_id,)
+        )
+        if not await cur.fetchone():
+            raise HTTPException(status_code=404, detail="Ligne de réception introuvable")
+        await db.execute(
+            "UPDATE reception_lignes SET exclu_cuisson_auto = 0, exclu_cuisson_auto_motif = NULL WHERE id = ?",
+            (reception_ligne_id,),
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

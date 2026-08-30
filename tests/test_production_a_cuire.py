@@ -179,3 +179,56 @@ async def test_hub_resume_signale_production_a_cuire(app_client, db):
     assert r.status_code == 200
     codes = [t["code"] for t in r.json()["aujourd_hui"]]
     assert "production_a_cuire" in codes
+
+
+@pytest.mark.anyio
+async def test_a_traiter_expose_le_produit_receptionne(app_client, db):
+    # Le détail (front) doit pouvoir distinguer l'article reçu (catalogue achats)
+    # du produit fini (catalogue vente), notamment quand les noms diffèrent.
+    achat, vente = await _creer_plat_suivi_auto(app_client, "Gratin dauphinois (test E)", "GRAT-E")
+    await _creer_lot_recu_et_cloture(app_client, db, achat, "LOT-E-001")
+
+    r = await app_client.get("/api/cuisson/a-traiter")
+    lot = next(l for l in r.json() if l["catalogue_fournisseur_id"] == achat)
+    assert lot["article_designation"] == "Gratin dauphinois (test E)"
+    assert lot["article_code"] == "GRAT-E"
+    assert lot["produit_nom"] == "Gratin dauphinois (test E)"
+
+
+@pytest.mark.anyio
+async def test_exclusion_retire_le_lot_et_reintegration_le_remet(app_client, db):
+    achat, vente = await _creer_plat_suivi_auto(app_client, "Lasagne (test F)", "LASA-F")
+    reception_ligne_id, _ = await _creer_lot_recu_et_cloture(app_client, db, achat, "LOT-F-001")
+
+    r = await app_client.get("/api/cuisson/a-traiter")
+    assert any(l["reception_ligne_id"] == reception_ligne_id for l in r.json())
+
+    rex = await app_client.post(
+        f"/api/cuisson/a-traiter/{reception_ligne_id}/exclure",
+        json={"motif": "Mauvais rattachement catalogue"},
+    )
+    assert rex.status_code == 200, rex.text
+
+    r2 = await app_client.get("/api/cuisson/a-traiter")
+    assert not any(l["reception_ligne_id"] == reception_ligne_id for l in r2.json())
+
+    rlist = await app_client.get("/api/cuisson/a-traiter/exclusions")
+    assert rlist.status_code == 200
+    exclus = rlist.json()
+    lot_exclu = next(l for l in exclus if l["reception_ligne_id"] == reception_ligne_id)
+    assert lot_exclu["motif"] == "Mauvais rattachement catalogue"
+
+    rre = await app_client.post(f"/api/cuisson/a-traiter/{reception_ligne_id}/reintegrer")
+    assert rre.status_code == 200, rre.text
+
+    r3 = await app_client.get("/api/cuisson/a-traiter")
+    assert any(l["reception_ligne_id"] == reception_ligne_id for l in r3.json())
+
+    rlist2 = await app_client.get("/api/cuisson/a-traiter/exclusions")
+    assert not any(l["reception_ligne_id"] == reception_ligne_id for l in rlist2.json())
+
+
+@pytest.mark.anyio
+async def test_exclure_lot_inexistant_404(app_client):
+    r = await app_client.post("/api/cuisson/a-traiter/999999/exclure", json={})
+    assert r.status_code == 404

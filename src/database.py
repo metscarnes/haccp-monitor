@@ -255,6 +255,10 @@ CREATE TABLE IF NOT EXISTS reception_lignes (
     ph_conforme               INTEGER,
     conforme                  INTEGER DEFAULT 1,
     lot_interne               INTEGER DEFAULT 0,
+    -- v7.6 — exclusion manuelle de la liste "À cuire" (Hub), sans toucher au
+    -- catalogue ni au stock. Cf. migration v7.6 pour les bases existantes.
+    exclu_cuisson_auto        INTEGER NOT NULL DEFAULT 0,
+    exclu_cuisson_auto_motif  TEXT,
     created_at                DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (reception_id)             REFERENCES receptions(id),
     FOREIGN KEY (produit_id)               REFERENCES produits(id),
@@ -2187,6 +2191,27 @@ PRAGMA foreign_keys=ON;
                 logger.info("Migration v7.3 : type_ligne + tva_pct ajoutés à facture_lignes")
         except Exception as e:
             logger.warning("Migration v7.3 facture_lignes : %s", e)
+
+        # Migration v7.6 : exclusion manuelle de la liste "À cuire" (Hub).
+        # Un lot reçu peut matcher `suivi_cuisson_auto=1` par erreur de rattachement
+        # catalogue (mauvais groupe comparatif) ou ne pas devoir être cuit pour une
+        # raison ponctuelle : on l'exclut sans toucher au catalogue ni au stock.
+        # Reste visible dans une liste d'exclusion dédiée pour être réintégré.
+        try:
+            cur_rl = await db.execute("PRAGMA table_info(reception_lignes)")
+            cols_rl = {row[1] for row in await cur_rl.fetchall()}
+            if cols_rl and "exclu_cuisson_auto" not in cols_rl:
+                await db.execute(
+                    "ALTER TABLE reception_lignes ADD COLUMN exclu_cuisson_auto INTEGER NOT NULL DEFAULT 0"
+                )
+                await db.execute(
+                    "ALTER TABLE reception_lignes ADD COLUMN exclu_cuisson_auto_motif TEXT"
+                )
+                logger.info(
+                    "Migration v7.6 : exclu_cuisson_auto(_motif) ajoutés à reception_lignes"
+                )
+        except Exception as e:
+            logger.warning("Migration v7.6 reception_lignes : %s", e)
 
         # Migration v5.8 : recalculer statut des lignes en_attente mal classées
         # - lot_interne=1 compte comme lot présent (numéro auto-généré)
