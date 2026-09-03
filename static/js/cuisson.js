@@ -177,6 +177,7 @@ const state = {
   degreChoisi:       'generale',  // exception viande rouge — 'generale' = 75 °C comme avant
   derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
   produitPreselectionne: null,  // { prod, catalogue_vente_id } — pré-rempli sans opérateur (production-a-cuire.js)
+  selectionOperateurEnCours: false,  // anti-double-clic : cf. bug 03/09/2026 (flow cassé)
 };
 
 const ESPECES_ICONES = {
@@ -372,6 +373,16 @@ function afficherOperateurs() {
 }
 
 elOperateursGrid.addEventListener('click', e => {
+  // Anti-double-clic : le traitement d'un choix opérateur avec produit
+  // préselectionné est asynchrone (fetch /api/cuisson/lots, pas d'indicateur
+  // visuel pendant l'attente réseau). Un second clic pendant ce laps de temps
+  // — même nom en double-clic, ou changement de cuisinier — retombait dans la
+  // branche "pas de produit préselectionné" car celle-ci avait déjà été
+  // consommée (mise à null) par le premier clic, ce qui forçait goStep(2) en
+  // pleine résolution du premier appel et rouvrait à tort la modale "ça
+  // devient quel produit ?" (flow cassé, ex. Parmentier de canard 03/09/2026).
+  if (state.selectionOperateurEnCours) return;
+
   const tuile = e.target.closest('.cu-tuile[data-op-id]');
   if (!tuile) return;
   state.operateurChoisi = {
@@ -387,7 +398,15 @@ elOperateursGrid.addEventListener('click', e => {
   if (state.produitPreselectionne) {
     const { prod, catalogue_vente_id } = state.produitPreselectionne;
     state.produitPreselectionne = null;
-    setTimeout(() => selectionnerProduit(prod, { catalogue_vente_id }), 150);
+    state.selectionOperateurEnCours = true;
+    elOperateursGrid.classList.add('cu-tuiles-grid--busy');
+    setTimeout(() => {
+      selectionnerProduit(prod, { catalogue_vente_id })
+        .finally(() => {
+          state.selectionOperateurEnCours = false;
+          elOperateursGrid.classList.remove('cu-tuiles-grid--busy');
+        });
+    }, 150);
     return;
   }
 
@@ -1091,6 +1110,7 @@ function resetWizard() {
   state.fifoLotKey      = null;
   state.degreChoisi     = 'generale';
   state.produitPreselectionne = null;
+  state.selectionOperateurEnCours = false;
 
   elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
     t.classList.remove('cu-tuile--selected'));

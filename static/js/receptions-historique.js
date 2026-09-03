@@ -840,25 +840,45 @@ function ouvrirViewerPages(urls, startIdx) {
   barre.appendChild(titre);
   barre.appendChild(nav);
 
+  const btnTourner = document.createElement('button');
+  btnTourner.textContent = '↻ Tourner';
+  btnTourner.type = 'button';
+  btnTourner.style.cssText = btnFerm.style.cssText;
+  nav.appendChild(btnTourner);
+
   const imgWrap = document.createElement('div');
   imgWrap.style.cssText = 'flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:8px;';
   const img = document.createElement('img');
-  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;';
+  img.style.cssText = 'max-width:100%;max-height:100%;object-fit:contain;transition:transform .15s ease;';
   imgWrap.appendChild(img);
 
   ov.appendChild(barre);
   ov.appendChild(imgWrap);
   document.body.appendChild(ov);
 
+  let rotation = 0;
+  function appliquerRotation() {
+    img.style.transform = rotation ? `rotate(${rotation}deg)` : '';
+    if (rotation % 180 !== 0) {
+      img.style.maxWidth = '96%';
+      img.style.maxHeight = '70vw';
+    } else {
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '100%';
+    }
+  }
   function majViewer() {
     img.src = urls[idx] || '';
     titre.textContent = `Page ${idx + 1} / ${urls.length}`;
     btnPrec.disabled = idx <= 0;
     btnSuiv.disabled = idx >= urls.length - 1;
+    rotation = 0;
+    appliquerRotation();
   }
   function fermer() { ov.remove(); }
 
   btnFerm.addEventListener('click', fermer);
+  btnTourner.addEventListener('click', () => { rotation = (rotation + 90) % 360; appliquerRotation(); });
   btnPrec.addEventListener('click', () => { if (idx > 0) { idx--; majViewer(); } });
   btnSuiv.addEventListener('click', () => { if (idx < urls.length - 1) { idx++; majViewer(); } });
   ov.addEventListener('click', e => { if (e.target === ov || e.target === imgWrap) fermer(); });

@@ -72,7 +72,9 @@ const elBlFermer         = document.getElementById('rec-bl-flottant-fermer');
 const elBlZoomPlus       = document.getElementById('rec-bl-zoom-plus');
 const elBlZoomMoins      = document.getElementById('rec-bl-zoom-moins');
 const elBlResize         = document.getElementById('rec-bl-flottant-resize');
+const elBlTourner        = document.getElementById('rec-bl-tourner');
 let blZoom = 1;
+let blRotation = 0;
 let blPages = [];
 let blPageIdx = 0;
 
@@ -95,7 +97,9 @@ function ouvrirBlFlottant(url, allUrls) {
   blPageIdx = 0;
   elBlImg.src = blPages[0];
   blZoom = 1;
+  blRotation = 0;
   appliquerZoomBl();
+  appliquerRotationBl();
   majNavBl();
   elBlFlottant.style.left = Math.max(8, (window.innerWidth - elBlFlottant.offsetWidth) / 2) + 'px';
   elBlFlottant.hidden = false;
@@ -104,14 +108,18 @@ function appliquerZoomBl() {
   // Zoom = largeur de l'image relative au corps (overflow auto permet de naviguer)
   elBlImg.style.width = (blZoom * 100) + '%';
 }
+function appliquerRotationBl() {
+  elBlImg.style.transform = blRotation ? `rotate(${blRotation}deg)` : '';
+}
 if (elBlFermer)    elBlFermer.addEventListener('click', () => { elBlFlottant.hidden = true; });
+if (elBlTourner)   elBlTourner.addEventListener('click', () => { blRotation = (blRotation + 90) % 360; appliquerRotationBl(); });
 if (elBlZoomPlus)  elBlZoomPlus.addEventListener('click', () => { blZoom = Math.min(5, blZoom + 0.25); appliquerZoomBl(); });
 if (elBlZoomMoins) elBlZoomMoins.addEventListener('click', () => { blZoom = Math.max(0.5, blZoom - 0.25); appliquerZoomBl(); });
 document.getElementById('rec-bl-nav-prev')?.addEventListener('click', () => {
-  if (blPageIdx > 0) { blPageIdx--; elBlImg.src = blPages[blPageIdx]; majNavBl(); }
+  if (blPageIdx > 0) { blPageIdx--; elBlImg.src = blPages[blPageIdx]; blRotation = 0; appliquerRotationBl(); majNavBl(); }
 });
 document.getElementById('rec-bl-nav-next')?.addEventListener('click', () => {
-  if (blPageIdx < blPages.length - 1) { blPageIdx++; elBlImg.src = blPages[blPageIdx]; majNavBl(); }
+  if (blPageIdx < blPages.length - 1) { blPageIdx++; elBlImg.src = blPages[blPageIdx]; blRotation = 0; appliquerRotationBl(); majNavBl(); }
 });
 
 // Déplacement de la fenêtre via la barre de titre (souris + tactile)

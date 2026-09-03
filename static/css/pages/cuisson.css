@@ -248,6 +248,13 @@
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 14px;
 }
+/* Traitement en cours (ex. choix opérateur avec produit préselectionné) :
+   feedback visuel + blocage des clics pour éviter le double-clic — cf.
+   flow cassé du 03/09/2026 (production-a-cuire → cuisson). */
+.cu-tuiles-grid--busy {
+  opacity: .55;
+  pointer-events: none;
+}
 .cu-tuiles-vide {
   grid-column: 1 / -1;
   text-align: center;

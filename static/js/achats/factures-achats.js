@@ -395,18 +395,25 @@ function fermerModalBlApercu() {
 let blZoom = 1;
 let blPanX = 0;
 let blPanY = 0;
+let blRotation = 0;
 const BL_ZOOM_MIN = 1;
 const BL_ZOOM_MAX = 4;
 
 function appliquerTransformBl() {
   const img = document.getElementById('bl-apercu-image');
-  img.style.transform = `translate(${blPanX}px, ${blPanY}px) scale(${blZoom})`;
+  img.style.transform = `translate(${blPanX}px, ${blPanY}px) scale(${blZoom}) rotate(${blRotation}deg)`;
+}
+
+function tournerBl() {
+  blRotation = (blRotation + 90) % 360;
+  appliquerTransformBl();
 }
 
 function resetZoomBl() {
   blZoom = 1;
   blPanX = 0;
   blPanY = 0;
+  blRotation = 0;
   appliquerTransformBl();
 }
 
@@ -425,6 +432,7 @@ function initZoomBlApercu() {
   document.getElementById('btn-bl-zoom-plus').addEventListener('click', () => zoomerBl(0.5));
   document.getElementById('btn-bl-zoom-moins').addEventListener('click', () => zoomerBl(-0.5));
   document.getElementById('btn-bl-zoom-reset').addEventListener('click', resetZoomBl);
+  document.getElementById('btn-bl-tourner')?.addEventListener('click', tournerBl);
 
   // Double-tap / double-clic : zoom rapide vers 2x, ou retour à 1x si déjà zoomé.
   let dernierTap = 0;
