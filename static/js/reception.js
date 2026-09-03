@@ -730,7 +730,13 @@ function resetInactivite() {
   if (elDialogInactivite && !elDialogInactivite.hidden) return;
   clearTimeout(timerInactivite);
   timerInactivite = setTimeout(() => {
-    if (lignesAjoutees.length > 0 && etape < 5) {
+    // En mode batch (commande liée / OCR), les cartes saisies (dont les articles
+    // ajoutés hors commande) ne rejoignent lignesAjoutees qu'après le POST réussi
+    // à la validation — avant ça elles n'existent qu'en mémoire dans batchLignes.
+    // Ignorer ce cas ferait disparaître l'alerte d'inactivité pile quand il y a le
+    // plus à perdre (toute une commande saisie mais jamais enregistrée).
+    const travailEnCours = lignesAjoutees.length > 0 || (modeBatch && batchLignes.length > 0);
+    if (travailEnCours && etape < 5) {
       elDialogInactivite.hidden = false;
     }
   }, DELAI_INACTIVITE);
@@ -987,12 +993,25 @@ async function reprendreReceptionEnCours() {
 
     // Vue produits classique (formulaire unitaire) : l'opérateur ajoute les
     // produits restants puis clôture normalement.
+    // ATTENTION : si la fiche avait été saisie en mode liste-commande (batch),
+    // seules les lignes déjà POSTées (donc déjà en base) sont restaurées ci-dessus —
+    // toute carte en cours de saisie au moment de l'interruption (dont un éventuel
+    // article ajouté hors commande) n'a jamais atteint le serveur et est perdue ici,
+    // faute de pouvoir reconstruire l'état exact du formulaire batch. On prévient
+    // explicitement pour que l'opérateur revérifie contre le bon de livraison papier
+    // avant de clôturer, plutôt que de découvrir un produit manquant après coup.
     sortirModeBatch();
     reinitFormProduit();
     majListeLignes();
     majSelectorFournisseur();
     majBlocOcr();
     allerEtape(3);
+    alert(
+      `Reprise de la réception : ${lignesAjoutees.length} produit(s) déjà enregistré(s) `
+      + `ont été restaurés. Si des produits étaient en cours de saisie au moment de la `
+      + `coupure (dont un article ajouté hors commande), ils n'ont PAS été sauvegardés — `
+      + `vérifiez la liste ci-dessous contre le bon de livraison avant de clôturer.`
+    );
   } catch (e) {
     alert('Impossible de reprendre la réception : ' + e.message);
     elRepriseReprendre.disabled = false;
@@ -4543,10 +4562,17 @@ async function validerBatch() {
   elBtnTerminer.disabled = true;
   const txt = elBtnTerminer.textContent;
   elBtnTerminer.textContent = 'Enregistrement…';
-  try {
-    for (const etat of lignesRecues) {
-      // Produit d'affichage : produit interne si rattaché, sinon désignation catalogue.
-      const prodAffiche = etat.produit || { id: null, nom: etat.designation };
+
+  // Chaque carte est envoyée indépendamment : une erreur réseau/serveur sur UNE
+  // carte (ex. connexion instable, cf. lenteur DDNS documentée) ne doit ni bloquer
+  // l'enregistrement des autres, ni les reposter en double si l'utilisateur relance
+  // (une carte déjà enregistrée avec succès est retirée de batchLignes au fur et à
+  // mesure). Les échecs sont listés nommément à la fin, pour que l'utilisateur sache
+  // précisément quel produit retenter — jamais une alerte générique silencieuse.
+  const echecs = [];
+  for (const etat of lignesRecues) {
+    const prodAffiche = etat.produit || { id: null, nom: etat.designation };
+    try {
       // Plusieurs n° de lot → 1 ligne de réception par lot, chacune avec sa DLC.
       for (const paire of pairesLotsBatch(etat)) {
         const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
@@ -4556,16 +4582,32 @@ async function validerBatch() {
         });
         lignesAjoutees.push(_ligneToLocal(ligne, prodAffiche));
       }
+      // Retirer la carte réussie de batchLignes pour ne jamais la reposter en double.
+      const idx = batchLignes.indexOf(etat);
+      if (idx !== -1) batchLignes.splice(idx, 1);
+    } catch (err) {
+      console.error(`[haccp] Échec enregistrement « ${etat.designation} » :`, err);
+      echecs.push(etat.designation || 'Article');
     }
-    majListeLignes();
-    remplirRecap();
-    initNcProcedure();
-    allerEtape(4);
-  } catch (err) {
-    alert(`Erreur lors de l'enregistrement : ${err.message}`);
-    elBtnTerminer.disabled = false;
-    elBtnTerminer.textContent = txt;
   }
+
+  elBtnTerminer.disabled = false;
+  elBtnTerminer.textContent = txt;
+
+  if (echecs.length) {
+    alert(
+      `⚠️ ${echecs.length} produit(s) NON enregistré(s) (connexion instable ?) :\n`
+      + echecs.map(n => `• ${n}`).join('\n')
+      + '\n\nIls restent dans la liste — cliquez à nouveau sur ce bouton pour réessayer '
+      + '(les produits déjà enregistrés ne seront pas dupliqués).'
+    );
+    return; // reste à l'étape batch : les cartes en échec sont toujours visibles/éditables
+  }
+
+  majListeLignes();
+  remplirRecap();
+  initNcProcedure();
+  allerEtape(4);
 }
 
 elBtnTerminer.addEventListener('click', () => {
