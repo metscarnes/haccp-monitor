@@ -1365,13 +1365,24 @@ async def delete_article(article_id: int, permanent: bool = Query(False), _=Depe
 # ---------------------------------------------------------------------------
 
 async def _generer_numero_commande(db) -> str:
-    today = date.today().strftime("%Y%m%d")
+    """Numéro du jour au format CMD-AAAAMMJJ-NNN.
+
+    Le rang vient du plus grand suffixe déjà attribué aujourd'hui, et non d'un
+    COUNT(*) : supprimer une commande du jour faisait retomber la numérotation
+    sur un numéro existant, or la colonne numero_commande est UNIQUE — la
+    génération partait alors en 500 pour le reste de la journée.
+    """
+    prefixe = f"CMD-{date.today().strftime('%Y%m%d')}-"
     cur = await db.execute(
-        "SELECT COUNT(*) FROM commandes WHERE date_commande = ?",
-        (date.today().isoformat(),)
+        "SELECT numero_commande FROM commandes WHERE numero_commande LIKE ?",
+        (prefixe + "%",)
     )
-    count = (await cur.fetchone())[0] + 1
-    return f"CMD-{today}-{count:03d}"
+    rang = 0
+    for row in await cur.fetchall():
+        suffixe = (row["numero_commande"] or "")[len(prefixe):]
+        if suffixe.isdigit():
+            rang = max(rang, int(suffixe))
+    return f"{prefixe}{rang + 1:03d}"
 
 
 async def _recalculer_total(db, commande_id: int):

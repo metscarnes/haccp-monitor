@@ -35,6 +35,20 @@ let triPanier      = { champ: null, ordre: 'desc' };
 
 const STATUT_LABELS = { brouillon: 'Brouillon', confirmee: 'Confirmée', livree: 'Livrée', annulee: 'Annulée' };
 
+// Message d'erreur lisible pour une réponse HTTP en échec. Une erreur 500 renvoie
+// le texte brut « Internal Server Error » : le parser en JSON masquait la panne
+// derrière un « Unexpected token 'I' » incompréhensible côté utilisateur.
+async function messageErreurHTTP(r, defaut = 'Erreur serveur') {
+  let corps = '';
+  try { corps = await r.text(); } catch { /* corps illisible */ }
+  try {
+    const d = JSON.parse(corps).detail;
+    if (d) return typeof d === 'string' ? d : JSON.stringify(d);
+  } catch { /* pas du JSON : on retombe sur le texte brut */ }
+  const extrait = corps.trim().slice(0, 200);
+  return extrait ? `${defaut} (HTTP ${r.status}) — ${extrait}` : `${defaut} (HTTP ${r.status})`;
+}
+
 // ── Règle métier : prestation désossage veau ─────────────────
 // Quand une commande contient du veau (famille=Viande, sous-famille=Veau), le
 // fournisseur dont le catalogue contient l'article ci-dessous reçoit une ligne
@@ -1130,7 +1144,7 @@ async function panierGenerer() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lignes })
     });
-    if (!rs.ok) throw new Error('Erreur sauvegarde panier');
+    if (!rs.ok) throw new Error(await messageErreurHTTP(rs, 'Erreur sauvegarde panier'));
 
     // 2) Générer les commandes
     const r = await fetch(`${API_PANIER}/generer`, {
@@ -1141,7 +1155,7 @@ async function panierGenerer() {
         commentaire: document.getElementById('panier-commentaire').value.trim() || null,
       })
     });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur serveur');
+    if (!r.ok) throw new Error(await messageErreurHTTP(r));
     const result = await r.json();
 
     panier = {};
@@ -1493,7 +1507,7 @@ async function ajouterLigne(e) {
   };
   try {
     const r = await fetch(`${API_CMD}/${id}/lignes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    if (!r.ok) throw new Error(await messageErreurHTTP(r, 'Erreur'));
     fermerModalLigne();
     const rc = await fetch(`${API_CMD}/${id}`);
     cmdCourante = await rc.json();
@@ -1516,7 +1530,7 @@ async function modifierQuantiteLigne(ligneId, valeur) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantite_commandee: qte }),
     });
-    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+    if (!r.ok) throw new Error(await messageErreurHTTP(r, 'Erreur'));
     const rc = await fetch(`${API_CMD}/${id}`);
     cmdCourante = await rc.json();
     afficherLignes(cmdCourante.lignes);
