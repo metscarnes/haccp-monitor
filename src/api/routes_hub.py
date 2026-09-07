@@ -36,6 +36,12 @@ NUISIBLES_TYPES = {
     4: "Oiseaux",
 }
 
+# Types désactivés dans le module nuisibles (aucun dispositif installé) :
+# ils ne sont plus attendus dans le contrôle hebdomadaire.
+# Doit rester aligné sur TYPES_DESACTIVES (routes_nuisibles.py) et sur
+# le drapeau `actif` de TYPES dans static/js/nuisibles.js.
+NUISIBLES_TYPES_DESACTIVES = {4}
+
 
 @router.get("/taches-resume")
 async def taches_resume():
@@ -127,7 +133,7 @@ async def taches_resume():
                     "WHERE annee = ? AND semaine = ?",
                     (prev_iso_year, prev_iso_week),
                 )
-                types_faits = {r[0] for r in rows}
+                types_faits = {r[0] for r in rows} | NUISIBLES_TYPES_DESACTIVES
                 manquants   = [tid for tid in NUISIBLES_TYPES if tid not in types_faits]
                 if manquants:
                     noms = ", ".join(NUISIBLES_TYPES[t] for t in manquants)

@@ -1,14 +1,19 @@
 'use strict';
 /* ============================================================
    nuisibles.js — Lutte contre Nuisibles (IPM)
-   4 onglets × 52 semaines × 15 pièges
+   1 onglet par espèce active × 52 semaines × pièges installés sur le plan
    ============================================================ */
 
 // ── Constantes types de nuisibles ────────────────────────────
+// `actif: false` retire complètement l'espèce du module (onglet, registre,
+// saisie rapide, plan). L'historique déjà saisi reste consultable dans
+// /historique.html et les rapports. À garder aligné avec TYPES_DESACTIVES
+// (src/api/routes_nuisibles.py) et NUISIBLES_TYPES_DESACTIVES (routes_hub.py).
 const TYPES = [
   {
     id: 1,
     nom: 'Rongeurs',
+    court: 'Rongeurs',        // libellé compact (onglets, filtres)
     emoji: '🐀',
     nuisibles: 'Souris, Rats, Mulots…',
     methodes:  '• Plaques de glue avec attractif\n• Rodenticide fluorescent dans boîte sécurisée',
@@ -17,6 +22,7 @@ const TYPES = [
   {
     id: 2,
     nom: 'Insectes Volants',
+    court: 'Ins. Volants',
     emoji: '🪰',
     nuisibles: 'Mouches, Moucherons, Guêpes…',
     methodes:  '• DEIV à glu pour les zones alimentaires\n• DEIV à électrocution pour les zones non alimentaires',
@@ -25,6 +31,7 @@ const TYPES = [
   {
     id: 3,
     nom: 'Insectes Rampants',
+    court: 'Ins. Rampants',
     emoji: '🪳',
     nuisibles: 'Cafards, Fourmis…',
     methodes:  '• Piège à phéromones et à glu dans les zones critiques\n• Gel anti-cafard / fourmis dans boîte sécurisée',
@@ -33,16 +40,25 @@ const TYPES = [
   {
     id: 4,
     nom: 'Oiseaux',
+    court: 'Oiseaux',
     emoji: '🐦',
     nuisibles: 'Pigeons, Moineaux, Étourneaux…',
     methodes:  '• Pics anti-pigeons\n• Filets de protection',
     frequence: '• Inspection hebdomadaire des pics et filets\n• Nettoyage et désinfection immédiats en cas de présence de fientes',
+    actif: false,   // désactivé — aucun dispositif oiseaux installé
   },
 ];
 
-// Nombre de pièges suivis (P1..Pn). Réglable via /api/nuisibles/config.
-// Valeur de départ écrasée par chargerConfig() au démarrage.
+// Espèces réellement suivies : seule liste parcourue par le module.
+const TYPES_ACTIFS = TYPES.filter(t => t.actif !== false);
+
+// Nombre de pièges disponibles (P1..Pn) dans la palette du plan.
+// Réglable via /api/nuisibles/config. Écrasé par chargerConfig() au démarrage.
 let NB_PIEGES = 15;
+
+// Pièges réellement installés sur le plan : { typeId: [1, 2, 5, ...] }.
+// Renseigné par chargerPiegesCarte() et mis à jour à chaque enregistrement du plan.
+let piegesParType = {};
 
 // ── État ──────────────────────────────────────────────────────
 let currentTypeId  = 1;
@@ -73,6 +89,7 @@ let globalNbPieges = NB_PIEGES;
 let globalEspece   = 'all';  // 'all' | number (typeId)
 
 // ── Références DOM ────────────────────────────────────────────
+const elTabs             = document.getElementById('nu-tabs');
 const elAnnee            = document.getElementById('nu-annee');
 const elInfoWrap         = document.getElementById('nu-info-wrap');
 const elInfoToggle       = document.getElementById('nu-info-toggle');
@@ -124,7 +141,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCarte();
   initConfig();
   chargerPersonnel();
-  await chargerConfig();      // règle NB_PIEGES avant le premier rendu
+  // NB_PIEGES (palette) puis pièges installés sur le plan : les deux
+  // conditionnent les colonnes du registre → à charger avant le 1er rendu.
+  await chargerConfig();
+  await chargerPiegesCarte();
+  renderTheadPieges();
+  majConfigLabel();
   chargerDonnees();
 });
 
@@ -140,26 +162,70 @@ async function chargerConfig() {
     }
   } catch { /* on garde la valeur par défaut */ }
   globalNbPieges = NB_PIEGES;
-  majConfigLabel();
-  renderTheadPieges();
+}
+
+// ── Pièges installés sur le plan (mémoire du module) ──────────
+async function chargerPiegesCarte() {
+  try {
+    const res = await fetch('/api/nuisibles/carte/resume');
+    if (res.ok) {
+      const data = await res.json();
+      piegesParType = data.pieges_par_type || {};
+    }
+  } catch { piegesParType = {}; }
+}
+
+/**
+ * Numéros des pièges à saisir pour une espèce : ceux placés sur le plan.
+ * Tant qu'aucun piège n'a été positionné, on retombe sur P1..NB_PIEGES pour
+ * ne pas présenter un registre vide.
+ */
+function piegesDuType(typeId) {
+  const liste = (piegesParType[String(typeId)] || [])
+    .filter(n => n >= 1 && n <= NB_PIEGES)
+    .sort((a, b) => a - b);
+  if (liste.length) return liste;
+  return Array.from({ length: NB_PIEGES }, (_, i) => i + 1);
+}
+
+// Nombre de pièges du plus grand jeu de pièges parmi les espèces actives
+// (borne du stepper « N premiers pièges » de la saisie rapide).
+function maxPiegesActifs() {
+  return Math.max(...TYPES_ACTIFS.map(t => piegesDuType(t.id).length));
+}
+
+/**
+ * Résultats d'une semaine prêts à l'édition : une entrée par piège installé,
+ * les clés des pièges retirés du plan sont conservées telles quelles pour ne
+ * pas effacer leur historique lors du prochain enregistrement.
+ */
+function initResultats(typeId, existants = {}) {
+  const out = { ...existants };
+  piegesDuType(typeId).forEach(num => {
+    out[`p${num}`] = existants[`p${num}`] || null;
+  });
+  return out;
 }
 
 function majConfigLabel() {
-  if (elConfigLabel) elConfigLabel.textContent = `${NB_PIEGES} piège${NB_PIEGES > 1 ? 's' : ''}`;
-  if (elFabSub) elFabSub.textContent = `S${currentSemaine} · ${TYPES.length} espèces · ${NB_PIEGES} pièges`;
+  if (elConfigLabel) elConfigLabel.textContent = `${NB_PIEGES} max`;
+  if (elFabSub) {
+    const total = TYPES_ACTIFS.reduce((s, t) => s + piegesDuType(t.id).length, 0);
+    elFabSub.textContent = `S${currentSemaine} · ${TYPES_ACTIFS.length} espèces · ${total} pièges`;
+  }
 }
 
-// En-tête du tableau : colonnes P1..Pn générées dynamiquement
+// En-tête du tableau : une colonne par piège installé pour l'espèce affichée
 function renderTheadPieges() {
   if (!elTheadRow) return;
   elTheadRow.querySelectorAll('.nu-th-piege').forEach(th => th.remove());
   const visaTh = elTheadRow.querySelector('.nu-th-visa');
-  for (let p = 1; p <= NB_PIEGES; p++) {
+  piegesDuType(currentTypeId).forEach(num => {
     const th = document.createElement('th');
     th.className = 'nu-th-piege';
-    th.textContent = `P${p}`;
+    th.textContent = `P${num}`;
     elTheadRow.insertBefore(th, visaTh);
-  }
+  });
 }
 
 // ── Sélecteur d'années ────────────────────────────────────────
@@ -178,21 +244,34 @@ function initAnnees() {
   });
 }
 
-// ── Onglets ───────────────────────────────────────────────────
+// ── Onglets (un par espèce active) ────────────────────────────
 function initTabs() {
-  document.querySelectorAll('.nu-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.nu-tab').forEach(b => {
-        b.classList.remove('actif');
-        b.setAttribute('aria-selected', 'false');
-      });
-      btn.classList.add('actif');
-      btn.setAttribute('aria-selected', 'true');
-      currentTypeId = parseInt(btn.dataset.type, 10);
-      renderInfoCard();
-      chargerDonnees();
-      if (currentVue === 'carte') chargerCarte();
+  currentTypeId = TYPES_ACTIFS[0].id;
+
+  TYPES_ACTIFS.forEach((type, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'nu-tab' + (i === 0 ? ' actif' : '');
+    btn.dataset.type = type.id;
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', String(i === 0));
+    btn.textContent = `${type.emoji} ${type.court}`;
+    elTabs.appendChild(btn);
+  });
+
+  elTabs.addEventListener('click', e => {
+    const btn = e.target.closest('.nu-tab');
+    if (!btn) return;
+    elTabs.querySelectorAll('.nu-tab').forEach(b => {
+      b.classList.remove('actif');
+      b.setAttribute('aria-selected', 'false');
     });
+    btn.classList.add('actif');
+    btn.setAttribute('aria-selected', 'true');
+    currentTypeId = parseInt(btn.dataset.type, 10);
+    renderInfoCard();
+    renderTheadPieges();      // le jeu de pièges dépend de l'espèce
+    chargerDonnees();
+    if (currentVue === 'carte') chargerCarte();
   });
 }
 
@@ -251,7 +330,8 @@ async function chargerDonnees() {
     renderInfoCard();
     renderTableau();
   } catch (err) {
-    elTbody.innerHTML = `<tr><td colspan="${NB_PIEGES + 2}" style="padding:2rem;text-align:center;color:#888;">
+    const nbCols = piegesDuType(currentTypeId).length + 2;
+    elTbody.innerHTML = `<tr><td colspan="${nbCols}" style="padding:2rem;text-align:center;color:#888;">
       Erreur de chargement : ${err.message}</td></tr>`;
   }
 }
@@ -259,7 +339,8 @@ async function chargerDonnees() {
 // ── Rendu du tableau 52 semaines ──────────────────────────────
 function renderTableau() {
   let html = '';
-  const nbSem = nombreSemainesAnnee(currentAnnee);
+  const nbSem  = nombreSemainesAnnee(currentAnnee);
+  const pieges = piegesDuType(currentTypeId);
 
   for (let sem = 1; sem <= nbSem; sem++) {
     const data = donneesAnnee[String(sem)];
@@ -268,8 +349,8 @@ function renderTableau() {
     html += `<tr class="${isToday ? 'nu-tr--today' : ''}" data-sem="${sem}">`;
     html += `<td class="nu-td-sem">${sem}</td>`;
 
-    for (let p = 1; p <= NB_PIEGES; p++) {
-      const key = `p${p}`;
+    for (const num of pieges) {
+      const key = `p${num}`;
       const val = data ? (data.resultats[key] || null) : null;
       const cls = val === 'O' ? 'nu-td-piege--O' : val === 'N' ? 'nu-td-piege--N' : 'nu-td-piege--vide';
       html += `<td class="nu-td-piege ${cls}">${val || '·'}</td>`;
@@ -299,13 +380,13 @@ function mettreAJourLigne(semaine) {
   if (!tr) return;
 
   const tds = tr.querySelectorAll('.nu-td-piege');
-  for (let p = 1; p <= NB_PIEGES; p++) {
-    const key = `p${p}`;
-    const val = data ? (data.resultats[key] || null) : null;
-    const td  = tds[p - 1];
+  piegesDuType(currentTypeId).forEach((num, i) => {
+    const val = data ? (data.resultats[`p${num}`] || null) : null;
+    const td  = tds[i];
+    if (!td) return;
     td.className = 'nu-td-piege ' + (val === 'O' ? 'nu-td-piege--O' : val === 'N' ? 'nu-td-piege--N' : 'nu-td-piege--vide');
     td.textContent = val || '·';
-  }
+  });
   tr.querySelector('.nu-td-visa').textContent = data ? (data.visa || '') : '';
 }
 
@@ -334,18 +415,23 @@ function initModalRapide() {
   document.getElementById('nu-sem-prev').addEventListener('click', () => naviguerSemaine(-1));
   document.getElementById('nu-sem-next').addEventListener('click', () => naviguerSemaine(+1));
 
-  // Stepper − / +
-  const elVal   = document.getElementById('nu-stepper-val');
+  // Stepper − / + (porte sur les N premiers pièges de chaque espèce)
   const elMoins = document.getElementById('nu-stepper-moins');
   const elPlus  = document.getElementById('nu-stepper-plus');
 
-  function majStepper() {
-    elVal.textContent    = globalNbPieges;
-    elMoins.disabled     = globalNbPieges <= 1;
-    elPlus.disabled      = globalNbPieges >= NB_PIEGES;
-  }
-  elMoins.addEventListener('click', () => { if (globalNbPieges > 1)        { globalNbPieges--; majStepper(); } });
-  elPlus.addEventListener('click',  () => { if (globalNbPieges < NB_PIEGES) { globalNbPieges++; majStepper(); } });
+  elMoins.addEventListener('click', () => { if (globalNbPieges > 1)                { globalNbPieges--; majStepper(); } });
+  elPlus.addEventListener('click',  () => { if (globalNbPieges < maxPiegesActifs()) { globalNbPieges++; majStepper(); } });
+
+  // Boutons d'espèce (uniquement les espèces actives)
+  const elEspeces = document.getElementById('nu-ag-especes');
+  TYPES_ACTIFS.forEach(type => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nu-espece-btn';
+    btn.dataset.eid = type.id;
+    btn.textContent = `${type.emoji} ${type.court}`;
+    elEspeces.appendChild(btn);
+  });
 
   // Sélection espèce
   document.getElementById('nu-ag-especes').addEventListener('click', e => {
@@ -362,17 +448,24 @@ function initModalRapide() {
   document.getElementById('nu-global-vide').addEventListener('click', () => appliquerGlobal(null));
 }
 
+// Stepper « N premiers pièges » de l'action globale
+function majStepper() {
+  const max = maxPiegesActifs();
+  globalNbPieges = Math.min(Math.max(globalNbPieges, 1), max);
+  document.getElementById('nu-stepper-val').textContent = globalNbPieges;
+  document.getElementById('nu-stepper-moins').disabled  = globalNbPieges <= 1;
+  document.getElementById('nu-stepper-plus').disabled   = globalNbPieges >= max;
+}
+
 function naviguerSemaine(delta) {
   const annee = new Date().getFullYear();
   const nbSem = nombreSemainesAnnee(annee);
   rapideSemaine = Math.min(Math.max(rapideSemaine + delta, 1), nbSem);
 
   // Recharger les résultats depuis les données déjà en cache
-  TYPES.forEach(type => {
+  TYPES_ACTIFS.forEach(type => {
     const semData = (rapideDonnees[type.id]?.[String(rapideSemaine)] || { resultats: {} });
-    for (let p = 1; p <= NB_PIEGES; p++) {
-      rapideResultats[type.id][`p${p}`] = semData.resultats[`p${p}`] || null;
-    }
+    rapideResultats[type.id] = initResultats(type.id, semData.resultats);
     const grid = document.getElementById(`nu-rapide-grid-${type.id}`);
     if (grid) renderGridRapide(type.id, grid);
   });
@@ -390,11 +483,14 @@ function majSemaineNav() {
 }
 
 function appliquerGlobal(val) {
-  const types = globalEspece === 'all' ? TYPES : TYPES.filter(t => t.id === globalEspece);
+  const types = globalEspece === 'all'
+    ? TYPES_ACTIFS
+    : TYPES_ACTIFS.filter(t => t.id === globalEspece);
   types.forEach(type => {
-    for (let p = 1; p <= globalNbPieges; p++) {
-      rapideResultats[type.id][`p${p}`] = val;
-    }
+    // Les N premiers pièges installés de l'espèce (numéros éventuellement non contigus)
+    piegesDuType(type.id).slice(0, globalNbPieges).forEach(num => {
+      rapideResultats[type.id][`p${num}`] = val;
+    });
     const grid = document.getElementById(`nu-rapide-grid-${type.id}`);
     if (grid) renderGridRapide(type.id, grid);
   });
@@ -407,39 +503,36 @@ async function ouvrirModalRapide(semaine) {
   elModalRapide.hidden = false;
   document.body.style.overflow = 'hidden';
 
-  // Charger les 4 types en parallèle
+  // Rafraîchir les pièges installés sur le plan (ils peuvent avoir changé)
+  // puis charger les espèces actives en parallèle.
+  await chargerPiegesCarte();
   const annee = new Date().getFullYear();
   const results = await Promise.allSettled(
-    TYPES.map(t =>
+    TYPES_ACTIFS.map(t =>
       fetch(`/api/nuisibles/controles?type_id=${t.id}&annee=${annee}`).then(r => r.ok ? r.json() : {})
     )
   );
 
   rapideDonnees  = {};
   rapideResultats = {};
-  TYPES.forEach((type, i) => {
+  TYPES_ACTIFS.forEach((type, i) => {
     const data = results[i].status === 'fulfilled' ? results[i].value : {};
     rapideDonnees[type.id] = data;
     const semData = data[String(semaine)] || { resultats: {} };
-    rapideResultats[type.id] = {};
-    for (let p = 1; p <= NB_PIEGES; p++) {
-      rapideResultats[type.id][`p${p}`] = semData.resultats[`p${p}`] || null;
-    }
+    rapideResultats[type.id] = initResultats(type.id, semData.resultats);
   });
 
   // Visa : premier trouvé parmi les types existants, sinon mémorisé
-  const pidExistant = TYPES.map(t => rapideDonnees[t.id]?.[String(semaine)]?.personnel_id).find(v => v);
+  const pidExistant = TYPES_ACTIFS.map(t => rapideDonnees[t.id]?.[String(semaine)]?.personnel_id).find(v => v);
   elVisaRapide.value = (pidExistant ?? localStorage.getItem('nu-last-personnel-id')) || '';
 
   // Afficher la semaine dans le navigateur
   majSemaineNav();
 
   // Réinitialiser la portée globale
-  globalNbPieges = NB_PIEGES;
+  globalNbPieges = maxPiegesActifs();
   globalEspece   = 'all';
-  document.getElementById('nu-stepper-val').textContent = NB_PIEGES;
-  document.getElementById('nu-stepper-moins').disabled  = false;
-  document.getElementById('nu-stepper-plus').disabled   = true;
+  majStepper();
   document.getElementById('nu-ag-especes').querySelectorAll('[data-eid]').forEach(b => {
     b.classList.toggle('actif', b.dataset.eid === 'all');
   });
@@ -449,7 +542,8 @@ async function ouvrirModalRapide(semaine) {
 
 function renderSectionsRapide() {
   elRapideSections.innerHTML = '';
-  TYPES.forEach(type => {
+  TYPES_ACTIFS.forEach(type => {
+    const nbP = piegesDuType(type.id).length;
     const section = document.createElement('div');
     section.className = 'nu-rapide-section';
 
@@ -458,7 +552,7 @@ function renderSectionsRapide() {
     header.className = 'nu-rapide-section-header';
     header.innerHTML = `
       <span class="nu-rapide-section-nom">${type.emoji} ${type.nom}</span>
-      <span class="nu-rapide-nb">${NB_PIEGES} pièges</span>
+      <span class="nu-rapide-nb">${nbP} piège${nbP > 1 ? 's' : ''}</span>
       <div class="nu-rapide-qactions">
         <button class="nu-btn-quick nu-btn-quick--n"    data-tid="${type.id}" data-action="N">✗ N</button>
         <button class="nu-btn-quick nu-btn-quick--o"    data-tid="${type.id}" data-action="O">✓ O</button>
@@ -480,9 +574,9 @@ function renderSectionsRapide() {
       btn.addEventListener('click', () => {
         const tid    = parseInt(btn.dataset.tid, 10);
         const action = btn.dataset.action;
-        for (let p = 1; p <= NB_PIEGES; p++) {
-          rapideResultats[tid][`p${p}`] = action === 'V' ? null : action;
-        }
+        piegesDuType(tid).forEach(num => {
+          rapideResultats[tid][`p${num}`] = action === 'V' ? null : action;
+        });
         renderGridRapide(tid, document.getElementById(`nu-rapide-grid-${tid}`));
       });
     });
@@ -491,8 +585,8 @@ function renderSectionsRapide() {
 
 function renderGridRapide(typeId, gridEl) {
   gridEl.innerHTML = '';
-  for (let p = 1; p <= NB_PIEGES; p++) {
-    const key = `p${p}`;
+  piegesDuType(typeId).forEach(num => {
+    const key = `p${num}`;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nu-piege-btn';
@@ -506,7 +600,7 @@ function renderGridRapide(typeId, gridEl) {
     });
 
     gridEl.appendChild(btn);
-  }
+  });
 }
 
 async function sauvegarderTout() {
@@ -517,7 +611,7 @@ async function sauvegarderTout() {
   elBtnRapideSave.disabled = true;
   elBtnRapideSave.textContent = '⏳ Envoi…';
 
-  const typesASauver = TYPES.filter(t =>
+  const typesASauver = TYPES_ACTIFS.filter(t =>
     Object.values(rapideResultats[t.id]).some(v => v !== null)
   );
 
@@ -583,31 +677,25 @@ function initModal() {
   elModal.addEventListener('click', e => { if (e.target === elModal) fermerModal(); });
   elBtnSave.addEventListener('click', sauvegarder);
 
-  document.getElementById('nu-btn-tout-n').addEventListener('click', () => {
-    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = 'N';
+  const appliquerTout = val => {
+    piegesDuType(currentTypeId).forEach(num => { editResultats[`p${num}`] = val; });
     renderPiegeGrid();
-  });
-  document.getElementById('nu-btn-tout-o').addEventListener('click', () => {
-    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = 'O';
-    renderPiegeGrid();
-  });
-  document.getElementById('nu-btn-tout-vider').addEventListener('click', () => {
-    for (let p = 1; p <= NB_PIEGES; p++) editResultats[`p${p}`] = null;
-    renderPiegeGrid();
-  });
+  };
+  document.getElementById('nu-btn-tout-n').addEventListener('click',     () => appliquerTout('N'));
+  document.getElementById('nu-btn-tout-o').addEventListener('click',     () => appliquerTout('O'));
+  document.getElementById('nu-btn-tout-vider').addEventListener('click', () => appliquerTout(null));
 }
 
 function ouvrirModal(semaine) {
   editSemaine = semaine;
   const data  = donneesAnnee[String(semaine)] || { resultats: {}, visa: '' };
-  editResultats = {};
-  for (let p = 1; p <= NB_PIEGES; p++) {
-    editResultats[`p${p}`] = data.resultats[`p${p}`] || null;
-  }
+  editResultats = initResultats(currentTypeId, data.resultats);
 
   const type = TYPES.find(t => t.id === currentTypeId);
+  const nbP  = piegesDuType(currentTypeId).length;
   const isCurrent = (semaine === currentSemaine && currentAnnee === new Date().getFullYear());
-  elModalTitre.textContent = `${type.emoji} ${type.nom} — Semaine ${semaine} / ${currentAnnee}${isCurrent ? ' ⚡' : ''}`;
+  elModalTitre.textContent =
+    `${type.emoji} ${type.nom} — S${semaine} / ${currentAnnee} · ${nbP} piège${nbP > 1 ? 's' : ''}${isCurrent ? ' ⚡' : ''}`;
 
   renderPiegeGrid();
 
@@ -626,8 +714,8 @@ function fermerModal() {
 
 function renderPiegeGrid() {
   elPiegeGrid.innerHTML = '';
-  for (let p = 1; p <= NB_PIEGES; p++) {
-    const key = `p${p}`;
+  piegesDuType(currentTypeId).forEach(num => {
+    const key = `p${num}`;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nu-piege-btn';
@@ -641,7 +729,7 @@ function renderPiegeGrid() {
     });
 
     elPiegeGrid.appendChild(btn);
-  }
+  });
 }
 
 function appliquerEtatPiege(btn, val) {
@@ -853,10 +941,29 @@ async function chargerCarte() {
   } catch {
     cartePositions = {};
   }
+  // Le plan fait foi pour la liste des pièges à saisir : on resynchronise
+  // la mémoire du module (un autre poste a pu modifier le plan).
+  memoriserPiegesInstalles();
   const type = TYPES.find(t => t.id === currentTypeId);
-  elCarteHint.textContent = `${type.emoji} ${type.nom} — touchez un piège puis le plan pour le placer.`;
+  const nbP  = Object.keys(cartePositions).length;
+  elCarteHint.textContent = nbP
+    ? `${type.emoji} ${type.nom} — ${nbP} piège${nbP > 1 ? 's' : ''} installé${nbP > 1 ? 's' : ''}. Touchez un piège puis le plan pour le placer.`
+    : `${type.emoji} ${type.nom} — aucun piège installé. Touchez un piège puis le plan pour le placer.`;
   renderPalette();
   renderPings();
+}
+
+/**
+ * Enregistre en mémoire les pièges placés sur le plan pour l'espèce courante,
+ * et répercute sur le registre (colonnes) et le libellé du FAB.
+ */
+function memoriserPiegesInstalles() {
+  piegesParType[String(currentTypeId)] = Object.keys(cartePositions)
+    .map(Number)
+    .sort((a, b) => a - b);
+  renderTheadPieges();
+  renderTableau();
+  majConfigLabel();
 }
 
 // Palette : un bouton par piège (P1..Pn). Indique placé / à placer / sélectionné.
@@ -1009,7 +1116,9 @@ async function sauvegarderCarte() {
       throw new Error(d.detail || `HTTP ${res.status}`);
     }
     carteDirty = false;
-    toast(`✅ Plan enregistré — ${pieges.length} piège${pieges.length > 1 ? 's' : ''}`);
+    // Le registre et la saisie suivent désormais ces pièges-là
+    memoriserPiegesInstalles();
+    toast(`✅ Plan enregistré — ${pieges.length} piège${pieges.length > 1 ? 's' : ''} suivi${pieges.length > 1 ? 's' : ''}`);
   } catch (err) {
     toast(`Erreur : ${err.message}`, true);
   } finally {

@@ -21,13 +21,8 @@
     <select id="nu-annee" class="nu-annee-select" aria-label="Année"></select>
   </header>
 
-  <!-- ── ONGLETS ── -->
-  <nav class="nu-tabs" role="tablist">
-    <button class="nu-tab actif" data-type="1" role="tab" aria-selected="true">🐀 Rongeurs</button>
-    <button class="nu-tab" data-type="2" role="tab" aria-selected="false">🪰 Ins. Volants</button>
-    <button class="nu-tab" data-type="3" role="tab" aria-selected="false">🪳 Ins. Rampants</button>
-    <button class="nu-tab" data-type="4" role="tab" aria-selected="false">🐦 Oiseaux</button>
-  </nav>
+  <!-- ── ONGLETS (générés par JS depuis les espèces actives) ── -->
+  <nav class="nu-tabs" id="nu-tabs" role="tablist"></nav>
 
   <!-- ── FICHE INFO (collapsible) ── -->
   <div class="nu-info-wrap" id="nu-info-wrap">
@@ -46,8 +41,8 @@
       <button class="nu-vue-btn actif" id="nu-vue-tableau" data-vue="tableau" role="tab" aria-selected="true">📋 Registre</button>
       <button class="nu-vue-btn" id="nu-vue-carte" data-vue="carte" role="tab" aria-selected="false">🗺️ Plan des pièges</button>
     </div>
-    <button class="nu-config-btn" id="nu-config-btn" aria-label="Régler le nombre de pièges">
-      ⚙️ <span id="nu-config-label">15 pièges</span>
+    <button class="nu-config-btn" id="nu-config-btn" aria-label="Régler le nombre de pièges disponibles">
+      ⚙️ <span id="nu-config-label">15 max</span>
     </button>
   </nav>
 
@@ -153,7 +148,7 @@
           <span class="nu-ag-label">Action sur</span>
           <div class="nu-stepper">
             <button type="button" id="nu-stepper-moins" class="nu-stepper-btn">−</button>
-            <span class="nu-stepper-label">P1 – P<span id="nu-stepper-val">15</span></span>
+            <span class="nu-stepper-label">les <span id="nu-stepper-val">15</span> premiers</span>
             <button type="button" id="nu-stepper-plus"  class="nu-stepper-btn">+</button>
           </div>
           <div class="nu-ag-btns">
@@ -162,12 +157,9 @@
             <button type="button" class="nu-btn-quick nu-btn-quick--vide" id="nu-global-vide">· Vider</button>
           </div>
         </div>
+        <!-- Boutons d'espèce ajoutés par JS après « Toutes » -->
         <div class="nu-ag-especes" id="nu-ag-especes">
           <button type="button" class="nu-espece-btn actif" data-eid="all">Toutes</button>
-          <button type="button" class="nu-espece-btn" data-eid="1">🐀 Rongeurs</button>
-          <button type="button" class="nu-espece-btn" data-eid="2">🪰 Ins. Volants</button>
-          <button type="button" class="nu-espece-btn" data-eid="3">🪳 Ins. Rampants</button>
-          <button type="button" class="nu-espece-btn" data-eid="4">🐦 Oiseaux</button>
         </div>
       </div>
 
@@ -190,8 +182,10 @@
       </div>
 
       <p class="nu-config-aide">
-        Choisissez le nombre de pièges suivis (P1 à Pn). Ce réglage s'applique au registre
-        hebdomadaire, à la saisie rapide et au plan des pièges.
+        Nombre de pièges <strong>disponibles</strong> (P1 à Pn) dans la palette du plan.
+        Le registre et la saisie ne proposent que les pièges réellement
+        <strong>installés sur le plan</strong> de chaque espèce — placez-les via
+        « 🗺️ Plan des pièges ».
       </p>
 
       <div class="nu-config-stepper">
@@ -202,7 +196,7 @@
       <div class="nu-config-unite">piège(s)</div>
 
       <p class="nu-config-avert" id="nu-config-avert" hidden>
-        ⚠️ Réduire le nombre de pièges masque les pièges supérieurs dans le registre, mais leur
+        ⚠️ Réduire ce nombre retire les pièges supérieurs du plan et du registre, mais leur
         historique reste conservé en base.
       </p>
 

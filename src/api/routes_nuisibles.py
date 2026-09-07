@@ -6,6 +6,7 @@ POST /api/nuisibles/controles                        → sauvegarder / mettre à
 GET  /api/nuisibles/config                           → nombre de pièges configuré
 PUT  /api/nuisibles/config                           → modifier le nombre de pièges
 GET  /api/nuisibles/carte?type_id=1                  → positions des pièges sur le plan
+GET  /api/nuisibles/carte/resume                     → pièges installés (plan), par type
 POST /api/nuisibles/carte                            → enregistrer les positions des pièges
 """
 
@@ -27,6 +28,9 @@ BOUTIQUE_ID = 1
 
 # Nombre de pièges par défaut (avant toute configuration explicite).
 NB_PIEGES_DEFAUT = 15
+# Types de nuisibles désactivés dans le module (aucun dispositif installé).
+# 4 = Oiseaux. L'historique déjà saisi reste lisible via /historique et les rapports.
+TYPES_DESACTIVES = {4}
 # Bornes raisonnables pour le réglage.
 NB_PIEGES_MIN = 1
 NB_PIEGES_MAX = 50
@@ -209,6 +213,33 @@ async def lister_positions(
             {"piege_num": r[0], "pos_x": r[1], "pos_y": r[2]} for r in rows
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/nuisibles/carte/resume  — pièges installés sur le plan, par type
+# ---------------------------------------------------------------------------
+
+@router.get("/carte/resume")
+async def resume_positions():
+    """
+    Numéros des pièges effectivement placés sur le plan, pour chaque type.
+
+    C'est la référence du registre et de la saisie : seuls les pièges installés
+    sur le plan sont proposés à la saisie. Un type absent de la réponse (aucun
+    piège placé) retombe côté client sur P1..Pn (nombre de pièges configuré).
+    """
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            "SELECT type_id, piege_num FROM nuisibles_pieges_carte "
+            "WHERE boutique_id = ? ORDER BY type_id, piege_num",
+            (BOUTIQUE_ID,),
+        )
+
+    par_type: dict[str, List[int]] = {}
+    for type_id, piege_num in rows:
+        par_type.setdefault(str(type_id), []).append(piege_num)
+
+    return {"pieges_par_type": par_type}
 
 
 # ---------------------------------------------------------------------------
