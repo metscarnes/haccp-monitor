@@ -14,25 +14,37 @@
   <link rel="stylesheet" href="/static/css/layouts.css">
   <link rel="stylesheet" href="/static/css/pages/dlc.css">
   <style>
-    /* ── Gabarit impression thermique Brother 62mm — étiquette DLC simple ── */
+    /* ── Gabarit impression thermique Brother 62mm — étiquette DLC simple ──
+       Longueur FIXE (40mm) et non `auto` : sur rouleau continu, `size: 62mm auto`
+       laisse le navigateur dérouler jusqu'à la page suivante → bande blanche à
+       couper aux ciseaux. En figeant la 2e dimension, l'étiquette sort à la
+       bonne longueur et l'imprimante coupe au bon endroit. */
     #print-label-dlc { display: none; }
     @media print {
-      @page { size: 62mm auto; margin: 0; }
-      html, body { margin: 0; padding: 0; height: auto; background: white; }
+      @page { size: 62mm 40mm; margin: 0; }
+      html, body { margin: 0; padding: 0; background: white; }
+      /* Hauteur bornée à la page : empêche tout débordement de générer une 2e étiquette. */
+      html, body { height: 40mm; overflow: hidden; }
       body > *:not(#print-label-dlc) { display: none !important; }
       #print-label-dlc {
         display: block;
         position: static;
         width: 100%;
+        height: 40mm;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
+        overflow: hidden;
         color: black;
         background: white;
         font-family: sans-serif;
         page-break-inside: avoid;
         break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
       }
+      /* Dernier élément : neutralise le saut de page implicite de fin de flux. */
+      #print-label-dlc > *:last-child { page-break-after: avoid; break-after: avoid; }
     }
   </style>
 </head>

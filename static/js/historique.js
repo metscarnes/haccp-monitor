@@ -1467,6 +1467,25 @@ function remplirGabaritEtiquetteTransforme(data) {
   document.getElementById('pt-meta').textContent        = `Par : ${data.operateur || '—'}`;
 }
 
+// Bascule la taille de page entre le mode fabrication (62mm auto — la liste
+// d'ingrédients a une longueur variable) et le mode transformé (62×60mm fixe).
+// `@page` étant global au document, cette règle ne peut pas vivre dans le CSS
+// conditionné par `body.printing-transforme` : on l'injecte le temps du print.
+const PAGE_STYLE_ID = 'page-etiquette-transforme';
+
+function appliquerPageEtiquetteTransforme(actif) {
+  const existant = document.getElementById(PAGE_STYLE_ID);
+  if (!actif) {
+    existant?.remove();
+    return;
+  }
+  if (existant) return;
+  const style = document.createElement('style');
+  style.id = PAGE_STYLE_ID;
+  style.textContent = '@media print { @page { size: 62mm 60mm; margin: 0; } }';
+  document.head.appendChild(style);
+}
+
 async function transformeReimprimer(sourceType, sourceId, personnelId, btn) {
   if (!personnelId) {
     alert("Impossible d'imprimer : opérateur d'origine manquant pour cet enregistrement.");
@@ -1489,8 +1508,14 @@ async function transformeReimprimer(sourceType, sourceId, personnelId, btn) {
     });
     remplirGabaritEtiquetteTransforme(res);
     document.body.classList.add('printing-transforme');
+    // `@page` est global au document : il ne peut pas être conditionné par une
+    // classe sur <body>. On injecte donc la taille fixe le temps de l'impression,
+    // sinon la page garde le `62mm auto` du mode fabrication et l'imprimante
+    // déroule du papier vierge à couper aux ciseaux.
+    appliquerPageEtiquetteTransforme(true);
     const cleanup = () => {
       document.body.classList.remove('printing-transforme');
+      appliquerPageEtiquetteTransforme(false);
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);

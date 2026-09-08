@@ -875,13 +875,18 @@
     }
     .he-btn-reimprimer:active { opacity: .7; }
 
-    /* ── Gabarit impression thermique Brother 62mm ── */
+    /* ── Gabarit impression thermique Brother 62mm ──
+       Longueur laissée en `auto` : cette étiquette porte la liste des ingrédients
+       (longueur variable, obligation d'étiquetage) et la figer tronquerait.
+       On neutralise en revanche le saut de page implicite de fin de flux, qui
+       faisait dérouler une bande blanche à couper aux ciseaux. */
     #print-label { display: none; }
     @media print {
       @page {
         size: 62mm auto;
         margin: 0mm;
       }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
 
       body > *:not(#print-label) {
         display: none !important;
@@ -897,6 +902,15 @@
         color: black;
         font-family: sans-serif;
         background: white;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+      #print-label > *:last-child {
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 0 !important;
       }
     }
   </style>

@@ -1019,6 +1019,12 @@
     /* ── Gabarit impression thermique Brother 62mm ── */
     #print-label, #print-label-transforme { display: none; }
     @media print {
+      /* Longueur : `auto` par défaut car l'étiquette de FABRICATION porte la liste
+         des ingrédients (longueur variable, obligation d'étiquetage) — la figer
+         tronquerait. On neutralise en revanche le saut de page final, qui est la
+         cause de la bande blanche à couper aux ciseaux.
+         En mode transformé (contenu de taille connue), la longueur est figée à 60mm
+         via la règle @page dédiée plus bas. */
       @page {
         size: 62mm auto;
         margin: 0mm;
@@ -1039,6 +1045,15 @@
         color: black;
         font-family: sans-serif;
         background: white;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+      body:not(.printing-transforme) #print-label > *:last-child {
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 0 !important;
       }
 
       /* Mode transformé (cuisson / refroidissement) : seul #print-label-transforme est visible */
@@ -1049,14 +1064,23 @@
         display: block !important;
         position: static;
         width: 100%;
+        height: 60mm;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
+        overflow: hidden;
         color: black;
         background: white;
         font-family: sans-serif;
         page-break-inside: avoid;
         break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+      body.printing-transforme #print-label-transforme > *:last-child {
+        page-break-after: avoid;
+        break-after: avoid;
+        margin-bottom: 0 !important;
       }
     }
   </style>

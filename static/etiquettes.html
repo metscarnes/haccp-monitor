@@ -430,33 +430,42 @@
       color: #6B3A1F;
     }
 
-    /* ── Gabarit impression thermique Brother 62mm ── */
+    /* ── Gabarit impression thermique Brother 62mm ──
+       Cette étiquette porte la liste des ingrédients (longueur variable, obligation
+       d'étiquetage) : on NE peut donc PAS figer la longueur sans risquer de tronquer.
+       On garde `auto`, mais on supprime les causes de papier perdu :
+         1. `visibility: hidden` laissait tout le document DANS le flux — le navigateur
+            déroulait la hauteur de la page entière. On retire du flux avec `display:none`.
+         2. Le saut de page implicite en fin de flux ajoutait une page vierge. */
     #print-label { display: none; }
     @media print {
       @page {
         size: 62mm auto;
         margin: 0mm;
       }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
 
-      body * { visibility: hidden; }
-
-      #print-label, #print-label * {
-        visibility: visible;
-      }
+      /* Retirer du FLUX (pas seulement masquer) : sinon la page fait la hauteur du document. */
+      body > *:not(#print-label) { display: none !important; }
 
       #print-label {
         display: block;
-        position: absolute;
-        left: 0;
-        top: 0;
+        position: static;
         width: 100%;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
         color: black;
         font-family: sans-serif;
-        background: transparent;
+        background: white;
+        page-break-inside: avoid;
+        break-inside: avoid;
+        page-break-after: avoid;
+        break-after: avoid;
       }
+      #print-label > *:last-child { page-break-after: avoid; break-after: avoid; }
+      /* Pas de marge résiduelle en pied : elle se traduit en papier déroulé. */
+      #print-label > *:last-child { margin-bottom: 0 !important; }
     }
   </style>
 </head>
