@@ -112,11 +112,65 @@
         </select>
       </label>
 
+      <!-- Ouvre le panneau de filtres avancés. Le compteur rend visible le
+           nombre de filtres actifs : sur un écran HACCP, un filtre oublié qui
+           masque des produits est un risque, pas seulement une gêne. -->
+      <button type="button" class="dlc-btn-filtres" id="dlc-btn-filtres"
+              aria-expanded="false" aria-controls="dlc-filtres-avances">
+        ⚙ Filtres<span class="dlc-btn-filtres-compte" id="dlc-filtres-compte" hidden>0</span>
+      </button>
+
       <button class="dlc-btn-traitement-masse" id="dlc-btn-traitement-masse" hidden>
         ⚡ Traiter les expirés (<span id="dlc-nb-expires">0</span>)
       </button>
     </div>
+
+    <!-- ── Filtres avancés (repliés par défaut) ── -->
+    <div class="dlc-filtres-avances" id="dlc-filtres-avances" hidden>
+
+      <!-- Raccourcis d'échéance : un tap au lieu d'un sélecteur de dates. -->
+      <div class="dlc-echeance-puces" role="group" aria-label="Filtrer par échéance">
+        <button type="button" class="dlc-puce" data-echeance="expires">Expirés</button>
+        <button type="button" class="dlc-puce" data-echeance="3j">≤ 3 jours</button>
+        <button type="button" class="dlc-puce" data-echeance="semaine">Cette semaine</button>
+      </div>
+
+      <div class="dlc-filtres-ligne">
+        <label class="dlc-filtre">
+          <span>Trier par</span>
+          <select id="dlc-filtre-tri">
+            <option value="dlc_asc">DLC ↑ (urgent en premier)</option>
+            <option value="dlc_desc">DLC ↓</option>
+            <option value="origine_asc">Réception ancienne (FIFO)</option>
+            <option value="origine_desc">Réception récente</option>
+            <option value="nom_asc">Nom A→Z</option>
+            <option value="qte_desc">Quantité ↓</option>
+          </select>
+        </label>
+
+        <label class="dlc-filtre">
+          <span>Fournisseur <em class="dlc-filtre-note">réceptions</em></span>
+          <select id="dlc-filtre-fournisseur">
+            <option value="">Tous</option>
+          </select>
+        </label>
+
+        <label class="dlc-filtre">
+          <span>Famille</span>
+          <select id="dlc-filtre-famille">
+            <option value="">Toutes</option>
+          </select>
+        </label>
+
+        <button type="button" class="dlc-btn-reset" id="dlc-btn-reset" hidden>
+          ✕ Tout effacer
+        </button>
+      </div>
+    </div>
   </div>
+
+  <!-- Totaux de la sélection courante (lots, poids, répartition par urgence) -->
+  <div class="dlc-totaux" id="dlc-totaux" hidden></div>
 
   <!-- Légende -->
   <div class="dlc-legende">

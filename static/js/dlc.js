@@ -137,7 +137,16 @@ const state = {
   dateRef: new Date(),   // ancre : premier jour mois / lundi semaine / 1 jan année
   items: [],
   seuils: { rouge_jours: 1, orange_jours: 3, jaune_jours: 7 },
-  filtres: { source: '', statut: '', recherche: '' },
+  filtres: {
+    source: '', statut: '', recherche: '',
+    // Filtres avancés — s'appliquent AUSSI aux vues calendaires, pour qu'un
+    // filtre actif ait le même effet partout (une grille et une liste qui ne
+    // montrent pas la même chose se contredisent).
+    fournisseur: '',      // nom exact ; ne concerne que les réceptions
+    famille: '',          // categorie
+    echeance: '',         // '' | 'expires' | '3j' | 'semaine'
+    tri: 'dlc_asc',
+  },
   // Mode recherche : dès qu'une recherche est saisie, on quitte le calendrier
   // du mois pour une liste de résultats couvrant TOUTES les périodes. Sans ça,
   // un lot dont la DLC tombe hors du mois affiché reste introuvable — il fallait
@@ -249,16 +258,122 @@ async function chargerRechercheGlobale() {
   }
 }
 
-/** Lots correspondant à la recherche courante, triés par DLC croissante. */
+/** Lots correspondant à la recherche courante, filtrés puis triés. */
 function resultatsRecherche() {
   const items = state.rechercheItems.filter(it =>
-    passeFiltreRecherche(it) && passeFiltreStatut(it)
+    passeTousFiltres(it)
     // Par défaut on ne montre que le stock vivant : un lot déjà vendu ou jeté
     // n'a plus d'intérêt opérationnel. La case « historique » le réintègre,
     // notamment pour retrouver une traçabilité lors d'un contrôle.
     && (state.rechercheHistorique || !it.devenir_statut)
   );
-  return items.sort((a, b) => String(a.dlc).localeCompare(String(b.dlc)));
+  return trierItems(items);
+}
+
+/**
+ * Jeu de données de référence pour alimenter filtres et totaux : les résultats
+ * globaux si une recherche est active, sinon la période chargée. Les listes
+ * déroulantes ne proposent ainsi que des valeurs réellement atteignables.
+ */
+function itemsCourants() {
+  return rechercheActive() ? state.rechercheItems : state.items;
+}
+
+/** Items visibles après TOUS les filtres (base des totaux et du calendrier). */
+function itemsVisibles() {
+  return itemsCourants().filter(it =>
+    passeTousFiltres(it) &&
+    (!rechercheActive() || state.rechercheHistorique || !it.devenir_statut)
+  );
+}
+
+/**
+ * Remplit une liste déroulante avec les valeurs présentes dans les données et
+ * leur nombre d'occurrences. Ne proposer que l'atteignable évite les filtres
+ * qui ne renvoient rien.
+ * Le comptage ignore le filtre de la liste elle-même, sinon sélectionner une
+ * valeur ferait disparaître toutes les autres options.
+ */
+function remplirSelectDynamique(selectId, champ, labelTous, ignorer) {
+  const sel = $(selectId);
+  if (!sel) return;
+  const compte = new Map();
+  for (const it of itemsCourants()) {
+    if (!passeTousFiltresSauf(it, ignorer)) continue;
+    const val = (it[champ] || '').trim();
+    if (!val) continue;
+    compte.set(val, (compte.get(val) || 0) + 1);
+  }
+  const valeurs = [...compte.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0], 'fr', { sensitivity: 'base' }));
+  const actuel = sel.value;
+  sel.innerHTML = `<option value="">${labelTous}</option>` +
+    valeurs.map(([v, n]) =>
+      `<option value="${escHtml(v)}">${escHtml(v)} (${n})</option>`).join('');
+  // Conserver la sélection même si elle n'est plus proposée (sinon le filtre
+  // sauterait en silence et l'écran mentirait sur ce qu'il montre).
+  if (actuel) {
+    if (![...sel.options].some(o => o.value === actuel)) {
+      sel.insertAdjacentHTML('beforeend',
+        `<option value="${escHtml(actuel)}">${escHtml(actuel)} (0)</option>`);
+    }
+    sel.value = actuel;
+  }
+}
+
+function passeTousFiltresSauf(item, ignorer) {
+  if (ignorer !== 'statut'      && !passeFiltreStatut(item))      return false;
+  if (ignorer !== 'recherche'   && !passeFiltreRecherche(item))   return false;
+  if (ignorer !== 'fournisseur' && !passeFiltreFournisseur(item)) return false;
+  if (ignorer !== 'famille'     && !passeFiltreFamille(item))     return false;
+  if (ignorer !== 'echeance'    && !passeFiltreEcheance(item))    return false;
+  return true;
+}
+
+/** Bandeau : nombre de lots, poids cumulé, répartition par urgence. */
+function renderTotaux() {
+  const zone = $('dlc-totaux');
+  if (!zone) return;
+  const items = itemsVisibles();
+  if (!items.length) { zone.hidden = true; return; }
+
+  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+  let poids = 0, expires = 0, urgents = 0, traites = 0;
+  for (const it of items) {
+    // Les quantités ne sont additionnables qu'entre unités identiques ; on ne
+    // cumule que les kg pour ne pas afficher un total qui n'a pas de sens.
+    if ((it.unite || 'kg') === 'kg' && it.quantite != null) poids += Number(it.quantite) || 0;
+    if (it.devenir_statut) { traites++; continue; }
+    const j = joursEntre(aujourdhui, parseYmd(it.dlc));
+    if (j < 0) expires++;
+    else if (j <= state.seuils.orange_jours) urgents++;
+  }
+
+  const parts = [`<strong>${items.length}</strong> lot${items.length > 1 ? 's' : ''}`];
+  if (poids > 0) parts.push(`<strong>${poids.toFixed(1)}</strong> kg`);
+  if (expires)   parts.push(`<span class="dlc-total-alerte">${expires} expiré${expires > 1 ? 's' : ''}</span>`);
+  if (urgents)   parts.push(`<span class="dlc-total-urgent">${urgents} urgent${urgents > 1 ? 's' : ''}</span>`);
+  if (traites)   parts.push(`<span class="dlc-total-traite">${traites} traité${traites > 1 ? 's' : ''}</span>`);
+
+  zone.innerHTML = parts.join('<span class="dlc-total-sep">·</span>');
+  zone.hidden = false;
+}
+
+/** Synchronise l'affichage des contrôles de filtre (compteur, reset, puces). */
+function rafraichirControlesFiltres() {
+  const n = nbFiltresActifs();
+  const badge = $('dlc-filtres-compte');
+  if (badge) { badge.textContent = n; badge.hidden = n === 0; }
+  const reset = $('dlc-btn-reset');
+  if (reset) reset.hidden = n === 0 && !state.filtres.recherche;
+
+  document.querySelectorAll('.dlc-puce[data-echeance]').forEach(p => {
+    p.classList.toggle('actif', p.dataset.echeance === state.filtres.echeance);
+  });
+
+  remplirSelectDynamique('dlc-filtre-fournisseur', 'fournisseur_nom', 'Tous', 'fournisseur');
+  remplirSelectDynamique('dlc-filtre-famille',     'categorie',       'Toutes', 'famille');
+  renderTotaux();
 }
 
 function renderRecherche() {
@@ -267,8 +382,7 @@ function renderRecherche() {
   const nb = items.length;
   const masques = state.rechercheHistorique
     ? 0
-    : state.rechercheItems.filter(it =>
-        passeFiltreRecherche(it) && passeFiltreStatut(it) && it.devenir_statut).length;
+    : state.rechercheItems.filter(it => passeTousFiltres(it) && it.devenir_statut).length;
 
   container.innerHTML = `
     <div class="dlc-recherche">
@@ -348,12 +462,72 @@ function passeFiltreRecherche(item) {
          normaliser(item.numero_lot).includes(q);
 }
 
+// ── Filtres avancés ─────────────────────────────────────
+function passeFiltreFournisseur(item) {
+  const f = state.filtres.fournisseur;
+  // Seules les réceptions portent un fournisseur (NULL ailleurs) : filtrer
+  // dessus exclut donc volontairement la production maison. La liste déroulante
+  // le signale ; ici on applique simplement la règle.
+  return !f || item.fournisseur_nom === f;
+}
+
+function passeFiltreFamille(item) {
+  const fam = state.filtres.famille;
+  return !fam || (item.categorie || '') === fam;
+}
+
+function passeFiltreEcheance(item) {
+  const e = state.filtres.echeance;
+  if (!e) return true;
+  const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+  const jours = joursEntre(aujourdhui, parseYmd(item.dlc));
+  switch (e) {
+    case 'expires': return jours < 0;
+    case '3j':      return jours >= 0 && jours <= 3;
+    case 'semaine': return jours >= 0 && jours <= 7;
+    default:        return true;
+  }
+}
+
+/** Tous les filtres actifs, appliqués à un item. Source unique de vérité. */
+function passeTousFiltres(item) {
+  return passeFiltreStatut(item)
+      && passeFiltreRecherche(item)
+      && passeFiltreFournisseur(item)
+      && passeFiltreFamille(item)
+      && passeFiltreEcheance(item);
+}
+
+/** Nombre de filtres avancés actifs (affiché sur le bouton ⚙ Filtres). */
+function nbFiltresActifs() {
+  const f = state.filtres;
+  return [f.fournisseur, f.famille, f.echeance].filter(Boolean).length
+       + (f.tri !== 'dlc_asc' ? 1 : 0);
+}
+
+function trierItems(items) {
+  const cmpTxt = (a, b) => String(a || '').localeCompare(String(b || ''), 'fr', { sensitivity: 'base' });
+  const arr = [...items];
+  switch (state.filtres.tri) {
+    case 'dlc_desc':    return arr.sort((a, b) => cmpTxt(b.dlc, a.dlc));
+    // Tri FIFO : ce qui est entré le plus tôt doit sortir en premier.
+    case 'origine_asc': return arr.sort((a, b) => cmpTxt(a.date_origine, b.date_origine));
+    case 'origine_desc':return arr.sort((a, b) => cmpTxt(b.date_origine, a.date_origine));
+    case 'nom_asc':     return arr.sort((a, b) => cmpTxt(a.produit_nom, b.produit_nom));
+    case 'qte_desc':    return arr.sort((a, b) => (Number(b.quantite) || 0) - (Number(a.quantite) || 0));
+    default:            return arr.sort((a, b) => cmpTxt(a.dlc, b.dlc));
+  }
+}
+
 function indexParDate(items) {
   const map = {};
-  items.filter(it => passeFiltreStatut(it) && passeFiltreRecherche(it)).forEach(it => {
+  items.filter(passeTousFiltres).forEach(it => {
     if (!map[it.dlc]) map[it.dlc] = [];
     map[it.dlc].push(it);
   });
+  // Le tri choisi s'applique aussi à l'intérieur d'un jour : l'ordre des lots
+  // dans la modale suit celui demandé, pas l'ordre d'arrivée de la requête.
+  for (const k of Object.keys(map)) map[k] = trierItems(map[k]);
   return map;
 }
 
@@ -410,6 +584,7 @@ function rechercheActive() {
 // ── Dispatch vue ─────────────────────────────────────────
 function renderVue(debut, fin) {
   updateLabel();
+  rafraichirControlesFiltres();
   // Une recherche prend le pas sur la vue calendaire : chercher un produit ne
   // doit pas obliger à naviguer de mois en mois pour le trouver.
   if (rechercheActive()) { renderRecherche(); return; }
@@ -719,7 +894,10 @@ function remplirCorpsListeDlc(body, items, { afficherDlc = false } = {}) {
       : '';
 
     const el = document.createElement('div');
-    el.className = `dlc-item dlc-item--${niveau}`;
+    // Mode compact (recherche) : les actions sont repliées derrière un tap sur
+    // la ligne. Cinq boutons par lot ne laissaient voir que 3-4 lots à l'écran,
+    // alors que la question posée est presque toujours « lequel, et quand ».
+    el.className = `dlc-item dlc-item--${niveau}${afficherDlc ? ' dlc-item--compact' : ''}`;
     el.innerHTML = `
       <div class="dlc-item-titre">${dlcHtml}${escHtml(it.produit_nom)}</div>
       <div class="dlc-item-meta">
@@ -757,6 +935,15 @@ function remplirCorpsListeDlc(body, items, { afficherDlc = false } = {}) {
           }
         });
       }
+    }
+
+    // Déplier/replier les actions au tap sur la ligne (mode compact).
+    if (afficherDlc) {
+      el.addEventListener('click', (e) => {
+        // Ne pas replier quand on vise un bouton ou un lien de la ligne.
+        if (e.target.closest('button, a')) return;
+        el.classList.toggle('dlc-item--ouvert');
+      });
     }
 
     body.appendChild(el);
@@ -1138,9 +1325,10 @@ function listerExpiresNonTraites() {
   // les résultats de recherche (toutes périodes) quand une recherche est active,
   // le mois affiché sinon. Lire `state.items` dans les deux cas ferait annoncer
   // « N expirés » sans rapport avec la liste sous les yeux.
-  const source = rechercheActive() ? state.rechercheItems : state.items;
-  return source
-    .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui && passeFiltreRecherche(it))
+  // Tous les filtres actifs s'appliquent : le traitement en masse ne doit jamais
+  // porter sur des lots que l'utilisateur ne voit pas à l'écran.
+  return itemsCourants()
+    .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui && passeTousFiltres(it))
     .sort((a, b) => (a.dlc < b.dlc ? -1 : a.dlc > b.dlc ? 1 : 0));
 }
 
@@ -1367,6 +1555,55 @@ $('dlc-filtre-statut').addEventListener('change', e => {
   // Le statut est filtré côté client : un simple re-rendu suffit en recherche.
   if (rechercheActive()) { reRenderVueCourante(); return; }
   chargerCalendrier();
+});
+
+// ── Filtres avancés ─────────────────────────────────────
+// Tous filtrés côté client : un re-rendu suffit, sans rechargement réseau.
+$('dlc-btn-filtres').addEventListener('click', () => {
+  const panneau = $('dlc-filtres-avances');
+  const btn = $('dlc-btn-filtres');
+  const ouvert = !panneau.hidden;
+  panneau.hidden = ouvert;
+  btn.setAttribute('aria-expanded', String(!ouvert));
+  btn.classList.toggle('actif', !ouvert);
+});
+
+$('dlc-filtre-tri').addEventListener('change', e => {
+  state.filtres.tri = e.target.value;
+  reRenderVueCourante();
+});
+
+$('dlc-filtre-fournisseur').addEventListener('change', e => {
+  state.filtres.fournisseur = e.target.value;
+  reRenderVueCourante();
+});
+
+$('dlc-filtre-famille').addEventListener('change', e => {
+  state.filtres.famille = e.target.value;
+  reRenderVueCourante();
+});
+
+document.querySelectorAll('.dlc-puce[data-echeance]').forEach(puce => {
+  puce.addEventListener('click', () => {
+    // Re-cliquer sur la puce active la désactive : un seul geste pour poser
+    // et retirer le filtre.
+    const val = puce.dataset.echeance;
+    state.filtres.echeance = (state.filtres.echeance === val) ? '' : val;
+    reRenderVueCourante();
+  });
+});
+
+$('dlc-btn-reset').addEventListener('click', () => {
+  Object.assign(state.filtres, {
+    fournisseur: '', famille: '', echeance: '', tri: 'dlc_asc',
+    statut: '', recherche: '',
+  });
+  $('dlc-filtre-tri').value = 'dlc_asc';
+  $('dlc-filtre-statut').value = '';
+  const champ = $('dlc-filtre-recherche');
+  if (champ) champ.value = '';
+  _fermerAutocompleteDlc();
+  reRenderVueCourante();
 });
 
 // ── Recherche par nom/lot (toutes périodes) ──
