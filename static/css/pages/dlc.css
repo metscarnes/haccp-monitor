@@ -874,8 +874,69 @@
 .batch-row--rouge  { border-left: 4px solid var(--color-danger, #C93030); }
 .batch-row--orange { border-left: 4px solid #E8913A; }
 
+/* ── Vue RECHERCHE (remplace le calendrier dès qu'une recherche est saisie) ──
+   Les résultats couvrent toutes les périodes : la DLC devient donc l'info
+   principale de chaque ligne, puisqu'elle ne se déduit plus du mois affiché. */
+.dlc-recherche {
+  padding: var(--space-3);
+}
+.dlc-recherche-entete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  background: #fff;
+  border: 1.5px solid #e8d9c4;
+  border-radius: var(--radius-sm);
+}
+.dlc-recherche-compte { font-size: var(--text-base); }
+.dlc-recherche-compte strong { font-size: var(--text-lg); }
+.dlc-recherche-portee {
+  color: #6B3A1F;
+  font-size: var(--text-sm);
+}
+.dlc-recherche-histo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: #6B3A1F;
+  cursor: pointer;
+  user-select: none;
+}
+/* Cible tactile confortable : l'écran est utilisé avec les mains occupées. */
+.dlc-recherche-histo input { width: 20px; height: 20px; cursor: pointer; }
+.dlc-recherche-vide {
+  padding: var(--space-4);
+  text-align: center;
+  color: #6B3A1F;
+  background: #fff;
+  border: 1.5px dashed #e8d9c4;
+  border-radius: var(--radius-sm);
+}
+/* Pastille de date en tête de ligne : repère visuel de l'échéance. */
+.dlc-item-echeance {
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #fff;
+  vertical-align: middle;
+}
+.dlc-item-echeance--rouge  { background: var(--color-alert); }
+.dlc-item-echeance--orange { background: var(--color-warning); }
+.dlc-item-echeance--jaune  { background: #E8C83A; color: #3D2008; }
+.dlc-item-echeance--vert   { background: var(--color-ok); }
+.dlc-item-echeance--gris   { background: #888; }
+
 /* Responsive : mobile */
 @media (max-width: 640px) {
+  .dlc-recherche-entete { flex-direction: column; align-items: flex-start; }
   .dlc-jour { min-height: 70px; padding: 3px; }
   .dlc-jour-num { font-size: var(--text-sm); }
   .dlc-badge { font-size: .65rem; padding: 1px 5px; }

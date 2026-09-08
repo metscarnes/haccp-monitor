@@ -138,6 +138,13 @@ const state = {
   items: [],
   seuils: { rouge_jours: 1, orange_jours: 3, jaune_jours: 7 },
   filtres: { source: '', statut: '', recherche: '' },
+  // Mode recherche : dès qu'une recherche est saisie, on quitte le calendrier
+  // du mois pour une liste de résultats couvrant TOUTES les périodes. Sans ça,
+  // un lot dont la DLC tombe hors du mois affiché reste introuvable — il fallait
+  // deviner le bon mois pour le voir.
+  rechercheItems: [],      // résultats toutes périodes (cache du dernier fetch)
+  rechercheHistorique: false,  // false = stock vivant seul ; true = + lots traités
+  rechercheEnCours: false,
   personnel: [],
   devenirCible: null,
   devenirStatut: null,
@@ -205,6 +212,95 @@ async function chargerCalendrier() {
   } finally {
     $('dlc-loader').hidden = true;
   }
+}
+
+// ── Recherche toutes périodes ───────────────────────────
+// Bornes volontairement très larges : le calendrier filtre par date côté API,
+// or une recherche ne doit pas dépendre du mois affiché. Une boucherie génère
+// quelques milliers de lignes par an — le volume reste négligeable pour un
+// filtrage côté client, et c'est le prix à payer pour que « pate campagne »
+// retrouve un lot d'octobre depuis septembre.
+const RECHERCHE_DATE_MIN = '2000-01-01';
+const RECHERCHE_DATE_MAX = '2099-12-31';
+
+async function chargerRechercheGlobale() {
+  const params = new URLSearchParams({
+    date_debut: RECHERCHE_DATE_MIN,
+    date_fin:   RECHERCHE_DATE_MAX,
+  });
+  if (state.filtres.source) params.set('source', state.filtres.source);
+
+  state.rechercheEnCours = true;
+  $('dlc-loader').hidden = false;
+  $('dlc-error').hidden = true;
+  try {
+    const res = await fetch(`/api/dlc/calendrier?${params}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    state.rechercheItems = data.items || [];
+    state.seuils = data.seuils || state.seuils;
+  } catch (e) {
+    state.rechercheItems = [];
+    $('dlc-error').hidden = false;
+    $('dlc-error').textContent = `Erreur recherche : ${e.message}`;
+  } finally {
+    state.rechercheEnCours = false;
+    $('dlc-loader').hidden = true;
+  }
+}
+
+/** Lots correspondant à la recherche courante, triés par DLC croissante. */
+function resultatsRecherche() {
+  const items = state.rechercheItems.filter(it =>
+    passeFiltreRecherche(it) && passeFiltreStatut(it)
+    // Par défaut on ne montre que le stock vivant : un lot déjà vendu ou jeté
+    // n'a plus d'intérêt opérationnel. La case « historique » le réintègre,
+    // notamment pour retrouver une traçabilité lors d'un contrôle.
+    && (state.rechercheHistorique || !it.devenir_statut)
+  );
+  return items.sort((a, b) => String(a.dlc).localeCompare(String(b.dlc)));
+}
+
+function renderRecherche() {
+  const container = $('dlc-vue-container');
+  const items = resultatsRecherche();
+  const nb = items.length;
+  const masques = state.rechercheHistorique
+    ? 0
+    : state.rechercheItems.filter(it =>
+        passeFiltreRecherche(it) && passeFiltreStatut(it) && it.devenir_statut).length;
+
+  container.innerHTML = `
+    <div class="dlc-recherche">
+      <div class="dlc-recherche-entete">
+        <div class="dlc-recherche-compte">
+          <strong>${nb}</strong> résultat${nb > 1 ? 's' : ''}
+          <span class="dlc-recherche-portee">— toutes périodes</span>
+        </div>
+        <label class="dlc-recherche-histo">
+          <input type="checkbox" id="dlc-recherche-histo"
+                 ${state.rechercheHistorique ? 'checked' : ''}>
+          <span>Inclure l'historique (vendus / jetés)${masques ? ` — ${masques} masqué${masques > 1 ? 's' : ''}` : ''}</span>
+        </label>
+      </div>
+      <div class="dlc-recherche-liste" id="dlc-recherche-liste"></div>
+    </div>`;
+
+  const liste = $('dlc-recherche-liste');
+  if (!nb) {
+    liste.innerHTML = `<div class="dlc-recherche-vide">
+        Aucun lot ne correspond à « ${escHtml(state.filtres.recherche)} ».
+        ${!state.rechercheHistorique && masques
+          ? '<br>Essayez d\'inclure l\'historique.' : ''}
+      </div>`;
+  } else {
+    remplirCorpsListeDlc(liste, items, { afficherDlc: true });
+  }
+
+  $('dlc-recherche-histo').addEventListener('change', (e) => {
+    state.rechercheHistorique = e.target.checked;
+    renderRecherche();
+  });
 }
 
 async function chargerPersonnel() {
@@ -285,6 +381,11 @@ function badgesHtml(items) {
 function updateLabel() {
   const ref = state.dateRef;
   let txt = '';
+  // En recherche, afficher un mois serait trompeur : les résultats l'ignorent.
+  if (rechercheActive()) {
+    $('dlc-mois-label').textContent = '🔍 Recherche';
+    return;
+  }
   switch (state.vue) {
     case 'semaine': {
       const lundi = lundiDeLaSemaine(ref);
@@ -301,9 +402,17 @@ function updateLabel() {
   $('dlc-mois-label').textContent = txt;
 }
 
+/** Une recherche est-elle active ? (pilote la bascule calendrier ↔ résultats) */
+function rechercheActive() {
+  return !!(state.filtres.recherche || '').trim();
+}
+
 // ── Dispatch vue ─────────────────────────────────────────
 function renderVue(debut, fin) {
   updateLabel();
+  // Une recherche prend le pas sur la vue calendaire : chercher un produit ne
+  // doit pas obliger à naviguer de mois en mois pour le trouver.
+  if (rechercheActive()) { renderRecherche(); return; }
   switch (state.vue) {
     case 'semaine': renderSemaine(debut, fin); break;
     case 'annuel':  renderAnnuel();            break;
@@ -495,10 +604,25 @@ function renderAnnuel() {
 
 // ── Modal liste du jour ─────────────────────────────────
 function ouvrirModalJour(dateStr, items) {
-  const aujourdhui = new Date(); aujourdhui.setHours(0,0,0,0);
-
   $('dlc-modal-titre').textContent = `DLC du ${formatDateFr(dateStr)}`;
-  const body = $('dlc-modal-body');
+  remplirCorpsListeDlc($('dlc-modal-body'), items);
+  $('dlc-modal').hidden = false;
+}
+
+/**
+ * Rend une liste de lots DLC dans un conteneur et câble toutes les actions
+ * (imprimer, modifier, supprimer, devenir, déroulé ingrédients).
+ *
+ * Extrait de `ouvrirModalJour` pour être partagé avec la vue Recherche, qui
+ * affiche les mêmes lots hors de toute notion de jour : une seule définition
+ * des lignes et de leurs boutons, donc un seul endroit à corriger.
+ *
+ * `afficherDlc` ajoute la date d'échéance sur chaque ligne — inutile dans la
+ * modale d'un jour donné (toutes les lignes la partagent), indispensable dans
+ * les résultats de recherche qui couvrent toutes les périodes.
+ */
+function remplirCorpsListeDlc(body, items, { afficherDlc = false } = {}) {
+  const aujourdhui = new Date(); aujourdhui.setHours(0,0,0,0);
   body.innerHTML = '';
 
   items.forEach(it => {
@@ -585,10 +709,19 @@ function ouvrirModalJour(dateStr, items) {
          </button>`;
     }
 
+    // En recherche, la DLC devient l'information principale de la ligne :
+    // les résultats couvrent toutes les périodes, donc l'échéance ne se déduit
+    // plus du contexte comme dans la modale d'un jour donné.
+    const dlcHtml = afficherDlc
+      ? `<span class="dlc-item-echeance dlc-item-echeance--${niveau}">
+           ${escHtml(formatDateFr(it.dlc))}
+         </span>`
+      : '';
+
     const el = document.createElement('div');
     el.className = `dlc-item dlc-item--${niveau}`;
     el.innerHTML = `
-      <div class="dlc-item-titre">${escHtml(it.produit_nom)}</div>
+      <div class="dlc-item-titre">${dlcHtml}${escHtml(it.produit_nom)}</div>
       <div class="dlc-item-meta">
         <span class="dlc-item-source dlc-item-source--${sourceCls}">${sourceLabel}</span>
         ${meta.map(m => `<span>${escHtml(m)}</span>`).join('')}
@@ -667,8 +800,6 @@ function ouvrirModalJour(dateStr, items) {
       produit_nom: btn.dataset.nom,
     }));
   });
-
-  $('dlc-modal').hidden = false;
 }
 
 function statutLabel(s) {
@@ -1003,7 +1134,12 @@ const batchState = { selection: new Set(), statut: null, items: [] };
 
 function listerExpiresNonTraites() {
   const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
-  return state.items
+  // Le traitement de masse doit porter exactement sur ce que l'utilisateur voit :
+  // les résultats de recherche (toutes périodes) quand une recherche est active,
+  // le mois affiché sinon. Lire `state.items` dans les deux cas ferait annoncer
+  // « N expirés » sans rapport avec la liste sous les yeux.
+  const source = rechercheActive() ? state.rechercheItems : state.items;
+  return source
     .filter(it => !it.devenir_statut && parseYmd(it.dlc) < aujourdhui && passeFiltreRecherche(it))
     .sort((a, b) => (a.dlc < b.dlc ? -1 : a.dlc > b.dlc ? 1 : 0));
 }
@@ -1164,9 +1300,24 @@ function setVueBouton(vue) {
   });
 }
 
+/**
+ * Quitte le mode recherche pour revenir au calendrier.
+ * Appelé par toute action calendaire (changer de vue, naviguer, « Aujourd'hui ») :
+ * sans ça ces boutons resteraient sans effet visible, la vue recherche ayant la
+ * priorité sur la vue calendaire tant qu'une recherche est saisie.
+ */
+function quitterRecherche() {
+  if (!rechercheActive()) return;
+  state.filtres.recherche = '';
+  const champ = $('dlc-filtre-recherche');
+  if (champ) champ.value = '';
+  _fermerAutocompleteDlc();
+}
+
 document.querySelectorAll('.dlc-btn-vue').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (state.vue === btn.dataset.vue) return;
+    quitterRecherche();
+    if (state.vue === btn.dataset.vue) { chargerCalendrier(); return; }
     state.vue = btn.dataset.vue;
     // Recaler dateRef selon la vue
     const now = new Date();
@@ -1180,6 +1331,7 @@ document.querySelectorAll('.dlc-btn-vue').forEach(btn => {
 
 // ── Navigation ──────────────────────────────────────────
 $('dlc-prev').addEventListener('click', () => {
+  quitterRecherche();
   const d = state.dateRef;
   if (state.vue === 'semaine') d.setDate(d.getDate() - 7);
   if (state.vue === 'mois')    state.dateRef = new Date(d.getFullYear(), d.getMonth() - 1, 1);
@@ -1187,6 +1339,7 @@ $('dlc-prev').addEventListener('click', () => {
   chargerCalendrier();
 });
 $('dlc-next').addEventListener('click', () => {
+  quitterRecherche();
   const d = state.dateRef;
   if (state.vue === 'semaine') d.setDate(d.getDate() + 7);
   if (state.vue === 'mois')    state.dateRef = new Date(d.getFullYear(), d.getMonth() + 1, 1);
@@ -1194,6 +1347,7 @@ $('dlc-next').addEventListener('click', () => {
   chargerCalendrier();
 });
 $('dlc-aujourdhui').addEventListener('click', () => {
+  quitterRecherche();
   const now = new Date();
   state.dateRef = state.vue === 'semaine' ? lundiDeLaSemaine(now)
                : state.vue === 'annuel'  ? new Date(now.getFullYear(), 0, 1)
@@ -1201,19 +1355,45 @@ $('dlc-aujourdhui').addEventListener('click', () => {
   chargerCalendrier();
 });
 
-$('dlc-filtre-source').addEventListener('change', e => { state.filtres.source = e.target.value; chargerCalendrier(); });
-$('dlc-filtre-statut').addEventListener('change', e => { state.filtres.statut = e.target.value; chargerCalendrier(); });
+$('dlc-filtre-source').addEventListener('change', async e => {
+  state.filtres.source = e.target.value;
+  // La source est filtrée côté API : le cache global devient obsolète.
+  state.rechercheItems = [];
+  if (rechercheActive()) { await appliquerRecherche(); return; }
+  chargerCalendrier();
+});
+$('dlc-filtre-statut').addEventListener('change', e => {
+  state.filtres.statut = e.target.value;
+  // Le statut est filtré côté client : un simple re-rendu suffit en recherche.
+  if (rechercheActive()) { reRenderVueCourante(); return; }
+  chargerCalendrier();
+});
 
-// ── Recherche par nom/lot (filtre client, sans rechargement) ──
+// ── Recherche par nom/lot (toutes périodes) ──
 function reRenderVueCourante() {
   const { debut, fin } = computeRange();
   renderVue(debut, fin);
   rafraichirBoutonTraitementMasse();
 }
 
+/**
+ * Applique une recherche : charge le jeu global au premier usage, puis rend.
+ * Le fetch n'a lieu qu'une fois par session de recherche — les frappes
+ * suivantes filtrent le cache déjà en mémoire.
+ */
+async function appliquerRecherche() {
+  if (rechercheActive() && !state.rechercheItems.length && !state.rechercheEnCours) {
+    await chargerRechercheGlobale();
+  }
+  reRenderVueCourante();
+}
+
 function _produitsCorrespondants(qNorm) {
   const map = new Map();
-  for (const it of state.items) {
+  // L'autocomplétion propose ce que la recherche sait atteindre : le jeu global
+  // dès qu'il est chargé, sinon le mois courant.
+  const source = state.rechercheItems.length ? state.rechercheItems : state.items;
+  for (const it of source) {
     const nom = (it.produit_nom || '').trim();
     if (!nom) continue;
     const matchN = !qNorm || normaliser(nom).includes(qNorm);
@@ -1258,7 +1438,7 @@ function _renderAutocompleteDlc(items) {
       $('dlc-filtre-recherche').value = nom;
       state.filtres.recherche = nom;
       ac.hidden = true;
-      reRenderVueCourante();
+      appliquerRecherche();
     });
   });
 }
@@ -1279,14 +1459,19 @@ function _fermerAutocompleteDlc() {
   let debounceRecherche;
   inRech.addEventListener('input', (e) => {
     clearTimeout(debounceRecherche);
-    debounceRecherche = setTimeout(() => {
+    debounceRecherche = setTimeout(async () => {
       state.filtres.recherche = e.target.value;
-      reRenderVueCourante();
+      await appliquerRecherche();
       _ouvrirAutocompleteDlc();
     }, 150);
   });
-  inRech.addEventListener('focus', () => {
-    if (state.items.length) _ouvrirAutocompleteDlc();
+  inRech.addEventListener('focus', async () => {
+    // Précharge le jeu global au premier focus : l'autocomplétion propose ainsi
+    // d'emblée tous les produits, pas seulement ceux du mois affiché.
+    if (!state.rechercheItems.length && !state.rechercheEnCours) {
+      await chargerRechercheGlobale();
+    }
+    _ouvrirAutocompleteDlc();
   });
   inRech.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') _fermerAutocompleteDlc();
