@@ -267,7 +267,9 @@ function imprimerEtiquetteRetour(fiche, operateurPrenom, dlc, dluo, lotInterne, 
   set('print-nc-motifs', motifsTxt || 'non-conformité');
   set('print-nc-action', actionTxt);
 
-  window.print();
+  // `62mm auto` laissait le navigateur dérouler sa longueur de page par
+  // défaut : on cale le papier sur la hauteur réelle du gabarit.
+  imprimerEtiquette(document.getElementById('print-label-retour'));
 }
 
 // ── Affichage ────────────────────────────────────────────────

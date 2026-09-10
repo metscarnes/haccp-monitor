@@ -1250,7 +1250,8 @@ function fabReimprimer(fab) {
     ul.appendChild(li);
   });
 
-  setTimeout(() => window.print(), 100);
+  // Longueur de papier calée sur la liste d'ingrédients qu'on vient de bâtir.
+  imprimerEtiquette(document.getElementById('print-label'));
 }
 
 // ── Boutons fabrications ─────────────────────────────────────

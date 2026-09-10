@@ -1155,7 +1155,7 @@ async function supprimerProduitDlc(cible) {
 }
 
 // ── Impression étiquette simple (nom / lot / DLC) ───────
-// Remplit le gabarit caché #print-label-dlc puis lance window.print().
+// Remplit le gabarit caché #print-label-dlc puis l'imprime.
 // Même pattern que cuisson / refroidissement (impression côté navigateur).
 function imprimerEtiquetteDlc(cible) {
   $('pdlc-nom').textContent = cible.produit_nom || '—';
@@ -1180,7 +1180,9 @@ function imprimerEtiquetteDlc(cible) {
     elFab.hidden = true;
   }
 
-  setTimeout(() => window.print(), 100);
+  // Le tag et la ligne d'origine sont optionnels : la longueur de papier se
+  // mesure après les avoir (dé)masqués, pas avant.
+  imprimerEtiquette($('print-label-dlc'));
 }
 
 function tagFromSourceType(srcType) {

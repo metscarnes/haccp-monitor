@@ -1017,7 +1017,10 @@
     .he-btn-reimprimer:active { opacity: .7; }
 
     /* ── Gabarit impression thermique Brother 62mm ── */
-    #print-label, #print-label-transforme { display: none; }
+    /* `font-family` hors de `@media print` : `etiquette-print.js` mesure le
+       gabarit à l'écran pour caler la longueur de papier, et il doit le faire
+       dans la police d'impression, pas dans celle de la page. */
+    #print-label, #print-label-transforme { display: none; font-family: sans-serif; }
     @media print {
       /* Longueur : `auto` par défaut car l'étiquette de FABRICATION porte la liste
          des ingrédients (longueur variable, obligation d'étiquetage) — la figer
@@ -1666,48 +1669,52 @@
   <div id="print-label" style="background: white; color: black; font-family: sans-serif;">
 
     <!-- Entête : nom produit + info complémentaire -->
-    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 4px; margin-bottom: 6px;">
+    <div style="text-align: center; border-bottom: 2px solid black; padding-bottom: 3px; margin-bottom: 3px;">
       <h1 id="print-nom" style="font-size: 1.1rem; font-weight: 900; margin: 0; text-transform: uppercase; line-height: 1.1;">NOM PRODUIT</h1>
-      <div id="print-poids" style="font-size: 0.8rem; font-weight: bold; margin-top: 2px;"></div>
+      <div id="print-poids" style="font-size: 0.8rem; font-weight: bold; margin-top: 1px; line-height: 1.2;"></div>
     </div>
 
     <!-- DLC encadrée -->
-    <div style="border: 2px solid black; border-radius: 6px; padding: 4px; text-align: center; margin-bottom: 6px;">
+    <div style="border: 2px solid black; border-radius: 5px; padding: 3px; text-align: center; margin-bottom: 3px; line-height: 1.1;">
       <div style="font-size: 0.75rem; font-weight: bold; text-transform: uppercase;">DLC :</div>
-      <div id="print-dlc" style="font-size: 1.4rem; font-weight: 900; color: red;">--/--/----</div>
+      <div id="print-dlc" style="font-size: 1.2rem; font-weight: 900; color: red;">--/--/----</div>
     </div>
 
     <!-- Numéro de lot -->
-    <div id="print-lot" style="font-size: 0.8rem; font-weight: bold; text-align: center; margin-bottom: 6px; padding: 2px; border: 1px dashed black;">Lot : ---------</div>
+    <div id="print-lot" style="font-size: 0.8rem; font-weight: bold; text-align: center; margin-bottom: 3px; padding: 2px; border: 1px dashed black; line-height: 1.2;">Lot : ---------</div>
 
-    <!-- Liste ingrédients -->
-    <div style="font-size: 0.65rem; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">Ingrédients &amp; Lots :</div>
-    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.3; margin: 0 0 8px 0; padding-left: 12px; list-style-type: square;"></ul>
+    <!-- Liste ingrédients — longueur variable : c'est elle qui fait la longueur
+         de l'étiquette, d'où l'interligne serré. -->
+    <div style="font-size: 0.65rem; font-weight: bold; text-transform: uppercase; margin-bottom: 1px;">Ingrédients &amp; Lots :</div>
+    <ul id="print-ingredients" style="font-size: 0.6rem; line-height: 1.25; margin: 0 0 4px 0; padding-left: 10px; list-style-type: square;"></ul>
 
     <!-- Pied de ticket -->
-    <div id="print-meta" style="font-size: 0.55rem; text-align: center; border-top: 1px solid black; padding-top: 2px;">Fabriqué le --/--/----</div>
+    <div id="print-meta" style="font-size: 0.55rem; text-align: center; border-top: 1px solid black; padding-top: 2px; line-height: 1.2;">Fabriqué le --/--/----</div>
 
   </div>
 
   <!-- ── Gabarit ticket thermique pour produit transformé (cuisson / refroidissement) ── -->
   <div id="print-label-transforme">
-    <div style="text-align:center;border:2px solid black;border-radius:6px;padding:4px;margin-bottom:6px;">
-      <div id="pt-tag" style="font-size:1.1rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;">[—]</div>
-    </div>
-    <h1 id="pt-nom" style="font-size:1.1rem;font-weight:900;margin:0 0 6px;text-transform:uppercase;line-height:1.1;text-align:center;">PRODUIT</h1>
-    <div id="pt-quantite" style="font-size:.8rem;font-weight:bold;text-align:center;margin-bottom:6px;">Quantité : —</div>
-    <div style="border:2px solid black;border-radius:6px;padding:4px;text-align:center;margin-bottom:6px;">
+    <div id="pt-tag" style="font-size:.8rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;text-align:center;border:2px solid black;border-radius:5px;padding:2px;margin-bottom:3px;line-height:1.2;">[—]</div>
+    <h1 id="pt-nom" style="font-size:1.1rem;font-weight:900;margin:0 0 3px;text-transform:uppercase;line-height:1.1;text-align:center;">PRODUIT</h1>
+    <div id="pt-quantite" style="font-size:.8rem;font-weight:bold;text-align:center;margin-bottom:3px;line-height:1.2;">Quantité : —</div>
+    <div style="border:2px solid black;border-radius:5px;padding:3px;text-align:center;margin-bottom:3px;line-height:1.1;">
       <div style="font-size:.7rem;font-weight:bold;text-transform:uppercase;">DLC :</div>
-      <div id="pt-dlc" style="font-size:1.4rem;font-weight:900;color:red;">--/--/--</div>
+      <div id="pt-dlc" style="font-size:1.2rem;font-weight:900;color:red;">--/--/--</div>
     </div>
-    <div id="pt-lot" style="font-size:.85rem;font-weight:bold;text-align:center;margin-bottom:6px;padding:2px;border:1px dashed black;">Lot : —</div>
-    <div id="pt-temperature" style="font-size:.78rem;font-weight:bold;text-align:center;margin-bottom:4px;">T° : — °C</div>
-    <div id="pt-action" style="font-size:.75rem;text-align:center;margin-bottom:4px;">— le —</div>
-    <div id="pt-meta" style="font-size:.7rem;text-align:center;border-top:1px solid black;padding-top:2px;">Par : —</div>
+    <div id="pt-lot" style="font-size:.85rem;font-weight:bold;text-align:center;margin-bottom:3px;padding:2px;border:1px dashed black;line-height:1.2;">Lot : —</div>
+    <!-- T° et date d'action sur une même ligne : deux lignes séparées coûtaient
+         ~5 mm de papier pour deux valeurs courtes. -->
+    <div style="display:flex;justify-content:space-between;gap:4px;margin-bottom:3px;line-height:1.2;">
+      <div id="pt-temperature" style="font-size:.72rem;font-weight:bold;">T° : — °C</div>
+      <div id="pt-action" style="font-size:.72rem;text-align:right;">— le —</div>
+    </div>
+    <div id="pt-meta" style="font-size:.7rem;text-align:center;border-top:1px solid black;padding-top:2px;line-height:1.2;">Par : —</div>
   </div>
 
   <script src="/static/js/core/origine.js"></script>
   <script src="/static/js/core/photo-rotate.js"></script>
+  <script src="/static/js/core/etiquette-print.js"></script>
   <script src="/static/js/historique.js"></script>
 </body>
 </html>

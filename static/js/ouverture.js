@@ -512,7 +512,7 @@ elBtnImprimer.addEventListener('click', () => {
   if (!dernierSauvegardeData) return;
   clearTimeout(timerConfirmation);
   remplirGabaritOuverture(dernierSauvegardeData);
-  setTimeout(() => window.print(), 100);
+  imprimerEtiquette(document.getElementById('print-label-ouverture'));
 });
 
 // ── Boutons post-confirmation ──────────────────────────────

@@ -1091,8 +1091,11 @@ elBtnGenerer.addEventListener('click', async () => {
       ulIngredients.appendChild(li);
     });
 
-    // ── Déclenchement impression (léger délai pour rendu DOM) ─
-    setTimeout(() => window.print(), 100);
+    // ── Déclenchement impression ─────────────────────────────
+    // `imprimerEtiquette` mesure le gabarit rempli et cale la longueur de
+    // papier dessus : la liste d'ingrédients ci-dessus est de longueur
+    // variable, aucune valeur figée ne conviendrait.
+    imprimerEtiquette(document.getElementById('print-label'));
   } catch (err) {
     elErreur.textContent = `Erreur : ${err.message}`;
     elErreur.hidden = false;

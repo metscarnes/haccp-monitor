@@ -641,7 +641,9 @@ function imprimerEtiquetteRetour(produit) {
   set('print-nc-motifs', produit.motifs.join(', ') || 'non-conformité');
   set('print-nc-action', actionTxt);
 
-  window.print();
+  // `62mm auto` laissait le navigateur dérouler sa longueur de page par
+  // défaut : on cale le papier sur la hauteur réelle du gabarit.
+  imprimerEtiquette(document.getElementById('print-label-retour'));
 }
 
 

@@ -17,14 +17,18 @@
   <link rel="stylesheet" href="/static/css/pages/cuisson.css">
   <style>
     /* ── Gabarit impression thermique Brother 62mm — étiquette produit transformé ── */
-    #print-label-transforme { display: none; }
+    /* `font-family` hors de `@media print` : `etiquette-print.js` mesure le
+       gabarit à l'écran pour caler la longueur de papier, et il doit le faire
+       dans la police d'impression, pas dans celle de la page. */
+    #print-label-transforme { display: none; font-family: sans-serif; }
     @media print {
-      /* Longueur FIXE (60mm) et non `auto` : sur rouleau continu, `size: 62mm auto`
-         laisse le navigateur dérouler jusqu'à la page suivante → bande blanche à
-         couper aux ciseaux. */
+      /* Longueur de repli seulement : `etiquette-print.js` mesure le gabarit
+         rempli et injecte la longueur exacte avant l'impression. Ce 60mm ne
+         sert que si le script n'a pas pu se charger. Ni `height` ni
+         `overflow: hidden` ici : une étiquette trop chargée doit déborder
+         visiblement, pas se faire rogner le pied en silence. */
       @page { size: 62mm 60mm; margin: 0; }
-      html, body { margin: 0; padding: 0; background: white; }
-      html, body { height: 60mm; overflow: hidden; }
+      html, body { margin: 0; padding: 0; height: auto; background: white; }
       /* Retire complètement du flux tout ce qui n'est pas l'étiquette,
          sinon le navigateur étire le document sur plusieurs feuilles. */
       body > *:not(#print-label-transforme) { display: none !important; }
@@ -32,11 +36,9 @@
         display: block;
         position: static;
         width: 100%;
-        height: 60mm;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
-        overflow: hidden;
         color: black;
         background: white;
         font-family: sans-serif;
@@ -289,22 +291,25 @@
 
   <!-- ── Gabarit ticket thermique (invisible à l'écran, imprimé via @media print) ── -->
   <div id="print-label-transforme">
-    <div style="text-align:center;border:2px solid black;border-radius:6px;padding:4px;margin-bottom:6px;">
-      <div id="pt-tag" style="font-size:1.1rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;">[—]</div>
-    </div>
-    <h1 id="pt-nom" style="font-size:1.1rem;font-weight:900;margin:0 0 6px;text-transform:uppercase;line-height:1.1;text-align:center;">PRODUIT</h1>
-    <div id="pt-quantite" style="font-size:.8rem;font-weight:bold;text-align:center;margin-bottom:6px;">Quantité : —</div>
-    <div style="border:2px solid black;border-radius:6px;padding:4px;text-align:center;margin-bottom:6px;">
+    <div id="pt-tag" style="font-size:.8rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;text-align:center;border:2px solid black;border-radius:5px;padding:2px;margin-bottom:3px;line-height:1.2;">[—]</div>
+    <h1 id="pt-nom" style="font-size:1.1rem;font-weight:900;margin:0 0 3px;text-transform:uppercase;line-height:1.1;text-align:center;">PRODUIT</h1>
+    <div id="pt-quantite" style="font-size:.8rem;font-weight:bold;text-align:center;margin-bottom:3px;line-height:1.2;">Quantité : —</div>
+    <div style="border:2px solid black;border-radius:5px;padding:3px;text-align:center;margin-bottom:3px;line-height:1.1;">
       <div style="font-size:.7rem;font-weight:bold;text-transform:uppercase;">DLC :</div>
-      <div id="pt-dlc" style="font-size:1.4rem;font-weight:900;color:red;">--/--/--</div>
+      <div id="pt-dlc" style="font-size:1.2rem;font-weight:900;color:red;">--/--/--</div>
     </div>
-    <div id="pt-lot" style="font-size:.85rem;font-weight:bold;text-align:center;margin-bottom:6px;padding:2px;border:1px dashed black;">Lot : —</div>
-    <div id="pt-temperature" style="font-size:.78rem;font-weight:bold;text-align:center;margin-bottom:4px;">T° : — °C</div>
-    <div id="pt-action" style="font-size:.75rem;text-align:center;margin-bottom:4px;">— le —</div>
-    <div id="pt-meta" style="font-size:.7rem;text-align:center;border-top:1px solid black;padding-top:2px;">Par : —</div>
+    <div id="pt-lot" style="font-size:.85rem;font-weight:bold;text-align:center;margin-bottom:3px;padding:2px;border:1px dashed black;line-height:1.2;">Lot : —</div>
+    <!-- T° et date d'action sur une même ligne : deux lignes séparées coûtaient
+         ~5 mm de papier pour deux valeurs courtes. -->
+    <div style="display:flex;justify-content:space-between;gap:4px;margin-bottom:3px;line-height:1.2;">
+      <div id="pt-temperature" style="font-size:.72rem;font-weight:bold;">T° : — °C</div>
+      <div id="pt-action" style="font-size:.72rem;text-align:right;">— le —</div>
+    </div>
+    <div id="pt-meta" style="font-size:.7rem;text-align:center;border-top:1px solid black;padding-top:2px;line-height:1.2;">Par : —</div>
   </div>
 
   <script src="/static/js/core/origine.js"></script>
+  <script src="/static/js/core/etiquette-print.js"></script>
   <script src="/static/js/refroidissement.js"></script>
 </body>
 </html>

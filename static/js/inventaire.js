@@ -661,7 +661,7 @@ function fermerEditModal() {
 }
 
 // ── Impression étiquette simple (nom / lot / DLC [+ fab]) ───
-// Remplit le gabarit caché #print-label-inv puis lance window.print().
+// Remplit le gabarit caché #print-label-inv puis l'imprime.
 // Même pattern que cuisson / refroidissement / DLC.
 function imprimerEtiquetteInv(it) {
   if (!it) return;
@@ -688,7 +688,9 @@ function imprimerEtiquetteInv(it) {
     elFab.hidden = true;
   }
 
-  setTimeout(() => window.print(), 100);
+  // Le tag et la ligne d'origine sont optionnels : la longueur de papier se
+  // mesure après les avoir (dé)masqués, pas avant.
+  imprimerEtiquette($('print-label-inv'));
 }
 
 function tagFromSourceTypeInv(srcType) {

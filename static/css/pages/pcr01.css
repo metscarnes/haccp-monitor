@@ -362,13 +362,153 @@ body.pcr-body {
   color: var(--color-ok);
 }
 
-/* ── Gabarit impression étiquette À RETOURNER ─────────────── */
+/* ── Gabarit impression étiquette À RETOURNER ───────────────
+   La mise en page du gabarit vit HORS de `@media print` : `etiquette-print.js`
+   le mesure hors écran pour caler la longueur de papier dessus, et des règles
+   print-only donneraient une hauteur mesurée fausse (le <table> reprendrait sa
+   mise en page d'écran). Le gabarit restant `display: none` à l'écran, ces
+   règles n'ont aucun effet visuel. */
 #print-label-retour {
   display: none;
+
+  /* Conteneur principal : verrouillé à 62mm, haut contraste */
+  width: 62mm;
+  max-width: 62mm;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 2mm;
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #000;
+  word-wrap: break-word;
+  word-break: break-word;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ── Bandeau "PRODUIT NON CONFORME" ── */
+.print-retour-bandeau {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #fff !important;
+  background: #000 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  padding: 1.5mm 2mm;
+  text-align: center;
+  margin: 0 0 1mm;
+}
+
+/* ── Titre "À RETOURNER" — bloc inversé massif ── */
+.print-retour-titre {
+  font-size: 18px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #fff !important;
+  background: #000 !important;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  padding: 4px;
+  text-align: center;
+  margin: 0 0 1.5mm;
+  line-height: 1.2;
+}
+
+/* ── Référence PCR01 ── */
+.print-retour-ref {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #000 !important;
+  text-align: center;
+  margin: 0 0 .5mm;
+}
+
+/* ── Date / opérateur ── */
+.print-retour-datetime {
+  font-size: 8px;
+  font-weight: 600;
+  color: #000 !important;
+  text-align: center;
+  margin: 0 0 1.5mm;
+  padding-bottom: 1mm;
+  border-bottom: 1px solid #000;
+}
+
+/* ── Tableau données NC ── */
+.print-retour-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 1.5mm;
+  table-layout: fixed;
+}
+
+.print-retour-table th {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: #000 !important;
+  text-align: left;
+  padding: .8mm 0 0;
+  vertical-align: top;
+  width: 100%;
+  display: block;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.print-retour-table td {
+  font-size: 12px;
+  font-weight: bold;
+  color: #000 !important;
+  padding: 0 0 1mm;
+  vertical-align: top;
+  display: block;
+  word-break: break-word;
+  line-height: 1.3;
+  border-bottom: 1px solid #000;
+  margin-bottom: .5mm;
+}
+
+/* Masquer les <tr> devenus inutiles avec display:block sur th/td */
+.print-retour-table tr {
+  display: block;
+}
+
+/* Produit : plus grand et forcé en majuscules */
+.print-retour-table tr:first-child td {
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  border-bottom: 1px solid #000;
+}
+
+/* Dernière ligne (action immédiate) : pas de bordure basse */
+.print-retour-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Pied de ticket ── */
+.print-retour-pied {
+  font-size: 7px;
+  color: #000 !important;
+  text-align: center;
+  font-style: italic;
+  margin: 1mm 0 0;
+  padding-top: 1mm;
+  border-top: 1px solid #000;
 }
 
 @media print {
-  /* ── Format rouleau thermique 62mm continu ── */
+  /* ── Format rouleau thermique 62mm continu ──
+     Longueur de repli seulement : `etiquette-print.js` mesure le gabarit et
+     injecte la longueur exacte avant l'impression. Ce `auto` ne sert que si le
+     script n'a pas pu se charger — il laisse alors le navigateur dérouler sa
+     longueur de page par défaut. */
   @page {
     size: 62mm auto;
     margin: 0;
@@ -389,138 +529,8 @@ body.pcr-body {
     display: none !important;
   }
 
-  /* ── Conteneur principal : verrouillé à 62mm, haut contraste ── */
   #print-label-retour {
     display: block !important;
-    width: 62mm !important;
-    max-width: 62mm !important;
-    overflow: hidden;
-    box-sizing: border-box;
-    padding: 2mm;
-    background: #fff !important;
-    font-family: Arial, Helvetica, sans-serif;
-    color: #000 !important;
-    word-wrap: break-word;
-    word-break: break-word;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  /* ── Bandeau "PRODUIT NON CONFORME" ── */
-  .print-retour-bandeau {
-    font-size: 14px;
-    font-weight: 900;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #fff !important;
-    background: #000 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    padding: 1.5mm 2mm;
-    text-align: center;
-    margin: 0 0 1mm;
-  }
-
-  /* ── Titre "À RETOURNER" — bloc inversé massif ── */
-  .print-retour-titre {
-    font-size: 18px;
-    font-weight: 900;
-    text-transform: uppercase;
-    color: #fff !important;
-    background: #000 !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-    padding: 4px;
-    text-align: center;
-    margin: 0 0 1.5mm;
-    line-height: 1.2;
-  }
-
-  /* ── Référence PCR01 ── */
-  .print-retour-ref {
-    font-size: 7px;
-    font-weight: 700;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    color: #000 !important;
-    text-align: center;
-    margin: 0 0 .5mm;
-  }
-
-  /* ── Date / opérateur ── */
-  .print-retour-datetime {
-    font-size: 8px;
-    font-weight: 600;
-    color: #000 !important;
-    text-align: center;
-    margin: 0 0 1.5mm;
-    padding-bottom: 1mm;
-    border-bottom: 1px solid #000;
-  }
-
-  /* ── Tableau données NC ── */
-  .print-retour-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0 0 1.5mm;
-    table-layout: fixed;
-  }
-
-  .print-retour-table th {
-    font-size: 10px;
-    font-weight: 900;
-    text-transform: uppercase;
-    letter-spacing: .03em;
-    color: #000 !important;
-    text-align: left;
-    padding: .8mm 0 0;
-    vertical-align: top;
-    width: 100%;
-    display: block;
-    margin: 0;
-    line-height: 1.2;
-  }
-
-  .print-retour-table td {
-    font-size: 12px;
-    font-weight: bold;
-    color: #000 !important;
-    padding: 0 0 1mm;
-    vertical-align: top;
-    display: block;
-    word-break: break-word;
-    line-height: 1.3;
-    border-bottom: 1px solid #000;
-    margin-bottom: .5mm;
-  }
-
-  /* Masquer les <tr> devenus inutiles avec display:block sur th/td */
-  .print-retour-table tr {
-    display: block;
-  }
-
-  /* Produit : plus grand et forcé en majuscules */
-  .print-retour-table tr:first-child td {
-    font-size: 13px;
-    font-weight: 900;
-    text-transform: uppercase;
-    border-bottom: 1px solid #000;
-  }
-
-  /* Dernière ligne (action immédiate) : pas de bordure basse */
-  .print-retour-table tr:last-child td {
-    border-bottom: none;
-  }
-
-  /* ── Pied de ticket ── */
-  .print-retour-pied {
-    font-size: 7px;
-    color: #000 !important;
-    text-align: center;
-    font-style: italic;
-    margin: 1mm 0 0;
-    padding-top: 1mm;
-    border-top: 1px solid #000;
   }
 }
 
