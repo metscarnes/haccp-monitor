@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'haccp-v16';
+// À incrémenter à chaque déploiement : l'activation purge les caches des
+// versions précédentes (cf. listener `activate`).
+const CACHE_VERSION = 'haccp-v17';
 const STATIC_ASSETS = [
   '/',
   '/hub.html',
@@ -69,6 +71,14 @@ self.addEventListener('fetch', (event) => {
 
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request));
+  } else if (isCodeApplicatif(url.pathname)) {
+    // CSS/JS = code applicatif : en `cacheFirst`, un correctif déployé n'atteint
+    // JAMAIS un poste qui a déjà la version en cache (il ne redemande pas le
+    // fichier au serveur). C'est ce qui a fait croire que le correctif de
+    // longueur d'étiquette ne marchait pas. `staleWhileRevalidate` sert le cache
+    // immédiatement — donc toujours utilisable hors ligne — puis rafraîchit en
+    // arrière-plan : la correction arrive au rechargement suivant.
+    event.respondWith(staleWhileRevalidate(request));
   } else if (isStaticAsset(url.pathname)) {
     event.respondWith(cacheFirst(request));
   } else if (request.headers.get('accept')?.includes('text/html')) {
@@ -78,8 +88,14 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
+/** Code applicatif : doit pouvoir être corrigé par un simple déploiement. */
+function isCodeApplicatif(pathname) {
+  return /\.(css|js)$/.test(pathname);
+}
+
+/** Ressources immuables (polices, images) : le cache permanent convient. */
 function isStaticAsset(pathname) {
-  return /\.(css|js|woff2?|ttf|eot|ico|png|jpg|jpeg|webp|svg|json)$/.test(pathname);
+  return /\.(woff2?|ttf|eot|ico|png|jpg|jpeg|webp|svg|json)$/.test(pathname);
 }
 
 async function cacheFirst(request) {

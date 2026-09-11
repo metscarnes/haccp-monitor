@@ -30,7 +30,10 @@
 
   const LARGEUR_MM = 62;   // largeur du rouleau
   const PADDING_MM = 2;    // doit rester aligné sur le `padding` des gabarits
-  const MARGE_MM   = 2;    // slack : mieux vaut 2 mm de papier qu'un pied rogné
+  // Slack de sécurité. 2 mm compensaient l'imprécision de mesure, mais sur un
+  // rouleau continu chaque mm est du papier consommé à chaque étiquette : la
+  // mesure s'est révélée fiable au mm près, 1 mm suffit à éviter un pied rogné.
+  const MARGE_MM   = 1;
   const MIN_MM     = 20;   // en deçà, l'imprimante n'amorce pas la coupe
   const MAX_MM     = 300;
   const STYLE_ID   = 'etiquette-page-size';
@@ -73,7 +76,12 @@
       el.style.setProperty('max-height', 'none');
       el.style.setProperty('overflow', 'visible');
       el.style.setProperty('box-sizing', 'border-box');
-      el.style.setProperty('padding', PADDING_MM + 'mm');
+      // Padding bas nul : sur rouleau continu c'est la coupe qui sépare deux
+      // étiquettes, une marge basse n'est que du papier déroulé en plus. La
+      // règle `@page` injectée applique le même padding (cf. appliquerLongueur),
+      // donc mesure et impression restent cohérentes.
+      el.style.setProperty('padding',
+        PADDING_MM + 'mm ' + PADDING_MM + 'mm 0 ' + PADDING_MM + 'mm');
       el.style.setProperty('visibility', 'hidden');
 
       hauteurPx = el.getBoundingClientRect().height;
@@ -87,8 +95,15 @@
     return hauteurPx / pxParMm();
   }
 
-  /** Injecte (ou met à jour) la règle `@page` du temps de l'impression. */
-  function appliquerLongueur(mm) {
+  /**
+   * Injecte (ou met à jour) la règle `@page` du temps de l'impression.
+   *
+   * @param {number} mm longueur de papier à dérouler.
+   * @param {string} selecteur gabarit imprimé, pour aligner son padding bas sur
+   *        celui utilisé à la mesure (sinon la longueur calculée ne correspond
+   *        plus à ce qui est réellement imprimé).
+   */
+  function appliquerLongueur(mm, selecteur) {
     let style = document.getElementById(STYLE_ID);
     if (!style) {
       style = document.createElement('style');
@@ -98,7 +113,11 @@
     // Volontairement sans `overflow:hidden` ni hauteur figée sur html/body :
     // un dépassement doit se voir sur une 2e étiquette, jamais disparaître.
     style.textContent =
-      '@media print { @page { size: ' + LARGEUR_MM + 'mm ' + mm + 'mm; margin: 0; } }';
+      '@media print { @page { size: ' + LARGEUR_MM + 'mm ' + mm + 'mm; margin: 0; }' +
+      (selecteur
+        ? ' ' + selecteur + ' { padding-bottom: 0 !important; }'
+        : '') +
+      ' }';
   }
 
   function retirerLongueur() {
@@ -119,7 +138,8 @@
 
     try {
       const mm = Math.ceil(mesurerHauteurMm(el) + MARGE_MM);
-      appliquerLongueur(Math.min(MAX_MM, Math.max(MIN_MM, mm)));
+      const selecteur = el.id ? '#' + el.id : null;
+      appliquerLongueur(Math.min(MAX_MM, Math.max(MIN_MM, mm)), selecteur);
     } catch (err) {
       // Mesure impossible : on laisse le `@page` du gabarit faire son office.
       console.warn('[etiquette-print] mesure impossible, format par défaut', err);

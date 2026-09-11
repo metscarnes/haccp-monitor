@@ -1022,12 +1022,11 @@
        dans la police d'impression, pas dans celle de la page. */
     #print-label, #print-label-transforme { display: none; font-family: sans-serif; }
     @media print {
-      /* Longueur : `auto` par défaut car l'étiquette de FABRICATION porte la liste
-         des ingrédients (longueur variable, obligation d'étiquetage) — la figer
-         tronquerait. On neutralise en revanche le saut de page final, qui est la
-         cause de la bande blanche à couper aux ciseaux.
-         En mode transformé (contenu de taille connue), la longueur est figée à 60mm
-         via la règle @page dédiée plus bas. */
+      /* Repli seulement : `etiquette-print.js` mesure le gabarit rempli et
+         injecte la longueur exacte avant impression, pour les DEUX modes
+         (fabrication et transformé). Aucune constante ne conviendrait : la liste
+         d'ingrédients d'une fabrication est de longueur variable et légalement
+         intronquable. */
       @page {
         size: 62mm auto;
         margin: 0mm;
@@ -1067,11 +1066,9 @@
         display: block !important;
         position: static;
         width: 100%;
-        height: 60mm;
         box-sizing: border-box;
         padding: 2mm;
         margin: 0;
-        overflow: hidden;
         color: black;
         background: white;
         font-family: sans-serif;
