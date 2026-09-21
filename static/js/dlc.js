@@ -1349,6 +1349,24 @@ function rafraichirBoutonTraitementMasse() {
 
 function clefBatch(it) { return `${it.source_type}:${it.source_id}`; }
 
+// Verbe d'entrée du lot selon sa source, pour la ligne compacte du traitement
+// en masse. Variante courte de construireLigneOrigine() (pas d'heure ni de
+// receveur : la place manque dans la ligne, et seule la date discrimine).
+const VERBE_ORIGINE = {
+  reception_ligne: 'Reçu',
+  fabrication:     'Fabriqué',
+  cuisson:         'Cuit',
+  refroidissement: 'Refroidi',
+};
+
+// « Reçu le 12/09/2026 » : deux lots du même produit ne se distinguent souvent
+// que par leur date d'entrée, indispensable pour identifier lequel on traite.
+function origineCourte(it) {
+  if (!it.date_origine) return '';
+  const verbe = VERBE_ORIGINE[it.source_type] || 'Entré';
+  return `${verbe} le ${formatDateFr(it.date_origine)}`;
+}
+
 function ouvrirModalBatch() {
   const expires = listerExpiresNonTraites();
   if (expires.length === 0) return;
@@ -1391,6 +1409,7 @@ function ouvrirModalBatch() {
       <span class="batch-row-nom">${escHtml(it.produit_nom)}</span>
       <span class="batch-row-dlc">DLC ${formatDateFr(it.dlc)}</span>
       <span class="batch-row-meta">${meta.join(' · ')}</span>
+      <span class="batch-row-origine">${escHtml(origineCourte(it))}</span>
     `;
     liste.appendChild(row);
   });
