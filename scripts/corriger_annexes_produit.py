@@ -16,6 +16,13 @@ mais supprimé dans l'écran Facture — il est alors ignoré.
 
 --appliquer : sauvegarde la base dans backups/ puis corrige les lignes NON suspectes.
 --ligne     : restreint à une (ou plusieurs) ligne(s) par id — recommandé avec --appliquer.
+
+Compléter le poids/prix (une seule --ligne) et, si la ligne englobait des frais, les
+ressortir en lignes annexes. Le total de la facture doit rester identique, sinon refus :
+
+    python3 scripts/corriger_annexes_produit.py --ligne 1589 --poids 53 --prix 13.75 --appliquer
+    python3 scripts/corriger_annexes_produit.py --ligne 1363 --poids 119 --prix 12.50 \\
+            --annexe "transport:Transport:2.50" --annexe "taxe:Taxes ART8:9.82" --appliquer
 """
 
 import argparse
@@ -35,7 +42,25 @@ ap.add_argument("db", nargs="?", default=str(Path(__file__).parent.parent / "hac
 ap.add_argument("--designation", help="ne traiter que ce libellé (insensible à la casse)")
 ap.add_argument("--ligne", type=int, action="append", help="id de ligne facture (répétable)")
 ap.add_argument("--appliquer", action="store_true", help="écrire en base (sinon diagnostic seul)")
+ap.add_argument("--poids", type=float, help="poids facturé (kg) à renseigner — une seule --ligne")
+ap.add_argument("--prix", type=float, help="prix HT au kg à renseigner — une seule --ligne")
+ap.add_argument("--annexe", action="append", default=[],
+                help="frais à ressortir de la ligne : 'type:libellé:montant' (type = transport|taxe|consigne)")
 args = ap.parse_args()
+
+if (args.poids is None) != (args.prix is None):
+    sys.exit("--poids et --prix vont ensemble.")
+if (args.poids is not None or args.annexe) and len(args.ligne or []) != 1:
+    sys.exit("--poids/--prix/--annexe exigent exactement une --ligne.")
+ANNEXES = []
+for a in args.annexe:
+    try:
+        t, lib, m = a.split(":", 2)
+        ANNEXES.append((t.strip(), lib.strip(), round(float(m.replace(",", ".")), 2)))
+    except ValueError:
+        sys.exit(f"--annexe invalide : {a!r} (attendu 'type:libellé:montant')")
+    if t.strip() not in ("transport", "taxe", "consigne"):
+        sys.exit(f"--annexe : type {t!r} non autorisé (transport|taxe|consigne)")
 
 DB = Path(args.db)
 conn = sqlite3.connect(str(DB))
@@ -61,7 +86,10 @@ def eur(x):
 
 # ── Catalogue par fournisseur ────────────────────────────────────────────────
 catalogue = {}
-for r in cur.execute("SELECT id, fournisseur_id, code_article, designation, actif FROM catalogue_fournisseur"):
+_tva = "tva_percent" if "tva_percent" in {c[1] for c in cur.execute("PRAGMA table_info(catalogue_fournisseur)")} \
+    else "5.5"
+for r in cur.execute(f"SELECT id, fournisseur_id, code_article, designation, actif, "
+                     f"COALESCE({_tva}, 5.5) AS tva FROM catalogue_fournisseur"):
     catalogue.setdefault(r["fournisseur_id"], []).append(r)
 
 
@@ -152,10 +180,19 @@ for l, fiche, mode in candidates:
         alertes.append("sans cette ligne, la facture boucle avec le total papier → ligne en trop")
     if papier is not None and abs((l["montant_facture_ht"] or 0) - papier) < 1.0 and len(autres) > 1:
         alertes.append("le montant de la ligne = total papier de la facture → probablement le TOTAL saisi comme ligne")
-    if not (l["poids_facture_kg"] or 0) > 0:
-        alertes.append("pas de poids facturé : le €/kg ne pourra pas être calculé (à compléter dans l'écran Facture)")
+    # Ligne égale au total d'une AUTRE facture du fournisseur → deux factures fusionnées ?
+    for f2 in cur.execute(
+            """SELECT id, numero_facture, date_facture, total_ht_papier, montant_total_ht_facture
+               FROM factures WHERE fournisseur_id = ? AND id <> ?
+                 AND (ABS(COALESCE(total_ht_papier, -1) - ?) < 0.05
+                      OR ABS(COALESCE(montant_total_ht_facture, -1) - ?) < 0.05)""",
+            (l["fournisseur_id"], l["facture_id"], l["montant_facture_ht"] or 0, l["montant_facture_ht"] or 0)):
+        alertes.append(f"montant = total de la facture {f2['numero_facture']} du {f2['date_facture']} "
+                       f"(id {f2['id']}) déjà en base → DOUBLON entre factures")
+    if not (l["poids_facture_kg"] or 0) > 0 and args.poids is None:
+        alertes.append("pas de poids facturé : relancer avec --poids et --prix (voir le PDF de la facture)")
 
-    doublon = any("DÉJÀ" in a or "en trop" in a or "TOTAL" in a for a in alertes)
+    doublon = any("DÉJÀ" in a or "en trop" in a or "TOTAL" in a or "DOUBLON" in a for a in alertes)
     for a in alertes:
         print(f"  ⚠ {a}")
     if doublon:
@@ -166,6 +203,25 @@ for l, fiche, mode in candidates:
 
 print("─" * 100)
 print(f"\n{len(candidates)} ligne(s) examinée(s), {len(a_corriger)} reclassable(s).")
+
+# ── Contrôle poids/prix/annexes : le total de la ligne d'origine doit être conservé ──
+if args.poids is not None or ANNEXES:
+    if not a_corriger:
+        sys.exit("La ligne demandée n'est pas reclassable (voir ci-dessus) — rien n'est fait.")
+    l0 = a_corriger[0][0]
+    m0 = round(l0["montant_facture_ht"] or 0, 2)
+    m_march = round(args.poids * args.prix, 2) if args.poids is not None else m0 - sum(a[2] for a in ANNEXES)
+    m_ann = sum(a[2] for a in ANNEXES)
+    print(f"\nRépartition de la ligne {l0['id']} ({m0:.2f} €) :")
+    if args.poids is not None:
+        print(f"  marchandise {args.poids:g} kg × {args.prix:.2f} = {m_march:.2f} €")
+    for t, lib, m in ANNEXES:
+        print(f"  {t:<11} « {lib} » {m:.2f} €")
+    print(f"  total {m_march + m_ann:.2f} € (écart {m_march + m_ann - m0:+.2f} €)")
+    if abs(m_march + m_ann - m0) > 0.02:
+        sys.exit("✗ Le total ne correspond pas au montant d'origine : vérifier poids/prix/frais sur le PDF. "
+                 "Rien n'est fait.")
+    print("  ✓ Total de la facture conservé.")
 
 if not args.appliquer:
     if a_corriger:
@@ -195,8 +251,34 @@ with conn:
         cur.execute(
             """UPDATE facture_lignes
                SET type_ligne = 'marchandise',
-                   catalogue_fournisseur_id = COALESCE(catalogue_fournisseur_id, ?)
+                   catalogue_fournisseur_id = COALESCE(catalogue_fournisseur_id, ?),
+                   tva_pct = ?
                WHERE id = ? AND COALESCE(type_ligne, 'marchandise') <> 'marchandise'""",
-            (fiche["id"], l["id"]))
-        print(f"  ligne {l['id']} → marchandise, fiche {fiche['id']} ({cur.rowcount} modifiée)")
-print("\nTerminé. Montants, poids et prix inchangés : seuls la nature de la ligne et le lien catalogue changent.")
+            (fiche["id"], fiche["tva"], l["id"]))
+        print(f"  ligne {l['id']} → marchandise, fiche {fiche['id']}, TVA {fiche['tva']:g} % "
+              f"({cur.rowcount} modifiée)")
+        if args.poids is not None:
+            cur.execute(
+                """UPDATE facture_lignes
+                   SET poids_facture_kg = ?, prix_facture_ht = ?, montant_facture_ht = ?, unite_prix = 'kg'
+                   WHERE id = ?""", (args.poids, args.prix, round(args.poids * args.prix, 2), l["id"]))
+            print(f"  ligne {l['id']} → {args.poids:g} kg × {args.prix:.2f} = {args.poids * args.prix:.2f} €")
+        elif ANNEXES:
+            cur.execute("UPDATE facture_lignes SET montant_facture_ht = ? WHERE id = ?",
+                        (round((l["montant_facture_ht"] or 0) - sum(a[2] for a in ANNEXES), 2), l["id"]))
+        for t, lib, m in ANNEXES:
+            # TVA reprise d'une ligne du même type sur la facture, s'il y en a une
+            tva = cur.execute(
+                "SELECT tva_pct FROM facture_lignes WHERE facture_id = ? AND type_ligne = ? "
+                "AND tva_pct IS NOT NULL LIMIT 1", (l["facture_id"], t)).fetchone()
+            cur.execute(
+                """INSERT INTO facture_lignes (facture_id, designation, type_ligne, unite, unite_prix,
+                                              montant_facture_ht, tva_pct)
+                   VALUES (?, ?, ?, 'kg', 'kg', ?, ?)""",
+                (l["facture_id"], lib, t, m, tva[0] if tva else None))
+            print(f"  + ligne {t} « {lib} » {m:.2f} € (id {cur.lastrowid})")
+        tot = cur.execute("SELECT ROUND(SUM(montant_facture_ht), 2) FROM facture_lignes WHERE facture_id = ?",
+                          (l["facture_id"],)).fetchone()[0]
+        print(f"  somme des lignes de la facture : {tot:.2f} €")
+print("\nTerminé. Le total de chaque facture est inchangé : seules la nature des lignes, le lien "
+      "catalogue et, si demandé, le poids/prix sont mis à jour.")
