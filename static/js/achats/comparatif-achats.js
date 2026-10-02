@@ -267,6 +267,14 @@ function construireGrilleVS(lignes, opts = {}) {
   const { retirer = false, choisirCv = null, refId = null, pv = null } = opts;
   const cliquable = choisirCv != null;
 
+  // Articles désactivés masqués (sinon ils noient les achats réels — groupe volailles :
+  // 15 inactifs sur 24). Seule exception : la référence actuelle, pour pouvoir la remplacer.
+  const nbInactifs = lignes.filter((l) => !l.actif && l.id !== refId).length;
+  lignes = lignes.filter((l) => l.actif || l.id === refId);
+  const noteInactifs = nbInactifs
+    ? `<div class="cmp-note">${nbInactifs} article(s) désactivé(s) masqué(s) — retirez-les du groupe ou réactivez-les dans le catalogue achats.</div>`
+    : '';
+
   // La colonne choisie comme référence (arbitrage utilisateur) passe tout à gauche, devant
   // le tri par prix. Copie locale pour ne pas muter le tableau partagé (dernierVS.lignes).
   if (cliquable && refId != null) {
@@ -351,7 +359,7 @@ function construireGrilleVS(lignes, opts = {}) {
     ligneMarge('Coef', (mm) => mm.coef != null ? '×' + mm.coef.toFixed(2) : '—', 'coef');
   }
 
-  html += '</div>';
+  html += '</div>' + noteInactifs;
   return html;
 }
 
