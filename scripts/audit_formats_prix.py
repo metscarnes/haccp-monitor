@@ -89,9 +89,11 @@ for a in articles:
         signaler(a, "colis sans qté/colis → prix pièce incalculable")
     if f == "piece" and not pu:
         signaler(a, "pièce sans poids unitaire → €/kg incalculable")
-    if pu and pu > 5:
+    # Le poids unitaire et le poids colis n'entrent dans le €/kg qu'en format pièce/colis :
+    # en format kg (pièce entière de viande, jambon…) un gros poids est normal et sans effet.
+    if f == "piece" and pu and pu > 5:
         signaler(a, f"poids unitaire {pu} kg (poids du colis saisi par erreur ?)")
-    if pc and pu and qte and abs(pc - pu * qte) > 0.01:
+    if f == "colis" and pc and pu and qte and abs(pc - pu * qte) > 0.01:
         signaler(a, f"poids colis {pc} ≠ {qte} × {pu}")
     if kg is not None and kg > 0 and not (KG_MIN <= kg <= KG_MAX):
         motif = f"€/kg dérivé {kg:.2f} hors plage {KG_MIN:.0f}–{KG_MAX:.0f}"
@@ -111,9 +113,28 @@ for a in articles:
         print(f"         ⚠ {m}")
 print()
 
-print("--- 3. Produits de vente dont la marge s'appuie sur un article suspect ---")
+def prix_piece(a):
+    """Miroir de _calc_prix_piece (routes_achats.py)."""
+    p, f = a["prix_achat_ht"], a["format_prix"]
+    if p is None:
+        return None
+    if f == "piece":
+        return p
+    if f == "colis" and a["qte_par_colis"]:
+        return p / a["qte_par_colis"]
+    if f == "kg" and a["poids_unitaire_kg"]:
+        return p * a["poids_unitaire_kg"]
+    return None
+
+
+# Marge RÉELLE de chaque produit de vente, calculée comme _calc_marge (base HT/HT).
+# On ne signale que ce qui fausse effectivement le chiffre affiché.
+TAUX_MAX = 0.80
+print(f"--- 3. Marges de vente aberrantes (taux < 0 ou > {TAUX_MAX:.0%}, incalculable, "
+      "ou pièce sans poids vente) ---")
+par_id = {a["id"]: a for a in articles}
 liaisons = cur.execute(
-    """SELECT v.id, v.nom, v.prix_vente_ttc, v.unite_vente, v.poids_piece_kg,
+    """SELECT v.id, v.nom, v.prix_vente_ttc, v.tva_percent, v.unite_vente, v.poids_piece_kg,
               gv.ligne_choisie_id
        FROM comparatif_groupe_vente gv
        JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
@@ -121,8 +142,36 @@ liaisons = cur.execute(
        ORDER BY v.nom""").fetchall()
 n = 0
 for r in liaisons:
-    if r["ligne_choisie_id"] in anomalies:
+    a = par_id.get(r["ligne_choisie_id"])
+    unite = r["unite_vente"] or "kg"
+    motifs, taux, cout, ht = [], None, None, None
+    if a is None:
+        motifs.append("article d'achat de référence inactif ou supprimé")
+    elif r["prix_vente_ttc"]:
+        ht = r["prix_vente_ttc"] / (1 + (r["tva_percent"] or 0) / 100)
+        kg, ppk = prix_kg(a), r["poids_piece_kg"]
+        if unite == "piece":
+            if kg is not None and ppk:
+                cout = kg * ppk
+            else:
+                cout = prix_piece(a)
+                motifs.append("vendu à la pièce SANS poids pièce côté vente → coût = "
+                              "prix pièce achat (repli peu fiable)")
+        else:
+            cout = kg
+        if cout is None:
+            motifs.append("marge incalculable (coût d'achat indérivable)")
+        elif ht > 0:
+            taux = (ht - cout) / ht
+            if taux < 0 or taux > TAUX_MAX:
+                motifs.append(f"taux de marque {taux:.0%}")
+    if motifs:
         n += 1
-        print(f"  {r['nom']} ({fmt(r['prix_vente_ttc'], ' € TTC')}/{r['unite_vente'] or 'kg'}) "
-              f"→ achat #{r['ligne_choisie_id']} : {'; '.join(anomalies[r['ligne_choisie_id']])}")
-print(f"  {n} produit(s) de vente impacté(s)." if n else "  Aucun.")
+        detail = (f"vente HT {ht:.2f} − coût {cout:.2f} €/{unite}" if ht and cout is not None else "")
+        print(f"  {r['nom']} ({fmt(r['prix_vente_ttc'], ' € TTC')}/{unite}) → achat #{r['ligne_choisie_id']} "
+              f"{(a or {}).get('designation', '')}")
+        if detail:
+            print(f"         {detail}")
+        for m in motifs:
+            print(f"         ⚠ {m}")
+print(f"  {n} produit(s) de vente à revoir sur {len(liaisons)} reliés." if n else "  Aucun.")
