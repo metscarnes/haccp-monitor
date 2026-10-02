@@ -151,6 +151,11 @@ for r in liaisons:
         ht = r["prix_vente_ttc"] / (1 + (r["tva_percent"] or 0) / 100)
         kg, ppk = prix_kg(a), r["poids_piece_kg"]
         if unite == "piece":
+            # Poids pièce vente ≠ poids pièce achat d'un facteur ≥ 5 : faute de virgule probable
+            # (ex. bocal 0,72 kg saisi 0,072 côté vente → coût ÷ 10).
+            pu = a["poids_unitaire_kg"] if a["format_prix"] == "piece" else None
+            if ppk and pu and not (0.2 <= ppk / pu <= 5):
+                motifs.append(f"poids pièce vente {ppk} kg vs achat {pu} kg : faute de virgule ?")
             if kg is not None and ppk:
                 cout = kg * ppk
             else:
@@ -161,6 +166,8 @@ for r in liaisons:
             cout = kg
         if cout is None:
             motifs.append("marge incalculable (coût d'achat indérivable)")
+        elif cout == 0:
+            motifs.append("prix d'achat à 0 € dans le catalogue achats")
         elif ht > 0:
             taux = (ht - cout) / ht
             if taux < 0 or taux > TAUX_MAX:
