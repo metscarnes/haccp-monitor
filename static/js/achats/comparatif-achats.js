@@ -55,7 +55,7 @@ function calcMargeFront(prixVenteTtc, tvaPercent, achatRefKg, uniteVente, poidsP
     base_label: base,
     marge,
     taux_marge: venteHt > 0 ? marge / venteHt : null,
-    coef: cout > 0 ? ttc / cout : null,
+    coef: cout > 0 ? venteHt / cout : null,   // HT/HT, même base que marge et taux
   };
 }
 

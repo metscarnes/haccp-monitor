@@ -634,8 +634,9 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-code').value = a.code_article;
   document.getElementById('a-designation').value = a.designation;
   document.getElementById('a-prix').value = a.prix_achat_ht;
-  // Rétrocompat : ancienne valeur 'piece' → 'colis'
-  document.getElementById('a-format-prix').value = (a.format_prix === 'piece' ? 'colis' : (a.format_prix || 'kg'));
+  // 3 formats kg/colis/piece : on affiche la valeur telle quelle (ne JAMAIS convertir piece→colis,
+  // sinon un simple Enregistrer écrase le format et fausse €/kg et marges).
+  document.getElementById('a-format-prix').value = a.format_prix || 'kg';
   document.getElementById('a-qte-colis').value = a.qte_par_colis ?? '';
   document.getElementById('a-poids-unitaire').value = a.poids_unitaire_kg ?? '';
   document.getElementById('a-tva').value = a.tva_percent ?? 5.5;
@@ -1184,8 +1185,9 @@ function mvpcPreremplirPoids() {
 
 // Marge brute en direct — MIROIR FIDÈLE de _calc_marge backend.
 // - vente au kg    : coût = €/kg d'achat.
-// - vente à la pièce : coût = prix d'UNE pièce dérivé du colis (prix_piece, PRIORITAIRE, sans
-//   dépendre d'un poids) ; repli seulement si prix_piece indérivable → €/kg × poids saisi.
+// - vente à la pièce : coût = €/kg × poids de la pièce vendue (PRIORITAIRE, poids saisi côté
+//   vente = fiable) ; repli seulement sans poids → prix d'UNE pièce dérivé du colis (prix_piece).
+// Marge, taux et coef sont tous sur base HT.
 // TVA reprise de l'article d'achat (défaut alimentaire 5,5 %).
 // Renvoie {marge, unite, taux, coef, base} ou {motif} explicatif si incalculable.
 function mvpcCalcMarge() {
@@ -1204,17 +1206,17 @@ function mvpcCalcMarge() {
   // Équivalent €/kg (pièce seulement) : pour comparer vente vs achat sur la base de l'achat.
   let venteKg = null, achatKgEquiv = null;
   if (unite === 'piece') {
-    // Coût d'une pièce : prix d'achat d'une pièce (colis ÷ qté) si connu, sinon €/kg × poids.
-    if (achatPiece != null) {
+    // Coût d'une pièce : €/kg × poids vente si connus, sinon prix d'achat d'une pièce (colis ÷ qté).
+    const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
+    if (achatKg != null && poids > 0) {
+      cout = achatKg * poids;
+    } else if (achatPiece != null) {
       cout = achatPiece;
     } else {
-      const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
-      if (achatKg == null || isNaN(poids) || !(poids > 0)) return { motif: 'pas_cout_piece' };
-      cout = achatKg * poids;
+      return { motif: 'pas_cout_piece' };
     }
     u = 'pièce';
     // Équivalent €/kg si le poids d'une pièce est connu : vendu = venteHT/poids, acheté = €/kg.
-    const poids = parseFloat(document.getElementById('mvpc-poids-piece').value);
     if (poids > 0) {
       venteKg = venteHt / poids;
       achatKgEquiv = achatKg != null ? achatKg : (cout / poids);
@@ -1228,7 +1230,7 @@ function mvpcCalcMarge() {
   return {
     marge, unite: u, cout, venteKg, achatKgEquiv,
     taux: venteHt > 0 ? marge / venteHt : null,
-    coef: cout > 0 ? ttc / cout : null,
+    coef: cout > 0 ? venteHt / cout : null,
   };
 }
 

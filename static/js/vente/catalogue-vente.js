@@ -698,8 +698,8 @@ function malErreur(msg) {
 }
 
 // Marge qu'un article d'achat donnerait POUR le produit de vente courant (malProduitCourant).
-// Miroir de _calc_marge : vente kg → coût = €/kg ; vente pièce → coût = prix pièce (colis ÷ qté)
-// sinon €/kg × poids. Marge sur le prix HT (nette de TVA). null si non calculable.
+// Miroir de _calc_marge : vente kg → coût = €/kg ; vente pièce → coût = €/kg × poids vente
+// (prioritaire) sinon prix pièce dérivé du colis. Marge, taux et coef sur le prix HT. null si non calculable.
 function malCalcMarge(article) {
   const p = malProduitCourant;
   if (!p || !article) return null;
@@ -714,8 +714,8 @@ function malCalcMarge(article) {
 
   let cout, u, venteKg = null, achatKgEquiv = null;
   if (unite === 'piece') {
-    if (achatPiece != null) cout = achatPiece;
-    else if (achatKg != null && poids > 0) cout = achatKg * poids;
+    if (achatKg != null && poids > 0) cout = achatKg * poids;
+    else if (achatPiece != null) cout = achatPiece;
     else return null;
     u = 'pièce';
     if (poids > 0) { venteKg = venteHt / poids; achatKgEquiv = achatKg != null ? achatKg : cout / poids; }
@@ -727,7 +727,7 @@ function malCalcMarge(article) {
   const marge = venteHt - cout;
   return { marge, unite: u, cout, venteKg, achatKgEquiv,
            taux: venteHt > 0 ? marge / venteHt : null,
-           coef: cout > 0 ? ttc / cout : null };
+           coef: cout > 0 ? venteHt / cout : null };
 }
 
 async function malRechercherAchats(q) {

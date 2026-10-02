@@ -2700,7 +2700,8 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
 
     marge = prix_vente_ht - cout_matiere
     taux = marge / prix_vente_ht if prix_vente_ht > 0 else None
-    coef = ttc / cout_matiere if cout_matiere > 0 else None
+    # Coef HT/HT : même base que marge et taux (taux de marque = 1 − 1/coef).
+    coef = prix_vente_ht / cout_matiere if cout_matiere > 0 else None
 
     # Équivalents au kilo (utiles surtout pour la pièce : comparer vente vs achat en €/kg).
     # Chaque terme n'est renseigné que s'il est dérivable — sinon None (jamais inventé).
