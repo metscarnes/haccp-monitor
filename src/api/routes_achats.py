@@ -1340,6 +1340,32 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
         return article
 
 
+class ReferencesMargeBody(BaseModel):
+    ids: List[int]
+
+
+@router.post("/catalogue/references-marge")
+async def references_marge(body: ReferencesMargeBody, _=Depends(require_admin)):
+    """Produits de vente (actifs) dont la marge prend un de ces articles comme achat de
+    référence. Appelé AVANT de désactiver/supprimer : un article retiré en silence laissait
+    la marge calculée sur un prix figé (cas Pintade / Haricot vert, 02/10/2026)."""
+    if not body.ids:
+        return []
+    ph = ",".join("?" for _ in body.ids)
+    async with get_db() as db:
+        rows = await db.execute_fetchall(
+            f"""SELECT gv.ligne_choisie_id AS catalogue_fournisseur_id, v.id AS catalogue_vente_id,
+                       v.nom, cf.designation
+                FROM comparatif_groupe_vente gv
+                JOIN catalogue_vente v ON v.id = gv.catalogue_vente_id
+                JOIN catalogue_fournisseur cf ON cf.id = gv.ligne_choisie_id
+                WHERE gv.ligne_choisie_id IN ({ph}) AND v.actif = 1 AND v.boutique_id = 1
+                ORDER BY cf.designation, v.nom""",
+            body.ids,
+        )
+    return [dict(r) for r in rows]
+
+
 @router.delete("/catalogue/{article_id}", status_code=200)
 async def delete_article(article_id: int, permanent: bool = Query(False), _=Depends(require_admin)):
     async with get_db() as db:
@@ -3327,11 +3353,12 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
             prix_kg_par_ligne[ligne["id"]] = pk
             prix_piece_par_ligne[ligne["id"]] = _prix_piece_article(ligne)
 
-        prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None]
+        # Un article désactivé (plus commandé) ne peut pas être « le meilleur achat ».
+        prix_valides = [l["prix_kg"] for l in lignes if l["prix_kg"] is not None and l.get("actif")]
         if prix_valides:
             meilleur_prix = min(prix_valides)
             for ligne in lignes:
-                if ligne["prix_kg"] == meilleur_prix:
+                if ligne["prix_kg"] == meilleur_prix and ligne.get("actif"):
                     ligne["meilleur"] = True
 
         # Tri des colonnes du moins cher au plus cher (par €/kg normalisé). Les articles
@@ -3352,10 +3379,17 @@ async def get_comparatif(groupe_id: int, _=Depends(require_admin)):
             """,
             (groupe_id,),
         )
+        actif_par_ligne = {l["id"]: bool(l.get("actif")) for l in lignes}
         produits_vente = []
         for r in await cur_v.fetchall():
             pv = dict(r)
             ref = pv.get("ligne_choisie_id")
+            # Référence désactivée : son prix est figé/périmé → pas de marge affichée, on le signale.
+            pv["reference_inactive"] = ref in actif_par_ligne and not actif_par_ligne[ref]
+            if pv["reference_inactive"]:
+                pv["marge"] = None
+                produits_vente.append(pv)
+                continue
             # La ligne de référence doit appartenir au groupe (sinon ignorée).
             achat_ref_kg    = prix_kg_par_ligne.get(ref)    if ref in prix_kg_par_ligne    else None
             achat_ref_piece = prix_piece_par_ligne.get(ref) if ref in prix_piece_par_ligne else None

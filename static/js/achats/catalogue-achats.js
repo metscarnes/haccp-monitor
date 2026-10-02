@@ -393,12 +393,33 @@ function majBarreMasse() {
   if (modalNb) modalNb.textContent = ids.length;
 }
 
+// Avertissement si des articles servent d'achat de référence à la marge de produits de vente :
+// les retirer en silence laissait la marge calculée sur un prix figé. Renvoie '' si aucun.
+async function avertissementReferencesMarge(ids) {
+  try {
+    const r = await fetch(`${API_CAT}/references-marge`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: ids.map(Number) }),
+    });
+    if (!r.ok) return '';
+    const refs = await r.json();
+    if (!refs.length) return '';
+    const lignes = refs.slice(0, 15).map(x => `  • ${x.nom}  (achat : ${x.designation})`).join('\n');
+    const reste = refs.length > 15 ? `\n  … et ${refs.length - 15} autre(s)` : '';
+    return `\n\n⚠ ATTENTION — achat de référence pour la marge de ${refs.length} produit(s) de vente :\n`
+      + `${lignes}${reste}\n\nLeur marge ne sera plus calculée : choisissez un autre achat de référence dans le comparateur.`;
+  } catch (_) {
+    return '';   // vérification indisponible : on ne bloque pas l'action
+  }
+}
+
 async function actionMasse(action) {
   const ids = idsSelectionnes();
   if (!ids.length) return;
 
   const labels = { desactiver: 'désactiver', reactiver: 'réactiver', supprimer: 'supprimer définitivement' };
-  if (!confirm(`${labels[action]} ${ids.length} article(s) ?`)) return;
+  const avert = action === 'reactiver' ? '' : await avertissementReferencesMarge(ids);
+  if (!confirm(`${labels[action]} ${ids.length} article(s) ?${avert}`)) return;
 
   const btn = document.getElementById(`btn-masse-${action}`);
   btn.disabled = true;
@@ -952,7 +973,8 @@ function editerInline(td, articleId, champ, type) {
 async function supprimerArticle() {
   const id          = document.getElementById('a-id').value;
   const designation = document.getElementById('a-designation').value;
-  if (!confirm(`Supprimer définitivement "${designation}" ?\n\nL'article sera effacé de la base de données. Cette action est irréversible.`)) return;
+  const avert = await avertissementReferencesMarge([id]);
+  if (!confirm(`Supprimer définitivement "${designation}" ?\n\nL'article sera effacé de la base de données. Cette action est irréversible.${avert}`)) return;
 
   const btn = document.getElementById('btn-supprimer-article');
   btn.disabled = true; btn.textContent = 'Suppression…';

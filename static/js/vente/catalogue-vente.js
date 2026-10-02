@@ -36,6 +36,7 @@ const LIAISON_ICONES = {
   non_relie:            { icone: '🔗', classe: '', titre: "Relier à un article d'achat (suivi de marge)" },
   relie_sans_reference:  { icone: '🔗', classe: 'ach-btn--liaison-partielle', titre: "Relié, mais aucune ligne d'achat de référence choisie — marge indisponible" },
   relie_avec_marge:      { icone: '🔗', classe: 'ach-btn--liaison-ok', titre: 'Relié à un article d\'achat — marge suivie' },
+  reference_inactive:    { icone: '🔗', classe: 'ach-btn--liaison-partielle', titre: "L'achat de référence a été désactivé ou supprimé — choisissez-en un autre dans le comparateur" },
 };
 
 // ── Init ─────────────────────────────────────────────────────
@@ -241,7 +242,9 @@ function afficherTable(liste) {
   }
   tbody.innerHTML = liste.map(p => {
     const liaison = LIAISON_ICONES[p.liaison_achat] || LIAISON_ICONES.non_relie;
-    const tauxMarge = p.marge && p.marge.taux_marge != null
+    const tauxMarge = p.liaison_achat === 'reference_inactive'
+      ? `<span class="ach-marge-pct ach-marge-pct--neg" title="${LIAISON_ICONES.reference_inactive.titre}">⚠ réf. inactive</span>`
+      : p.marge && p.marge.taux_marge != null
       ? `<span class="ach-marge-pct${p.marge.taux_marge < 0 ? ' ach-marge-pct--neg' : ''}">${(p.marge.taux_marge * 100).toFixed(0)}%</span>`
       : '<span style="color:#9ca3af">—</span>';
     return `

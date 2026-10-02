@@ -95,9 +95,10 @@ async def liste_catalogue_vente(
         #   'relie_sans_reference' — groupe présent mais aucune ligne d'achat choisie
         #                            (gv.ligne_choisie_id NULL) → marge non calculable
         #   'relie_avec_marge'     — ligne de référence choisie ET marge calculable
+        #   'reference_inactive'   — la ligne choisie est désactivée/supprimée → marge masquée
         cur_liaison = await db.execute(
             """
-            SELECT gv.catalogue_vente_id, gv.ligne_choisie_id,
+            SELECT gv.catalogue_vente_id, gv.ligne_choisie_id, cf.id AS cf_id, cf.actif AS cf_actif,
                    cf.format_prix, cf.prix_achat_ht, cf.poids_colis_kg, cf.famille,
                    cf.poids_unitaire_kg, cf.qte_par_colis
             FROM   comparatif_groupe_vente gv
@@ -114,6 +115,11 @@ async def liste_catalogue_vente(
                 continue
             if liaison.get("ligne_choisie_id") is None:
                 p["liaison_achat"] = "relie_sans_reference"
+                p["marge"] = None
+                continue
+            # Référence désactivée ou supprimée : prix figé/périmé → pas de marge, on le signale.
+            if liaison.get("cf_id") is None or not liaison.get("cf_actif"):
+                p["liaison_achat"] = "reference_inactive"
                 p["marge"] = None
                 continue
             achat_ref_kg    = _prix_kg_article(liaison)

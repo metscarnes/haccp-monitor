@@ -298,8 +298,9 @@ function construireGrilleVS(lignes, opts = {}) {
     const croix = (retirer || cliquable)
       ? `<button class="cmp-remove" data-cat="${l.id}" title="Retirer du groupe">✕</button>` : '';
     const refBadge = (cliquable && l.id === refId) ? '<span class="cmp-ref-check">✓ réf</span>' : '';
+    const inactif = l.actif ? '' : ' <span class="cmp-indispo" title="Article désactivé dans le catalogue achats">inactif</span>';
     html += `<div class="cmp-cell cmp-cell--head${colClass(l)}"${attrs}>
-      <div class="cmp-fourn">${esc(l.fournisseur_nom)}</div>
+      <div class="cmp-fourn">${esc(l.fournisseur_nom)}${inactif}</div>
       ${refBadge}${croix}
     </div>`;
   });
@@ -394,7 +395,9 @@ function rendreMargeCarte(p, lignesAchat) {
   // ── Barre résumé (toujours visible) ─────────────────────────
   // marge + taux à droite si calculée, sinon un libellé « à compléter ».
   let resume;
-  if (m) {
+  if (p.reference_inactive) {
+    resume = `<span class="cmp-mc-attente" style="color:#c1452c;" title="L'achat de référence a été désactivé : son prix n'est plus à jour">⚠ réf. inactive</span>`;
+  } else if (m) {
     resume = `<span class="cmp-mc-marge">${fmtNb(m.marge)} ${m.base_label}</span>
       <span class="cmp-mc-taux">${m.taux_marge != null ? (m.taux_marge * 100).toFixed(0) + ' %' : '—'}</span>
       <span class="cmp-mc-coef">${m.coef != null ? '×' + m.coef.toFixed(2) : ''}</span>`;
@@ -443,7 +446,8 @@ function rendreMargeCarte(p, lignesAchat) {
     </div>`;
   } else {
     let msg;
-    if (refId == null) msg = '🎯 Cliquez une colonne du tableau ci-dessous pour choisir l\'achat de référence.';
+    if (p.reference_inactive) msg = '⚠ L\'achat de référence a été désactivé (prix périmé) : cliquez une colonne active ci-dessous pour en choisir un autre.';
+    else if (refId == null) msg = '🎯 Cliquez une colonne du tableau ci-dessous pour choisir l\'achat de référence.';
     else if (estPiece && !p.poids_piece_kg) msg = '⚖ Renseignez le poids d\'une pièce.';
     else if (p.prix_vente_ttc == null) msg = '💶 Renseignez le prix de vente.';
     else msg = '€/kg de la référence indisponible (poids du colis manquant).';
