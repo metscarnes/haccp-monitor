@@ -27,8 +27,10 @@ Un CSV des priorités par article est écrit (défaut audit_achats_AAAAMMJJ.csv)
 
 import argparse
 import csv
+import re
 import sqlite3
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
@@ -355,13 +357,18 @@ for cle, a, po, pn, v, imp, vol, d1, d2 in sorted(inst, key=lambda t: -t[1]["m"]
 titre("6. FACTURÉ vs COMMANDÉ — prix facturé au-dessus du prix de commande (au kg)")
 sf = defaultdict(lambda: [0.0, 0.0, 0])  # fournisseur -> [surfacturé, sous-facturé, nb lignes]
 sf_art = defaultdict(float)
-nb_comp = 0
+nb_comp = nb_incoh = 0
 for x in MARCH:
     r = x["r"]
     if x["signe"] != 1 or not x["kg"] or (r["unite_prix"] or "kg") != "kg":
         continue
     pc, pfh = r["prix_commande_ht"] or 0, r["prix_facture_ht"] or 0
     if pc <= 0 or pfh <= 0:
+        continue
+    # Prix de commande saisi dans une autre unité (colis, pièce…) : écart de ×1,5 ou plus
+    # → comparaison sans objet, ignorée plutôt que comptée en faux « sous-facturé ».
+    if not (1 / 1.5 <= pfh / pc <= 1.5):
+        nb_incoh += 1
         continue
     nb_comp += 1
     e = (pfh - pc) * x["kg"]
@@ -374,7 +381,8 @@ for x in MARCH:
         s[1] += e
 for cle, v in sf_art.items():
     art[cle]["surfact"] = v
-print(f"  {nb_comp} lignes comparables (prix de commande connu, facturées au kg).")
+print(f"  {nb_comp} lignes comparables (prix de commande connu, facturées au kg) ; "
+      f"{nb_incoh} ignorées (prix commande dans une autre unité : écart ×1,5 ou plus).")
 print(f"  {'Fournisseur':<30}{'surfacturé':>12}{'lignes':>8}{'sous-facturé':>14}{'net':>10}{'net/an':>10}")
 for n, (p, m_, k) in sorted(sf.items(), key=lambda kv: -kv[1][0]):
     print(f"  {court(n, 29):<30}{eur(p):>12}{k:>8}{eur(m_):>14}{eur(p + m_):>10}{eur((p + m_) * ANNU):>10}")
@@ -403,6 +411,18 @@ if {"comparatif_groupe", "comparatif_groupe_ligne"} <= TABLES:
            JOIN comparatif_groupe_ligne gl ON gl.groupe_id = g.id
            JOIN catalogue_fournisseur cf ON cf.id = gl.catalogue_fournisseur_id
            LEFT JOIN fournisseurs fo ON fo.id = cf.fournisseur_id""").fetchall()
+    PRIX_MIN_ALT = 0.70
+    MOTS_VIDES = {"VPF", "BQT", "PCE", "PCH", "SCHT", "COL", "AVEC", "SANS", "PAD", "NSV", "SUP",
+                  "SUPERIEUR", "FRANCAIS", "FRANCE", "TRAD", "DIPSA", "ANTOINE", "FRANCILIN"}
+
+    def mots(s):
+        s = unicodedata.normalize("NFKD", (s or "").upper()).encode("ascii", "ignore").decode()
+        return {w[:6] for w in re.findall(r"[A-Z]{4,}", s) if w not in MOTS_VIDES}
+
+    def mots_communs(a, b):
+        return bool(mots(a) & mots(b))
+
+    vus = set()
     groupes = defaultdict(list)
     for g in grp:
         groupes[(g["id"], g["nom"])].append(g)
@@ -423,23 +443,37 @@ if {"comparatif_groupe", "comparatif_groupe_ligne"} <= TABLES:
         for c in cand:
             if not c[6]:
                 continue
-            autres = [o for o in cand if o[0] != c[0]]
+            # Alternative crédible seulement : autre fournisseur, au moins un mot du libellé
+            # en commun (évite longe ↔ jarret, purée PdT ↔ carotte) et prix pas plus de 30 %
+            # en dessous (au-delà : pièce vs kg, autre produit ou autre qualité).
+            autres = [o for o in cand if o[0] != c[0] and mots_communs(o[3], c[3])
+                      and o[4] >= PRIX_MIN_ALT * c[4]]
+            if not autres:
+                continue
             meilleur = min(autres, key=lambda o: o[4])
             if meilleur[4] < c[4]:
                 g_ = (c[4] - meilleur[4]) * c[6]
                 gain += g_
-                gain_art[("cf", c[2])] += g_ * ANNU
+                # un même article peut figurer dans plusieurs groupes : on ne compte qu'une fois
+                gain_art[("cf", c[2])] = max(gain_art[("cf", c[2])], g_ * ANNU)
                 detail.append((c, meilleur, g_))
+        cle_det = tuple(sorted((c[2], m[2]) for c, m, _ in detail))
+        if cle_det and cle_det in vus:
+            continue
+        vus.add(cle_det)
         res.append((gain, gnom, cand, detail))
     print("  Gain = kg achetés × (prix payé − meilleur prix d'un AUTRE fournisseur du groupe).")
-    print("  ⚠ Vérifier l'équivalence qualité (label, race, calibre) avant de basculer.\n")
+    print(f"  Comparé seulement à un libellé proche (mot commun) et à un prix ≥ {PRIX_MIN_ALT:.0%} du prix payé.")
+    print("  ⚠ Vérifier l'équivalence qualité (label, origine, calibre) avant de basculer.\n")
     for gain, gnom, cand, detail in sorted(res, key=lambda t: -t[0])[: args.top]:
         if gain <= 0:
             continue
         print(f"  ■ {gnom} — gain potentiel {eur(gain)} sur la période ({eur(gain * ANNU)}/an)")
-        for c in sorted(cand, key=lambda c: c[4]):
-            print(f"      {court(c[1], 20):<21}{court(c[3], 36):<37}{c[4]:>7.2f} €/kg ({c[5]:<9})"
-                  f"{('  ' + format(c[6], '.0f') + ' kg achetés') if c[6] else ''}")
+        for c, m, g_ in sorted(detail, key=lambda d: -d[2]):
+            print(f"      payé    {court(c[1], 18):<19}{court(c[3], 36):<37}{c[4]:>7.2f} €/kg  "
+                  f"{c[6]:.0f} kg")
+            print(f"      ailleurs {court(m[1], 17):<19}{court(m[3], 36):<37}{m[4]:>7.2f} €/kg  "
+                  f"({m[5]}) → {eur(g_)}")
     if not any(t[0] > 0 for t in res):
         print("  Aucun groupe où un autre fournisseur est moins cher sur un article acheté.")
 else:
