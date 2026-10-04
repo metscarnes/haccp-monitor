@@ -16,9 +16,14 @@ Répond à 5 questions, sur la vraie base :
 Lecture seule, ne modifie rien.
 
     python3 scripts/audit_prix_vente_marge.py [chemin/vers/haccp.db] [--jours 90]
+
+Le script réutilise les règles de marge de l'application : il lui faut ses dépendances.
+Lancé avec le python système (sans FastAPI, jose…), il se relance tout seul avec le venv
+du service (~/haccp-monitor/venv), comme `venv/bin/python scripts/audit_prix_vente_marge.py`.
 """
 
 import argparse
+import os
 import sqlite3
 import statistics
 import sys
@@ -29,6 +34,7 @@ from pathlib import Path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 except Exception:
     pass
 
@@ -43,8 +49,16 @@ args = ap.parse_args()
 # Mêmes règles de calcul que l'application (aucune copie à faire diverger).
 try:
     from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
-except Exception as e:  # pragma: no cover - dépend de l'environnement
-    sys.exit(f"Import des règles de marge impossible ({e}). Lancer depuis ~/haccp-monitor.")
+except ImportError as e:  # pragma: no cover - dépend de l'environnement
+    # Python système sans les dépendances de l'appli : on se relance UNE fois avec le
+    # venv du service s'il existe (la variable d'environnement évite toute boucle).
+    venv_python = RACINE / "venv" / "bin" / "python"
+    if venv_python.exists() and os.environ.get("HACCP_AUDIT_VENV") != "1":
+        os.environ["HACCP_AUDIT_VENV"] = "1"
+        os.execv(str(venv_python), [str(venv_python), *sys.argv])
+    sys.exit(f"Import des règles de marge impossible ({e}).\n"
+             f"Lancer avec le python du venv : cd ~/haccp-monitor && "
+             f"venv/bin/python scripts/audit_prix_vente_marge.py")
 
 conn = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
 conn.row_factory = sqlite3.Row
