@@ -1101,6 +1101,77 @@ CREATE TABLE IF NOT EXISTS achats_reels_periode (
     FOREIGN KEY (boutique_id)  REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id) REFERENCES personnel(id)
 );
+
+-- ===========================================================================
+-- v7.7 — Prix de vente : historique + propositions « marge maintenue »
+-- (voir src/prix_vente.py et la migration v7.7 pour les bases existantes)
+-- ===========================================================================
+
+-- Historique des prix de vente : une ligne à CHAQUE changement de
+-- catalogue_vente.prix_vente_ttc, d'où qu'il vienne (fiche vente, comparateur, import
+-- Excel, création, proposition validée…). Le catalogue garde la seule valeur vivante ;
+-- cette table garde la trace : qui, quand, pourquoi, et la marge avant/après.
+--   cout_matiere           : coût matière HT d'UNE unité de vente (kg ou pièce) au moment
+--                            du changement, via l'achat de référence. NULL si incalculable.
+--   taux_marge_avant/apres : taux de marque (0..1) avec l'ancien / le nouveau prix.
+--   motif                  : creation | manuel | comparateur | import | proposition | calculateur
+CREATE TABLE IF NOT EXISTS historique_prix_vente (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogue_vente_id INTEGER NOT NULL,
+    prix_ancien_ttc    REAL,
+    prix_nouveau_ttc   REAL,
+    cout_matiere       REAL,
+    taux_marge_avant   REAL,
+    taux_marge_apres   REAL,
+    motif              TEXT    NOT NULL DEFAULT 'manuel',
+    proposition_id     INTEGER,
+    reception_id       INTEGER,
+    role               TEXT,
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE,
+    FOREIGN KEY (proposition_id)     REFERENCES propositions_prix_vente(id) ON DELETE SET NULL,
+    FOREIGN KEY (reception_id)       REFERENCES receptions(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_historique_prix_vente_produit
+    ON historique_prix_vente(catalogue_vente_id, created_at DESC);
+
+-- Propositions de nouveau prix de vente, nées d'une variation du coût de référence
+-- (prix d'achat appliqué à la réception, édition du catalogue achats, inventaire,
+-- import de tarif, changement d'achat de référence dans le comparateur).
+-- UNE seule proposition 'en_attente' par produit (index unique partiel) : une nouvelle
+-- variation avant décision met à jour cout_nouveau mais GARDE la marge de référence —
+-- on revient toujours à la dernière marge validée, jamais à un état intermédiaire.
+--   prix_vente_reference_ttc / cout_reference : état au moment de la marge de référence
+--   taux_reference / marge_reference_ht       : cette marge, figée (taux de marque, € HT)
+--   statut : en_attente | appliquee | gardee | remplacee (prix changé ailleurs) |
+--            annulee (le coût est revenu à celui de la référence)
+CREATE TABLE IF NOT EXISTS propositions_prix_vente (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogue_vente_id       INTEGER NOT NULL,
+    catalogue_fournisseur_id INTEGER,
+    reception_id             INTEGER,
+    origine                  TEXT    NOT NULL DEFAULT 'reception',
+    prix_vente_reference_ttc REAL    NOT NULL,
+    cout_reference           REAL    NOT NULL,
+    taux_reference           REAL,
+    marge_reference_ht       REAL,
+    cout_nouveau             REAL    NOT NULL,
+    statut                   TEXT    NOT NULL DEFAULT 'en_attente',
+    prix_decide_ttc          REAL,
+    decided_at               DATETIME,
+    decided_role             TEXT,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id) ON DELETE CASCADE,
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id) ON DELETE SET NULL,
+    FOREIGN KEY (reception_id)             REFERENCES receptions(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_propositions_prix_vente_attente
+    ON propositions_prix_vente(catalogue_vente_id) WHERE statut = 'en_attente';
+CREATE INDEX IF NOT EXISTS idx_propositions_prix_vente_reception
+    ON propositions_prix_vente(reception_id, statut);
 """
 
 SEED_SQL = """
@@ -1855,6 +1926,51 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # ('saignant'|'a_point'|'bien_cuit'|'generale') — temperature_cible
             # (déjà existante) porte la valeur numérique correspondante.
             "ALTER TABLE cuissons ADD COLUMN degre_cuisson TEXT",
+            # v7.7 — Prix de vente « marge maintenue » : historique de chaque changement de
+            # prix de vente + propositions de nouveau prix quand le coût de référence bouge
+            # (cf. SCHEMA_SQL et src/prix_vente.py). Nouvelles tables : rejouées ici pour les
+            # bases existantes, sans effet si elles sont déjà là.
+            """CREATE TABLE IF NOT EXISTS historique_prix_vente (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                catalogue_vente_id INTEGER NOT NULL,
+                prix_ancien_ttc    REAL,
+                prix_nouveau_ttc   REAL,
+                cout_matiere       REAL,
+                taux_marge_avant   REAL,
+                taux_marge_apres   REAL,
+                motif              TEXT    NOT NULL DEFAULT 'manuel',
+                proposition_id     INTEGER,
+                reception_id       INTEGER,
+                role               TEXT,
+                created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE,
+                FOREIGN KEY (proposition_id)     REFERENCES propositions_prix_vente(id) ON DELETE SET NULL,
+                FOREIGN KEY (reception_id)       REFERENCES receptions(id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_historique_prix_vente_produit ON historique_prix_vente(catalogue_vente_id, created_at DESC)",
+            """CREATE TABLE IF NOT EXISTS propositions_prix_vente (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                catalogue_vente_id       INTEGER NOT NULL,
+                catalogue_fournisseur_id INTEGER,
+                reception_id             INTEGER,
+                origine                  TEXT    NOT NULL DEFAULT 'reception',
+                prix_vente_reference_ttc REAL    NOT NULL,
+                cout_reference           REAL    NOT NULL,
+                taux_reference           REAL,
+                marge_reference_ht       REAL,
+                cout_nouveau             REAL    NOT NULL,
+                statut                   TEXT    NOT NULL DEFAULT 'en_attente',
+                prix_decide_ttc          REAL,
+                decided_at               DATETIME,
+                decided_role             TEXT,
+                created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id) ON DELETE CASCADE,
+                FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id) ON DELETE SET NULL,
+                FOREIGN KEY (reception_id)             REFERENCES receptions(id) ON DELETE SET NULL
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_propositions_prix_vente_attente ON propositions_prix_vente(catalogue_vente_id) WHERE statut = 'en_attente'",
+            "CREATE INDEX IF NOT EXISTS idx_propositions_prix_vente_reception ON propositions_prix_vente(reception_id, statut)",
         ]
         for sql in migrations:
             try:

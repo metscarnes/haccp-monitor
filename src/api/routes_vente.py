@@ -12,6 +12,16 @@ PUT    /api/vente/catalogue/{id}       → modifier
 DELETE /api/vente/catalogue/{id}       → désactiver (ou supprimer si permanent=true)
 GET    /api/vente/catalogue/template   → télécharger template Excel
 POST   /api/vente/catalogue/import     → importer depuis Excel
+GET    /api/vente/catalogue/{id}/historique-prix → changements de prix du produit
+
+Prix de vente « marge maintenue » (moteur : src/prix_vente.py) :
+GET    /api/vente/propositions-prix          → propositions de nouveau prix (?reception_id, ?statut)
+POST   /api/vente/propositions-prix/decider  → appliquer / garder (admin)
+GET    /api/vente/reglages-prix              → terminaison ,90, sens d'arrondi, politique
+PUT    /api/vente/reglages-prix              → modifier ces réglages (admin)
+
+Toute écriture de prix_vente_ttc passe par src.prix_vente (historique + clôture des
+propositions en attente).
 """
 
 import io
@@ -26,6 +36,10 @@ from pydantic import BaseModel
 from src.api.routes_auth import require_admin
 from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
 from src.database import get_db
+from src.prix_vente import (
+    changer_prix_vente, decider_propositions, ecrire_reglages, historique_prix_vente,
+    lire_reglages, lister_propositions, tracer_changement_prix_vente,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +81,27 @@ class ProduitVenteUpdate(BaseModel):
     sous_famille: Optional[str] = None
     actif: Optional[bool] = None
     suivi_cuisson_auto: Optional[bool] = None
+
+
+class DecisionPrix(BaseModel):
+    proposition_id: int
+    action: str                         # 'appliquer' | 'garder'
+    prix_ttc: Optional[float] = None    # prix retenu (appliquer) ; défaut = prix proposé
+
+
+class DecisionsPrixBody(BaseModel):
+    decisions: list[DecisionPrix]
+
+
+class ReglagesPrixBody(BaseModel):
+    terminaison: Optional[float] = None      # 0.90 → prix en X,90
+    sens: Optional[str] = None               # proche | superieur | inferieur | aucun
+    politique: Optional[str] = None          # taux | euro
+    precocher_baisse: Optional[bool] = None  # cocher d'office les baisses de prix
+
+
+def _role(auth) -> str:
+    return auth.get("role", "admin") if isinstance(auth, dict) else "admin"
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +489,7 @@ async def download_template_vente():
 
 
 @router.post("/catalogue/import", status_code=200)
-async def import_catalogue_vente(fichier: UploadFile = File(...), _=Depends(require_admin)):
+async def import_catalogue_vente(fichier: UploadFile = File(...), auth=Depends(require_admin)):
     """Import Excel catalogue vente — UPSERT sur le nom du produit."""
     try:
         import openpyxl
@@ -533,7 +568,7 @@ async def import_catalogue_vente(fichier: UploadFile = File(...), _=Depends(requ
             code_vente   = col(row_num, "code_vente") or None
 
             cur = await db.execute(
-                "SELECT id FROM catalogue_vente WHERE boutique_id = 1 AND LOWER(TRIM(nom)) = LOWER(TRIM(?))",
+                "SELECT id, prix_vente_ttc FROM catalogue_vente WHERE boutique_id = 1 AND LOWER(TRIM(nom)) = LOWER(TRIM(?))",
                 (nom,)
             )
             existing = await cur.fetchone()
@@ -546,15 +581,22 @@ async def import_catalogue_vente(fichier: UploadFile = File(...), _=Depends(requ
                        WHERE id=?""",
                     (code_vente, prix, tva, dlc, temp, fmt, famille, sous_famille, existing["id"])
                 )
+                await tracer_changement_prix_vente(
+                    db, existing["id"], existing["prix_vente_ttc"], prix,
+                    motif="import", role=_role(auth),
+                )
                 stats["mis_a_jour"] += 1
             else:
-                await db.execute(
+                cur_ins = await db.execute(
                     """INSERT INTO catalogue_vente
                            (boutique_id, nom, code_vente, prix_vente_ttc, tva_percent,
                             dlc_jours, temperature_conservation, format_etiquette,
                             famille, sous_famille)
                        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (nom, code_vente, prix, tva, dlc, temp, fmt, famille, sous_famille)
+                )
+                await tracer_changement_prix_vente(
+                    db, cur_ins.lastrowid, None, prix, motif="import", role=_role(auth),
                 )
                 stats["crees"] += 1
         await db.commit()
@@ -572,8 +614,20 @@ async def detail_produit_vente(produit_id: int):
     return dict(row)
 
 
+@router.get("/catalogue/{produit_id}/historique-prix")
+async def historique_prix_produit(produit_id: int, limit: int = Query(100, ge=1, le=1000)):
+    """Changements de prix de vente du produit (plus récent d'abord) : ancien → nouveau,
+    coût matière et taux de marque au moment du changement, motif, rôle."""
+    async with get_db() as db:
+        cur = await db.execute("SELECT id FROM catalogue_vente WHERE id = ?", (produit_id,))
+        if not await cur.fetchone():
+            raise HTTPException(404, "Produit de vente introuvable")
+        return {"catalogue_vente_id": produit_id,
+                "historique": await historique_prix_vente(db, produit_id, limit)}
+
+
 @router.post("/catalogue", status_code=201)
-async def creer_produit_vente(body: ProduitVenteCreate, _=Depends(require_admin)):
+async def creer_produit_vente(body: ProduitVenteCreate, auth=Depends(require_admin)):
     async with get_db() as db:
         unite = body.unite_vente if body.unite_vente in ("kg", "piece") else "kg"
         poids = body.poids_piece_kg if unite == "piece" else None
@@ -588,13 +642,16 @@ async def creer_produit_vente(body: ProduitVenteCreate, _=Depends(require_admin)
              body.format_etiquette, body.famille, body.sous_famille,
              1 if body.suivi_cuisson_auto else 0),
         )
+        await tracer_changement_prix_vente(
+            db, cur.lastrowid, None, body.prix_vente_ttc, motif="creation", role=_role(auth),
+        )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (cur.lastrowid,))
         return dict(await cur2.fetchone())
 
 
 @router.put("/catalogue/{produit_id}")
-async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, _=Depends(require_admin)):
+async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, auth=Depends(require_admin)):
     async with get_db() as db:
         cur = await db.execute("SELECT id FROM catalogue_vente WHERE id = ?", (produit_id,))
         if not await cur.fetchone():
@@ -611,9 +668,17 @@ async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, _=De
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
 
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        values = list(fields.values()) + [produit_id]
-        await db.execute(f"UPDATE catalogue_vente SET {set_clause} WHERE id = ?", values)
+        # Le prix passe par la porte unique (historique + clôture d'une proposition en
+        # attente), APRÈS les autres champs : la marge tracée tient compte d'un changement
+        # d'unité, de poids ou de TVA fait dans la même requête.
+        prix_fourni = "prix_vente_ttc" in fields
+        nouveau_prix = fields.pop("prix_vente_ttc", None)
+        if fields:
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            values = list(fields.values()) + [produit_id]
+            await db.execute(f"UPDATE catalogue_vente SET {set_clause} WHERE id = ?", values)
+        if prix_fourni:
+            await changer_prix_vente(db, produit_id, nouveau_prix, motif="manuel", role=_role(auth))
         await db.commit()
 
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (produit_id,))
@@ -636,3 +701,52 @@ async def supprimer_produit_vente(
             await db.execute("UPDATE catalogue_vente SET actif = 0 WHERE id = ?", (produit_id,))
         await db.commit()
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Prix de vente « marge maintenue » — propositions, décisions, réglages
+# ---------------------------------------------------------------------------
+
+@router.get("/propositions-prix")
+async def get_propositions_prix(
+    reception_id: Optional[int] = Query(None, description="Propositions nées de cette réception"),
+    statut: str = Query("en_attente", description="en_attente | appliquee | gardee | remplacee | annulee | tous"),
+):
+    """Propositions de nouveau prix de vente (le coût de l'achat de référence a bougé).
+
+    Chaque proposition est recalculée au moment de la lecture (prix actuel, coût actuel,
+    réglages d'arrondi) : prix proposé, autre ,90, marge avant/après, pré-cochage.
+    `compteurs.a_decider` = propositions qui changent réellement le prix (badge).
+    """
+    async with get_db() as db:
+        return await lister_propositions(
+            db, reception_id=reception_id, statut=None if statut == "tous" else statut,
+        )
+
+
+@router.post("/propositions-prix/decider")
+async def post_decider_propositions(body: DecisionsPrixBody, auth=Depends(require_admin)):
+    """Applique ou écarte des propositions (réservé à l'admin : un compte équipe voit les
+    propositions mais ne change pas les prix). Les propositions déjà traitées sont
+    signalées dans `erreurs` sans bloquer les autres."""
+    if not body.decisions:
+        raise HTTPException(400, "Aucune décision transmise")
+    async with get_db() as db:
+        return await decider_propositions(
+            db, [d.model_dump() for d in body.decisions], role=_role(auth),
+        )
+
+
+@router.get("/reglages-prix")
+async def get_reglages_prix():
+    async with get_db() as db:
+        return await lire_reglages(db)
+
+
+@router.put("/reglages-prix")
+async def put_reglages_prix(body: ReglagesPrixBody, _=Depends(require_admin)):
+    async with get_db() as db:
+        try:
+            return await ecrire_reglages(db, **body.model_dump())
+        except ValueError as e:
+            raise HTTPException(422, str(e))

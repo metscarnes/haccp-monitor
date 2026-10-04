@@ -995,6 +995,10 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
     EXEMPLES_CODES = {"carc-bf", "stk-185"}
 
     async with get_db() as db:
+        # Nouveau tarif importé → propositions de prix de vente pour les produits dont
+        # le coût de l'achat de référence change (photo de tous les coûts avant import).
+        from src.prix_vente import photo_couts_avant, propager_variations_cout
+        couts_avant = await photo_couts_avant(db, tous=True)
         for row_num in range(5, ws.max_row + 1):
             nom_fourn = col(row_num, "fournisseur_nom")
             code = col(row_num, "code_article")
@@ -1087,6 +1091,9 @@ async def import_catalogue_upload(fichier: UploadFile = File(...), _=Depends(req
                 stats["crees"] += 1
 
         await db.commit()
+        stats["propositions_prix_vente"] = len(
+            await propager_variations_cout(db, couts_avant, origine="import_achat")
+        )
 
     return stats
 
@@ -1302,6 +1309,11 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
         return article
 
 
+# Champs d'un article d'achat dont dépend le coût matière (€/kg, prix pièce).
+_CHAMPS_COUT_ACHAT = {"prix_achat_ht", "format_prix", "qte_par_colis", "poids_unitaire_kg",
+                      "poids_colis_kg", "famille"}
+
+
 @router.put("/catalogue/{article_id}")
 async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depends(require_admin)):
     async with get_db() as db:
@@ -1327,11 +1339,19 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
         fields["date_maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         set_clause = ", ".join(f"{k} = ?" for k in fields)
         values = list(fields.values()) + [article_id]
-        try:
-            await db.execute(f"UPDATE catalogue_fournisseur SET {set_clause} WHERE id = ?", values)
-            await db.commit()
-        except sqlite3.IntegrityError:
-            raise HTTPException(409, "Ce code article existe déjà pour ce fournisseur")
+        # Un champ qui change le €/kg ou le prix pièce → propositions de prix de vente
+        # pour les produits dont cet article est l'achat de référence.
+        from src.prix_vente import suivre_variations_cout
+        impact_cout = bool(_CHAMPS_COUT_ACHAT & set(fields))
+        async with suivre_variations_cout(
+            db, origine="catalogue_achat",
+            catalogue_fournisseur_ids=[article_id] if impact_cout else None,
+        ):
+            try:
+                await db.execute(f"UPDATE catalogue_fournisseur SET {set_clause} WHERE id = ?", values)
+                await db.commit()
+            except sqlite3.IntegrityError:
+                raise HTTPException(409, "Ce code article existe déjà pour ce fournisseur")
 
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
         article = dict(await cur2.fetchone())
@@ -2669,6 +2689,25 @@ async def comparer_prix_catalogue(body: ComparerPrixBody):
     return {"resultats": resultats, "seuil_pct": body.seuil_pct}
 
 
+def _cout_matiere(achat_ref_kg, unite_vente="kg", poids_piece_kg=None, achat_ref_piece=None):
+    """Coût matière HT d'UNE unité de vente (kg ou pièce), à partir de l'achat de référence.
+
+    Règle unique partagée par `_calc_marge` et le moteur de prix de vente (src/prix_vente.py) :
+      - kg    : achat €/kg.
+      - pièce : achat €/kg × poids_piece_kg (catalogue vente, fiable) SINON prix d'une pièce
+                dérivé de l'achat (repli).
+    None si non dérivable — jamais de chiffre inventé.
+    """
+    achat = float(achat_ref_kg) if achat_ref_kg is not None else None
+    if unite_vente == "piece":
+        if achat is not None and poids_piece_kg and float(poids_piece_kg) > 0:
+            return achat * float(poids_piece_kg)
+        if achat_ref_piece is not None:
+            return float(achat_ref_piece)
+        return None
+    return achat
+
+
 def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
                 unite_vente="kg", poids_piece_kg=None, achat_ref_piece=None):
     """Marge à la volée d'un produit revendu en l'état, au kg OU à la pièce.
@@ -2707,22 +2746,12 @@ def _calc_marge(prix_vente_ttc, tva_percent, achat_ref_kg,
     tva = float(tva_percent) if tva_percent is not None else 0.0
     prix_vente_ht = ttc / (1.0 + tva / 100.0)
 
-    if unite_vente == "piece":
-        # Voie privilégiée : achat €/kg (fiable) × poids de la pièce VENDUE (catalogue vente,
-        # sous contrôle direct) — n'introduit aucune donnée résiduelle du catalogue achats.
-        if achat is not None and poids_piece_kg and float(poids_piece_kg) > 0:
-            cout_matiere = achat * float(poids_piece_kg)
-        elif achat_ref_piece is not None:
-            # Repli : prix d'UNE pièce dérivé du colis/poids unitaire côté achat.
-            cout_matiere = float(achat_ref_piece)
-        else:
-            return None  # ni (€/kg + poids vente) ni prix pièce dérivable → marge incalculable
-        base_label = "€/pièce"
-    else:
-        if achat is None:
-            return None  # vente au kg sans €/kg d'achat → incalculable
-        cout_matiere = achat  # achat déjà au kg
-        base_label = "€/kg"
+    # Pièce : achat €/kg × poids de la pièce VENDUE (catalogue vente, sous contrôle direct),
+    # repli prix d'une pièce côté achat. Kg : achat €/kg. None → marge incalculable.
+    cout_matiere = _cout_matiere(achat, unite_vente, poids_piece_kg, achat_ref_piece)
+    if cout_matiere is None:
+        return None
+    base_label = "€/pièce" if unite_vente == "piece" else "€/kg"
 
     marge = prix_vente_ht - cout_matiere
     taux = marge / prix_vente_ht if prix_vente_ht > 0 else None
@@ -3488,8 +3517,6 @@ async def update_comparatif_vente(
             raise HTTPException(404, "Ce produit de vente n'est pas associé à ce groupe")
 
         sets, vals = [], []
-        if "prix_vente_ttc" in fournis:
-            sets.append("prix_vente_ttc = ?"); vals.append(body.prix_vente_ttc)
         if "unite_vente" in fournis:
             unite = body.unite_vente if body.unite_vente in ("kg", "piece") else "kg"
             sets.append("unite_vente = ?"); vals.append(unite)
@@ -3505,7 +3532,13 @@ async def update_comparatif_vente(
                 f"UPDATE catalogue_vente SET {', '.join(sets)} WHERE id = ? AND boutique_id = 1",
                 vals,
             )
-            await db.commit()
+        # Le prix passe par la porte unique du prix de vente (historique + clôture d'une
+        # proposition en attente), après l'unité/le poids pour tracer la bonne marge.
+        if "prix_vente_ttc" in fournis:
+            from src.prix_vente import changer_prix_vente
+            await changer_prix_vente(db, cv_id, body.prix_vente_ttc, motif="comparateur",
+                                     role=_.get("role", "admin") if isinstance(_, dict) else None)
+        await db.commit()
     return await get_comparatif(groupe_id, _)
 
 
@@ -3534,11 +3567,15 @@ async def set_comparatif_vente_reference(
             if not await cur_m.fetchone():
                 raise HTTPException(400, "Cette ligne d'achat n'appartient pas au groupe")
 
-        await db.execute(
-            "UPDATE comparatif_groupe_vente SET ligne_choisie_id = ? WHERE groupe_id = ? AND catalogue_vente_id = ?",
-            (ref_id, groupe_id, cv_id),
-        )
-        await db.commit()
+        # Changer d'achat de référence change le coût matière : proposition de prix si
+        # le coût bouge (la marge de référence reste celle d'avant le changement).
+        from src.prix_vente import suivre_variations_cout
+        async with suivre_variations_cout(db, origine="reference", cv_ids=[cv_id]):
+            await db.execute(
+                "UPDATE comparatif_groupe_vente SET ligne_choisie_id = ? WHERE groupe_id = ? AND catalogue_vente_id = ?",
+                (ref_id, groupe_id, cv_id),
+            )
+            await db.commit()
     return await get_comparatif(groupe_id, _)
 
 
@@ -4949,29 +4986,37 @@ async def appliquer_prix_catalogue(catalogue_id: int, body: AppliquerPrixBody):
             raise HTTPException(404, "Article catalogue introuvable")
         ancien = art["prix_achat_ht"]
 
-        await db.execute(
-            "UPDATE catalogue_fournisseur SET prix_achat_ht = ?, date_maj = CURRENT_TIMESTAMP WHERE id = ?",
-            (body.nouveau_prix_ht, catalogue_id),
-        )
-        # Marquer la décision dans l'historique (dernière obs. de la réception, sinon la
-        # plus récente pour cet article).
-        if body.reception_id is not None:
+        # Nouveau prix de référence → propositions de prix de vente pour chaque produit
+        # dont cet article est l'achat de référence (marge maintenue, arrondi ,90).
+        from src.prix_vente import suivre_variations_cout
+        async with suivre_variations_cout(
+            db, origine="reception" if body.reception_id is not None else "catalogue_achat",
+            catalogue_fournisseur_ids=[catalogue_id], reception_id=body.reception_id,
+        ) as suivi:
             await db.execute(
-                """UPDATE historique_prix_achat SET applique_au_catalogue = 1
-                   WHERE id = (SELECT MAX(id) FROM historique_prix_achat
-                               WHERE catalogue_fournisseur_id = ? AND reception_id = ?)""",
-                (catalogue_id, body.reception_id),
+                "UPDATE catalogue_fournisseur SET prix_achat_ht = ?, date_maj = CURRENT_TIMESTAMP WHERE id = ?",
+                (body.nouveau_prix_ht, catalogue_id),
             )
-        else:
-            await db.execute(
-                """UPDATE historique_prix_achat SET applique_au_catalogue = 1
-                   WHERE id = (SELECT MAX(id) FROM historique_prix_achat
-                               WHERE catalogue_fournisseur_id = ?)""",
-                (catalogue_id,),
-            )
-        await db.commit()
+            # Marquer la décision dans l'historique (dernière obs. de la réception, sinon la
+            # plus récente pour cet article).
+            if body.reception_id is not None:
+                await db.execute(
+                    """UPDATE historique_prix_achat SET applique_au_catalogue = 1
+                       WHERE id = (SELECT MAX(id) FROM historique_prix_achat
+                                   WHERE catalogue_fournisseur_id = ? AND reception_id = ?)""",
+                    (catalogue_id, body.reception_id),
+                )
+            else:
+                await db.execute(
+                    """UPDATE historique_prix_achat SET applique_au_catalogue = 1
+                       WHERE id = (SELECT MAX(id) FROM historique_prix_achat
+                                   WHERE catalogue_fournisseur_id = ?)""",
+                    (catalogue_id,),
+                )
+            await db.commit()
     return {"ok": True, "catalogue_fournisseur_id": catalogue_id,
-            "ancien_prix_ht": ancien, "nouveau_prix_ht": body.nouveau_prix_ht}
+            "ancien_prix_ht": ancien, "nouveau_prix_ht": body.nouveau_prix_ht,
+            "propositions_prix_vente": suivi.propositions}
 
 
 @router.get("/catalogue/{catalogue_id}/historique-prix")

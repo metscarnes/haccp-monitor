@@ -74,6 +74,9 @@ async def db():
         # Vider toutes les tables pour isolation totale entre tests
         phase2_tables = (
             # Enfants en premier (respecter les FK)
+            # Prix de vente « marge maintenue » (FK vers catalogue_vente, receptions…)
+            "historique_prix_vente",               # → catalogue_vente, propositions_prix_vente
+            "propositions_prix_vente",             # → catalogue_vente, catalogue_fournisseur, receptions
             # Inventaire valorisé (FK vers inventaires, catalogue_fournisseur)
             "inventaire_lignes",                   # → inventaires, catalogue_fournisseur
             "inventaires",                         # → boutiques, personnel

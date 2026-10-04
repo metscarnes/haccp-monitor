@@ -609,11 +609,16 @@ async def memoriser_poids_piece(catalogue_fournisseur_id: int, data: PoidsPieceU
         ) as cur:
             if not await cur.fetchone():
                 raise HTTPException(404, "Article catalogue introuvable")
-        await db.execute(
-            "UPDATE catalogue_fournisseur SET poids_unitaire_kg = ? WHERE id = ?",
-            (data.poids_unitaire_kg, catalogue_fournisseur_id),
-        )
-        await db.commit()
+        # Le poids d'une pièce entre dans le coût (format pièce, prix pièce dérivé) :
+        # propositions de prix de vente si le coût de référence d'un produit bouge.
+        from src.prix_vente import suivre_variations_cout
+        async with suivre_variations_cout(db, origine="inventaire",
+                                          catalogue_fournisseur_ids=[catalogue_fournisseur_id]):
+            await db.execute(
+                "UPDATE catalogue_fournisseur SET poids_unitaire_kg = ? WHERE id = ?",
+                (data.poids_unitaire_kg, catalogue_fournisseur_id),
+            )
+            await db.commit()
         return {"ok": True, "id": catalogue_fournisseur_id,
                 "poids_unitaire_kg": data.poids_unitaire_kg}
 
@@ -673,11 +678,16 @@ async def modifier_prix_kg(catalogue_fournisseur_id: int, data: PrixKgUpdate):
                 f"Format de prix '{format_prix}' non géré pour la saisie au €/kg.",
             )
 
-        await db.execute(
-            "UPDATE catalogue_fournisseur SET prix_achat_ht = ? WHERE id = ?",
-            (nouveau_prix_achat, catalogue_fournisseur_id),
-        )
-        await db.commit()
+        # Prix d'achat corrigé à l'inventaire → propositions de prix de vente pour les
+        # produits dont cet article est l'achat de référence.
+        from src.prix_vente import suivre_variations_cout
+        async with suivre_variations_cout(db, origine="inventaire",
+                                          catalogue_fournisseur_ids=[catalogue_fournisseur_id]):
+            await db.execute(
+                "UPDATE catalogue_fournisseur SET prix_achat_ht = ? WHERE id = ?",
+                (nouveau_prix_achat, catalogue_fournisseur_id),
+            )
+            await db.commit()
         # Renvoie le €/kg effectif recalculé (sanity check côté front).
         prix_kg_effectif = _calc_prix_kg(
             format_prix, nouveau_prix_achat,
