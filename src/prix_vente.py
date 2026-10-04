@@ -5,17 +5,20 @@ propositions de nouveau prix quand le coût d'achat de référence change, histo
 Chaîne : prix d'achat (catalogue achats) → coût matière (achat de RÉFÉRENCE du produit de
 vente, choisi dans le comparateur) → marge → prix de vente TTC → étiquette.
 
-Règles métier (validées le 04/10/2026) :
+Règles métier (validées les 04 et 05/10/2026) :
   - Marge = taux de MARQUE sur HT (marge ÷ prix de vente HT) ; coef = vente HT ÷ coût HT.
     Garder le taux revient à garder le coef (même convention que `_calc_marge`).
-  - Prix de vente terminé par ,90 : par défaut le ,90 LE PLUS PROCHE du prix exact
-    (égalité → supérieur, on protège la marge) ; l'autre ,90 reste proposé. Jamais de prix
-    proposé dans le sens contraire de la variation du coût.
+  - Terminaison commerciale : chaque produit garde celle de son prix actuel (,90 pour 96 % du
+    catalogue, ,99 pour quelques produits à la pièce…), ,90 à défaut. Par défaut le prix
+    LE PLUS PROCHE du prix exact (égalité → supérieur, on protège la marge) ; l'autre
+    candidat reste proposé. Jamais de prix proposé à contre-sens de la variation du coût.
   - Coût en baisse → proposition affichée mais NON pré-cochée (on garde le prix par défaut).
-  - On maintient la MARGE DE RÉFÉRENCE : une proposition en attente fige son taux ; une
-    nouvelle variation de coût avant décision ne met à jour que le coût. Une hausse absorbée
-    par l'arrondi reste donc en attente et se cumule avec les suivantes (pas d'érosion de
-    marge en douce).
+    Variation > 20 % ou achat jusqu'ici à 0 € → alerte (vérifier l'unité), jamais pré-cochée.
+  - Marge de RÉFÉRENCE = celle du DERNIER PRIX FIXÉ par l'utilisateur (prix + coût de ce
+    moment). « Garder » une proposition ne la déplace pas : sinon une baisse gardée puis une
+    remontée du coût ferait monter le prix sans raison (effet cliquet). Une proposition en
+    attente fige cette référence ; une nouvelle variation avant décision ne met à jour que le
+    coût, donc une hausse absorbée par l'arrondi se cumule avec les suivantes.
   - Rien n'est appliqué sans décision explicite (admin).
 
 Toute écriture de catalogue_vente.prix_vente_ttc passe par `changer_prix_vente` (ou par
@@ -36,6 +39,9 @@ from typing import Iterable, Optional
 logger = logging.getLogger(__name__)
 
 TERMINAISON_DEFAUT = 0.90
+# Terminaisons qu'un produit peut garder (2,99 → ,99 ; 32,95 → ,95 ; 2,00 → ,00). Un prix
+# sans terminaison commerciale (13,47) repasse sur la terminaison par défaut.
+TERMINAISONS_COMMERCIALES = (0.00, 0.50, 0.90, 0.95, 0.99)
 SENS_ARRONDI = ("proche", "superieur", "inferieur", "aucun")
 POLITIQUES = ("taux", "euro")       # garder le taux de marque | garder la marge HT en €
 MOTIFS = ("creation", "manuel", "comparateur", "import", "proposition", "calculateur")
@@ -49,6 +55,7 @@ SEUIL_ALERTE_UNITE_PCT = 20.0
 # Réglages boutique (table `parametres`) et leurs valeurs par défaut.
 REGLAGES_DEFAUT = {
     "prix_vente_terminaison": "0.90",
+    "prix_vente_garder_terminaison": "1",   # chaque produit garde la terminaison de son prix
     "prix_vente_arrondi_sens": "proche",
     "prix_vente_politique": "taux",
     "prix_vente_precocher_baisse": "0",
@@ -76,6 +83,18 @@ def arrondi_centime(x) -> Optional[float]:
     if x is None:
         return None
     return float(Decimal(str(x)).quantize(_Q2, rounding=ROUND_HALF_UP))
+
+
+def terminaison_du_prix(prix, defaut=TERMINAISON_DEFAUT) -> float:
+    """Terminaison commerciale d'un prix (2,99 → 0,99 ; 18,90 → 0,90 ; 2,00 → 0,00).
+    `defaut` si le prix est absent ou sans terminaison commerciale (13,47)."""
+    if prix is None:
+        return defaut
+    centimes = int((_dec(prix) * 100) % 100)
+    terminaison = centimes / 100
+    if any(abs(terminaison - t) < 1e-9 for t in TERMINAISONS_COMMERCIALES):
+        return terminaison
+    return defaut
 
 
 def candidats_terminaison(prix, terminaison=TERMINAISON_DEFAUT) -> dict:
@@ -237,6 +256,12 @@ def proposer_prix_vente(*, prix_actuel_ttc, tva, cout_reference, cout_nouveau,
 
     changement = arrondi_centime(propose) != arrondi_centime(pv)
     taux_propose = taux_marque(propose, tva, cout_new)
+    # Garde-fous : une variation énorme vient souvent d'une erreur d'unité (prix au colis lu
+    # comme un prix au kilo) ; un achat jusqu'ici à 0 € est peut-être un prix jamais saisi.
+    # Dans les deux cas : proposition affichée avec l'alerte, jamais cochée d'office.
+    alerte_unite = variation_pct is not None and abs(variation_pct) > SEUIL_ALERTE_UNITE_PCT
+    alerte_achat_gratuit = (cout_ref is not None and abs(cout_ref) < EPS_COUT
+                            and cout_new > EPS_COUT)
     return {
         "politique": politique_appliquee,
         "prix_actuel_ttc": arrondi_centime(pv),
@@ -261,9 +286,12 @@ def proposer_prix_vente(*, prix_actuel_ttc, tva, cout_reference, cout_nouveau,
         # Le coût a bougé mais l'arrondi garde le même prix : la proposition reste en
         # attente (silencieuse) et se cumule avec la prochaine variation.
         "absorbee": sens_variation != "stable" and not changement,
-        "pre_coche": changement and (sens_variation == "hausse"
-                                     or (sens_variation == "baisse" and bool(precocher_baisse))),
-        "alerte_unite": variation_pct is not None and abs(variation_pct) > SEUIL_ALERTE_UNITE_PCT,
+        "pre_coche": (changement and not (alerte_unite or alerte_achat_gratuit)
+                      and (sens_variation == "hausse"
+                           or (sens_variation == "baisse" and bool(precocher_baisse)))),
+        "alerte_unite": alerte_unite,
+        "alerte_achat_gratuit": alerte_achat_gratuit,
+        "terminaison": _r(terminaison, 2),
     }
 
 
@@ -289,20 +317,32 @@ async def lire_reglages(db) -> dict:
     politique = val("prix_vente_politique")
     return {
         "terminaison": terminaison,
+        "garder_terminaison": val("prix_vente_garder_terminaison") == "1",
         "sens": sens if sens in SENS_ARRONDI else "proche",
         "politique": politique if politique in POLITIQUES else "taux",
         "precocher_baisse": val("prix_vente_precocher_baisse") == "1",
     }
 
 
-async def ecrire_reglages(db, *, terminaison=None, sens=None, politique=None,
-                          precocher_baisse=None) -> dict:
+def terminaison_produit(reglages: dict, prix_actuel) -> float:
+    """Terminaison à appliquer à un produit : celle de son prix actuel si le réglage
+    « garder la terminaison » est actif (cas par défaut), sinon la terminaison boutique."""
+    if reglages.get("garder_terminaison", True):
+        return terminaison_du_prix(prix_actuel, reglages["terminaison"])
+    return reglages["terminaison"]
+
+
+async def ecrire_reglages(db, *, terminaison=None, garder_terminaison=None, sens=None,
+                          politique=None, precocher_baisse=None) -> dict:
     """Met à jour les réglages fournis (les autres restent inchangés). ValueError si invalide."""
     from src.database import set_parametre
     if terminaison is not None:
         if not 0 <= float(terminaison) < 1:
             raise ValueError("La terminaison doit être comprise entre 0 et 0,99 (ex. 0,90).")
         await set_parametre(db, 1, "prix_vente_terminaison", f"{float(terminaison):.2f}")
+    if garder_terminaison is not None:
+        await set_parametre(db, 1, "prix_vente_garder_terminaison",
+                            "1" if garder_terminaison else "0")
     if sens is not None:
         if sens not in SENS_ARRONDI:
             raise ValueError(f"Sens d'arrondi inconnu : {sens}")
@@ -457,12 +497,50 @@ async def _enregistrer_variations(db, avant: dict, *, origine, reception_id) -> 
             continue  # pas de prix de vente : pas de marge de référence
         if abs(b["cout"] - a["cout"]) < EPS_COUT:
             continue
-        touchees.append(await _ouvrir_ou_maj_proposition(
-            db, a, b, origine=origine, reception_id=reception_id))
+        pid = await _ouvrir_ou_maj_proposition(db, a, b, origine=origine,
+                                               reception_id=reception_id)
+        if pid is not None:
+            touchees.append(pid)
     return touchees
 
 
-async def _ouvrir_ou_maj_proposition(db, avant: dict, apres: dict, *, origine, reception_id) -> int:
+async def _reference_marge(db, cv_id: int, prix_actuel: float, cout_avant: float) -> tuple:
+    """(prix, coût) de la marge de RÉFÉRENCE d'un produit = ceux du DERNIER PRIX FIXÉ par
+    l'utilisateur. « Garder » une proposition ne déplace pas cette référence : sinon un coût
+    10 → 9 (prix gardé) puis 9 → 10 proposerait une hausse alors que le coût est revenu à
+    son point de départ (effet cliquet).
+
+    Par ordre de priorité :
+      1. le dernier changement de prix historisé, s'il porte le prix actuel et son coût ;
+      2. la référence de la dernière proposition traitée, si le prix n'a pas bougé depuis
+         (produit jamais repricé depuis la mise en service de l'historique) ;
+      3. à défaut, l'état juste avant la variation (prix actuel, coût d'avant).
+    """
+    cur = await db.execute(
+        """SELECT prix_nouveau_ttc, cout_matiere FROM historique_prix_vente
+           WHERE catalogue_vente_id = ? ORDER BY id DESC LIMIT 1""",
+        (cv_id,),
+    )
+    dernier_prix = await cur.fetchone()
+    if (dernier_prix and dernier_prix["cout_matiere"] is not None
+            and _meme_prix(dernier_prix["prix_nouveau_ttc"], prix_actuel)):
+        return prix_actuel, float(dernier_prix["cout_matiere"])
+
+    cur = await db.execute(
+        """SELECT prix_vente_reference_ttc, cout_reference FROM propositions_prix_vente
+           WHERE catalogue_vente_id = ? AND statut <> 'en_attente'
+           ORDER BY id DESC LIMIT 1""",
+        (cv_id,),
+    )
+    derniere = await cur.fetchone()
+    if derniere and _meme_prix(derniere["prix_vente_reference_ttc"], prix_actuel):
+        return prix_actuel, float(derniere["cout_reference"])
+
+    return prix_actuel, cout_avant
+
+
+async def _ouvrir_ou_maj_proposition(db, avant: dict, apres: dict, *, origine,
+                                     reception_id) -> Optional[int]:
     maintenant = _maintenant()
     cur = await db.execute(
         """SELECT id, cout_reference FROM propositions_prix_vente
@@ -494,6 +572,9 @@ async def _ouvrir_ou_maj_proposition(db, avant: dict, apres: dict, *, origine, r
 
     pv = float(avant["prix_vente_ttc"])
     tva = avant.get("tva_percent")
+    prix_ref, cout_ref = await _reference_marge(db, avant["cv_id"], pv, avant["cout"])
+    if abs(apres["cout"] - cout_ref) < EPS_COUT:
+        return None  # le coût revient à celui du dernier prix fixé : rien à proposer
     cur = await db.execute(
         """INSERT INTO propositions_prix_vente
                (catalogue_vente_id, catalogue_fournisseur_id, reception_id, origine,
@@ -501,8 +582,8 @@ async def _ouvrir_ou_maj_proposition(db, avant: dict, apres: dict, *, origine, r
                 cout_nouveau, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (avant["cv_id"], apres["cf_id"], reception_id, origine,
-         pv, avant["cout"], taux_marque(pv, tva, avant["cout"]),
-         ttc_vers_ht(pv, tva) - avant["cout"], apres["cout"], maintenant, maintenant),
+         prix_ref, cout_ref, taux_marque(prix_ref, tva, cout_ref),
+         ttc_vers_ht(prix_ref, tva) - cout_ref, apres["cout"], maintenant, maintenant),
     )
     return cur.lastrowid
 
@@ -553,7 +634,8 @@ async def lister_propositions(db, *, reception_id=None, statut: Optional[str] = 
                 cout_reference=l["cout_reference"], cout_nouveau=cout,
                 prix_reference_ttc=l["prix_vente_reference_ttc"],
                 taux_reference=l["taux_reference"], marge_reference_ht=l["marge_reference_ht"],
-                politique=reglages["politique"], terminaison=reglages["terminaison"],
+                politique=reglages["politique"],
+                terminaison=terminaison_produit(reglages, l["prix_actuel_ttc"]),
                 sens=reglages["sens"], precocher_baisse=reglages["precocher_baisse"],
             )
         prop = l["proposition"]
@@ -628,7 +710,8 @@ async def decider_propositions(db, decisions: list[dict], *, role: Optional[str]
                         prix_reference_ttc=p["prix_vente_reference_ttc"],
                         taux_reference=p["taux_reference"],
                         marge_reference_ht=p["marge_reference_ht"],
-                        politique=reglages["politique"], terminaison=reglages["terminaison"],
+                        politique=reglages["politique"],
+                        terminaison=terminaison_produit(reglages, p["prix_actuel_ttc"]),
                         sens=reglages["sens"],
                     )
                     prix = prop["prix_propose_ttc"] if prop else None
@@ -690,17 +773,19 @@ async def tracer_changement_prix_vente(db, catalogue_vente_id: int, ancien_ttc, 
         row = await cur.fetchone()
         tva = row["tva_percent"] if row else None
     motif = motif if motif in MOTIFS else "manuel"
+    maintenant = _maintenant()   # heure locale, comme les propositions (affichage boutique)
     cur = await db.execute(
         """INSERT INTO historique_prix_vente
                (catalogue_vente_id, prix_ancien_ttc, prix_nouveau_ttc, cout_matiere,
-                taux_marge_avant, taux_marge_apres, motif, proposition_id, reception_id, role)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                taux_marge_avant, taux_marge_apres, motif, proposition_id, reception_id, role,
+                created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (catalogue_vente_id, arrondi_centime(ancien_ttc), arrondi_centime(nouveau_ttc),
          _r(cout, 6), _r(taux_marque(ancien_ttc, tva, cout), 4),
-         _r(taux_marque(nouveau_ttc, tva, cout), 4), motif, proposition_id, reception_id, role),
+         _r(taux_marque(nouveau_ttc, tva, cout), 4), motif, proposition_id, reception_id, role,
+         maintenant),
     )
     if motif != "proposition":
-        maintenant = _maintenant()
         await db.execute(
             """UPDATE propositions_prix_vente
                SET statut = 'remplacee', prix_decide_ttc = ?, decided_at = ?, decided_role = ?,

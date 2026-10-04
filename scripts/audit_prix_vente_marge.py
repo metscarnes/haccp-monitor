@@ -11,7 +11,8 @@ Répond à 5 questions, sur la vraie base :
   4. Quels articles d'achat servent de référence à plusieurs produits de vente ?
      (une hausse sur eux touche N prix de vente d'un coup)
   5. Combien de hausses/baisses d'achat sur 90 jours, et combien de prix de vente
-     auraient changé avec la règle retenue (taux maintenu, ,90 le plus proche) ?
+     auraient changé avec la règle retenue (taux maintenu, terminaison du produit au plus
+     proche, alerte au-delà de 20 %) ?
 
 Lecture seule, ne modifie rien.
 
@@ -29,7 +30,6 @@ import statistics
 import sys
 from collections import Counter, defaultdict
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from pathlib import Path
 
 try:
@@ -49,6 +49,7 @@ args = ap.parse_args()
 # Mêmes règles de calcul que l'application (aucune copie à faire diverger).
 try:
     from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
+    from src.prix_vente import proposer_prix_vente, terminaison_du_prix
 except ImportError as e:  # pragma: no cover - dépend de l'environnement
     # Python système sans les dépendances de l'appli : on se relance UNE fois avec le
     # venv du service s'il existe (la variable d'environnement évite toute boucle).
@@ -71,17 +72,6 @@ def titre(t):
     print("\n" + "=" * 96)
     print(t)
     print("=" * 96)
-
-
-def arrondi_90_proche(prix):
-    """X,90 le plus proche (égalité → supérieur) — règle retenue le 04/10/2026."""
-    d = Decimal(str(prix)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-    t = Decimal("0.90")
-    inf = (d - t).to_integral_value(rounding=ROUND_FLOOR) + t
-    sup = (d - t).to_integral_value(rounding=ROUND_CEILING) + t
-    if inf < t:
-        return float(sup)
-    return float(inf) if (d - inf) < (sup - d) else float(sup)
 
 
 def pct(n, total):
@@ -233,29 +223,42 @@ print(f"  Écarts appliqués au catalogue (clic) : {len(appliques)}  {pct(len(ap
 
 # Simulation : pour chaque article de référence dont le prix a été APPLIQUÉ sur la période,
 # rapport cumulé premier prix de référence → dernier prix appliqué. Le coût matière d'un
-# produit de vente est proportionnel au €/kg d'achat, donc garder le coef revient à
-# multiplier le prix de vente par ce rapport, puis arrondir au ,90 le plus proche.
+# produit de vente est proportionnel au €/kg d'achat : on rejoue la proposition du moteur
+# (marge maintenue, terminaison du produit, garde-fous) entre coût d'avant et coût actuel.
 par_article = defaultdict(list)
 for o in appliques:
     par_article[o["cf_id"]].append(o)
-change, absorbe, details = 0, 0, []
+change, absorbe, alertes, details = 0, 0, 0, []
 produits_par_ref = defaultdict(list)
 for p in calculables:
     produits_par_ref[p["cf_id"]].append(p)
 for cf_id, pts in par_article.items():
     rapport = pts[-1]["prix_kg"] / pts[0]["prix_kg_precedent"]
+    if rapport <= 0:
+        continue
     for p in produits_par_ref.get(cf_id, []):
-        cible = p["prix_vente_ttc"] * rapport
-        propose = arrondi_90_proche(cible)
-        if round(propose, 2) != round(p["prix_vente_ttc"], 2):
+        cout = p["marge"]["cout_matiere"]
+        prop = proposer_prix_vente(
+            prix_actuel_ttc=p["prix_vente_ttc"], tva=p["tva_percent"],
+            cout_reference=cout / rapport, cout_nouveau=cout,
+            terminaison=terminaison_du_prix(p["prix_vente_ttc"]),
+        )
+        if prop is None:
+            continue
+        if prop["changement"]:
             change += 1
-            details.append((rapport, p, propose))
-        else:
+            alerte = prop["alerte_unite"] or prop["alerte_achat_gratuit"]
+            alertes += alerte
+            details.append((rapport, p, prop["prix_propose_ttc"], alerte))
+        elif prop["absorbee"]:
             absorbe += 1
 print(f"  Articles de référence touchés        : {len(par_article)}")
 print(f"  Prix de vente qui auraient changé    : {change}   (absorbés par l'arrondi : {absorbe})")
-print(f"  → environ {change / semaines:.1f} étiquette(s) à réimprimer par semaine")
-for rapport, p, propose in sorted(details, key=lambda d: -abs(d[0] - 1))[:15]:
-    print(f"    {(rapport - 1) * 100:+6.1f} % achat → {p['prix_vente_ttc']:>7.2f} → {propose:>7.2f} €  {p['nom']}")
+print(f"    dont avec alerte « vérifier l'unité » (> 20 %, jamais cochés d'office) : {alertes}")
+print(f"  → environ {(change - alertes) / semaines:.1f} étiquette(s) à réimprimer par semaine"
+      f" (hors alertes)")
+for rapport, p, propose, alerte in sorted(details, key=lambda d: -abs(d[0] - 1))[:15]:
+    print(f"    {(rapport - 1) * 100:+6.1f} % achat → {p['prix_vente_ttc']:>7.2f} → {propose:>7.2f} €  "
+          f"{p['nom']}{'   ⚠ vérifier l’unité' if alerte else ''}")
 
 print("\nLecture seule — aucune donnée modifiée.")

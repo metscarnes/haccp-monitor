@@ -17,7 +17,7 @@ GET    /api/vente/catalogue/{id}/historique-prix → changements de prix du prod
 Prix de vente « marge maintenue » (moteur : src/prix_vente.py) :
 GET    /api/vente/propositions-prix          → propositions de nouveau prix (?reception_id, ?statut)
 POST   /api/vente/propositions-prix/decider  → appliquer / garder (admin)
-GET    /api/vente/reglages-prix              → terminaison ,90, sens d'arrondi, politique
+GET    /api/vente/reglages-prix              → terminaison (,90 / celle du produit), sens d'arrondi, politique
 PUT    /api/vente/reglages-prix              → modifier ces réglages (admin)
 
 Toute écriture de prix_vente_ttc passe par src.prix_vente (historique + clôture des
@@ -94,7 +94,8 @@ class DecisionsPrixBody(BaseModel):
 
 
 class ReglagesPrixBody(BaseModel):
-    terminaison: Optional[float] = None      # 0.90 → prix en X,90
+    terminaison: Optional[float] = None      # 0.90 → prix en X,90 (défaut boutique)
+    garder_terminaison: Optional[bool] = None  # chaque produit garde la fin de son prix (2,99 → X,99)
     sens: Optional[str] = None               # proche | superieur | inferieur | aucun
     politique: Optional[str] = None          # taux | euro
     precocher_baisse: Optional[bool] = None  # cocher d'office les baisses de prix
