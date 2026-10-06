@@ -5235,8 +5235,42 @@ async function afficherBandeauEcartsPrix(rid) {
   zone.innerHTML = `
     <div class="rec-prix-maj-titre">💶 Prix d'achat différents du catalogue</div>
     <div class="rec-prix-maj-sous">Mettre à jour le prix de référence ? (sinon on garde l'ancien)</div>
-    <div class="rec-prix-maj-liste"></div>`;
+    ${ecarts.length > 1 ? '<button type="button" class="rec-prix-maj-tout">Tout mettre à jour</button>' : ''}
+    <div class="rec-prix-maj-liste"></div>
+    <button type="button" class="rec-prix-vente-btn" hidden></button>`;
   const liste = zone.querySelector('.rec-prix-maj-liste');
+  const btnVente = zone.querySelector('.rec-prix-vente-btn');
+  let popupDejaOuvert = false;
+
+  // Après chaque « Mettre à jour » : propositions de prix de vente de cette réception
+  // (marge maintenue). Le popup s'ouvre seul quand toutes les lignes sont tranchées.
+  async function majPrixVente() {
+    if (!window.PropositionsPrix) return;
+    const c = await PropositionsPrix.compter({ receptionId: rid });
+    const n = c.a_decider + c.baisses;
+    btnVente.hidden = n === 0;
+    btnVente.textContent = `💶 Adapter les prix de vente (${c.a_decider} hausse${c.a_decider > 1 ? 's' : ''}`
+      + (c.baisses ? `, ${c.baisses} baisse${c.baisses > 1 ? 's' : ''} pour info` : '') + ')';
+    const resteATrancher = liste.querySelector('.rec-prix-maj-oui:not(:disabled)');
+    if (n > 0 && !resteATrancher && !popupDejaOuvert) {
+      popupDejaOuvert = true;
+      PropositionsPrix.ouvrir({ receptionId: rid, onFerme: majPrixVente });
+    }
+  }
+  btnVente.addEventListener('click', () => {
+    popupDejaOuvert = true;
+    PropositionsPrix.ouvrir({ receptionId: rid, onFerme: majPrixVente });
+  });
+  const btnTout = zone.querySelector('.rec-prix-maj-tout');
+  if (btnTout) {
+    btnTout.addEventListener('click', async () => {
+      btnTout.disabled = true;
+      for (const b of liste.querySelectorAll('.rec-prix-maj-oui:not(:disabled)')) {
+        await b._appliquer();
+      }
+      btnTout.hidden = true;
+    });
+  }
 
   ecarts.forEach(e => {
     const sens = e.ecart_pct > 0 ? 'hausse' : 'baisse';
@@ -5258,7 +5292,7 @@ async function afficherBandeauEcartsPrix(rid) {
 
     const btnOui = ligne.querySelector('.rec-prix-maj-oui');
     const btnNon = ligne.querySelector('.rec-prix-maj-non');
-    btnOui.addEventListener('click', async () => {
+    btnOui._appliquer = async () => {
       btnOui.disabled = true; btnNon.disabled = true; btnOui.textContent = '⏳';
       try {
         await apiFetch(`/api/achats/catalogue/${e.catalogue_fournisseur_id}/appliquer-prix`, {
@@ -5269,14 +5303,18 @@ async function afficherBandeauEcartsPrix(rid) {
         ligne.classList.add('rec-prix-maj-done');
         ligne.querySelector('.rec-prix-maj-actions').innerHTML =
           '<span class="rec-prix-maj-ok">✓ Catalogue mis à jour</span>';
+        await majPrixVente();
       } catch (err) {
         btnOui.disabled = false; btnNon.disabled = false; btnOui.textContent = 'Mettre à jour';
         alert(`Erreur mise à jour du prix : ${err.message}`);
       }
-    });
+    };
+    btnOui.addEventListener('click', btnOui._appliquer);
     btnNon.addEventListener('click', () => {
+      btnOui.disabled = true; btnNon.disabled = true;
       ligne.querySelector('.rec-prix-maj-actions').innerHTML =
         '<span class="rec-prix-maj-garde">Prix conservé</span>';
+      majPrixVente();
     });
 
     liste.appendChild(ligne);
@@ -5313,6 +5351,15 @@ function injecterStylesBandeauPrix() {
     .rec-prix-maj-ok    { color: #1f6b32; font-weight: 600; font-size: .82rem; }
     .rec-prix-maj-garde { color: #888; font-size: .82rem; }
     .rec-prix-maj-done  { opacity: .75; }
+    .rec-prix-maj-tout {
+      border: 1.5px solid #2f7d3a; background: #fff; color: #2f7d3a; border-radius: 8px;
+      padding: .45rem .8rem; font-weight: 700; font-size: .82rem; cursor: pointer; margin-bottom: .4rem;
+    }
+    .rec-prix-vente-btn {
+      display: block; width: 100%; margin-top: .8rem; min-height: 48px; border: none;
+      border-radius: 10px; background: #2f7d3a; color: #fff; font-weight: 700; font-size: .95rem;
+      cursor: pointer;
+    }
   `;
   document.head.appendChild(st);
 }

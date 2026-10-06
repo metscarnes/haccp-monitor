@@ -414,6 +414,23 @@ async def test_baisse_gardee_puis_remontee_ne_propose_rien(app_client, db):
     assert steak["proposition"]["prix_propose_ttc"] == 19.90
 
 
+async def test_baisse_affichee_pour_information_seulement(app_client, db):
+    """Décision 06/10/2026 : une baisse de coût n'est PAS « à décider » (pas de badge) ;
+    elle est listée pour information (catégorie baisse_info), jamais cochée."""
+    s = await _scenario(app_client)
+    await _appliquer(app_client, s["a"], 9.20)
+    data = await _propositions(app_client)
+    assert data["compteurs"]["a_decider"] == 0
+    assert data["compteurs"]["baisses"] == 2
+    assert {p["categorie"] for p in data["propositions"]} == {"baisse_info"}
+    assert all(p["proposition"]["pre_coche"] is False for p in data["propositions"])
+
+    await _appliquer(app_client, s["a"], 10.40)          # devient une hausse → à décider
+    data = await _propositions(app_client)
+    assert data["compteurs"]["a_decider"] == 2
+    assert {p["categorie"] for p in data["propositions"]} == {"a_decider"}
+
+
 async def test_reference_est_le_dernier_prix_fixe(app_client, db):
     s = await _scenario(app_client)
     # Prix fixé à la main à 19,90 avec un coût de 9,80 → c'est la nouvelle marge de référence.

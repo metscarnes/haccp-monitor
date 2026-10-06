@@ -623,6 +623,7 @@ async def lister_propositions(db, *, reception_id=None, statut: Optional[str] = 
                  "absorbees": 0, "incalculables": 0}
     for l in lignes:
         l["proposition"] = None
+        l["categorie"] = l["statut"]          # proposition déjà traitée
         if l["statut"] != "en_attente":
             continue
         actuel = actuels.get(l["catalogue_vente_id"])
@@ -638,13 +639,22 @@ async def lister_propositions(db, *, reception_id=None, statut: Optional[str] = 
                 terminaison=terminaison_produit(reglages, l["prix_actuel_ttc"]),
                 sens=reglages["sens"], precocher_baisse=reglages["precocher_baisse"],
             )
+        # Catégorie d'affichage (décision utilisateur 06/10/2026) : seules les HAUSSES qui
+        # changent le prix sont « à décider » (badge) ; une baisse est montrée pour
+        # information (section repliée, jamais cochée) — on garde son prix par défaut.
         prop = l["proposition"]
         if prop is None:
+            l["categorie"] = "incalculable"
             compteurs["incalculables"] += 1
-        elif prop["changement"]:
+        elif prop["changement"] and prop["sens_variation"] == "hausse":
+            l["categorie"] = "a_decider"
             compteurs["a_decider"] += 1
-            compteurs["hausses" if prop["sens_variation"] == "hausse" else "baisses"] += 1
-        elif prop["absorbee"]:
+            compteurs["hausses"] += 1
+        elif prop["changement"]:
+            l["categorie"] = "baisse_info"
+            compteurs["baisses"] += 1
+        else:
+            l["categorie"] = "absorbee"
             compteurs["absorbees"] += 1
 
     def cle_tri(l):

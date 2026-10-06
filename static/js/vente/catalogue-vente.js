@@ -46,7 +46,23 @@ document.addEventListener('DOMContentLoaded', () => {
   charger();
 });
 
+// ── Badge « Prix à revoir » : propositions de prix de vente en attente ──
+// (hausses laissées « Plus tard » au popup réception, ou nées d'une modif du
+// catalogue achats / de l'inventaire / d'un changement d'achat de référence).
+async function majBadgePrixARevoir() {
+  const btn = document.getElementById('btn-prix-a-revoir');
+  if (!btn || !window.PropositionsPrix) return;
+  const c = await PropositionsPrix.compter();
+  btn.hidden = c.a_decider + c.baisses === 0;
+  btn.textContent = `💶 Prix à revoir (${c.a_decider})`;
+}
+
 function bindEvents() {
+  document.getElementById('btn-prix-a-revoir').addEventListener('click', () => {
+    PropositionsPrix.ouvrir({
+      onFerme: async aChange => { if (aChange) await charger(); majBadgePrixARevoir(); },
+    });
+  });
   document.getElementById('btn-nouveau').addEventListener('click', ouvrirNouveau);
   document.getElementById('btn-export').addEventListener('click', () => { triggerDownload('/api/vente/catalogue/export', 'catalogue_vente.xlsx'); });
   document.getElementById('btn-template').addEventListener('click', () => { triggerDownload('/api/vente/catalogue/template', 'template_catalogue_vente.xlsx'); });
@@ -149,6 +165,7 @@ async function charger() {
     produits = await r.json();
     afficherStats();
     filtrer();
+    majBadgePrixARevoir();   // un prix modifié dans la fiche clôt sa proposition en attente
   } catch (e) {
     afficherErreur('Impossible de charger le catalogue de vente : ' + e.message);
   }
