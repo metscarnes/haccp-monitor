@@ -243,14 +243,17 @@ def extraire_facture(images_jpeg: list[bytes]) -> dict:
 
     # Timeout borné (le défaut du SDK est ~10 min) : cf. ocr_bl.py — un incident
     # réseau doit échouer proprement plutôt que de laisser la requête pendre.
+    # Streaming : le timeout borne le silence entre morceaux, pas la durée totale
+    # (une facture longue dépasse 90 s de génération).
     client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=1)
     try:
-        resp = client.messages.create(
+        with client.messages.stream(
             model=MODEL,
             max_tokens=16000,
             messages=[{"role": "user", "content": contenu}],
             output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-        )
+        ) as stream:
+            resp = stream.get_final_message()
     except anthropic.APIError as e:
         logger.error("Appel OCR facture échoué : %s", e)
         raise OCRFactureError(f"Appel à l'API Claude échoué : {e}")

@@ -248,14 +248,18 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
     # incident réseau doit échouer proprement (message clair, HTTP 502) plutôt que
     # de laisser la requête pendre — c'est ça qui, côté navigateur, finit par
     # remonter en "Failed to fetch" sans explication après une longue attente.
+    # En streaming, ce timeout borne le SILENCE entre deux morceaux et non la durée
+    # totale : un BL long (beaucoup de lignes à générer, > 90 s) va au bout, alors
+    # qu'en appel simple il était coupé ("Request timed out").
     client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=1)
     try:
-        resp = client.messages.create(
+        with client.messages.stream(
             model=MODEL,
             max_tokens=16000,
             messages=[{"role": "user", "content": contenu}],
             output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-        )
+        ) as stream:
+            resp = stream.get_final_message()
     except anthropic.APIError as e:
         logger.error("Appel OCR échoué : %s", e)
         raise OCRError(f"Appel à l'API Claude échoué : {e}")
