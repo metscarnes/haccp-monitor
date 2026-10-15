@@ -96,9 +96,13 @@ async def imprimer_etiquette(config: ConfigEtiquette):
 
 @router.get("/api/prix-etiquettes/fonts")
 async def lister_fonts():
-    """Retourne la liste des polices TTF/OTF uploadées."""
-    from src.printing.brother_ql_prix import lister_polices
-    return {"fonts": lister_polices()}
+    """
+    Retourne la liste des polices TTF/OTF uploadées, avec leurs métriques
+    (ascent/descent en fraction de la taille) et celles de la police par défaut :
+    l'aperçu Canvas les utilise pour calculer les tailles comme l'impression.
+    """
+    from src.printing.brother_ql_prix import lister_polices, metriques_defaut
+    return {"fonts": lister_polices(), "defaut": metriques_defaut()}
 
 
 @router.post("/api/prix-etiquettes/upload-font", status_code=201)

@@ -438,10 +438,39 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
         return False, f"Erreur imprimante : {msg}"
 
 
+# Taille de référence pour exprimer les métriques en ratio de la taille de police.
+_TAILLE_REF_METRIQUES = 1000
+
+
+def metriques_police(nom_fichier: Optional[str], gras: bool = False) -> dict:
+    """
+    Hauteur de ligne (ascent, descent) de la police, en fraction de sa taille,
+    telle que la mesure PIL à l'impression (font.getmetrics()).
+
+    Envoyée à l'aperçu Canvas du navigateur, qui s'en sert au lieu de ses
+    propres mesures : l'auto-fit de l'écran et celui de l'impression calculent
+    alors exactement la même hauteur de ligne, quelle que soit la police.
+    """
+    font = _charger_police(nom_fichier, _TAILLE_REF_METRIQUES, gras=gras)
+    try:
+        ascent, descent = font.getmetrics()
+    except Exception:
+        return {"ascent": 0.93, "descent": 0.24}
+    return {"ascent": ascent / _TAILLE_REF_METRIQUES,
+            "descent": descent / _TAILLE_REF_METRIQUES}
+
+
+def metriques_defaut() -> dict:
+    """Métriques de la police par défaut (DejaVu embarquée), regular et gras."""
+    return {"regular": metriques_police(None, gras=False),
+            "bold":    metriques_police(None, gras=True)}
+
+
 def lister_polices() -> list[dict]:
-    """Retourne la liste des polices custom disponibles."""
+    """Retourne la liste des polices custom disponibles (avec leurs métriques)."""
     polices = []
     for f in sorted(FONTS_DIR.iterdir()):
         if f.suffix.lower() in (".ttf", ".otf"):
-            polices.append({"nom": f.name, "label": f.stem})
+            polices.append({"nom": f.name, "label": f.stem,
+                            **metriques_police(f.name)})
     return polices

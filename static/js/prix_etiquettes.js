@@ -185,19 +185,53 @@ function familleCss(police) {
   return FONT_FALLBACK;
 }
 
-function specFont(ligne, sizePx) {
-  const poids = ligne.gras ? '700' : '400';
-  return `${poids} ${Math.max(6, Math.round(sizePx))}px ${familleCss(ligne.police)}`;
+// Taille entière en px, tronquée comme le backend (max(6, int(sz))).
+function taillePx(sizePx) {
+  return Math.max(6, Math.trunc(sizePx));
 }
 
-// Mesure (largeur, hauteur de ligne) cohérente avec le backend :
-// hauteur = ascent+descent via les métriques de la police.
-function mesurer(ctx, texte, fontSpec) {
-  ctx.font = fontSpec;
-  const m = ctx.measureText(texte);
-  const ascent  = m.actualBoundingBoxAscent  || m.fontBoundingBoxAscent  || 0;
-  const descent = m.actualBoundingBoxDescent || m.fontBoundingBoxDescent || 0;
-  return { w: m.width, h: ascent + descent, ascent };
+// Le backend ignore « gras » pour une police custom (un seul fichier TTF) :
+// l'aperçu ne doit donc pas l'épaissir non plus.
+function estPoliceCustom(police) {
+  return !!police && fontFamillesChargees.has(police);
+}
+
+function specFont(ligne, sizePx) {
+  const poids = ligne.gras && !estPoliceCustom(ligne.police) ? '700' : '400';
+  return `${poids} ${taillePx(sizePx)}px ${familleCss(ligne.police)}`;
+}
+
+// Métriques (ascent/descent en fraction de la taille) fournies par le serveur,
+// mesurées par PIL exactement comme à l'impression. Repli DejaVu si absentes.
+const METRIQUES_REPLI = { ascent: 0.93, descent: 0.24 };
+let metriquesDefaut = { regular: METRIQUES_REPLI, bold: METRIQUES_REPLI };
+const metriquesPolices = new Map();   // nom de fichier → {ascent, descent}
+
+function metriquesLigne(ligne) {
+  if (estPoliceCustom(ligne.police) && metriquesPolices.has(ligne.police)) {
+    return metriquesPolices.get(ligne.police);
+  }
+  return ligne.gras ? metriquesDefaut.bold : metriquesDefaut.regular;
+}
+
+// Mesure identique au backend (brother_ql_prix._mesurer) :
+//   - hauteur de ligne = (ascent + descent) de la POLICE, pas des lettres tapées
+//     → même auto-fit à l'écran et à l'impression, quel que soit le texte ;
+//   - largeur = étendue réelle des glyphes (équivalent textbbox PIL) ;
+//   - inkAscent = haut réel des glyphes, pour les poser comme PIL (off_y).
+function mesurer(ctx, ligne, sizePx) {
+  const taille = taillePx(sizePx);
+  ctx.font = specFont(ligne, taille);
+  const m = ctx.measureText(ligne.texte);
+  const met = metriquesLigne(ligne);
+  const encreG = m.actualBoundingBoxLeft  ?? 0;
+  const encreD = m.actualBoundingBoxRight ?? m.width;
+  return {
+    w: encreG + encreD,
+    h: Math.ceil(met.ascent * taille) + Math.ceil(met.descent * taille),
+    inkAscent: m.actualBoundingBoxAscent ?? met.ascent * taille,
+    encreG,
+  };
 }
 
 function rendrePreview() {
@@ -260,7 +294,7 @@ function rendrePreview() {
   const tient = (f) => {
     let total = inter * (n - 1);
     for (const l of lignes) {
-      const mes = mesurer(ctx, l.texte, specFont(l, taille(l, f)));
+      const mes = mesurer(ctx, l, taille(l, f));
       if (mes.w > zoneW && !l.taille_px) return false;
       total += mes.h;
     }
@@ -279,12 +313,12 @@ function rendrePreview() {
 
   const rendues = lignes.map(l => {
     const spec = specFont(l, taille(l, facteur));
-    const mes = mesurer(ctx, l.texte, spec);
-    return { ...l, spec, w: mes.w, h: mes.h, ascent: mes.ascent };
+    const mes = mesurer(ctx, l, taille(l, facteur));
+    return { ...l, spec, w: mes.w, h: mes.h, inkAscent: mes.inkAscent };
   });
 
   const blocH = rendues.reduce((s, l) => s + l.h, 0) + inter * (n - 1);
-  let y = Math.max(margeV, Math.round((h - blocH) / 2));
+  let y = Math.max(margeV, Math.floor((h - blocH) / 2));
 
   ctx.fillStyle = encre;
   ctx.textBaseline = 'alphabetic';
@@ -292,9 +326,10 @@ function rendrePreview() {
     let x;
     if (l.alignement === 'right')      x = w - margeH - l.w;
     else if (l.alignement === 'left')  x = margeH;
-    else                               x = Math.round((w - l.w) / 2);
+    else                               x = Math.floor((w - l.w) / 2);
     ctx.font = l.spec;
-    ctx.fillText(l.texte, x, y + l.ascent);
+    // Comme PIL (y - off_y) : le haut réel des glyphes est posé sur y.
+    ctx.fillText(l.texte, x, y + l.inkAscent);
     y += l.h + inter;
   }
 }
@@ -350,8 +385,10 @@ function creerLigneDOM(data = {}) {
   });
   selPoids.value = meilleur.value;
 
-  // Polices custom
-  remplirSelectPolice(el.querySelector('.pe-ligne-police'), data.police ?? '');
+  // Polices custom (nouvelle ligne sans police précisée → police par défaut)
+  const selPolice = el.querySelector('.pe-ligne-police');
+  remplirSelectPolice(selPolice, 'police' in data ? (data.police ?? '') : policeParDefaut());
+  majGrasSelonPolice(el);
 
   // Suppression
   el.querySelector('.pe-ligne-suppr').addEventListener('click', () => {
@@ -367,12 +404,32 @@ function creerLigneDOM(data = {}) {
   });
 
   // Changement de police : charger la FontFace correspondante avant de redessiner.
-  el.querySelector('.pe-ligne-police').addEventListener('change', async (e) => {
+  selPolice.addEventListener('change', async (e) => {
+    majGrasSelonPolice(el);
     const nom = e.target.value;
     if (nom) { await chargerFontFace(nom); rendrePreview(); }
   });
 
   return el;   // ← Element réel, pas DocumentFragment
+}
+
+// Police utilisée par défaut pour les nouvelles lignes : Moresugar-Thin si elle
+// a été importée sur le serveur, sinon DejaVu ('').
+const POLICE_DEFAUT_PREFEREE = 'moresugar-thin';
+function policeParDefaut() {
+  const f = state.fontsDispos.find(p => (p.label || '').toLowerCase() === POLICE_DEFAUT_PREFEREE);
+  return f ? f.nom : '';
+}
+
+// « Gras » n'a d'effet que sur DejaVu : une police custom est un seul fichier
+// TTF, imprimé tel quel. On grise la case pour ne pas laisser croire le contraire.
+function majGrasSelonPolice(el) {
+  const custom = !!el.querySelector('.pe-ligne-police').value;
+  const chk = el.querySelector('.pe-ligne-gras');
+  chk.disabled = custom;
+  chk.closest('label').title = custom
+    ? 'Gras sans effet avec une police importée (imprimée telle quelle)'
+    : '';
 }
 
 function renuméroterLignes() {
@@ -397,6 +454,7 @@ function majTousSelectsPolice() {
   elLignesListe.querySelectorAll('.pe-ligne-police').forEach(sel => {
     const current = sel.value;
     remplirSelectPolice(sel, current);
+    majGrasSelonPolice(sel.closest('.pe-ligne'));
   });
 }
 
@@ -411,6 +469,13 @@ async function chargerFonts() {
   try {
     const data = await apiFetch('/api/prix-etiquettes/fonts');
     state.fontsDispos = data.fonts ?? [];
+    if (data.defaut) metriquesDefaut = data.defaut;
+    metriquesPolices.clear();
+    state.fontsDispos.forEach(f => {
+      if (f.ascent != null && f.descent != null) {
+        metriquesPolices.set(f.nom, { ascent: f.ascent, descent: f.descent });
+      }
+    });
     afficherFonts();
     majTousSelectsPolice();
     // Charger les TTF custom pour le rendu Canvas, puis redessiner.
@@ -1164,7 +1229,7 @@ async function init() {
 
   // Ligne de démarrage vide si aucun article importé
   if (elLignesListe.children.length === 0) {
-    elLignesListe.appendChild(creerLigneDOM({ texte: '', taille: 48, gras: true, alignement: 'center' }));
+    elLignesListe.appendChild(creerLigneDOM({ texte: '', gras: true, alignement: 'center' }));
   }
 
   rendrePreview();
