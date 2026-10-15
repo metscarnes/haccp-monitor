@@ -1200,6 +1200,31 @@ CREATE TABLE IF NOT EXISTS etiquettes_a_reimprimer (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_etiquettes_a_reimprimer_attente
     ON etiquettes_a_reimprimer(catalogue_vente_id) WHERE statut = 'en_attente';
+
+-- ===========================================================================
+-- v8.0 — Promotions sur étiquette (voir src/promos_etiquettes.py)
+-- ===========================================================================
+-- Une promo est SEULEMENT une étiquette : le prix du catalogue de vente ne change
+-- pas (marges, inventaire intacts). Le prix barré (prix_reference_ttc) est figé à la
+-- création : prix le plus bas pratiqué dans les 30 jours précédents (Code de la
+-- consommation, art. L112-1-1). À la date de fin, la promo se termine d'elle-même
+-- et l'étiquette normale repart dans la file « À réimprimer ».
+--   statut : active | terminee
+CREATE TABLE IF NOT EXISTS promotions_etiquettes (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogue_vente_id INTEGER NOT NULL,
+    prix_reference_ttc REAL    NOT NULL,
+    prix_promo_ttc     REAL    NOT NULL,
+    date_debut         DATE    NOT NULL,
+    date_fin           DATE    NOT NULL,
+    statut             TEXT    NOT NULL DEFAULT 'active',
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    terminee_at        DATETIME,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_promotions_etiquettes_active
+    ON promotions_etiquettes(catalogue_vente_id) WHERE statut = 'active';
 """
 
 SEED_SQL = """
@@ -2019,6 +2044,21 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # un prix à la pièce/au colis était multiplié par le poids (montant faux).
             # NULL (lignes historiques) = repli sur le format du catalogue.
             "ALTER TABLE reception_lignes ADD COLUMN unite_prix TEXT",
+            # v8.0 — Promotions sur étiquette (cf. SCHEMA_SQL et src/promos_etiquettes.py).
+            # Nouvelle table, rejouée pour les bases existantes.
+            """CREATE TABLE IF NOT EXISTS promotions_etiquettes (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                catalogue_vente_id INTEGER NOT NULL,
+                prix_reference_ttc REAL    NOT NULL,
+                prix_promo_ttc     REAL    NOT NULL,
+                date_debut         DATE    NOT NULL,
+                date_fin           DATE    NOT NULL,
+                statut             TEXT    NOT NULL DEFAULT 'active',
+                created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                terminee_at        DATETIME,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_promotions_etiquettes_active ON promotions_etiquettes(catalogue_vente_id) WHERE statut = 'active'",
         ]
         for sql in migrations:
             try:

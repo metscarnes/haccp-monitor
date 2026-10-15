@@ -227,7 +227,7 @@
       info.textContent = '✨ Votre ancien modèle a été repris automatiquement (nom, prix, unité). '
         + 'Vérifiez l\'aperçu, puis « Enregistrer le style ».';
       info.hidden = false;
-    } else if (!s) {
+    } else if (!s || s.par_defaut) {
       info.textContent = vue.type === 'promo'
         ? '✨ Style promo proposé à partir de votre étiquette normale. Ajustez-le puis enregistrez.'
         : '✨ Style proposé par défaut. Ajustez-le puis enregistrez.';

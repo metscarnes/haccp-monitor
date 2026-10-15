@@ -169,6 +169,11 @@
     <div class="pe-imp-file-liste" id="imp-file-liste"></div>
   </div>
 
+  <div class="pe-imp-promos" id="imp-promos" hidden>
+    <span class="pe-imp-promos-titre" id="imp-promos-titre"></span>
+    <div class="pe-imp-file-liste" id="imp-promos-liste"></div>
+  </div>
+
   <div class="pe-imp-corps">
     <!-- Catalogue -->
     <div class="pe-imp-catalogue">
@@ -197,6 +202,43 @@
   </div>
 
 </section>
+
+<!-- Fenêtre « Mettre en promo » (étiquette seulement : le prix du catalogue ne change pas) -->
+<div class="pe-modal-overlay" id="modal-promo" role="dialog" aria-modal="true" aria-labelledby="promo-titre" hidden>
+  <div class="pe-modal pe-modal--promo">
+    <div class="pe-modal-titre" id="promo-titre">🔥 Promo</div>
+    <div class="pe-promo-ref" id="promo-ref"></div>
+    <div class="pe-promo-saisie">
+      <label class="pe-label">Prix promo (€)
+        <input type="number" class="pe-input pe-input--grand" id="promo-prix" step="0.01" min="0.01" inputmode="decimal">
+      </label>
+      <label class="pe-label">ou réduction (%)
+        <input type="number" class="pe-input pe-input--grand" id="promo-pct" step="1" min="1" max="90" inputmode="numeric">
+      </label>
+    </div>
+    <div class="pe-segment" id="promo-raccourcis" role="group" aria-label="Réductions rapides">
+      <button class="pe-segment-btn" data-pct="10">−10 %</button>
+      <button class="pe-segment-btn" data-pct="15">−15 %</button>
+      <button class="pe-segment-btn" data-pct="20">−20 %</button>
+      <button class="pe-segment-btn" data-pct="25">−25 %</button>
+      <button class="pe-segment-btn" data-pct="30">−30 %</button>
+    </div>
+    <label class="pe-label">Jusqu'au (inclus)
+      <input type="date" class="pe-input pe-input--grand" id="promo-fin">
+    </label>
+    <div class="pe-imp-apercu">
+      <div class="pe-etiquette-cadre" id="promo-cadre">
+        <canvas class="pe-etiquette-canvas" id="promo-canvas"></canvas>
+      </div>
+    </div>
+    <div class="pe-print-status" id="promo-statut" hidden></div>
+    <div class="pe-modal-actions">
+      <button class="pe-btn pe-btn--outline" id="promo-annuler">Annuler</button>
+      <button class="pe-btn pe-btn--outline" id="promo-arreter" hidden>Arrêter la promo</button>
+      <button class="pe-btn pe-btn--primary pe-btn--grand" id="promo-valider">🔥 Valider et ajouter à la liste</button>
+    </div>
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════════
      VUE « STYLE » — l'apparence seulement ; le texte vient du produit

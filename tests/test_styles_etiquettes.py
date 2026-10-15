@@ -76,7 +76,13 @@ async def test_enregistrer_les_styles_normal_et_promo(app_client, db):
     ancien = r.json()["id"]
     styles = (await app_client.get("/api/prix-etiquettes/styles")).json()
     assert styles["normal"]["id"] == ancien and styles["normal"]["converti"] is True
-    assert styles["promo"] is None
+    # Style promo proposé d'office, tiré du style normal (pas encore enregistré).
+    promo = styles["promo"]
+    assert promo["id"] is None and promo["par_defaut"] is True
+    assert [l["zone"] for l in promo["config"]["lignes"]] == [
+        "nom", "prix_reference", "prix_promo", "unite", "economie"]
+    assert promo["config"]["fond_noir"] is True
+    assert {l["police"] for l in promo["config"]["lignes"]} == {"MoreSugar-Thin.otf"}
 
     # « Enregistrer le style » : le texte affiché n'est jamais enregistré.
     cfg = {**styles["normal"]["config"]}

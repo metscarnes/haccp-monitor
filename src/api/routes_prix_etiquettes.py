@@ -236,6 +236,7 @@ async def rechercher_catalogue(
     - limit élevé : chargement complet pour l'impression de masse.
     """
     async with get_db() as db:
+        promos = await _promos_actives(db)
         sql = """
             SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
             FROM catalogue_vente
@@ -259,9 +260,21 @@ async def rechercher_catalogue(
                 "famille": r[3],
                 "sous_famille": r[4],
                 "unite_vente": r[5],
+                "promo": promos.get(r[0]),
             }
             for r in rows
         ]}
+
+
+async def _promos_actives(db) -> dict[int, dict]:
+    """Promos en cours par produit (les échues sont d'abord terminées), au format
+    attendu par appliquer_variables : {prix_reference_ttc, prix_promo_ttc, …}."""
+    from src.promos_etiquettes import promos_actives, terminer_promos_echues
+    if await terminer_promos_echues(db):
+        await db.commit()
+    return {cv: {"id": p["id"], "prix_reference_ttc": p["prix_reference_ttc"],
+                 "prix_promo_ttc": p["prix_promo_ttc"], "date_fin": p["date_fin"]}
+            for cv, p in (await promos_actives(db)).items()}
 
 
 @router.get("/api/prix-etiquettes/catalogue/familles")
@@ -305,6 +318,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
         return {}
     placeholders = ",".join("?" for _ in ids)
     async with get_db() as db:
+        promos = await _promos_actives(db)   # remplit {prix_reference} {prix_promo}…
         cur = await db.execute(
             f"""
             SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
@@ -322,6 +336,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
             "famille": r[3],
             "sous_famille": r[4],
             "unite_vente": r[5],
+            "promo": promos.get(r[0]),
         }
         for r in rows
     }
@@ -448,6 +463,13 @@ async def _styles(db) -> dict:
             continue
         du_type = [m for m in modeles if m["config"]["type"] == type_]
         styles[type_] = du_type[0] if len(du_type) == 1 else None
+    # Pas encore de style promo enregistré : on en propose un, tiré du style normal
+    # (id None : il sera créé au premier « Enregistrer le style »).
+    if styles["promo"] is None and styles["normal"] is not None:
+        from src.printing.brother_ql_prix import style_promo_par_defaut
+        styles["promo"] = {"id": None, "nom": NOM_STYLE["promo"], "converti": False,
+                           "par_defaut": True,
+                           "config": style_promo_par_defaut(styles["normal"]["config"])}
     return styles
 
 
@@ -479,7 +501,7 @@ async def enregistrer_style(type_style: str, body: StyleBody):
     config_json = json.dumps(style, ensure_ascii=False)
     async with get_db() as db:
         actuel = (await _styles(db))[type_style]
-        if actuel:
+        if actuel and actuel["id"] is not None:
             await db.execute("UPDATE modeles_etiquettes_prix SET config_json = ? WHERE id = ?",
                              (config_json, actuel["id"]))
             modele_id = actuel["id"]
@@ -521,6 +543,7 @@ async def lister_a_reimprimer():
     """Produits dont le prix a changé depuis la dernière étiquette (prix ACTUEL)."""
     from src.file_etiquettes_prix import lister_file
     async with get_db() as db:
+        await _promos_actives(db)    # promos échues → étiquette normale dans la file
         elements = await lister_file(db)
         return {"elements": elements, "total": len(elements),
                 "modele_defaut_id": await _modele_defaut_id(db)}
@@ -531,6 +554,7 @@ async def compter_a_reimprimer():
     """Nombre d'étiquettes à refaire (badge du Hub)."""
     from src.file_etiquettes_prix import compter_file
     async with get_db() as db:
+        await _promos_actives(db)    # promos échues → étiquette normale dans la file
         return {"total": await compter_file(db)}
 
 
@@ -556,3 +580,61 @@ async def sortir_a_reimprimer(body: SortieFile):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {"ok": True, "traites": n}
+
+
+# ---------------------------------------------------------------------------
+# Promotions (étiquette seulement — le prix du catalogue ne change pas)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/prix-etiquettes/promos")
+async def lister_promos_en_cours():
+    """Promos en cours (les échues sont terminées au passage)."""
+    from src.promos_etiquettes import lister_promos
+    async with get_db() as db:
+        await _promos_actives(db)
+        return {"promos": await lister_promos(db)}
+
+
+@router.get("/api/prix-etiquettes/promos/reference/{produit_id}")
+async def reference_promo(produit_id: int):
+    """Prix de référence légal (plus bas prix des 30 derniers jours) d'un produit, et
+    sa promo en cours éventuelle (dont le prix de référence est figé)."""
+    from src.promos_etiquettes import prix_reference_30j
+    async with get_db() as db:
+        try:
+            ref = await prix_reference_30j(db, produit_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        ref["promo_en_cours"] = (await _promos_actives(db)).get(produit_id)
+        return ref
+
+
+class PromoBody(BaseModel):
+    produit_id: int
+    prix_promo_ttc: float
+    date_fin: str                # AAAA-MM-JJ
+
+
+@router.post("/api/prix-etiquettes/promos", status_code=201)
+async def creer_ou_modifier_promo(body: PromoBody):
+    """Met un produit en promo (ou modifie sa promo en cours)."""
+    from src.promos_etiquettes import creer_promo
+    async with get_db() as db:
+        try:
+            promo = await creer_promo(db, body.produit_id, body.prix_promo_ttc, body.date_fin)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        await db.commit()
+        return promo
+
+
+@router.post("/api/prix-etiquettes/promos/{promo_id}/terminer")
+async def terminer_une_promo(promo_id: int):
+    """Arrête une promo avant sa date de fin : l'étiquette normale part dans la file."""
+    from src.promos_etiquettes import terminer_promo
+    async with get_db() as db:
+        promo = await terminer_promo(db, promo_id)
+        if promo is None:
+            raise HTTPException(status_code=404, detail="Promo introuvable ou déjà terminée")
+        await db.commit()
+        return {"ok": True}

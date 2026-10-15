@@ -439,6 +439,24 @@ def normaliser_style(config: dict) -> tuple[dict, bool]:
     return style, converti
 
 
+def style_promo_par_defaut(normal: dict) -> dict:
+    """Style promo proposé tant qu'aucun n'est enregistré : même format, même fond et
+    même police que le style normal ; ancien prix barré, prix promo, économie."""
+    lignes = normal.get("lignes") or []
+    poids = {l.get("zone"): l.get("poids", 1) for l in lignes}
+    base = {"taille_px": 0, "gras": False, "alignement": "center",
+            "police": lignes[0].get("police") if lignes else None}
+    zones = [("nom", poids.get("nom", 1)), ("prix_reference", 0.8),
+             ("prix_promo", poids.get("prix", 2)), ("unite", poids.get("unite", 0.6)),
+             ("economie", 0.6)]
+    style, _ = normaliser_style({
+        "largeur_cm": normal.get("largeur_cm", 10), "hauteur_cm": normal.get("hauteur_cm", 6),
+        "fond_noir": normal.get("fond_noir", False), "type": "promo",
+        "lignes": [{**base, "zone": z, "poids": p} for z, p in zones],
+    })
+    return style
+
+
 # Largeur imprimable EXACTE pour le rouleau continu 62mm à 300dpi.
 # brother_ql exige cette largeur précise pour le type "62", sinon le convert
 # échoue ("image width X doesn't match printable width 696").

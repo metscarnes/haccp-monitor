@@ -632,20 +632,27 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
+/* Bandeau sur UNE ligne (titre · produits défilants · bouton) : sur la tablette,
+   chaque pixel de hauteur compte pour garder le bouton Imprimer visible. */
 .pe-imp-file {
   flex-shrink: 0;
   background: rgba(200,120,0,.10);
   border-bottom: 1px solid rgba(200,120,0,.30);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-3);
 }
 .pe-imp-file[hidden] { display: none; }
-.pe-imp-file-tete { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
-.pe-imp-file-titre { font-weight: 700; color: #8a4b00; }
+.pe-imp-file-tete { display: contents; }
+.pe-imp-file-titre { flex-shrink: 0; max-width: 14rem; font-weight: 700; color: #8a4b00; }
+.pe-imp-file #imp-file-tout { order: 2; flex-shrink: 0; }
 .pe-imp-file-liste {
+  order: 1;
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: var(--space-2);
   overflow-x: auto;
@@ -708,7 +715,7 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-imp-produits { flex: 1; min-height: 0; overflow-y: auto; }
 .pe-imp-produit {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-3);
   min-height: 60px;
@@ -732,6 +739,47 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-imp-plus:disabled { opacity: .35; cursor: default; }
 .pe-imp-vide { padding: var(--space-6) var(--space-3); text-align: center; color: var(--color-offline); }
 
+/* Promos */
+.pe-imp-promo-btn {
+  min-width: 48px;
+  min-height: 48px;
+  border: 1.5px solid rgba(190,60,20,.35);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+.pe-imp-promo-btn.active { background: rgba(190,60,20,.12); border-color: rgba(190,60,20,.6); }
+.pe-imp-promo-btn:disabled { opacity: .35; cursor: default; }
+.pe-tag-promo {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 .5em;
+  border-radius: var(--radius-pill);
+  background: rgba(190,60,20,.12);
+  color: #a3330f;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pe-imp-promos {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(190,60,20,.07);
+  border-bottom: 1px solid rgba(190,60,20,.25);
+}
+.pe-imp-promos[hidden] { display: none; }
+.pe-imp-promos-titre { flex-shrink: 0; font-weight: 700; color: #a3330f; }
+.pe-imp-chip--promo { border-color: rgba(190,60,20,.45); }
+.pe-imp-chip--promo span { color: #a3330f; }
+.pe-modal--promo { max-width: 560px; max-height: 94vh; overflow-y: auto; }
+.pe-promo-ref { font-size: var(--text-sm); line-height: 1.5; }
+.pe-promo-saisie { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.pe-modal--promo .pe-modal-actions { flex-wrap: wrap; }
+
 .pe-imp-panier {
   min-height: 0;
   display: flex;
@@ -739,12 +787,13 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   background: #E8DFC8;
+  overflow-y: auto;          /* filet de sécurité sur petit écran */
 }
 .pe-imp-panier > * { flex-shrink: 0; }
 .pe-imp-panier-tete { display: flex; align-items: center; justify-content: space-between; }
 .pe-imp-panier-liste {
   flex: 1 1 auto !important;
-  min-height: 150px;   /* au moins 3 lignes visibles sur la tablette */
+  min-height: 120px;   /* au moins 2 lignes visibles sur la tablette */
   overflow-y: auto;
   background: #fff;
   border-radius: var(--radius-sm);
