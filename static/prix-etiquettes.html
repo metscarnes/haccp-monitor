@@ -23,18 +23,26 @@
   <div class="pe-header-titre">🏷️ ÉTIQUETTES PRIX</div>
   <div class="pe-header-actions">
     <button class="pe-btn pe-btn--outline" id="btn-a-reimprimer" title="Étiquettes dont le prix a changé">🏷️ À réimprimer <span class="pe-badge" id="badge-a-reimprimer" hidden>0</span></button>
-    <button class="pe-btn pe-btn--outline" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
+    <button class="pe-btn pe-btn--outline pe-seulement-libre" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
     <button class="pe-btn pe-btn--outline" id="btn-impression-masse">🏷️ Impression de masse</button>
-    <button class="pe-btn pe-btn--outline" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
+    <button class="pe-btn pe-btn--outline pe-seulement-libre" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
     <button class="pe-btn pe-btn--outline" id="btn-config-imprimante" title="Paramètres imprimante">⚙️ Imprimante</button>
-    <button class="pe-btn pe-btn--primary" id="btn-imprimer">🖨️ Imprimer</button>
+    <button class="pe-btn pe-btn--primary pe-seulement-libre" id="btn-imprimer">🖨️ Imprimer</button>
   </div>
 </header>
 
 <!-- ═══════════════════════════════════════════════════
+     ONGLETS
+═══════════════════════════════════════════════════ -->
+<nav class="pe-onglets" role="tablist" aria-label="Vues du module">
+  <button class="pe-onglet" role="tab" data-onglet="style">🎨 Style des étiquettes</button>
+  <button class="pe-onglet" role="tab" data-onglet="libre">✏️ Étiquette libre</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════
      BANDEAU MODÈLES
 ═══════════════════════════════════════════════════ -->
-<div class="pe-modeles-bar">
+<div class="pe-modeles-bar pe-vue-libre">
   <span class="pe-modeles-label">Modèles :</span>
   <div class="pe-modeles-liste" id="liste-modeles">
     <!-- injecté par JS -->
@@ -45,7 +53,7 @@
 <!-- ═══════════════════════════════════════════════════
      CORPS PRINCIPAL — 2 colonnes
 ═══════════════════════════════════════════════════ -->
-<main class="pe-main">
+<main class="pe-main pe-vue-libre">
 
   <!-- ─── COLONNE GAUCHE : paramètres ─── -->
   <section class="pe-panneau-params" aria-label="Paramètres de l'étiquette">
@@ -148,6 +156,63 @@
   </section>
 
 </main>
+
+<!-- ═══════════════════════════════════════════════════
+     VUE « STYLE » — l'apparence seulement ; le texte vient du produit
+═══════════════════════════════════════════════════ -->
+<section class="pe-style pe-vue-style" aria-label="Style des étiquettes">
+
+  <div class="pe-style-reglages">
+    <div class="pe-segment pe-segment--large" role="group" aria-label="Type d'étiquette">
+      <button class="pe-segment-btn" data-type-style="normal">🏷️ Étiquette normale</button>
+      <button class="pe-segment-btn" data-type-style="promo">🔥 Étiquette promo</button>
+    </div>
+    <p class="pe-style-info" id="style-info" hidden></p>
+
+    <div class="pe-style-bloc">
+      <div class="pe-style-bloc-titre">Format</div>
+      <div class="pe-style-format">
+        <label class="pe-label">Longueur (cm)
+          <input type="number" class="pe-input pe-input--grand" id="style-largeur" min="2" max="30" step="0.5">
+        </label>
+        <label class="pe-label">Hauteur (cm, max 6,2)
+          <input type="number" class="pe-input pe-input--grand" id="style-hauteur" min="1" max="6.2" step="0.1">
+        </label>
+        <div class="pe-label">Fond
+          <div class="pe-segment" role="group" aria-label="Fond">
+            <button class="pe-segment-btn" data-fond="blanc">⬜ Blanc</button>
+            <button class="pe-segment-btn" data-fond="noir">⬛ Noir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pe-style-bloc">
+      <div class="pe-style-bloc-titre">Zones de l'étiquette (de haut en bas)</div>
+      <div id="style-zones" class="pe-zones"></div>
+      <div class="pe-zones-ajout" id="style-ajouts"></div>
+    </div>
+  </div>
+
+  <div class="pe-style-apercu">
+    <label class="pe-label pe-style-produit">Aperçu avec le produit
+      <select class="pe-input pe-input--grand" id="style-produit"></select>
+    </label>
+    <div class="pe-style-cadre-wrap">
+      <div class="pe-etiquette-cadre" id="style-cadre">
+        <canvas class="pe-etiquette-canvas" id="style-canvas"></canvas>
+      </div>
+    </div>
+    <div class="pe-preview-dimensions-info" id="style-dims"></div>
+    <p class="pe-style-note" id="style-note-promo" hidden>
+      Exemple de promo (environ −15 %). À l'impression, le prix barré sera le <strong>prix le plus bas
+      des 30 jours précédant la promo</strong> (règle légale), calculé automatiquement.
+    </p>
+    <button class="pe-btn pe-btn--primary pe-btn--grand" id="style-enregistrer">💾 Enregistrer le style</button>
+    <div class="pe-print-status" id="style-statut" hidden></div>
+  </div>
+
+</section>
 
 <!-- ═══════════════════════════════════════════════════
      MODAL — Sauvegarder un modèle
@@ -340,5 +405,6 @@
 </div>
 
 <script src="/static/js/prix_etiquettes.js"></script>
+<script src="/static/js/prix_etiquettes_style.js"></script>
 </body>
 </html>

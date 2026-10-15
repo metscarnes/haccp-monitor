@@ -110,6 +110,8 @@ async function chargerFontDefaut() {
 const PX_PAR_CM = 118;
 // Rouleau continu 62mm : hauteur (= largeur du rouleau) bridée à 6,2 cm.
 const HAUTEUR_MAX_CM = 6.2;
+// Épaisseur du trait d'un prix barré, en fraction de la taille de police (= backend).
+const EPAISSEUR_BARRE = 0.07;
 // Taille max du cadre de prévisualisation en pixels CSS
 const PREVIEW_MAX_W = 520;
 const PREVIEW_MAX_H = 460;
@@ -232,15 +234,29 @@ function mesurer(ctx, ligne, sizePx) {
     w: encreG + encreD,
     h: Math.ceil(met.ascent * taille) + Math.ceil(met.descent * taille),
     inkAscent: m.actualBoundingBoxAscent ?? met.ascent * taille,
+    inkDescent: m.actualBoundingBoxDescent ?? 0,
     encreG,
   };
 }
 
+// Aperçu de l'éditeur « Libre ».
 function rendrePreview() {
   lireEtat();
+  dessinerEtiquette({ canvas: elCanvas, cadre: elEtiquetteCadre, info: elDimsInfo },
+                    state, state.catalogueArticle);
+}
 
-  const w_cm = state.largeur_cm;
-  const h_cm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM); // bridage rouleau 62mm
+// Dessine une étiquette sur un canvas, miroir de brother_ql_prix.generer_image_prix.
+//   cible   : { canvas, cadre (élément aux proportions réelles), info (texte des dimensions),
+//               maxW, maxH (taille max du cadre à l'écran) }
+//   config  : { largeur_cm, hauteur_cm, fond_noir, lignes }
+//   produit : produit du catalogue de vente (+ promo) qui remplit les variables, ou null
+function dessinerEtiquette(cible, config, produit) {
+  const { canvas, cadre, info } = cible;
+  const maxW = cible.maxW ?? PREVIEW_MAX_W;
+  const maxH = cible.maxH ?? PREVIEW_MAX_H;
+  const w_cm = parseFloat(config.largeur_cm) || 10;
+  const h_cm = Math.min(parseFloat(config.hauteur_cm) || 6, HAUTEUR_MAX_CM); // rouleau 62mm
   const w = Math.max(1, Math.round(w_cm * PX_PAR_CM));
   const h = Math.max(1, Math.round(h_cm * PX_PAR_CM));
 
@@ -248,31 +264,35 @@ function rendrePreview() {
   const ratio = w / h;
   let cssW, cssH;
   if (ratio >= 1) {
-    cssW = Math.min(PREVIEW_MAX_W, PREVIEW_MAX_H * ratio);
+    cssW = Math.min(maxW, maxH * ratio);
     cssH = cssW / ratio;
   } else {
-    cssH = Math.min(PREVIEW_MAX_H, PREVIEW_MAX_W / ratio);
+    cssH = Math.min(maxH, maxW / ratio);
     cssW = cssH * ratio;
   }
-  elEtiquetteCadre.style.width  = Math.round(cssW) + 'px';
-  elEtiquetteCadre.style.height = Math.round(cssH) + 'px';
+  if (cadre) {
+    cadre.style.width  = Math.round(cssW) + 'px';
+    cadre.style.height = Math.round(cssH) + 'px';
+  }
 
   // Le canvas est rendu à la résolution réelle (netteté), affiché à la taille CSS.
-  elCanvas.width  = w;
-  elCanvas.height = h;
-  const ctx = elCanvas.getContext('2d');
+  canvas.width  = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
 
-  const fond  = state.fond_noir ? '#000' : '#fff';
-  const encre = state.fond_noir ? '#fff' : '#000';
+  const fond  = config.fond_noir ? '#000' : '#fff';
+  const encre = config.fond_noir ? '#fff' : '#000';
   ctx.fillStyle = fond;
   ctx.fillRect(0, 0, w, h);
 
-  elDimsInfo.textContent =
-    `${w_cm.toFixed(1).replace('.', ',')} cm × ${h_cm.toFixed(1).replace('.', ',')} cm — ${w} × ${h} px (300 dpi)`;
+  if (info) {
+    info.textContent =
+      `${w_cm.toFixed(1).replace('.', ',')} cm × ${h_cm.toFixed(1).replace('.', ',')} cm — ${w} × ${h} px (300 dpi)`;
+  }
 
-  // Article importé : ses valeurs remplacent les variables du modèle ({Nom}, {prix}…).
-  const lignes = state.lignes
-    .map(l => ({ ...l, texte: substituerVariables(l.texte || '', state.catalogueArticle) }))
+  // Le produit remplit les variables du modèle ({Nom}, {prix}…).
+  const lignes = (config.lignes || [])
+    .map(l => ({ ...l, texte: substituerVariables(l.texte || '', produit) }))
     .filter(l => (l.texte || '').trim())
     .map(l => ({
       texte: l.texte.trim(),
@@ -281,6 +301,7 @@ function rendrePreview() {
       gras: !!l.gras,
       police: l.police || null,
       alignement: l.alignement || 'center',
+      barre: !!l.barre,
     }));
 
   if (lignes.length === 0) return;
@@ -316,9 +337,11 @@ function rendrePreview() {
   }
 
   const rendues = lignes.map(l => {
-    const spec = specFont(l, taille(l, facteur));
-    const mes = mesurer(ctx, l, taille(l, facteur));
-    return { ...l, spec, w: mes.w, h: mes.h, inkAscent: mes.inkAscent };
+    const t = taillePx(taille(l, facteur));
+    const spec = specFont(l, t);
+    const mes = mesurer(ctx, l, t);
+    return { ...l, spec, taille: t, w: mes.w, h: mes.h, inkAscent: mes.inkAscent,
+             inkDescent: mes.inkDescent, encreG: mes.encreG };
   });
 
   const blocH = rendues.reduce((s, l) => s + l.h, 0) + inter * (n - 1);
@@ -334,6 +357,12 @@ function rendrePreview() {
     ctx.font = l.spec;
     // Comme PIL (y - off_y) : le haut réel des glyphes est posé sur y.
     ctx.fillText(l.texte, x, y + l.inkAscent);
+    if (l.barre) {
+      // Prix barré : trait au milieu de l'encre (même règle que le backend).
+      const epaisseur = Math.max(2, Math.round(l.taille * EPAISSEUR_BARRE));
+      const yTrait = y + Math.floor((l.inkAscent + l.inkDescent) / 2);
+      ctx.fillRect(x - l.encreG, yTrait - Math.floor(epaisseur / 2), l.w, epaisseur);
+    }
     y += l.h + inter;
   }
 }
@@ -600,6 +629,13 @@ function substituerVariables(texte, produit) {
   const unite = piece ? 'pièce' : 'kg';
   const prixUnite = prix ? `${prix} / ${unite}` : '';
   const bas = nom.toLowerCase();
+  // Promo (étiquette seulement) : prix barré = plus bas des 30 jours, prix promo, économie.
+  const promo = produit.promo || {};
+  const fmt = x => (x == null || x === '' || isNaN(parseFloat(x)))
+    ? '' : parseFloat(x).toFixed(2).replace('.', ',') + ' €';
+  const ref = promo.prix_reference_ttc, prixPromo = promo.prix_promo_ttc;
+  const economie = (ref != null && prixPromo != null)
+    ? fmt(Math.round((parseFloat(ref) - parseFloat(prixPromo)) * 100) / 100) : '';
   const valeurs = {
     '{nom}': nom,
     '{Nom}': bas.charAt(0).toUpperCase() + bas.slice(1),
@@ -611,6 +647,9 @@ function substituerVariables(texte, produit) {
     '{article_unite}': piece ? 'la pièce' : 'le kg',
     '{famille}': produit.famille || '',
     '{sous_famille}': produit.sous_famille || '',
+    '{prix_reference}': fmt(ref),
+    '{prix_promo}': fmt(prixPromo),
+    '{economie_unite}': economie ? `${economie} / ${unite}` : '',
   };
   return Object.entries(valeurs).reduce((t, [cle, val]) => t.split(cle).join(val), texte);
 }
@@ -1065,7 +1104,7 @@ const elMasseAvert    = $('masse-avert');
 const elMasseAvertTxt = $('masse-avert-txt');
 const elMasseConvertir = $('masse-convertir');
 
-const RE_VARIABLE = /\{(nom|Nom|NOM|prix|prix_kg|prix_unite|unite|article_unite|famille|sous_famille)\}/;
+const RE_VARIABLE = /\{(nom|Nom|NOM|prix|prix_kg|prix_unite|unite|article_unite|famille|sous_famille|prix_reference|prix_promo|economie_unite)\}/;
 
 // Un modèle "à variables" contient au moins une {variable} dans ses lignes.
 function modeleAVariables(config) {
@@ -1420,7 +1459,9 @@ async function init() {
   if (new URLSearchParams(location.search).has('reimprimer')) masseOuvrir({ modeFile: true });
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// Promesse exposée : les autres scripts de la page (vue Style…) attendent la fin
+// du chargement initial (polices, modèles, file) avant de démarrer.
+document.addEventListener('DOMContentLoaded', () => { window.peInit = init(); });
 
 // ── Modale configuration imprimante ──────────────────────────
 

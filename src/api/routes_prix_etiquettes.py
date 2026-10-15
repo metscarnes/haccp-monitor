@@ -49,12 +49,16 @@ class LigneTexte(BaseModel):
     gras: bool = False
     police: Optional[str] = None
     alignement: str = "center"   # left | center | right
+    # Styles à zones : nom | prix | unite | texte | prix_reference | prix_promo | economie
+    zone: Optional[str] = None
+    barre: bool = False          # texte barré (prix de référence d'une promo)
 
 
 class ConfigEtiquette(BaseModel):
     largeur_cm: float = 10.0
     hauteur_cm: float = 7.5
     fond_noir: bool = False
+    type: str = "normal"         # normal | promo (styles)
     lignes: list[LigneTexte] = []
 
 
@@ -162,14 +166,19 @@ async def supprimer_font(nom_fichier: str):
 
 @router.get("/api/prix-etiquettes/modeles")
 async def get_modeles():
+    """Modèles sauvegardés, convertis à la lecture en styles à zones : un ancien modèle
+    au texte écrit en dur est repris automatiquement (enregistré au prochain « Enregistrer »)."""
+    from src.printing.brother_ql_prix import normaliser_style
     async with get_db() as db:
         rows = await db.execute_fetchall(
             "SELECT id, nom, config_json, created_at FROM modeles_etiquettes_prix ORDER BY nom"
         )
-        return {"modeles": [
-            {"id": r[0], "nom": r[1], "config": json.loads(r[2]), "created_at": r[3]}
-            for r in rows
-        ]}
+    modeles = []
+    for r in rows:
+        style, converti = normaliser_style(json.loads(r[2]))
+        modeles.append({"id": r[0], "nom": r[1], "config": style, "converti": converti,
+                        "created_at": r[3]})
+    return {"modeles": modeles}
 
 
 @router.post("/api/prix-etiquettes/modeles", status_code=201)
@@ -405,7 +414,10 @@ async def imprimer_masse(body: ImpressionMasse):
 # File des étiquettes à réimprimer (prix de vente modifiés)
 # ---------------------------------------------------------------------------
 
-CLE_MODELE_DEFAUT = "etiquette_prix_modele_defaut"
+CLE_MODELE_DEFAUT = "etiquette_prix_modele_defaut"   # style « normal »
+CLE_MODELE_PROMO = "etiquette_prix_modele_promo"     # style « promo »
+CLE_STYLE = {"normal": CLE_MODELE_DEFAUT, "promo": CLE_MODELE_PROMO}
+NOM_STYLE = {"normal": "Étiquette normale", "promo": "Étiquette promo"}
 
 
 async def _sortir_de_la_file(produit_ids, *, mode: str, statut: str = "imprimee") -> int:
@@ -416,16 +428,68 @@ async def _sortir_de_la_file(produit_ids, *, mode: str, statut: str = "imprimee"
     return n
 
 
-async def _modele_defaut_id(db) -> Optional[int]:
-    """Modèle utilisé pour les réimpressions : celui choisi dans les réglages, sinon
-    le seul modèle existant (cas boutique : un modèle unique pour les prix)."""
+async def _styles(db) -> dict:
+    """Style « normal » et style « promo » de la boutique ({id, nom, config, converti}
+    ou None) : celui choisi dans les réglages, sinon le seul modèle de ce type."""
     from src.database import get_parametre
-    rows = await db.execute_fetchall("SELECT id FROM modeles_etiquettes_prix ORDER BY nom")
-    ids = [r[0] for r in rows]
-    choisi = await get_parametre(db, 1, CLE_MODELE_DEFAUT)
-    if choisi and choisi.isdigit() and int(choisi) in ids:
-        return int(choisi)
-    return ids[0] if len(ids) == 1 else None
+    from src.printing.brother_ql_prix import normaliser_style
+    rows = await db.execute_fetchall(
+        "SELECT id, nom, config_json FROM modeles_etiquettes_prix ORDER BY nom")
+    modeles = []
+    for r in rows:
+        style, converti = normaliser_style(json.loads(r[2]))
+        modeles.append({"id": r[0], "nom": r[1], "config": style, "converti": converti})
+    styles = {}
+    for type_, cle in CLE_STYLE.items():
+        choisi = await get_parametre(db, 1, cle)
+        par_id = {m["id"]: m for m in modeles}
+        if choisi and choisi.isdigit() and int(choisi) in par_id:
+            styles[type_] = par_id[int(choisi)]
+            continue
+        du_type = [m for m in modeles if m["config"]["type"] == type_]
+        styles[type_] = du_type[0] if len(du_type) == 1 else None
+    return styles
+
+
+async def _modele_defaut_id(db) -> Optional[int]:
+    """Modèle utilisé pour les réimpressions : le style « normal » de la boutique."""
+    normal = (await _styles(db))["normal"]
+    return normal["id"] if normal else None
+
+
+@router.get("/api/prix-etiquettes/styles")
+async def get_styles():
+    async with get_db() as db:
+        return await _styles(db)
+
+
+class StyleBody(BaseModel):
+    config: ConfigEtiquette
+
+
+@router.put("/api/prix-etiquettes/styles/{type_style}")
+async def enregistrer_style(type_style: str, body: StyleBody):
+    """« Enregistrer le style » : n'enregistre QUE l'apparence ; le texte des zones
+    (nom, prix, unité…) est fixé par la zone, jamais par ce qui était affiché."""
+    from src.database import set_parametre
+    from src.printing.brother_ql_prix import TYPES_STYLE, normaliser_style
+    if type_style not in TYPES_STYLE:
+        raise HTTPException(status_code=404, detail="Style inconnu")
+    style, _ = normaliser_style({**body.config.model_dump(), "type": type_style})
+    config_json = json.dumps(style, ensure_ascii=False)
+    async with get_db() as db:
+        actuel = (await _styles(db))[type_style]
+        if actuel:
+            await db.execute("UPDATE modeles_etiquettes_prix SET config_json = ? WHERE id = ?",
+                             (config_json, actuel["id"]))
+            modele_id = actuel["id"]
+        else:
+            cur = await db.execute(
+                "INSERT INTO modeles_etiquettes_prix (nom, config_json) VALUES (?, ?)",
+                (NOM_STYLE[type_style], config_json))
+            modele_id = cur.lastrowid
+        await set_parametre(db, 1, CLE_STYLE[type_style], str(modele_id))  # commit
+        return await _styles(db)
 
 
 class ModeleDefaut(BaseModel):

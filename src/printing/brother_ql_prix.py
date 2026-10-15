@@ -9,6 +9,7 @@ import base64
 import io
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -52,6 +53,10 @@ FONTS_DIR.mkdir(parents=True, exist_ok=True)
 FONTS_SYSTEM_DIR = Path(__file__).parent.parent.parent / "static" / "fonts" / "system"
 DEJAVU_REGULAR = FONTS_SYSTEM_DIR / "DejaVuSans.ttf"
 DEJAVU_BOLD    = FONTS_SYSTEM_DIR / "DejaVuSans-Bold.ttf"
+
+
+# Épaisseur du trait d'un texte barré, en fraction de la taille de police.
+EPAISSEUR_BARRE = 0.07
 
 
 def cm_to_px(cm: float) -> int:
@@ -194,6 +199,7 @@ def generer_image_prix(data: dict):
             "gras":       bool(ligne.get("gras", False)),
             "police":     ligne.get("police") or None,
             "alignement": ligne.get("alignement", "center"),
+            "barre":      bool(ligne.get("barre", False)),   # ancien prix d'une promo
         })
 
     def _font(ligne, sz):
@@ -261,6 +267,12 @@ def generer_image_prix(data: dict):
 
         # off_y recolle le haut réel des glyphes sur la position voulue.
         draw.text((x, y - l["off_y"]), l["texte"], font=l["font"], fill=couleur_texte)
+        if l["barre"]:
+            # Trait horizontal au milieu de l'encre (prix de référence barré).
+            g, haut, d, bas = draw.textbbox((0, 0), l["texte"], font=l["font"])
+            y_trait = y + (bas - haut) // 2
+            epaisseur = max(2, round(getattr(l["font"], "size", 20) * EPAISSEUR_BARRE))
+            draw.line([(x + g, y_trait), (x + d, y_trait)], fill=couleur_texte, width=epaisseur)
         y += l["line_h"] + inter
 
     return img
@@ -325,6 +337,14 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
     article_unite = "la pièce" if a_la_piece else "le kg"          # ex. "le kg"
     prix_unite = (prix + " / " + unite) if prix else ""           # ex. "49,90 € / pièce"
 
+    # Promo (étiquette seulement, le prix du catalogue ne change pas) :
+    # produit["promo"] = {"prix_reference_ttc": prix barré, "prix_promo_ttc": prix promo}.
+    promo = produit.get("promo") or {}
+    ref, prix_promo = promo.get("prix_reference_ttc"), promo.get("prix_promo_ttc")
+    economie = ""
+    if ref is not None and prix_promo is not None:
+        economie = formater_prix(round(float(ref) - float(prix_promo), 2))
+
     remplacements = {
         "{nom}":          nom,
         "{Nom}":          _capitaliser(nom),
@@ -336,6 +356,9 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
         "{article_unite}": article_unite,    # "le kg" / "la pièce"
         "{famille}":      str(produit.get("famille") or ""),
         "{sous_famille}": str(produit.get("sous_famille") or ""),
+        "{prix_reference}": formater_prix(ref),          # prix barré (plus bas des 30 j)
+        "{prix_promo}":     formater_prix(prix_promo),
+        "{economie_unite}": (economie + " / " + unite) if economie else "",
     }
 
     def substituer(texte: str) -> str:
@@ -349,6 +372,71 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
         for ligne in config.get("lignes", [])
     ]
     return nouvelle
+
+
+# ---------------------------------------------------------------------------
+# Styles à ZONES — l'écran « Style » ne montre jamais de {variables}
+# ---------------------------------------------------------------------------
+# Chaque ligne d'un style porte une `zone` qui fixe son texte : le style ne contient
+# que l'apparence (police, taille, alignement…), le texte vient toujours du produit.
+# Une zone 'texte' est un texte fixe saisi par l'utilisateur (ex. « Fait maison »).
+
+TEXTE_ZONES = {
+    "nom":            "{Nom}",
+    "prix":           "{prix}",
+    "unite":          "{article_unite}",
+    "prix_reference": "{prix_reference}",
+    "prix_promo":     "{prix_promo}",
+    "economie":       "Économisez {economie_unite}",
+}
+TYPES_STYLE = ("normal", "promo")
+
+_RE_PRIX = re.compile(r"€|\d+[.,]\d{2}")
+_RE_UNITE = re.compile(r"^(le\s+kg|la\s+pi[èe]ce|au\s+kg|/\s*kg|kg|pi[èe]ce)$", re.IGNORECASE)
+_ZONE_DE_VARIABLE = (
+    ("{prix_reference}", "prix_reference"), ("{prix_promo}", "prix_promo"),
+    ("{economie", "economie"), ("{prix", "prix"),
+    ("{article_unite}", "unite"), ("{unite}", "unite"),
+    ("{Nom}", "nom"), ("{nom}", "nom"), ("{NOM}", "nom"),
+)
+
+
+def normaliser_style(config: dict) -> tuple[dict, bool]:
+    """
+    Garantit que chaque ligne d'un style a une `zone` et le texte de cette zone.
+
+    Les anciens modèles (texte écrit en dur, ex. « Graisse de canard » / « 9,90 € » /
+    « le kg ») sont repris AUTOMATIQUEMENT : une ligne qui ressemble à un prix devient
+    la zone Prix, « le kg » la zone Unité, la première autre ligne la zone Nom, le
+    reste des textes fixes. Apparence (police, taille, fond…) inchangée.
+    Renvoie (style, converti) — converti=True si au moins une ligne a été interprétée.
+    """
+    lignes = [dict(l) for l in (config.get("lignes") or [])]
+    converti = False
+    deja = {l.get("zone") for l in lignes if l.get("zone")}
+    for l in lignes:
+        if l.get("zone") in TEXTE_ZONES or l.get("zone") == "texte":
+            continue
+        texte = str(l.get("texte") or "").strip()
+        zone = next((z for motif, z in _ZONE_DE_VARIABLE if motif in texte), None)
+        if zone is None and texte and "{" not in texte:   # autre variable → texte fixe
+            if "prix" not in deja and _RE_PRIX.search(texte):
+                zone = "prix"
+            elif "unite" not in deja and _RE_UNITE.match(texte):
+                zone = "unite"
+            elif "nom" not in deja and len(texte) > 3:
+                zone = "nom"
+        l["zone"] = zone or "texte"
+        converti = True
+        deja.add(l["zone"])
+    for l in lignes:
+        if l["zone"] in TEXTE_ZONES:
+            l["texte"] = TEXTE_ZONES[l["zone"]]
+        l["barre"] = l["zone"] == "prix_reference"
+    style = {**config, "lignes": lignes}
+    style["type"] = config.get("type") if config.get("type") in TYPES_STYLE else (
+        "promo" if any(l["zone"] == "prix_promo" for l in lignes) else "normal")
+    return style, converti
 
 
 # Largeur imprimable EXACTE pour le rouleau continu 62mm à 300dpi.

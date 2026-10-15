@@ -703,6 +703,186 @@
   color: var(--color-offline);
 }
 
+/* ═══════════════════════════════════════════════════
+   Onglets + vue « Style » (pensée tablette : cibles ≥ 44 px)
+═══════════════════════════════════════════════════ */
+.pe-onglets {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+  background: var(--color-card);
+  border-bottom: 1px solid rgba(107,58,31,.12);
+}
+.pe-onglet {
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-offline);
+  cursor: pointer;
+}
+.pe-onglet.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+body[data-onglet="style"] .pe-vue-libre,
+body[data-onglet="style"] .pe-seulement-libre { display: none !important; }
+body:not([data-onglet="style"]) .pe-vue-style { display: none !important; }
+
+.pe-style {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr);
+  overflow: hidden;
+}
+.pe-style-reglages {
+  background: var(--color-card);
+  border-right: 1px solid rgba(107,58,31,.12);
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.pe-style-apercu {
+  background: #E8DFC8;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+/* Colonnes qui défilent : leurs blocs gardent leur hauteur (sinon un bloc à
+   overflow:hidden, comme les boutons segmentés, s'écrase à 0). */
+.pe-style-reglages > *,
+.pe-style-apercu > * { flex-shrink: 0; }
+.pe-style-produit { width: 100%; max-width: 640px; }
+.pe-style-cadre-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+}
+.pe-style-note {
+  max-width: 640px;
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  text-align: center;
+}
+.pe-style-info {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: rgba(45,125,70,.10);
+  border: 1px solid rgba(45,125,70,.25);
+  color: var(--color-ok);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.pe-style-info[hidden] { display: none; }
+.pe-style-bloc { display: flex; flex-direction: column; gap: var(--space-2); }
+.pe-style-bloc-titre {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.pe-style-format {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+}
+.pe-style-format > .pe-label:last-child { grid-column: 1 / -1; }
+.pe-input--grand { min-height: 48px; font-size: var(--text-base, 1rem); }
+.pe-btn--grand { min-height: 56px; font-size: var(--text-base, 1rem); padding: 0 var(--space-6); }
+
+/* Boutons segmentés (choix exclusif, gros pour le doigt) */
+.pe-segment {
+  display: flex;
+  border: 1.5px solid rgba(107,58,31,.25);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #fff;
+}
+.pe-segment-btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-right: 1px solid rgba(107,58,31,.15);
+  background: #fff;
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pe-segment-btn:last-child { border-right: none; }
+.pe-segment-btn.active { background: var(--color-accent); color: #fff; }
+.pe-segment-btn:disabled { opacity: .45; cursor: default; }
+.pe-segment--large .pe-segment-btn { min-height: 52px; font-size: var(--text-sm); }
+
+/* Cartes de zones */
+.pe-zones { display: flex; flex-direction: column; gap: var(--space-3); }
+.pe-zone {
+  background: rgba(107,58,31,.04);
+  border: 1.5px solid rgba(107,58,31,.14);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.pe-zone-tete { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.pe-zone-nom { font-weight: 700; color: var(--color-accent); }
+.pe-zone-aide { font-size: var(--text-xs); color: var(--color-offline); }
+.pe-zone-actions { display: flex; gap: var(--space-1); }
+.pe-icone-btn {
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid rgba(107,58,31,.2);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+.pe-icone-btn:disabled { opacity: .3; cursor: default; }
+.pe-icone-btn--suppr { color: var(--color-alert); }
+.pe-zone-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.pe-zone-options .pe-input { min-height: 44px; }
+.pe-zone-gras {
+  border: 1.5px solid rgba(107,58,31,.25);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+}
+.pe-zones-ajout { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pe-btn--ajout {
+  min-height: 44px;
+  background: #fff;
+  color: var(--color-accent);
+  border: 1.5px dashed rgba(107,58,31,.35);
+}
+
+@media (max-width: 900px) {
+  .pe-style { grid-template-columns: 1fr; overflow: visible; }
+  .pe-style-reglages { overflow-y: visible; border-right: none; }
+  .pe-style-apercu { order: -1; }          /* aperçu en haut sur tablette portrait */
+}
+
 /* ── Responsive : tablette portrait ── */
 @media (max-width: 900px) {
   .pe-body { height: auto; min-height: 100dvh; }   /* page qui défile sur tablette portrait */
