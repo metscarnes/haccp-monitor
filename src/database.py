@@ -1172,6 +1172,34 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_propositions_prix_vente_attente
     ON propositions_prix_vente(catalogue_vente_id) WHERE statut = 'en_attente';
 CREATE INDEX IF NOT EXISTS idx_propositions_prix_vente_reception
     ON propositions_prix_vente(reception_id, statut);
+
+-- ===========================================================================
+-- v7.8 — Étiquettes prix à réimprimer (voir src/file_etiquettes_prix.py)
+-- ===========================================================================
+-- Chaque changement de prix de vente (quelle qu'en soit l'origine) met le produit
+-- dans la file ; l'impression (serveur ou navigateur) le sort de la file. UNE seule
+-- ligne 'en_attente' par produit : un 2e changement avant impression met à jour
+-- prix_nouveau_ttc mais garde prix_ancien_ttc (= prix de l'étiquette en rayon).
+-- L'étiquette imprimée porte toujours le prix ACTUEL du catalogue, jamais un prix figé.
+--   statut : en_attente | imprimee | retiree (retirée à la main, ou prix revenu à
+--            celui de l'étiquette en rayon)
+--   mode   : serveur (bouton Imprimer) | navigateur | manuel
+CREATE TABLE IF NOT EXISTS etiquettes_a_reimprimer (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    catalogue_vente_id INTEGER NOT NULL,
+    prix_ancien_ttc    REAL,
+    prix_nouveau_ttc   REAL,
+    motif              TEXT,
+    statut             TEXT    NOT NULL DEFAULT 'en_attente',
+    mode               TEXT,
+    created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+    traite_at          DATETIME,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_etiquettes_a_reimprimer_attente
+    ON etiquettes_a_reimprimer(catalogue_vente_id) WHERE statut = 'en_attente';
 """
 
 SEED_SQL = """
@@ -1971,6 +1999,22 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_propositions_prix_vente_attente ON propositions_prix_vente(catalogue_vente_id) WHERE statut = 'en_attente'",
             "CREATE INDEX IF NOT EXISTS idx_propositions_prix_vente_reception ON propositions_prix_vente(reception_id, statut)",
+            # v7.8 — File des étiquettes prix à réimprimer (cf. SCHEMA_SQL et
+            # src/file_etiquettes_prix.py). Nouvelle table, rejouée pour les bases existantes.
+            """CREATE TABLE IF NOT EXISTS etiquettes_a_reimprimer (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                catalogue_vente_id INTEGER NOT NULL,
+                prix_ancien_ttc    REAL,
+                prix_nouveau_ttc   REAL,
+                motif              TEXT,
+                statut             TEXT    NOT NULL DEFAULT 'en_attente',
+                mode               TEXT,
+                created_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+                traite_at          DATETIME,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_etiquettes_a_reimprimer_attente ON etiquettes_a_reimprimer(catalogue_vente_id) WHERE statut = 'en_attente'",
         ]
         for sql in migrations:
             try:

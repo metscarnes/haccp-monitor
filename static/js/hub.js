@@ -75,8 +75,25 @@ function setTuile(idTuile, etat, html) {
 }
 
 // ── Tuile — Fabrication ───────────────────────────────────────
+// (tuile absente du Hub actuel : sans garde, l'erreur interrompait charger()
+// avant la mise à jour des tuiles suivantes)
 function afficherEtiquettes(alertes) {
-  document.getElementById('tuile-etiquettes').className = 'hub-tuile hub-tuile--ok';
+  const tuile = document.getElementById('tuile-etiquettes');
+  if (tuile) tuile.className = 'hub-tuile hub-tuile--ok';
+}
+
+// ── Tuile — Étiquettes prix : étiquettes à refaire après un changement de prix ──
+function afficherPrixEtiquettes(data) {
+  const n = data?.total ?? 0;
+  const tuile = document.getElementById('tuile-prix-etiquettes');
+  if (n > 0) {
+    setTuile('tuile-prix-etiquettes', 'attention',
+      `${dot('attention')} ${n} étiquette${n > 1 ? 's' : ''} à refaire`);
+    tuile.href = '/prix-etiquettes.html?reimprimer=1';   // ouvre directement la liste
+  } else {
+    setTuile('tuile-prix-etiquettes', 'ok', `${dot('ok')} Étiquettes à jour`);
+    tuile.href = '/prix-etiquettes.html';
+  }
 }
 
 // ── Tuile — Réception ─────────────────────────────────────────
@@ -108,10 +125,14 @@ function afficherReception(receptions) {
 
 // ── Chargement principal ──────────────────────────────────────
 async function charger() {
-  const [rDlc, rRecep] = await Promise.allSettled([
+  const [rDlc, rRecep, rPrix] = await Promise.allSettled([
     apiFetch('/api/etiquettes/alertes-dlc'),
     apiFetch('/api/receptions?limit=1'),
+    apiFetch('/api/prix-etiquettes/a-reimprimer/compte'),
   ]);
+
+  // Information secondaire : en cas d'échec, la tuile garde son libellé par défaut.
+  if (rPrix.status === 'fulfilled') afficherPrixEtiquettes(rPrix.value);
 
   const toutEchoue = [rDlc, rRecep]
     .every(r => r.status === 'rejected');
@@ -120,7 +141,8 @@ async function charger() {
   if (rDlc.status === 'fulfilled') {
     afficherEtiquettes(rDlc.value);
   } else {
-    document.getElementById('tuile-etiquettes').className = 'hub-tuile hub-tuile--erreur';
+    const tuile = document.getElementById('tuile-etiquettes');
+    if (tuile) tuile.className = 'hub-tuile hub-tuile--erreur';
   }
 
   if (rRecep.status === 'fulfilled') {

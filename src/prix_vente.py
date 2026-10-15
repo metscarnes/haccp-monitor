@@ -803,7 +803,12 @@ async def tracer_changement_prix_vente(db, catalogue_vente_id: int, ancien_ttc, 
                WHERE catalogue_vente_id = ? AND statut = 'en_attente'""",
             (arrondi_centime(nouveau_ttc), maintenant, role, maintenant, catalogue_vente_id),
         )
-    return cur.lastrowid
+    historique_id = cur.lastrowid
+    # Nouveau prix → l'étiquette en rayon est à refaire (quelle que soit l'origine).
+    from src.file_etiquettes_prix import ajouter_a_la_file
+    await ajouter_a_la_file(db, catalogue_vente_id, arrondi_centime(ancien_ttc),
+                            arrondi_centime(nouveau_ttc), motif=motif)
+    return historique_id
 
 
 async def changer_prix_vente(db, catalogue_vente_id: int, nouveau_ttc, *, motif: str,

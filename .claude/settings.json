@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(node --check static/js/reception.js)",
+      "PowerShell(python -m pytest tests/test_reception_lot_a.py -q -p no:cacheprovider -W ignore 2>&1)"
+    ]
+  }
+}

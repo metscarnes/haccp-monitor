@@ -68,7 +68,9 @@ const state = {
   fontsDispos: [],      // [{nom, label}]
   modeles: [],          // [{id, nom, config}]
   modeleActifId: null,
-  catalogueArticle: null,  // article sélectionné depuis le catalogue
+  modeleDefautId: null,    // modèle des réimpressions (seul modèle, ou choisi ⭐)
+  catalogueArticle: null,  // produit du catalogue de vente importé (variables {Nom}…)
+  file: new Map(),         // catalogue_vente_id → élément de la file « À réimprimer »
 };
 
 // Polices chargées dans le navigateur via FontFace (pour le rendu Canvas).
@@ -268,7 +270,9 @@ function rendrePreview() {
   elDimsInfo.textContent =
     `${w_cm.toFixed(1).replace('.', ',')} cm × ${h_cm.toFixed(1).replace('.', ',')} cm — ${w} × ${h} px (300 dpi)`;
 
+  // Article importé : ses valeurs remplacent les variables du modèle ({Nom}, {prix}…).
   const lignes = state.lignes
+    .map(l => ({ ...l, texte: substituerVariables(l.texte || '', state.catalogueArticle) }))
     .filter(l => (l.texte || '').trim())
     .map(l => ({
       texte: l.texte.trim(),
@@ -584,36 +588,80 @@ function fermerDropdownCatalogue() {
   elCatalogueDropdown.innerHTML = '';
 }
 
+// Remplace les variables {Nom} {prix}… d'un texte par les valeurs d'un produit du
+// catalogue de vente — miroir de brother_ql_prix.appliquer_variables (même rendu
+// à l'écran qu'à l'impression, où le serveur relit le prix actuel en base).
+function substituerVariables(texte, produit) {
+  if (!produit || !texte) return texte;
+  const nom = String(produit.nom ?? produit.designation ?? '');
+  const v = parseFloat(produit.prix_vente_ttc);
+  const prix = isNaN(v) ? '' : v.toFixed(2).replace('.', ',') + ' €';
+  const piece = String(produit.unite_vente || 'kg').toLowerCase() === 'piece';
+  const unite = piece ? 'pièce' : 'kg';
+  const prixUnite = prix ? `${prix} / ${unite}` : '';
+  const bas = nom.toLowerCase();
+  const valeurs = {
+    '{nom}': nom,
+    '{Nom}': bas.charAt(0).toUpperCase() + bas.slice(1),
+    '{NOM}': nom.toUpperCase(),
+    '{prix}': prix,
+    '{prix_kg}': prixUnite,
+    '{prix_unite}': prixUnite,
+    '{unite}': unite,
+    '{article_unite}': piece ? 'la pièce' : 'le kg',
+    '{famille}': produit.famille || '',
+    '{sous_famille}': produit.sous_famille || '',
+  };
+  return Object.entries(valeurs).reduce((t, [cle, val]) => t.split(cle).join(val), texte);
+}
+
+function lignesAVariables() {
+  return [...elLignesListe.querySelectorAll('.pe-ligne-texte')]
+    .some(inp => RE_VARIABLE.test(inp.value || ''));
+}
+
+function lignesVides() {
+  return [...elLignesListe.querySelectorAll('.pe-ligne-texte')]
+    .every(inp => !(inp.value || '').trim());
+}
+
+// Id catalogue de VENTE de l'article importé (null si l'article vient d'ailleurs).
+function produitVenteId() {
+  return state.catalogueArticle?.id ?? null;
+}
+
 function selectionnerArticle(article) {
   state.catalogueArticle = article;
-  elCatalogueNom.textContent = article.designation;
+  elCatalogueNom.textContent = article.designation ?? article.nom ?? '';
   elCatalogueSelect.hidden = false;
   elCatalogueSearch.value = '';
   fermerDropdownCatalogue();
 
-  // Toujours remplacer les lignes existantes par celles de l'article importé
+  // Étiquette vierge → on part du modèle par défaut (modèle des prix de la boutique).
+  if (lignesVides()) {
+    const defaut = state.modeles.find(m => m.id === state.modeleDefautId);
+    if (defaut) chargerModele(defaut);
+  }
+
+  // Modèle à variables : on GARDE sa mise en page, l'article remplit {Nom}, {prix}…
+  if (lignesAVariables()) {
+    rendrePreview();
+    return;
+  }
+
+  // Sinon (texte libre) : lignes générées à partir de l'article, comme avant.
   elLignesListe.innerHTML = '';
-
   elLignesListe.appendChild(creerLigneDOM({
-    texte: article.designation,
-    poids: 1,
-    gras: true,
-    alignement: 'center',
+    texte: article.designation ?? article.nom, poids: 1, gras: true, alignement: 'center',
   }));
-
   if (article.prix_vente_ttc) {
     const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
+    const piece = String(article.unite_vente || 'kg').toLowerCase() === 'piece';
     elLignesListe.appendChild(creerLigneDOM({
-      texte: prix,
-      poids: 3,
-      gras: true,
-      alignement: 'center',
+      texte: prix, poids: 3, gras: true, alignement: 'center',
     }));
     elLignesListe.appendChild(creerLigneDOM({
-      texte: 'le kg',
-      poids: 0.6,
-      gras: false,
-      alignement: 'center',
+      texte: piece ? 'la pièce' : 'le kg', poids: 0.6, gras: false, alignement: 'center',
     }));
   }
 
@@ -624,14 +672,19 @@ elCatalogueClear.addEventListener('click', () => {
   state.catalogueArticle = null;
   elCatalogueSelect.hidden = true;
   elCatalogueNom.textContent = '';
+  rendrePreview();   // les variables réapparaissent telles quelles
 });
 
 // ── Modèles ──────────────────────────────────────────────────
 
 async function chargerModeles() {
   try {
-    const data = await apiFetch('/api/prix-etiquettes/modeles');
+    const [data, defaut] = await Promise.all([
+      apiFetch('/api/prix-etiquettes/modeles'),
+      apiFetch('/api/prix-etiquettes/modele-defaut'),
+    ]);
     state.modeles = data.modeles ?? [];
+    state.modeleDefautId = defaut.modele_id ?? null;
     afficherModeles();
   } catch (e) {
     console.error('Modeles:', e);
@@ -755,18 +808,32 @@ function afficherStatut(msg, type) {
   if (type === 'ok') setTimeout(() => { elPrintStatus.hidden = true; }, 4000);
 }
 
-elBtnImprimer.addEventListener('click', async () => {
+// Contrôles communs aux deux impressions de l'éditeur. Renvoie false si bloquant.
+function verifierAvantImpression() {
   lireEtat();
   if (state.lignes.length === 0 || state.lignes.every(l => !l.texte.trim())) {
     afficherStatut('Ajoutez au moins une ligne de texte avant d\'imprimer.', 'err');
-    return;
+    return false;
   }
+  if (!state.catalogueArticle && lignesAVariables()) {
+    afficherStatut('Ce modèle contient des variables ({Nom}, {prix}…) : choisissez d\'abord '
+      + 'un article dans « Import article », sinon elles seraient imprimées telles quelles.', 'err');
+    return false;
+  }
+  return true;
+}
+
+elBtnImprimer.addEventListener('click', async () => {
+  if (!verifierAvantImpression()) return;
 
   const payload = {
     largeur_cm: state.largeur_cm,
     hauteur_cm: state.hauteur_cm,
     fond_noir:  state.fond_noir,
     lignes:     state.lignes,
+    // Le serveur remplit les variables avec le prix ACTUEL en base et sort le
+    // produit de la file « À réimprimer ».
+    produit_id: produitVenteId(),
   };
 
   elBtnImprimer.disabled = true;
@@ -779,6 +846,7 @@ elBtnImprimer.addEventListener('click', async () => {
       body: JSON.stringify(payload),
     });
     afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
+    chargerFile();
   } catch (e) {
     afficherStatut('Erreur impression : ' + e.message, 'err');
   } finally {
@@ -786,16 +854,33 @@ elBtnImprimer.addEventListener('click', async () => {
   }
 });
 
+// Impression navigateur : on ne sait pas si l'étiquette est vraiment sortie, on
+// demande avant de retirer les produits de la file « À réimprimer ».
+async function proposerSortieFile(ids) {
+  const dansFile = ids.filter(id => state.file.has(id));
+  if (!dansFile.length) return;
+  const n = dansFile.length;
+  if (!confirm(`Une fois imprimée${n > 1 ? 's' : ''}, retirer ${n} étiquette${n > 1 ? 's' : ''} `
+      + 'de la liste « À réimprimer » ?')) return;
+  try {
+    await apiFetch('/api/prix-etiquettes/a-reimprimer/sortir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produit_ids: dansFile, statut: 'imprimee', mode: 'navigateur' }),
+    });
+  } catch (e) {
+    alert('Erreur : ' + e.message);
+  }
+  await chargerFile();
+}
+
 // ── Impression via le navigateur (Wi-Fi / sans USB serveur) ──
 // Imprime le canvas d'aperçu tel quel, dimensionné à la taille physique
 // réelle de l'étiquette. Sert au test hors boutique et de secours :
 // l'utilisateur choisit l'imprimante dans la boîte de dialogue du navigateur.
 elBtnImprimerNav.addEventListener('click', () => {
-  lireEtat();
-  if (state.lignes.length === 0 || state.lignes.every(l => !l.texte.trim())) {
-    afficherStatut('Ajoutez au moins une ligne de texte avant d\'imprimer.', 'err');
-    return;
-  }
+  if (!verifierAvantImpression()) return;
+  rendrePreview();   // canvas à jour (variables remplies) avant de le copier
 
   // Le canvas est déjà rendu à la résolution réelle par l'aperçu live.
   // On reprend EXACTEMENT ses dimensions, hauteur bridée comme dans
@@ -824,6 +909,8 @@ elBtnImprimerNav.addEventListener('click', () => {
   win.document.close();
   win.addEventListener('afterprint', () => win.close());
   afficherStatut('Aperçu ouvert — choisissez l\'imprimante dans la fenêtre.', 'ok');
+  const id = produitVenteId();
+  if (id != null) proposerSortieFile([id]);
 });
 
 // ── Impression de masse (série depuis le catalogue de vente) ─────────
@@ -844,6 +931,24 @@ const elMasseVide      = $('masse-vide');
 const elMasseCompteur  = $('masse-compteur');
 const elMasseCheckAll  = $('masse-check-all');
 const elMasseStatus    = $('masse-status');
+const elMasseFiltreFile = $('masse-filtre-file');
+const elMasseNbFile    = $('masse-nb-file');
+const elBadgeFile      = $('badge-a-reimprimer');
+
+// ── File « À réimprimer » (produits dont le prix a changé) ────
+async function chargerFile() {
+  try {
+    const data = await apiFetch('/api/prix-etiquettes/a-reimprimer');
+    state.file = new Map((data.elements ?? []).map(e => [e.catalogue_vente_id, e]));
+    state.modeleDefautId = data.modele_defaut_id ?? state.modeleDefautId;
+  } catch (e) {
+    console.error('File à réimprimer :', e);
+  }
+  const n = state.file.size;
+  elBadgeFile.textContent = n;
+  elBadgeFile.hidden = n === 0;
+  elMasseNbFile.textContent = n;
+}
 
 function masseStatut(msg, type) {
   elMasseStatus.textContent = msg;
@@ -856,7 +961,9 @@ function masseStatut(msg, type) {
 function masseProduitsVisibles() {
   const q = elMasseSearch.value.trim().toLowerCase();
   const fam = elMasseFamille.value;
+  const fileSeule = elMasseFiltreFile.checked;
   let liste = masseState.produits.filter(p => {
+    if (fileSeule && !state.file.has(p.id)) return false;
     if (fam && (p.famille || '') !== fam) return false;
     if (q && !(p.nom || '').toLowerCase().includes(q)) return false;
     return true;
@@ -889,9 +996,14 @@ function masseRendreTable() {
     const qte = masseState.selection.get(p.id) ?? 1;
     const prix = p.prix_vente_ttc != null
       ? `${parseFloat(p.prix_vente_ttc).toFixed(2).replace('.', ',')} €` : '—';
+    const f = state.file.get(p.id);
+    const tagFile = f
+      ? `<span class="pe-tag-file">🏷️ à refaire${f.prix_ancien_ttc != null
+          ? ` · avant ${parseFloat(f.prix_ancien_ttc).toFixed(2).replace('.', ',')} €` : ''}</span>`
+      : '';
     tr.innerHTML = `
       <td class="pe-masse-col-check"><input type="checkbox" data-id="${p.id}" ${sel ? 'checked' : ''}></td>
-      <td>${escHtml(p.nom)}</td>
+      <td>${escHtml(p.nom)}${tagFile}</td>
       <td>${escHtml(prix)}</td>
       <td>${escHtml(p.famille || '')}</td>
       <td>${escHtml(p.sous_famille || '')}</td>
@@ -943,9 +1055,10 @@ function masseRemplirModeles() {
   state.modeles.forEach(m => {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = m.nom;
+    opt.textContent = m.id === state.modeleDefautId ? `⭐ ${m.nom}` : m.nom;
     elMasseModele.appendChild(opt);
   });
+  if (state.modeleDefautId != null) elMasseModele.value = state.modeleDefautId;
 }
 
 const elMasseAvert    = $('masse-avert');
@@ -1052,15 +1165,31 @@ function masseConstruirePayload() {
   return { config: modele.config, produits };
 }
 
-async function masseOuvrir() {
-  masseRemplirModeles();
+// modeFile : ouvre directement sur les étiquettes à réimprimer, toutes cochées.
+async function masseOuvrir({ modeFile = false } = {}) {
   elMasseModal.hidden = false;
-  if (masseState.produits.length === 0) {
-    masseStatut('Chargement du catalogue…', 'loading');
-    await masseChargerCatalogue();
-    elMasseStatus.hidden = true;
-    masseRemplirFamilles();
+  // Catalogue ET file rechargés à chaque ouverture : les prix affichés suivent
+  // les changements faits ailleurs (popup réception, fiche produit…).
+  masseStatut('Chargement du catalogue…', 'loading');
+  await Promise.all([masseChargerCatalogue(), chargerFile()]);
+  elMasseStatus.hidden = true;
+  masseRemplirModeles();
+  const famille = elMasseFamille.value;
+  masseRemplirFamilles();
+  elMasseFamille.value = famille;
+
+  if (modeFile) {
+    elMasseFiltreFile.checked = true;
+    elMasseSearch.value = '';
+    elMasseFamille.value = '';
+    masseState.selection.clear();
+    state.file.forEach((_, id) => masseState.selection.set(id, 1));
+    if (state.file.size === 0) masseStatut('Aucune étiquette à réimprimer : tout est à jour. ✓', 'ok');
   }
+  // Produits sortis du catalogue (désactivés) : plus imprimables.
+  const ids = new Set(masseState.produits.map(p => p.id));
+  [...masseState.selection.keys()].forEach(id => { if (!ids.has(id)) masseState.selection.delete(id); });
+
   masseRendreTable();
   masseMajCompteur();
   masseVerifierModele();
@@ -1069,7 +1198,50 @@ async function masseOuvrir() {
 function masseFermer() { elMasseModal.hidden = true; }
 
 // — Événements modal de masse —
-$('btn-impression-masse').addEventListener('click', masseOuvrir);
+$('btn-impression-masse').addEventListener('click', () => masseOuvrir());
+$('btn-a-reimprimer').addEventListener('click', () => masseOuvrir({ modeFile: true }));
+elMasseFiltreFile.addEventListener('change', () => { masseRendreTable(); });
+
+// Modèle utilisé d'office pour les réimpressions.
+$('masse-modele-defaut').addEventListener('click', async () => {
+  const id = parseInt(elMasseModele.value, 10);
+  if (!id) { masseStatut('Choisissez un modèle.', 'err'); return; }
+  try {
+    const res = await apiFetch('/api/prix-etiquettes/modele-defaut', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modele_id: id }),
+    });
+    state.modeleDefautId = res.modele_id;
+    masseRemplirModeles();
+    masseStatut('⭐ Modèle par défaut enregistré.', 'ok');
+  } catch (e) {
+    masseStatut('Erreur : ' + e.message, 'err');
+  }
+});
+
+// Prix changé sans étiquette à refaire (produit pas en rayon…) : on le retire.
+$('masse-retirer-file').addEventListener('click', async () => {
+  const ids = [...masseState.selection.keys()].filter(id => state.file.has(id));
+  if (!ids.length) {
+    masseStatut('Cochez les produits « 🏷️ à refaire » à retirer de la liste.', 'err');
+    return;
+  }
+  if (!confirm(`Retirer ${ids.length} produit(s) de la liste « À réimprimer » sans imprimer ?`)) return;
+  try {
+    await apiFetch('/api/prix-etiquettes/a-reimprimer/sortir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produit_ids: ids, statut: 'retiree', mode: 'manuel' }),
+    });
+    ids.forEach(id => masseState.selection.delete(id));
+    await chargerFile();
+    masseRendreTable(); masseMajCompteur();
+    masseStatut(`${ids.length} produit(s) retiré(s) de la liste.`, 'ok');
+  } catch (e) {
+    masseStatut('Erreur : ' + e.message, 'err');
+  }
+});
 $('btn-masse-fermer').addEventListener('click', masseFermer);
 elMasseModal.addEventListener('click', e => { if (e.target === elMasseModal) masseFermer(); });
 
@@ -1133,6 +1305,11 @@ $('masse-btn-wifi').addEventListener('click', async () => {
     masseStatut('Erreur impression : ' + e.message, 'err');
   } finally {
     btn.disabled = false;
+    // Le serveur a sorti de la file les produits imprimés : on rafraîchit.
+    const avant = new Set(state.file.keys());
+    await chargerFile();
+    avant.forEach(id => { if (!state.file.has(id)) masseState.selection.delete(id); });
+    masseRendreTable(); masseMajCompteur();
   }
 });
 
@@ -1183,6 +1360,8 @@ ${pages.join('\n')}
   win.document.close();
   win.addEventListener('afterprint', () => win.close());
   masseStatut(`Aperçu de ${pages.length} étiquette(s) ouvert.`, 'ok');
+  await proposerSortieFile(payload.produits.map(p => p.produit_id));
+  masseRendreTable();
 });
 
 // ── Persistance locale des dimensions ────────────────────────
@@ -1215,15 +1394,18 @@ async function init() {
   rendrePreview();             // premier rendu immédiat (avant les appels réseau)
   await chargerFonts();
   await chargerModeles();
+  await chargerFile();
   rendrePreview();
 
-  // Import article depuis catalogue achats (bouton 🏷️ du tableau catalogue)
+  // Import article depuis catalogue achats (bouton 🏷️ du tableau catalogue).
+  // Son id est celui du catalogue ACHATS : on l'efface pour ne pas le confondre
+  // avec un produit de vente (variables, file « À réimprimer »).
   try {
     const raw = sessionStorage.getItem('pe_article_import');
     if (raw) {
       sessionStorage.removeItem('pe_article_import');
       const article = JSON.parse(raw);
-      selectionnerArticle(article);
+      selectionnerArticle({ ...article, id: null });
     }
   } catch (e) { /* ignore */ }
 
@@ -1233,6 +1415,9 @@ async function init() {
   }
 
   rendrePreview();
+
+  // Arrivée depuis la tuile du Hub « N étiquettes à refaire ».
+  if (new URLSearchParams(location.search).has('reimprimer')) masseOuvrir({ modeFile: true });
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -22,6 +22,7 @@
   <a href="/hub.html" class="pe-retour">← Hub</a>
   <div class="pe-header-titre">🏷️ ÉTIQUETTES PRIX</div>
   <div class="pe-header-actions">
+    <button class="pe-btn pe-btn--outline" id="btn-a-reimprimer" title="Étiquettes dont le prix a changé">🏷️ À réimprimer <span class="pe-badge" id="badge-a-reimprimer" hidden>0</span></button>
     <button class="pe-btn pe-btn--outline" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
     <button class="pe-btn pe-btn--outline" id="btn-impression-masse">🏷️ Impression de masse</button>
     <button class="pe-btn pe-btn--outline" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
@@ -177,10 +178,14 @@
 
     <!-- Choix du modèle + aide variables -->
     <div class="pe-masse-modele">
-      <label class="pe-label pe-label--sm">
-        Modèle à appliquer
-        <select class="pe-input" id="masse-modele"></select>
-      </label>
+      <div class="pe-masse-modele-ligne">
+        <label class="pe-label pe-label--sm">
+          Modèle à appliquer
+          <select class="pe-input" id="masse-modele"></select>
+        </label>
+        <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-modele-defaut"
+                title="Modèle utilisé d'office pour les étiquettes à réimprimer">⭐ Par défaut</button>
+      </div>
       <p class="pe-masse-aide">
         Variables utilisables dans le modèle :
         <code>{nom}</code> <code>{Nom}</code> <code>{NOM}</code>
@@ -202,8 +207,14 @@
       <select id="masse-filtre-famille" class="pe-input pe-input--sm">
         <option value="">Toutes les familles</option>
       </select>
+      <label class="pe-masse-filtre-file">
+        <input type="checkbox" id="masse-filtre-file">
+        🏷️ À réimprimer seulement (<span id="masse-nb-file">0</span>)
+      </label>
       <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-select">Tout sélectionner</button>
       <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-deselect">Tout désélectionner</button>
+      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-retirer-file"
+              title="Le prix a changé mais aucune étiquette n'est à refaire">Retirer de « À réimprimer »</button>
       <span class="pe-masse-compteur" id="masse-compteur">0 sélectionné</span>
     </div>
 

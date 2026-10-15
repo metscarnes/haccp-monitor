@@ -307,7 +307,10 @@
           aChange = aChange || r.appliquees.length > 0;
           const enAttente = lignes.filter(l => !l.querySelector('.pp-cb').checked && !l.closest('.pp-info')).length;
           await charger();
-          afficherMsg(`✓ ${r.appliquees.length} prix mis à jour${enAttente ? ` · ${enAttente} laissé(s) en attente` : ''}`
+          // Chaque prix changé met son étiquette dans la file « À réimprimer » (serveur).
+          const n = r.appliquees.length;
+          afficherMsg(`✓ ${n} prix mis à jour${enAttente ? ` · ${enAttente} laissé(s) en attente` : ''}`
+            + (n ? ` · 🏷️ ${n} étiquette${n > 1 ? 's' : ''} à refaire (Étiquettes prix › À réimprimer)` : '')
             + (r.erreurs.length ? ` · ${r.erreurs.length} erreur(s) : ${r.erreurs[0].erreur}` : ''),
             r.erreurs.length ? 'err' : 'ok');
         } catch (e) {

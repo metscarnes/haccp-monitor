@@ -10,7 +10,11 @@ Endpoints :
   POST /api/prix-etiquettes/modeles         → sauvegarder un modèle
   PUT  /api/prix-etiquettes/modeles/{id}    → modifier un modèle
   DELETE /api/prix-etiquettes/modeles/{id}  → supprimer un modèle
-  GET  /api/prix-etiquettes/catalogue       → recherche catalogue achats (import)
+  GET  /api/prix-etiquettes/catalogue       → recherche catalogue vente (import)
+  POST /api/prix-etiquettes/imprimer-masse  → série depuis le catalogue de vente
+  GET/PUT /api/prix-etiquettes/modele-defaut → modèle des réimpressions
+  GET  /api/prix-etiquettes/a-reimprimer    → file des étiquettes à refaire (+ /compte, /historique)
+  POST /api/prix-etiquettes/a-reimprimer/sortir → imprimées via navigateur / retirées
 """
 
 import json
@@ -80,16 +84,30 @@ async def preview_etiquette(config: ConfigEtiquette):
 # Impression
 # ---------------------------------------------------------------------------
 
+class ImpressionUnitaire(ConfigEtiquette):
+    # Produit du catalogue de vente importé dans l'éditeur (facultatif) : ses
+    # variables {Nom} {prix}… sont remplies avec son prix ACTUEL relu en base, et
+    # il sort de la file « à réimprimer » une fois l'étiquette partie.
+    produit_id: Optional[int] = None
+
+
 @router.post("/api/prix-etiquettes/imprimer")
-async def imprimer_etiquette(config: ConfigEtiquette):
+async def imprimer_etiquette(body: ImpressionUnitaire):
     """Envoie l'étiquette à l'imprimante Brother (réseau via tunnel, ou USB)."""
-    from src.printing.brother_ql_prix import imprimer_etiquette_prix
-    data = config.model_dump()
+    from src.printing.brother_ql_prix import appliquer_variables, imprimer_etiquette_prix
+    data = body.model_dump(exclude={"produit_id"})
+    if body.produit_id is not None:
+        produit = (await _charger_produits_vente([body.produit_id])).get(body.produit_id)
+        if produit is None:
+            raise HTTPException(status_code=404, detail="Produit introuvable ou désactivé")
+        data = appliquer_variables(data, produit)
     # Envoi réseau bloquant → exécuté hors de la boucle async pour ne pas
     # figer toute l'application pendant l'impression.
     ok, message = await run_in_threadpool(imprimer_etiquette_prix, data)
     if not ok:
         raise HTTPException(status_code=503, detail=message)
+    if body.produit_id is not None:
+        await _sortir_de_la_file([body.produit_id], mode="serveur")
     return {"ok": True, "message": message}
 
 
@@ -353,13 +371,16 @@ async def imprimer_masse(body: ImpressionMasse):
     erreurs: list[str] = []
 
     a_imprimer: list[dict] = []
+    produit_par_exemplaire: list[int] = []
     for ligne in body.produits:
         produit = produits.get(ligne.produit_id)
         if not produit:
             erreurs.append(f"Produit #{ligne.produit_id} introuvable")
             continue
         config = appliquer_variables(base, produit)
-        a_imprimer.extend([config] * max(1, ligne.quantite))
+        n = max(1, ligne.quantite)
+        a_imprimer.extend([config] * n)
+        produit_par_exemplaire.extend([ligne.produit_id] * n)
 
     for i in range(0, len(a_imprimer), TAILLE_LOT_IMPRESSION):
         lot = a_imprimer[i:i + TAILLE_LOT_IMPRESSION]
@@ -370,6 +391,104 @@ async def imprimer_masse(body: ImpressionMasse):
             break
         imprimees += len(lot)
 
+    # Sortent de la file les produits dont TOUS les exemplaires sont partis.
+    non_partis = set(produit_par_exemplaire[imprimees:])
+    partis = set(produit_par_exemplaire[:imprimees]) - non_partis
+    await _sortir_de_la_file(partis, mode="serveur")
+
     if imprimees == 0 and erreurs:
         raise HTTPException(status_code=503, detail=erreurs[0])
     return {"imprimees": imprimees, "erreurs": erreurs}
+
+
+# ---------------------------------------------------------------------------
+# File des étiquettes à réimprimer (prix de vente modifiés)
+# ---------------------------------------------------------------------------
+
+CLE_MODELE_DEFAUT = "etiquette_prix_modele_defaut"
+
+
+async def _sortir_de_la_file(produit_ids, *, mode: str, statut: str = "imprimee") -> int:
+    from src.file_etiquettes_prix import sortir_de_la_file
+    async with get_db() as db:
+        n = await sortir_de_la_file(db, produit_ids, statut=statut, mode=mode)
+        await db.commit()
+    return n
+
+
+async def _modele_defaut_id(db) -> Optional[int]:
+    """Modèle utilisé pour les réimpressions : celui choisi dans les réglages, sinon
+    le seul modèle existant (cas boutique : un modèle unique pour les prix)."""
+    from src.database import get_parametre
+    rows = await db.execute_fetchall("SELECT id FROM modeles_etiquettes_prix ORDER BY nom")
+    ids = [r[0] for r in rows]
+    choisi = await get_parametre(db, 1, CLE_MODELE_DEFAUT)
+    if choisi and choisi.isdigit() and int(choisi) in ids:
+        return int(choisi)
+    return ids[0] if len(ids) == 1 else None
+
+
+class ModeleDefaut(BaseModel):
+    modele_id: Optional[int] = None
+
+
+@router.get("/api/prix-etiquettes/modele-defaut")
+async def get_modele_defaut():
+    async with get_db() as db:
+        return {"modele_id": await _modele_defaut_id(db)}
+
+
+@router.put("/api/prix-etiquettes/modele-defaut")
+async def set_modele_defaut(body: ModeleDefaut):
+    from src.database import set_parametre
+    async with get_db() as db:
+        if body.modele_id is not None:
+            cur = await db.execute("SELECT 1 FROM modeles_etiquettes_prix WHERE id = ?",
+                                   (body.modele_id,))
+            if not await cur.fetchone():
+                raise HTTPException(status_code=404, detail="Modèle introuvable")
+        await set_parametre(db, 1, CLE_MODELE_DEFAUT,
+                            "" if body.modele_id is None else str(body.modele_id))
+        return {"modele_id": await _modele_defaut_id(db)}
+
+
+@router.get("/api/prix-etiquettes/a-reimprimer")
+async def lister_a_reimprimer():
+    """Produits dont le prix a changé depuis la dernière étiquette (prix ACTUEL)."""
+    from src.file_etiquettes_prix import lister_file
+    async with get_db() as db:
+        elements = await lister_file(db)
+        return {"elements": elements, "total": len(elements),
+                "modele_defaut_id": await _modele_defaut_id(db)}
+
+
+@router.get("/api/prix-etiquettes/a-reimprimer/compte")
+async def compter_a_reimprimer():
+    """Nombre d'étiquettes à refaire (badge du Hub)."""
+    from src.file_etiquettes_prix import compter_file
+    async with get_db() as db:
+        return {"total": await compter_file(db)}
+
+
+@router.get("/api/prix-etiquettes/a-reimprimer/historique")
+async def historique_a_reimprimer(limit: int = Query(50, ge=1, le=500)):
+    from src.file_etiquettes_prix import historique_file
+    async with get_db() as db:
+        return {"historique": await historique_file(db, limit)}
+
+
+class SortieFile(BaseModel):
+    produit_ids: list[int]
+    statut: str = "imprimee"     # imprimee | retiree
+    mode: str = "navigateur"     # navigateur (impression via le navigateur) | manuel
+
+
+@router.post("/api/prix-etiquettes/a-reimprimer/sortir")
+async def sortir_a_reimprimer(body: SortieFile):
+    """Sort des produits de la file : étiquette imprimée via le navigateur, ou retirée
+    à la main (« pas besoin d'étiquette »). L'impression serveur le fait d'elle-même."""
+    try:
+        n = await _sortir_de_la_file(body.produit_ids, mode=body.mode, statut=body.statut)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "traites": n}
