@@ -20,6 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from src.database import get_db
 
@@ -81,10 +82,12 @@ async def preview_etiquette(config: ConfigEtiquette):
 
 @router.post("/api/prix-etiquettes/imprimer")
 async def imprimer_etiquette(config: ConfigEtiquette):
-    """Envoie l'étiquette à l'imprimante Brother via USB."""
+    """Envoie l'étiquette à l'imprimante Brother (réseau via tunnel, ou USB)."""
     from src.printing.brother_ql_prix import imprimer_etiquette_prix
     data = config.model_dump()
-    ok, message = imprimer_etiquette_prix(data)
+    # Envoi réseau bloquant → exécuté hors de la boucle async pour ne pas
+    # figer toute l'application pendant l'impression.
+    ok, message = await run_in_threadpool(imprimer_etiquette_prix, data)
     if not ok:
         raise HTTPException(status_code=503, detail=message)
     return {"ok": True, "message": message}
@@ -253,6 +256,12 @@ async def lister_familles_catalogue():
 # Impression de masse (série depuis le catalogue de vente)
 # ---------------------------------------------------------------------------
 
+# Étiquettes envoyées par connexion lors d'une impression de masse : assez
+# pour supprimer l'aller-retour par étiquette, assez peu pour qu'une panne en
+# cours de série ne fasse pas tout perdre.
+TAILLE_LOT_IMPRESSION = 20
+
+
 class LigneMasse(BaseModel):
     produit_id: int
     quantite: int = 1
@@ -302,53 +311,64 @@ async def preview_masse(body: ImpressionMasse):
 
     produits = await _charger_produits_vente([p.produit_id for p in body.produits])
     base = body.config.model_dump()
-    etiquettes = []
-    for ligne in body.produits:
-        produit = produits.get(ligne.produit_id)
-        if not produit:
-            continue
-        config = appliquer_variables(base, produit)
-        try:
-            png_b64 = generer_preview_base64(config)
-        except Exception as e:
-            logger.error("Preview masse — produit %s : %s", ligne.produit_id, e)
-            continue
-        etiquettes.append({
-            "produit_id": ligne.produit_id,
-            "nom": produit["nom"],
-            "quantite": max(1, ligne.quantite),
-            "image": f"data:image/png;base64,{png_b64}",
-        })
-    return {"etiquettes": etiquettes}
+
+    # Rendu PIL (CPU) hors de la boucle async : l'app reste réactive.
+    def _generer() -> list[dict]:
+        etiquettes = []
+        for ligne in body.produits:
+            produit = produits.get(ligne.produit_id)
+            if not produit:
+                continue
+            config = appliquer_variables(base, produit)
+            try:
+                png_b64 = generer_preview_base64(config)
+            except Exception as e:
+                logger.error("Preview masse — produit %s : %s", ligne.produit_id, e)
+                continue
+            etiquettes.append({
+                "produit_id": ligne.produit_id,
+                "nom": produit["nom"],
+                "quantite": max(1, ligne.quantite),
+                "image": f"data:image/png;base64,{png_b64}",
+            })
+        return etiquettes
+
+    return {"etiquettes": await run_in_threadpool(_generer)}
 
 
 @router.post("/api/prix-etiquettes/imprimer-masse")
 async def imprimer_masse(body: ImpressionMasse):
     """
     Imprime une série d'étiquettes via le serveur (Wi-Fi). Pour chaque produit,
-    applique les variables au modèle et envoie `quantite` exemplaires.
-    Ne s'arrête pas à la première erreur : collecte et continue.
+    applique les variables au modèle, répète `quantite` exemplaires, puis
+    envoie le tout par LOTS (une connexion par lot au lieu d'une par
+    étiquette). Si un lot échoue, l'imprimante est injoignable : on s'arrête
+    et on indique combien d'étiquettes sont déjà parties.
     """
-    from src.printing.brother_ql_prix import appliquer_variables, imprimer_etiquette_prix
+    from src.printing.brother_ql_prix import appliquer_variables, imprimer_lot
 
     produits = await _charger_produits_vente([p.produit_id for p in body.produits])
     base = body.config.model_dump()
     imprimees = 0
     erreurs: list[str] = []
 
+    a_imprimer: list[dict] = []
     for ligne in body.produits:
         produit = produits.get(ligne.produit_id)
         if not produit:
             erreurs.append(f"Produit #{ligne.produit_id} introuvable")
             continue
         config = appliquer_variables(base, produit)
-        for _ in range(max(1, ligne.quantite)):
-            ok, message = imprimer_etiquette_prix(config)
-            if ok:
-                imprimees += 1
-            else:
-                erreurs.append(f"{produit['nom']} : {message}")
-                break  # inutile d'insister sur ce produit si l'imprimante échoue
+        a_imprimer.extend([config] * max(1, ligne.quantite))
+
+    for i in range(0, len(a_imprimer), TAILLE_LOT_IMPRESSION):
+        lot = a_imprimer[i:i + TAILLE_LOT_IMPRESSION]
+        ok, message = await run_in_threadpool(imprimer_lot, lot)
+        if not ok:
+            reste = len(a_imprimer) - imprimees
+            erreurs.append(f"{message} — {reste} étiquette(s) non imprimée(s)")
+            break
+        imprimees += len(lot)
 
     if imprimees == 0 and erreurs:
         raise HTTPException(status_code=503, detail=erreurs[0])

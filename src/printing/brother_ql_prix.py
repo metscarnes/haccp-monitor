@@ -9,6 +9,8 @@ import base64
 import io
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -367,13 +369,49 @@ FEED_DPI = 923
 CM_PAR_POUCE = 2.54
 
 
-def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
-    """
-    Génère et envoie l'étiquette prix à l'imprimante Brother via USB.
+# Un seul envoi à la fois vers l'imprimante : deux impressions simultanées
+# (deux tablettes) ne doivent pas mélanger leurs données dans le flux.
+_VERROU_IMPRESSION = threading.Lock()
 
+
+def _image_pour_rouleau(data: dict):
+    """Image de l'étiquette prête pour le rouleau 62mm (taille physique, noir/blanc)."""
+    from PIL import Image
+    image = generer_image_prix(data)
+
+    # Rouleau continu 62mm — on fixe CHAQUE axe à sa vraie taille physique,
+    # indépendamment (comme l'impression navigateur via @page), au lieu de
+    # déduire la largeur depuis le ratio. C'est ce qui garantit que les
+    # dimensions saisies (ex. 10 × 6,2 cm) sortent exactes :
+    #   • EN TRAVERS du rouleau  = la HAUTEUR de l'étiquette → 696 px (300 dpi,
+    #     bridé à la largeur imprimable du 62mm, soit ≈ 5,9 cm max).
+    #   • SENS DE DÉFILEMENT     = la LARGEUR de l'étiquette → calculée à
+    #     FEED_DPI (600 dpi) car c'est la résolution réelle de défilement.
+    # L'image générée est en paysage (largeur horizontale) ; brother_ql la
+    # tourne de 90° via rotate="auto" pour la poser sur le rouleau.
+    largeur_cm = float(data.get("largeur_cm", 10.0))
+    feed_px = max(1, round(largeur_cm / CM_PAR_POUCE * FEED_DPI))
+    image = image.resize((feed_px, LABEL_62_PRINTABLE_W), Image.LANCZOS)
+
+    # Seuillage binaire : convertit chaque pixel en noir pur ou blanc pur
+    # avant d'envoyer à brother_ql. Évite le gris dû à l'anticrénelage du
+    # texte, indépendamment du paramètre demi-ton du driver.
+    return image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
+
+
+def imprimer_lot(configs: list[dict]) -> tuple[bool, str]:
+    """
+    Génère et envoie une SÉRIE d'étiquettes prix en UN SEUL envoi (une seule
+    connexion à travers le tunnel), avec coupe entre chaque étiquette.
+    Les données sont compressées (supporté par la QL-820NWB) : une étiquette
+    de prix est surtout blanche, le volume transmis est bien plus faible.
+
+    Bloquant (réseau) : à appeler hors de la boucle async (run_in_threadpool).
     Retourne (succès, message). Ne propage jamais d'exception — le message
     décrit précisément la cause de l'échec pour l'afficher à l'utilisateur.
     """
+    if not configs:
+        return True, "Aucune étiquette à imprimer."
     try:
         from brother_ql.conversion import convert
         from brother_ql.backends.helpers import send
@@ -382,60 +420,48 @@ def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
         return False, "Bibliothèque brother_ql non installée sur le serveur."
 
     try:
-        from PIL import Image
-        image = generer_image_prix(data)
-
-        # Rouleau continu 62mm — on fixe CHAQUE axe à sa vraie taille physique,
-        # indépendamment (comme l'impression navigateur via @page), au lieu de
-        # déduire la largeur depuis le ratio. C'est ce qui garantit que les
-        # dimensions saisies (ex. 10 × 6,2 cm) sortent exactes :
-        #   • EN TRAVERS du rouleau  = la HAUTEUR de l'étiquette → 696 px (300 dpi,
-        #     bridé à la largeur imprimable du 62mm, soit ≈ 5,9 cm max).
-        #   • SENS DE DÉFILEMENT     = la LARGEUR de l'étiquette → calculée à
-        #     FEED_DPI (600 dpi) car c'est la résolution réelle de défilement.
-        # L'image générée est en paysage (largeur horizontale) ; brother_ql la
-        # tourne de 90° via rotate="auto" pour la poser sur le rouleau.
-        largeur_cm = float(data.get("largeur_cm", 10.0))
-        feed_px = max(1, round(largeur_cm / CM_PAR_POUCE * FEED_DPI))
-        image = image.resize((feed_px, LABEL_62_PRINTABLE_W), Image.LANCZOS)
-
-        # Seuillage binaire : convertit chaque pixel en noir pur ou blanc pur
-        # avant d'envoyer à brother_ql. Évite le gris dû à l'anticrénelage du
-        # texte, indépendamment du paramètre demi-ton du driver.
-        image = image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
-
         from src.printing.printer_config import get_printer_config
+        images = [_image_pour_rouleau(data) for data in configs]
         cfg = get_printer_config()
 
         qlr = BrotherQLRaster(cfg["model"])
         instructions = convert(
             qlr=qlr,
-            images=[image],
+            images=images,
             label=LABEL_TYPE,
             rotate="auto",
             threshold=70,
             dither=False,
-            compress=False,
+            compress=True,
             red=False,
             dpi_600=False,
             hq=True,
             cut=True,
         )
-        send(
-            instructions=instructions,
-            printer_identifier=cfg["identifier"],
-            backend_identifier=cfg["backend"],
-            blocking=True,
-        )
-        premier = data.get("lignes", [{}])
-        logger.info("Étiquette prix imprimée — %s",
-                    premier[0].get("texte", "") if premier else "")
-        return True, "Étiquette imprimée."
+        debut = time.monotonic()
+        with _VERROU_IMPRESSION:
+            send(
+                instructions=instructions,
+                printer_identifier=cfg["identifier"],
+                backend_identifier=cfg["backend"],
+                blocking=True,
+            )
+        premier = configs[0].get("lignes") or [{}]
+        logger.info("Étiquettes prix envoyées : %d (%d octets, %.1f s) — %s",
+                    len(images), len(instructions), time.monotonic() - debut,
+                    premier[0].get("texte", ""))
+        n = len(images)
+        return True, "Étiquette imprimée." if n == 1 else f"{n} étiquettes imprimées."
 
     except Exception as e:
         msg = str(e) or e.__class__.__name__
-        logger.error("Erreur impression étiquette prix : %s", msg, exc_info=True)
+        logger.error("Erreur impression étiquettes prix : %s", msg, exc_info=True)
         return False, f"Erreur imprimante : {msg}"
+
+
+def imprimer_etiquette_prix(data: dict) -> tuple[bool, str]:
+    """Imprime une seule étiquette prix (voir imprimer_lot)."""
+    return imprimer_lot([data])
 
 
 # Taille de référence pour exprimer les métriques en ratio de la taille de police.

@@ -292,19 +292,23 @@ def _generer_et_imprimer_reprise(data: dict) -> dict:
 
     # Impression
     try:
-        from src.printing.brother_ql_driver import PRINTER_IDENTIFIER, LABEL_TYPE
+        from src.printing.brother_ql_driver import LABEL_TYPE
+        from src.printing.printer_config import get_printer_config
         from brother_ql.conversion import convert
         from brother_ql.backends.helpers import send
         from brother_ql.raster import BrotherQLRaster
 
-        qlr = BrotherQLRaster(PRINTER_IDENTIFIER)
+        # Même config que les autres impressions (modèle, adresse, Wi-Fi/USB)
+        # réglée via ⚙️ Imprimante — et non plus pyusb + adresse en guise de modèle.
+        cfg = get_printer_config()
+        qlr = BrotherQLRaster(cfg["model"])
         instructions = convert(
             qlr=qlr, images=[img], label=LABEL_TYPE,
             rotate="auto", threshold=70, dither=False,
             compress=False, red=False, dpi_600=False, hq=True, cut=True,
         )
-        send(instructions=instructions, printer_identifier=PRINTER_IDENTIFIER,
-             backend_identifier="pyusb", blocking=True)
+        send(instructions=instructions, printer_identifier=cfg["identifier"],
+             backend_identifier=cfg["backend"], blocking=True)
         logger.info("Étiquette reprise imprimée : %s", data["produit_nom"])
         return {"imprime": True, "message": "Étiquette imprimée"}
     except ImportError:
