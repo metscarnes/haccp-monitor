@@ -919,7 +919,7 @@ async function proposerSortieFile(ids) {
 // Imprime le canvas d'aperçu tel quel, dimensionné à la taille physique
 // réelle de l'étiquette. Sert au test hors boutique et de secours :
 // l'utilisateur choisit l'imprimante dans la boîte de dialogue du navigateur.
-elBtnImprimerNav.addEventListener('click', () => {
+elBtnImprimerNav.addEventListener('click', async () => {
   if (!verifierAvantImpression()) return;
   rendrePreview();   // canvas à jour (variables remplies) avant de le copier
 
@@ -930,26 +930,8 @@ elBtnImprimerNav.addEventListener('click', () => {
   const lCm = state.largeur_cm;
   const hCm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM);
 
-  const win = window.open('', '_blank');
-  if (!win) {
-    afficherStatut('Fenêtre d\'impression bloquée par le navigateur (autorisez les pop-ups).', 'err');
-    return;
-  }
-
-  win.document.write(`<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>Étiquette prix</title>
-<style>
-  @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
-  html, body { margin: 0; padding: 0; }
-  img { display: block; width: ${lCm}cm; height: ${hCm}cm; }
-</style></head>
-<body>
-  <img src="${dataUrl}" alt="Étiquette prix"
-       onload="window.focus(); window.print();">
-</body></html>`);
-  win.document.close();
-  win.addEventListener('afterprint', () => win.close());
-  afficherStatut('Aperçu ouvert — choisissez l\'imprimante dans la fenêtre.', 'ok');
+  await imprimerImagesSansPopup([{ src: dataUrl, alt: 'Étiquette prix' }], lCm, hCm, 'Étiquette prix');
+  afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
   const id = produitVenteId();
   if (id != null) proposerSortieFile([id]);
 });
@@ -983,28 +965,41 @@ async function imprimerSerieNavigateur(config, produits) {
   if (etiquettes.length === 0) throw new Error('Aucune étiquette générée.');
   const lCm = config.largeur_cm ?? 10;
   const hCm = Math.min(config.hauteur_cm ?? 6, HAUTEUR_MAX_CM);
-  const pages = [];
+  const images = [];
   etiquettes.forEach(et => {
-    for (let i = 0; i < (et.quantite || 1); i++) {
-      pages.push(`<img src="${et.image}" alt="${escHtml(et.nom)}">`);
-    }
+    for (let i = 0; i < (et.quantite || 1); i++) images.push({ src: et.image, alt: et.nom });
   });
-  const win = window.open('', '_blank');
-  if (!win) throw new Error('Pop-ups bloquées — autorisez-les pour imprimer.');
-  win.document.write(`<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>Étiquettes prix (série)</title>
+  await imprimerImagesSansPopup(images, lCm, hCm, 'Étiquettes prix (série)');
+  return images.length;
+}
+
+// Impression navigateur SANS fenêtre pop-up (souvent bloquée sur tablette) : les
+// étiquettes sont posées dans un cadre invisible de la page, une page par étiquette
+// à sa taille réelle, puis la boîte d'impression du navigateur s'ouvre.
+async function imprimerImagesSansPopup(images, lCm, hCm, titre) {
+  document.getElementById('pe-cadre-impression')?.remove();
+  const cadre = document.createElement('iframe');
+  cadre.id = 'pe-cadre-impression';
+  cadre.setAttribute('aria-hidden', 'true');
+  cadre.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  document.body.appendChild(cadre);
+  const doc = cadre.contentDocument;
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>${escHtml(titre)}</title>
 <style>
   @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
   html, body { margin: 0; padding: 0; }
   img { display: block; width: ${lCm}cm; height: ${hCm}cm; page-break-after: always; }
   img:last-child { page-break-after: auto; }
 </style></head>
-<body onload="window.focus(); window.print();">
-${pages.join('\n')}
-</body></html>`);
-  win.document.close();
-  win.addEventListener('afterprint', () => win.close());
-  return pages.length;
+<body>${images.map(i => `<img src="${i.src}" alt="${escHtml(i.alt || '')}">`).join('\n')}</body></html>`);
+  doc.close();
+  // Attendre que toutes les images soient prêtes avant d'imprimer.
+  await Promise.all([...doc.images].map(img => (img.complete ? null
+    : new Promise(ok => { img.onload = img.onerror = ok; }))));
+  cadre.contentWindow.focus();
+  cadre.contentWindow.print();
 }
 
 // ── Onglets : Imprimer | Style | Étiquette libre ─────────────
@@ -1082,9 +1077,10 @@ async function init() {
 
   rendrePreview();
 
-  // Onglet de départ : « Imprimer » (arrivée depuis la tuile du Hub ?reimprimer
-  // comprise), sauf import d'article ; sinon le dernier onglet utilisé.
-  if (!ongletDepart && !new URLSearchParams(location.search).has('reimprimer')) {
+  // Onglet de départ : « Imprimer » quand on arrive pour imprimer (tuile du Hub
+  // ?reimprimer, bouton 🏷️ du catalogue de vente ?produit=), sinon le dernier utilisé.
+  const params = new URLSearchParams(location.search);
+  if (!ongletDepart && !params.has('reimprimer') && !params.has('produit')) {
     try { ongletDepart = localStorage.getItem('pe_onglet'); } catch (e) { /* ignore */ }
   }
   await afficherOnglet(ongletDepart || 'imprimer');

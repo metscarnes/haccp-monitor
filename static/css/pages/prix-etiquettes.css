@@ -791,6 +791,22 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-promo-marge--ok     { background: rgba(45,125,70,.08);  border-color: rgba(45,125,70,.3); }
 .pe-promo-marge--faible { background: rgba(200,120,0,.10);  border-color: rgba(200,120,0,.4); }
 .pe-promo-marge--perte  { background: rgba(201,48,48,.08);  border-color: rgba(201,48,48,.45); color: var(--color-alert); }
+.pe-imp-panier-actions { display: flex; gap: var(--space-2); }
+.pe-modal--historique { max-width: 640px; max-height: 90vh; }
+.pe-historique-liste { overflow-y: auto; max-height: 65vh; }
+.pe-historique-ligne {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid rgba(107,58,31,.08);
+  font-size: var(--text-sm);
+}
+.pe-historique-date { color: var(--color-offline); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pe-historique-nom { display: flex; flex-direction: column; }
+.pe-historique-nom small { color: var(--color-accent); }
+.pe-historique-mode { white-space: nowrap; font-size: var(--text-xs); }
 .pe-promo-marge-achat { font-size: var(--text-xs); color: var(--color-offline); }
 .pe-promo-marge a { color: var(--color-accent); font-weight: 700; }
 

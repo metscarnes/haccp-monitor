@@ -187,7 +187,10 @@
     <div class="pe-imp-panier">
       <div class="pe-imp-panier-tete">
         <span class="pe-style-bloc-titre">À imprimer</span>
-        <button class="pe-btn pe-btn--sm pe-btn--ajout" id="imp-vider" hidden>Vider la liste</button>
+        <span class="pe-imp-panier-actions">
+          <button class="pe-btn pe-btn--sm pe-btn--ajout" id="imp-historique">🕘 Historique</button>
+          <button class="pe-btn pe-btn--sm pe-btn--ajout" id="imp-vider" hidden>Vider la liste</button>
+        </span>
       </div>
       <div class="pe-imp-panier-liste" id="imp-panier"></div>
       <div class="pe-imp-apercu">
@@ -202,6 +205,17 @@
   </div>
 
 </section>
+
+<!-- Historique des étiquettes refaites (prix changés, fins de promo) -->
+<div class="pe-modal-overlay" id="modal-historique" role="dialog" aria-modal="true" aria-labelledby="historique-titre" hidden>
+  <div class="pe-modal pe-modal--historique">
+    <div class="pe-modal-titre" id="historique-titre">🕘 Étiquettes refaites</div>
+    <div class="pe-historique-liste" id="historique-liste"></div>
+    <div class="pe-modal-actions">
+      <button class="pe-btn pe-btn--primary" id="historique-fermer">Fermer</button>
+    </div>
+  </div>
+</div>
 
 <!-- Fenêtre « Mettre en promo » (étiquette seulement : le prix du catalogue ne change pas) -->
 <div class="pe-modal-overlay" id="modal-promo" role="dialog" aria-modal="true" aria-labelledby="promo-titre" hidden>

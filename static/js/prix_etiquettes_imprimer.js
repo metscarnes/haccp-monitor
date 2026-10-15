@@ -459,6 +459,41 @@
     statut('Promo arrêtée — l\'étiquette normale est dans les étiquettes à refaire.', 'ok');
   });
 
+  // ── Historique des étiquettes refaites ────────────────────
+  const LIBELLE_TRAITEMENT = {
+    serveur: '🖨️ imprimée',
+    navigateur: '🖥️ imprimée (navigateur)',
+    manuel: '✕ retirée de la liste',
+    auto: '↩ prix revenu, rien à refaire',
+  };
+  const dateHeure = s => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}` : '');
+
+  $('imp-historique').addEventListener('click', async () => {
+    const el = $('historique-liste');
+    el.innerHTML = '<div class="pe-imp-vide">Chargement…</div>';
+    $('modal-historique').hidden = false;
+    try {
+      const { historique } = await apiFetch('/api/prix-etiquettes/a-reimprimer/historique?limit=100');
+      el.innerHTML = historique.length ? historique.map(h => {
+        const pourquoi = h.motif === 'fin_promo' ? 'fin de promo'
+          : h.prix_ancien_ttc == null ? 'nouveau produit' : 'prix changé';
+        const prix = h.prix_ancien_ttc != null
+          ? `${prixTexte(h.prix_ancien_ttc)} → ${prixTexte(h.prix_nouveau_ttc)}` : prixTexte(h.prix_nouveau_ttc);
+        return `<div class="pe-historique-ligne">
+            <span class="pe-historique-date">${dateHeure(h.traite_at)}</span>
+            <span class="pe-historique-nom"><strong>${escHtml(h.nom)}</strong><small>${pourquoi} · ${prix}</small></span>
+            <span class="pe-historique-mode">${LIBELLE_TRAITEMENT[h.mode] || escHtml(h.mode || '')}</span>
+          </div>`;
+      }).join('') : '<div class="pe-imp-vide">Aucune étiquette refaite pour l\'instant.</div>';
+    } catch (e) {
+      el.innerHTML = `<div class="pe-imp-vide">Erreur : ${escHtml(e.message)}</div>`;
+    }
+  });
+  $('historique-fermer').addEventListener('click', () => { $('modal-historique').hidden = true; });
+  $('modal-historique').addEventListener('click', e => {
+    if (e.target === $('modal-historique')) $('modal-historique').hidden = true;
+  });
+
   $('imp-file-tout').addEventListener('click', () => {
     state.file.forEach((_, id) => { if (!imp.panier.has(id)) ajouter(id); });
   });
@@ -484,10 +519,30 @@
         statut('Erreur de chargement : ' + e.message, 'err');
         return;
       }
-      // Arrivée depuis la tuile du Hub « N étiquettes à refaire » : liste pré-remplie.
-      if (premierAffichage && new URLSearchParams(location.search).has('reimprimer')
-          && imp.panier.size === 0) {
-        state.file.forEach((_, id) => ajouter(id));
+      if (premierAffichage) {
+        const params = new URLSearchParams(location.search);
+        // Tuile du Hub « N étiquettes à refaire » : liste pré-remplie.
+        if (params.has('reimprimer') && imp.panier.size === 0) {
+          state.file.forEach((_, id) => ajouter(id));
+        }
+        // Bouton 🏷️ du catalogue de vente : le produit dans la liste, ou sa promo.
+        const id = parseInt(params.get('produit'), 10);
+        if (id && produit(id)) {
+          if (params.get('promo')) {
+            ouvrirPromo(id);
+          } else if (!imp.panier.has(id)) {
+            ajouter(id);
+          } else {
+            imp.selection = id;
+            rendre();
+          }
+        } else if (id) {
+          statut('Ce produit n\'est pas disponible (désactivé ?).', 'err');
+        }
+        // On retire les paramètres : un rechargement ne refait pas l'action.
+        if (params.has('produit') || params.has('reimprimer')) {
+          history.replaceState(null, '', location.pathname);
+        }
       }
       premierAffichage = false;
     },
