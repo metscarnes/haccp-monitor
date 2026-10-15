@@ -326,6 +326,9 @@
         </div>
       </div>
 
+      <!-- Suggestions de pays pour le champ Origine des cartes (rempli par JS) -->
+      <datalist id="rec-pays-liste"></datalist>
+
       <!-- Total HT de la livraison -->
       <div class="rec-total-bar" id="rec-total-bar" hidden>
         <span>Total livraison HT</span>
@@ -410,6 +413,12 @@
               <label class="rec-champ-label rec-batch-poids-label">Poids reçu (kg)</label>
               <input type="number" step="0.01" min="0" inputmode="decimal"
                      class="rec-input rec-batch-poids" placeholder="kg">
+            </div>
+
+            <div class="rec-batch-champ">
+              <label class="rec-champ-label">Origine</label>
+              <input type="text" class="rec-input rec-batch-origine" value="France"
+                     list="rec-pays-liste" autocomplete="off" placeholder="Pays d'origine">
             </div>
 
             <div class="rec-batch-champ">

@@ -984,18 +984,9 @@ async function reprendreReceptionEnCours() {
     }
     propreteCamion = rec.proprete_camion || 'satisfaisant';
 
-    // Restaurer les lignes déjà saisies (telles que majListeLignes les attend).
-    lignesAjoutees = (rec.lignes || []).map(l => ({
-      id:                    l.id,
-      produit_id:            l.produit_id,
-      produit_nom:           l.produit_nom,
-      conforme:              l.conforme,
-      numero_lot:            l.numero_lot,
-      origine:               l.origine,
-      temperature_reception: l.temperature_reception,
-      statut:                l.statut,
-      attente_motif:         l.attente_motif,
-    }));
+    // Restaurer les lignes déjà saisies (avec leurs motifs de NC : la procédure
+    // NC du récap en a besoin).
+    lignesAjoutees = (rec.lignes || []).map(l => _ligneToLocal(l));
 
     elRepriseBandeau.hidden = true;
 
@@ -2623,26 +2614,7 @@ function afficherHintLotsCommande(msg, alerte) {
 async function rechargerLignesReception() {
   if (!receptionId) return;
   const rec = await apiFetch(`/api/receptions/${receptionId}`);
-  lignesAjoutees = (rec.lignes || []).map(l => ({
-    id:                    l.id,
-    produit_id:            l.produit_id,
-    produit_nom:           l.produit_nom,
-    catalogue_id:          l.catalogue_fournisseur_id || null,
-    fournisseur_id:        l.fournisseur_id || null,
-    fournisseur_nom:       l.fournisseur_nom || null,
-    conforme:              l.conforme,
-    numero_lot:            l.numero_lot,
-    lot_interne:           l.lot_interne,
-    origine:               l.origine,
-    dlc:                   l.dlc,
-    dluo:                  l.dluo,
-    temperature_reception: l.temperature_reception,
-    poids_kg:              l.poids_kg || null,
-    statut:                l.statut,
-    attente_motif:         l.attente_motif,
-    motifs:                [],
-    substitution_article:  l.substitution_article || null,
-  }));
+  lignesAjoutees = (rec.lignes || []).map(l => _ligneToLocal(l));
   majListeLignes();
 }
 
@@ -2937,22 +2909,53 @@ function majBtnLotsCommande() {
   }
 }
 
-function chargerLigneEnEdition(l, idx) {
+// Coche un critère visuel du formulaire unitaire (et son observation).
+function appliquerCritereForm(c, val, observation) {
+  criteres[c] = val;
+  const [btnOk, btnNc] = document.querySelectorAll(`[data-critere="${c}"]`);
+  btnOk.classList.toggle('ok-sel', val === 1);
+  btnNc.classList.toggle('nc-sel', val === 0);
+  btnOk.setAttribute('aria-pressed', val === 1 ? 'true' : 'false');
+  btnNc.setAttribute('aria-pressed', val === 0 ? 'true' : 'false');
+  const obsEl = document.getElementById(`rec-obs-${c}`);
+  if (obsEl) { obsEl.value = observation || ''; obsEl.hidden = (val === 1); }
+}
+
+async function chargerLigneEnEdition(ligneLocale, idx) {
+  // Relire la ligne en base : le formulaire doit refléter TOUT ce qui est
+  // enregistré (critères, observations, poids, pH, substitution…). Sinon
+  // « Enregistrer » renverrait un formulaire vide qui écraserait ces valeurs.
+  let l;
+  try {
+    const rec = await apiFetch(`/api/receptions/${receptionId}`);
+    l = (rec.lignes || []).find(x => x.id === ligneLocale.id);
+  } catch (e) {
+    alert(`Impossible de charger ce produit : ${e.message}`);
+    return;
+  }
+  if (!l) { alert('Ce produit est introuvable sur la fiche.'); return; }
+
+  reinitFormProduit();
   ligneEnEdition = { id: l.id, index: idx };
 
   // Restaurer le produit (produit interne ou article catalogue)
   const produit = l.produit_id ? tousProduits.find(p => p.id === l.produit_id) : null;
+  const article = l.catalogue_fournisseur_id
+    ? catalogueBl.find(a => a.id === l.catalogue_fournisseur_id) : null;
   if (produit) {
     selectionnerProduit(produit);
-  } else if (l.produit_nom) {
-    // Article catalogue : afficher le nom sans objet produit interne
-    produitSelectionne = { designation: l.produit_nom };
-    elProdSelNom.textContent  = l.produit_nom;
-    elProdSelCode.textContent = '';
-    elProdSel.hidden       = false;
-    elProdSearchWrap.hidden = true;
-    majBtnAjouter();
+  } else {
+    selectionnerProduit(article || {
+      id: l.catalogue_fournisseur_id || null,
+      designation: l.produit_nom || l.designation_libre || 'Article',
+      code_article: '',
+      dlc_type: l.dlc_type,
+    });
   }
+  // Référence catalogue + type de date de la ligne (y compris pour un produit interne)
+  catalogueIdPrefill = l.catalogue_fournisseur_id || null;
+  dlcTypePrefill     = l.dlc_type || dlcTypePrefill;
+  appliquerModeDate(dlcTypePrefill);
 
   // Restaurer le fournisseur de la ligne (id et/ou nom) + sélecteur
   if (l.fournisseur_id || l.fournisseur_nom) {
@@ -2990,19 +2993,34 @@ function chargerLigneEnEdition(l, idx) {
   // Restaurer Origine
   if (elOrigine) elOrigine.value = l.origine || 'France';
 
-  // Restaurer DLC/DLUO
-  if (l.dluo) {
-    dlcMode = 'dluo';
-    elDluoBtn.classList.add('ok-sel');
-    elDlcBtn.classList.remove('ok-sel');
-    elDlcLabelText.textContent = 'DLUO';
-    elDlc.value = l.dluo;
-  } else {
-    dlcMode = 'dlc';
-    elDlcBtn.classList.add('ok-sel');
-    elDluoBtn.classList.remove('ok-sel');
-    elDlcLabelText.textContent = 'DLC';
-    elDlc.value = l.dlc || '';
+  // Restaurer la date selon le type de l'article (abattage / sans date / DLC-DLUO)
+  if (dlcMode === 'abattage') {
+    elDlc.value = l.date_abattage || '';
+  } else if (dlcMode !== 'no_dlc') {
+    if (l.dluo) {
+      dlcMode = 'dluo';
+      elDluoBtn.classList.add('ok-sel');
+      elDlcBtn.classList.remove('ok-sel');
+      elDlcLabelText.textContent = 'DLUO';
+      elDlc.value = l.dluo;
+    } else {
+      elDlc.value = l.dlc || '';
+    }
+  }
+
+  // Poids, pH, critères visuels + observations, substitution
+  const elPoidsUnitaire = document.getElementById('rec-poids');
+  if (elPoidsUnitaire) elPoidsUnitaire.value = l.poids_kg ?? '';
+  elPh.value = l.ph_valeur ?? '';
+  CRITERES.forEach(c => {
+    appliquerCritereForm(c, l[`${c}_conforme`] === 0 ? 0 : 1, l[`${c}_observation`]);
+  });
+  if (l.substitution_article) {
+    substitutionArticle = { id: null, designation: l.substitution_article };
+    elSubstitutionCheck.checked = true;
+    elSubstitutionWrap.hidden = false;
+    elSubstitutionSelNom.textContent = l.substitution_article;
+    elSubstitutionSel.hidden = false;
   }
 
   // Boutons footer
@@ -3053,14 +3071,12 @@ function _buildPayload() {
   // La température du camion sert d'évaluation thermique pour chaque produit
   const tempCamion = parseFloat(elTempCamion.value);
   if (!isNaN(tempCamion)) payload.temperature_reception = tempCamion;
-  const obsC = document.getElementById('rec-obs-couleur').value.trim();
-  const obsT = document.getElementById('rec-obs-consistance').value.trim();
-  const obsE = document.getElementById('rec-obs-exsudat').value.trim();
-  const obsO = document.getElementById('rec-obs-odeur').value.trim();
-  if (obsC) payload.couleur_observation    = obsC;
-  if (obsT) payload.consistance_observation = obsT;
-  if (obsE) payload.exsudat_observation    = obsE;
-  if (obsO) payload.odeur_observation      = obsO;
+  // Observations : toujours envoyées (vides si le critère est conforme), pour
+  // qu'une modification remette bien à zéro une observation devenue sans objet.
+  CRITERES.forEach(c => {
+    const obs = document.getElementById(`rec-obs-${c}`).value.trim();
+    payload[`${c}_observation`] = (criteres[c] === 0 && obs) ? obs : null;
+  });
   const lot = elLot.value.trim();
   if (lot) payload.numero_lot = lot;
   const origineVal = (elOrigine && elOrigine.value || '').trim();
@@ -3072,7 +3088,7 @@ function _buildPayload() {
     else                             payload.dlc           = dateVal;
   }
   const ph = parseFloat(elPh.value);
-  if (!isNaN(ph)) payload.ph_valeur = ph;
+  payload.ph_valeur = isNaN(ph) ? null : ph;
   const elPoidsUnitaire = document.getElementById('rec-poids');
   if (elPoidsUnitaire) {
     const poids = parseFloat(elPoidsUnitaire.value);
@@ -3083,11 +3099,14 @@ function _buildPayload() {
   // Type de DLC catalogue → détermine l'exigence de traçabilité (statut en attente)
   if (dlcTypePrefill) payload.dlc_type = dlcTypePrefill;
   // Substitution : article commandé initialement livré à la place de ce produit
-  if (substitutionArticle) payload.substitution_article = substitutionArticle.designation;
+  payload.substitution_article = substitutionArticle ? substitutionArticle.designation : null;
   return payload;
 }
 
-function _ligneToLocal(ligne, produit) {
+// Convertit une ligne renvoyée par le serveur en ligne locale (liste, récap,
+// procédure NC). `produit` (facultatif) ne sert qu'à nommer une ligne fraîchement
+// créée, dont la réponse serveur ne porte pas encore le libellé.
+function _ligneToLocal(ligne, produit = null) {
   const motifsNc = [];
   if (ligne.temperature_conforme === 0) motifsNc.push('température');
   if (ligne.couleur_conforme     === 0) motifsNc.push('couleur');
@@ -3115,21 +3134,24 @@ function _ligneToLocal(ligne, produit) {
   }
 
   const estCat = produit && !produit.nom && produit.designation;
+  const nomLocal = estCat ? produit.designation : (produit ? produit.nom : null);
   return {
     id:                  ligne.id,
-    produit_id:          estCat ? null : (produit ? produit.id : null),
-    produit_nom:         estCat ? produit.designation : (produit ? produit.nom : null),
+    produit_id:          ligne.produit_id ?? null,
+    produit_nom:         ligne.produit_nom || nomLocal || ligne.designation_libre || 'Article',
     catalogue_id:        ligne.catalogue_fournisseur_id || null,
     fournisseur_id:      fournId,
     fournisseur_nom:     fournNom,
     conforme:            ligne.conforme,
     temperature_reception: ligne.temperature_reception,
+    temperature_cible:   ligne.temperature_cible ?? null,
     poids_kg:            ligne.poids_kg || null,
     numero_lot:          ligne.numero_lot,
     lot_interne:         ligne.lot_interne,
     origine:             ligne.origine || 'France',
     dlc:                 ligne.dlc,
     dluo:                ligne.dluo,
+    date_abattage:       ligne.date_abattage || null,
     statut:              ligne.statut || 'complet',
     attente_motif:       ligne.attente_motif || null,
     motifs:              motifsNc,
@@ -4455,7 +4477,7 @@ function _buildPayloadBatch(etat, paire = null) {
     exsudat_conforme:     etat.criteres.exsudat,
     odeur_conforme:       etat.criteres.odeur,
     lot_interne:          (paire ? paire.interne : etat.lotInterne) ? 1 : 0,
-    origine:              'France',
+    origine:              (etat.el.querySelector('.rec-batch-origine')?.value || '').trim() || 'France',
     // Article du catalogue achats : produit interne facultatif, libellé toujours envoyé.
     designation_libre:    etat.designation,
   };
@@ -4648,11 +4670,7 @@ function remplirRecap() {
 
   // Conformité globale estimée (avant clôture serveur)
   // Une ligne NC initiale mais conforme après contrôle à cœur est considérée conforme
-  const toutesConformes = lignesAjoutees.every(l => {
-    if (l.conforme) return true;
-    const coeur = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
-    return coeur && coeur.conforme_apres_coeur;
-  });
+  const toutesConformes = lignesAjoutees.every(l => l.conforme || conformeApresCoeur(l));
   const globalOk = toutesConformes && camionProprete;
   elConformiteGlobale.className = 'rec-conformite-globale ' + (globalOk ? 'conforme' : 'nc');
   elConformiteGlobale.textContent = globalOk
@@ -4682,8 +4700,7 @@ function remplirRecap() {
     left.appendChild(nom);
     if (parts.length) left.appendChild(det);
 
-    const coeurResult = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
-    const ligneConforme = l.conforme || (coeurResult && coeurResult.conforme_apres_coeur);
+    const ligneConforme = l.conforme || conformeApresCoeur(l);
     const badge = document.createElement('span');
     badge.className = 'rec-ligne-badge ' + (ligneConforme ? 'ok' : 'nc');
     badge.textContent = ligneConforme ? '✓ OK' : '✗ NC';
@@ -4931,9 +4948,23 @@ if (elCmdReviewValider) {
 
 // ── PROCÉDURE NC ───────────────────────────────────────────
 
+// Le contrôle à cœur ne concerne que les NC de TEMPÉRATURE. Une ligne ne
+// redevient conforme après ce contrôle que si la température était son SEUL
+// motif : une T° à cœur correcte ne corrige ni une odeur, ni une couleur.
+// (Le serveur applique la même règle à la clôture.)
+function ncTemperatureSeule(l) {
+  return Array.isArray(l.motifs) && l.motifs.length === 1 && l.motifs[0] === 'température';
+}
+function conformeApresCoeur(l) {
+  const r = ncCoeurResultats[l.id] || ncCoeurResultats[String(l.id)];
+  return !!(r && r.conforme_apres_coeur && ncTemperatureSeule(l));
+}
+let ncCandidatsCoeur = [];   // lignes NC dont un motif est la température
+
 function initNcProcedure() {
   ncProduitsInitiaux = lignesAjoutees.filter(l => !l.conforme);
   ncProduits         = [...ncProduitsInitiaux];
+  ncCandidatsCoeur   = ncProduitsInitiaux.filter(l => (l.motifs || []).includes('température'));
   ncCoeurResultats   = {};
   livreurPresent     = null;
   ncFicheIndex       = 0;
@@ -4944,9 +4975,11 @@ function initNcProcedure() {
 
   if (!aNc) return;
 
-  // Réinitialiser les sous-étapes
-  elNcStepA.hidden = false;
-  elNcStepB.hidden = true;
+  // Réinitialiser les sous-étapes. Sans NC de température, pas de contrôle à
+  // cœur : on passe directement à la question du livreur (→ fiche PCR01).
+  const avecCoeur = ncCandidatsCoeur.length > 0;
+  elNcStepA.hidden = !avecCoeur;
+  elNcStepB.hidden = avecCoeur;
   elNcBtnASuivant.disabled = true;
   elNcBtnBSuivant.disabled = true;
   if (elNcTousConformes) elNcTousConformes.hidden = true;
@@ -4955,9 +4988,10 @@ function initNcProcedure() {
 
   // Construire la liste des contrôles à cœur
   elNcProduitsCoeur.innerHTML = '';
-  ncProduitsInitiaux.forEach(l => {
+  ncCandidatsCoeur.forEach(l => {
     const produit = tousProduits.find(p => p.id === l.produit_id);
-    const intervalle = produit ? parseIntervalleTemp(produit.temperature_conservation) : null;
+    const cible = l.temperature_cible || (produit && produit.temperature_conservation) || null;
+    const intervalle = parseIntervalleTemp(cible);
     const tempMax = intervalle ? intervalle.max : null;
 
     const row = document.createElement('div');
@@ -4988,8 +5022,8 @@ function initNcProcedure() {
     if (l.temperature_reception != null) {
       infoLignes.push(`Temp. camion : ${l.temperature_reception}°C`);
     }
-    if (produit && produit.temperature_conservation) {
-      infoLignes.push(`Cible : ${produit.temperature_conservation}`);
+    if (cible) {
+      infoLignes.push(`Cible : ${cible}`);
     }
     if (tempMax !== null) {
       infoLignes.push(`Tolérance max : +${tempMax + 1}°C`);
@@ -5021,13 +5055,18 @@ function initNcProcedure() {
 
     input.addEventListener('input', () => {
       const val = parseFloat(input.value);
-      if (isNaN(val) || tempMax === null) {
+      if (isNaN(val)) {
         badge.textContent = '';
         badge.className = 'rec-nc-coeur-badge';
+        delete ncCoeurResultats[l.id];
       } else {
-        // Seuil à cœur : conforme si T°cœur <= borne_max + 1°C (même tolérance que camion)
-        const conforme = val <= (tempMax + 1);
-        badge.textContent = conforme ? '✓ Conforme après contrôle' : '✗ Non conforme confirmé';
+        // Seuil à cœur : NC dès borne_max + 1°C (même règle que le serveur).
+        // Sans température cible connue, la mesure est notée mais la NC reste.
+        const tempOk = tempMax !== null && val < (tempMax + 1);
+        const conforme = tempOk && ncTemperatureSeule(l);
+        badge.textContent = conforme
+          ? '✓ Conforme après contrôle'
+          : (tempOk ? '✓ Température OK — reste NC (autre motif)' : '✗ Non conforme confirmé');
         badge.className = 'rec-nc-coeur-badge ' + (conforme ? 'ok' : 'nc');
         ncCoeurResultats[l.id] = { temp_coeur: val, conforme_apres_coeur: conforme };
       }
@@ -5044,7 +5083,7 @@ function initNcProcedure() {
 
 function majEtatCoeur() {
   // Tous renseignés ?
-  const tousRenseignes = ncProduitsInitiaux.every(l => l.id in ncCoeurResultats);
+  const tousRenseignes = ncCandidatsCoeur.every(l => l.id in ncCoeurResultats);
   if (!tousRenseignes) {
     elNcBtnASuivant.disabled = true;
     if (elNcTousConformes) elNcTousConformes.hidden = true;
@@ -5052,10 +5091,7 @@ function majEtatCoeur() {
   }
 
   // Recalculer ncProduits = ceux qui restent NC après coeur
-  ncProduits = ncProduitsInitiaux.filter(l => {
-    const r = ncCoeurResultats[l.id];
-    return !r || !r.conforme_apres_coeur;
-  });
+  ncProduits = ncProduitsInitiaux.filter(l => !conformeApresCoeur(l));
 
   const tousConformes = ncProduits.length === 0;
   if (elNcTousConformes) elNcTousConformes.hidden = !tousConformes;
@@ -5146,10 +5182,7 @@ async function cloturerFiche() {
   elBtnCloturer.textContent = 'Clôture…';
 
   // Lignes dont le contrôle à cœur a été conforme → remettre conforme = 1 en DB
-  const coeurConformes = Object.entries(ncCoeurResultats)
-    .filter(([, r]) => r.conforme_apres_coeur)
-    .map(([id]) => parseInt(id, 10))
-    .filter(id => !isNaN(id));
+  const coeurConformes = lignesAjoutees.filter(conformeApresCoeur).map(l => l.id);
 
   const coeurTemperatures = {};
   for (const [id, r] of Object.entries(ncCoeurResultats)) {
@@ -5510,6 +5543,12 @@ if (elOrigineList) {
 
 // ── Initialisation ─────────────────────────────────────────
 async function init() {
+  // Suggestions de pays du champ Origine des cartes (mode commande / OCR)
+  const elPaysListe = document.getElementById('rec-pays-liste');
+  if (elPaysListe && typeof PAYS_UE !== 'undefined') {
+    elPaysListe.innerHTML = PAYS_UE.map(p => `<option value="${escHtml(p)}"></option>`).join('');
+  }
+
   // Pré-remplir date réception à aujourd'hui
   if (elDateReception && !elDateReception.value) {
     elDateReception.value = new Date().toISOString().slice(0, 10);
