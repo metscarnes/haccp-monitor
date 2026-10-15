@@ -100,6 +100,7 @@
         font-size: .95rem; cursor: pointer; border: 1.5px solid #6B3A1F; background: #fff; color: #6B3A1F; }
       .pp-btn--primaire { background: #2f7d3a; border-color: #2f7d3a; color: #fff; margin-left: auto; }
       .pp-btn:disabled { opacity: .5; cursor: default; }
+      .pp-imprimer { display: inline-flex; align-items: center; margin: 8px 0 0; text-decoration: none; }
     `;
     document.head.appendChild(st);
   }
@@ -310,9 +311,20 @@
           // Chaque prix changé met son étiquette dans la file « À réimprimer » (serveur).
           const n = r.appliquees.length;
           afficherMsg(`✓ ${n} prix mis à jour${enAttente ? ` · ${enAttente} laissé(s) en attente` : ''}`
-            + (n ? ` · 🏷️ ${n} étiquette${n > 1 ? 's' : ''} à refaire (Étiquettes prix › À réimprimer)` : '')
+            + (n ? ` · 🏷️ ${n} étiquette${n > 1 ? 's' : ''} à refaire` : '')
             + (r.erreurs.length ? ` · ${r.erreurs.length} erreur(s) : ${r.erreurs[0].erreur}` : ''),
             r.erreurs.length ? 'err' : 'ok');
+          if (n) {
+            // Imprimer tout de suite : onglet Imprimer du module Étiquettes, liste
+            // pré-remplie avec les étiquettes à refaire. Sinon elles restent dans la
+            // file « À réimprimer » (tuile du Hub) pour plus tard.
+            const lien = document.createElement('a');
+            lien.className = 'pp-btn pp-btn--primaire pp-imprimer';
+            lien.href = '/prix-etiquettes.html?reimprimer=1';
+            lien.textContent = `🖨️ Imprimer ${n > 1 ? `les ${n} étiquettes` : 'l\'étiquette'} maintenant`;
+            msg.appendChild(document.createElement('br'));
+            msg.appendChild(lien);
+          }
         } catch (e) {
           afficherMsg(`Erreur : ${e.message}`, 'err');
           majCompteur();
