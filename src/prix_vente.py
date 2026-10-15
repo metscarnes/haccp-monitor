@@ -599,11 +599,18 @@ async def lister_propositions(db, *, reception_id=None, statut: Optional[str] = 
         SELECT p.*, v.nom, v.unite_vente, v.famille AS v_famille,
                v.sous_famille AS v_sous_famille, v.prix_vente_ttc AS prix_actuel_ttc,
                v.tva_percent, cf.designation AS article_designation,
-               cf.code_article AS article_code, fo.nom AS fournisseur_nom
+               cf.code_article AS article_code, fo.nom AS fournisseur_nom,
+               -- Réception d'origine : pour vérifier le prix sur le bon de livraison.
+               r.numero_bon_livraison AS reception_bl, r.date_reception AS reception_date,
+               (r.photo_bl_filename IS NOT NULL OR EXISTS (
+                   SELECT 1 FROM reception_bl_pages bp
+                   WHERE bp.reception_id = r.id AND bp.bl_supplementaire_id IS NULL
+               )) AS reception_a_photo_bl
         FROM propositions_prix_vente p
         JOIN catalogue_vente v ON v.id = p.catalogue_vente_id
         LEFT JOIN catalogue_fournisseur cf ON cf.id = p.catalogue_fournisseur_id
         LEFT JOIN fournisseurs fo ON fo.id = cf.fournisseur_id
+        LEFT JOIN receptions r ON r.id = p.reception_id
         WHERE 1 = 1
     """
     params: list = []

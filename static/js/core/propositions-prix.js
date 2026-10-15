@@ -101,6 +101,19 @@
       .pp-btn--primaire { background: #2f7d3a; border-color: #2f7d3a; color: #fff; margin-left: auto; }
       .pp-btn:disabled { opacity: .5; cursor: default; }
       .pp-imprimer { display: inline-flex; align-items: center; margin: 8px 0 0; text-decoration: none; }
+      .pp-achat b { color: #b42318; }
+      .pp-garder { border: 1.5px solid #c9a87a; background: #fff; color: #6B3A1F; border-radius: 10px;
+        padding: 4px 10px; font-size: .8rem; font-weight: 700; cursor: pointer; min-height: 40px; }
+      .pp-origine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px;
+        background: #FBF5E8; border-top: 1px solid #f1e6d2; font-size: .82rem; color: #7a5a38; }
+      .pp-voir-bl { border: 1.5px solid #6B3A1F; background: #fff; color: #6B3A1F; border-radius: 10px;
+        padding: 4px 12px; font-weight: 700; cursor: pointer; min-height: 40px; }
+      .pp-bl-overlay { position: fixed; inset: 0; z-index: 9100; background: rgba(20,12,5,.85);
+        display: flex; flex-direction: column; padding: 10px; }
+      .pp-bl-barre { display: flex; align-items: center; gap: 10px; color: #fff; padding: 4px 6px 10px; }
+      .pp-bl-barre b { font-size: 1.05rem; }
+      .pp-bl-pages { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+      .pp-bl-pages img { max-width: 100%; background: #fff; border-radius: 6px; }
     `;
     document.head.appendChild(st);
   }
@@ -119,11 +132,15 @@
         <input type="checkbox" class="pp-cb" ${prop.pre_coche ? 'checked' : ''} aria-label="Appliquer">
         <div>
           <div class="pp-nom">${esc(p.nom)}</div>
-          <div class="pp-detail">actuel ${euro(prop.prix_actuel_ttc)} / ${unite}</div>
+          <div class="pp-detail">vente actuelle ${euro(prop.prix_actuel_ttc)} / ${unite}</div>
+          <div class="pp-detail pp-achat">achat ${euro(p.cout_reference)} → <b>${euro(prop.cout_nouveau ?? p.cout_nouveau)}</b>
+            HT / ${unite} (${pctSigne(prop.variation_cout_pct)})</div>
         </div>
         <div class="pp-prix">
           → <input type="number" class="pp-input" step="0.01" min="0.01" value="${prop.prix_propose_ttc.toFixed(2)}"> €
           ${alt}
+          <button type="button" class="pp-garder" data-garder="${p.id}"
+                  title="Ne pas changer le prix de vente">Garder ${euro(prop.prix_actuel_ttc)}</button>
         </div>
         <div class="pp-marge">
           Marge <b>${pct(prop.taux_reference)}</b> → <b class="pp-taux">${pct(prop.taux_propose)}</b>
@@ -152,9 +169,52 @@
               <small>${esc(p0.fournisseur_nom || '')} · ${lignes.length} produit${lignes.length > 1 ? 's' : ''}</small></span>
             <span class="pp-groupe-var ${sens}">coût ${pctSigne(v)}</span>
           </div>
+          ${origineHtml(p0)}
           ${lignes.map(ligneHtml).join('')}
         </div>`;
     }).join('');
+  }
+
+  // D'où vient la hausse : réception (n° de BL, date, bouton pour voir le BL) ou autre.
+  const ORIGINES = {
+    catalogue_achat: 'prix modifié dans le catalogue achats',
+    import_achat: 'import d\'un tarif fournisseur',
+    inventaire: 'prix saisi à l\'inventaire',
+    reference: 'changement d\'achat de référence (comparateur)',
+  };
+  function origineHtml(p) {
+    if (!p.reception_id) {
+      return `<div class="pp-origine">Origine : ${esc(ORIGINES[p.origine] || p.origine || '—')}</div>`;
+    }
+    const date = p.reception_date ? new Date(p.reception_date).toLocaleDateString('fr-FR') : '';
+    const bl = p.reception_bl ? `BL n° ${esc(p.reception_bl)}` : 'Réception';
+    return `<div class="pp-origine">📦 ${bl}${date ? ` du ${date}` : ''}
+      ${p.reception_a_photo_bl
+        ? `<button type="button" class="pp-voir-bl" data-reception="${p.reception_id}"
+                   data-titre="${esc(`${bl}${date ? ` du ${date}` : ''}`)}">📄 Voir le BL</button>`
+        : '<span>(pas de photo du BL)</span>'}</div>`;
+  }
+
+  // Visionneuse du BL dans la page (pas de pop-up) : toutes ses pages, zoomables au doigt.
+  async function voirBL(receptionId, titre) {
+    const ov = document.createElement('div');
+    ov.className = 'pp-bl-overlay';
+    ov.innerHTML = `<div class="pp-bl-barre"><b>📄 ${esc(titre)}</b>
+        <button type="button" class="pp-btn" style="margin-left:auto">✕ Fermer</button></div>
+      <div class="pp-bl-pages">Chargement…</div>`;
+    document.body.appendChild(ov);
+    ov.querySelector('button').addEventListener('click', () => ov.remove());
+    const pages = ov.querySelector('.pp-bl-pages');
+    try {
+      const res = await fetch(`/api/receptions/${receptionId}/bl-apercu`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      pages.innerHTML = data.pages.length
+        ? data.pages.map((pg, i) => `<img src="${esc(pg.url)}" alt="Page ${i + 1} du BL">`).join('')
+        : '<span style="color:#fff">Aucune photo pour ce BL.</span>';
+    } catch (e) {
+      pages.innerHTML = `<span style="color:#fff">Impossible d'afficher le BL (${esc(e.message)}).</span>`;
+    }
   }
 
   function majGroupe(groupe) {
@@ -262,7 +322,36 @@
         majGroupe(ligne.closest('.pp-groupe'));
         majCompteur();
       });
-      corps.addEventListener('click', e => {
+      corps.addEventListener('click', async e => {
+        const voir = e.target.closest('.pp-voir-bl');
+        if (voir) { voirBL(voir.dataset.reception, voir.dataset.titre); return; }
+
+        // « Garder » : le prix de vente ne change pas, la proposition est close.
+        const garder = e.target.closest('.pp-garder');
+        if (garder) {
+          garder.disabled = true;
+          try {
+            const res = await fetch(`${API}/decider`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ decisions: [{ proposition_id: +garder.dataset.garder, action: 'garder' }] }),
+            });
+            if (res.status === 403) {
+              afficherMsg('Seul le compte responsable peut décider des prix. La proposition reste dans « Prix à revoir ».', 'err');
+              garder.disabled = false;
+              return;
+            }
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const nom = garder.closest('.pp-ligne').querySelector('.pp-nom').textContent;
+            await charger();
+            afficherMsg(`✓ ${nom} : prix de vente gardé.`, 'ok');
+          } catch (err) {
+            afficherMsg(`Erreur : ${err.message}`, 'err');
+            garder.disabled = false;
+          }
+          return;
+        }
+
         const alt = e.target.closest('.pp-alt');
         if (!alt) return;
         const ligne = alt.closest('.pp-ligne');
