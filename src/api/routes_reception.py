@@ -30,7 +30,7 @@ from src.database import (
     get_db,
     get_fournisseurs, create_fournisseur, update_fournisseur,
     create_reception, add_reception_ligne, cloturer_reception,
-    get_receptions, get_reception, get_reception_en_cours,
+    get_receptions, get_reception, get_reception_en_cours, get_receptions_non_terminees,
     get_non_conformites, create_non_conformite,
     generer_lot_interne, format_lot_interne_bl, update_reception_ligne,
     generer_lots_internes_reception,
@@ -246,6 +246,7 @@ class LigneCreate(BaseModel):
     origine: str = "France"
     poids_kg: Optional[float] = None
     prix_unitaire_ht: Optional[float] = None  # prix lu sur le BL (indicatif, pas la vérité comptable)
+    unite_prix: Optional[str] = None          # 'kg' | 'piece' | 'colis' : à quoi se rapporte le prix
     montant_ht: Optional[float] = None        # montant ligne tel qu'écrit sur le BL
     nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
@@ -278,6 +279,7 @@ class LigneUpdate(BaseModel):
     origine: Optional[str] = None
     poids_kg: Optional[float] = None
     prix_unitaire_ht: Optional[float] = None  # prix lu sur le BL (indicatif)
+    unite_prix: Optional[str] = None
     montant_ht: Optional[float] = None
     nb_colis: Optional[int] = None          # nombre de colis reçus
     temperature_reception: Optional[float] = None
@@ -818,6 +820,15 @@ async def reception_en_cours():
     """
     async with get_db() as db:
         return await get_reception_en_cours(db)
+
+
+# IMPORTANT : cette route doit être AVANT /receptions/{id}
+@router.get("/receptions/non-terminees")
+async def receptions_non_terminees():
+    """Toutes les réceptions non clôturées (plus récente d'abord) : le module
+    réception propose de reprendre ou d'abandonner chacune."""
+    async with get_db() as db:
+        return await get_receptions_non_terminees(db)
 
 
 @router.get("/receptions")

@@ -1929,6 +1929,22 @@ body.rec-body {
 .rec-batch-prix-note.baisse { color: #1f6b32; }
 .rec-batch-prix-note.ok     { color: #6b7a63; font-weight: 500; }
 .rec-batch-prix-note.neutre { color: #8a8a8a; font-weight: 500; font-style: italic; }
+/* Unité du prix (€/kg · €/pièce · €/colis) + total de l'article */
+.rec-batch-unite-prix { display: flex; gap: .35rem; margin-top: .3rem; }
+.rec-batch-unite-prix button {
+  flex: 1; min-height: 40px; border: 1.5px solid #d6c3a8; border-radius: 8px;
+  background: #fff; color: var(--noyer, #3D2008); font-weight: 600; font-size: .85rem; cursor: pointer;
+}
+.rec-batch-unite-prix button.actif { background: var(--noyer, #3D2008); border-color: var(--noyer, #3D2008); color: #fff; }
+.rec-batch-total-article {
+  margin-top: .35rem; padding: .45rem .6rem; border-radius: 8px;
+  background: #f6f1ea; font-size: .9rem; color: var(--noyer, #3D2008);
+}
+.rec-batch-total-article strong { font-size: 1rem; }
+.rec-batch-total-article .detail { display: block; font-size: .76rem; color: #7a6a58; }
+.rec-batch-total-article.incomplet { background: #fff6e5; color: #8a5a12; }
+.rec-batch-total-article .alerte-bl { display: block; font-size: .78rem; font-weight: 600; color: var(--color-alert); }
+
 /* Carte dont le prix dépasse le seuil d'écart à la hausse : liseré orange discret */
 .rec-batch-carte.rec-batch-prix-ecart {
   border-color: #e8a13a;

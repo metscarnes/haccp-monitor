@@ -9,6 +9,7 @@ POST /api/auth/reset-password   → applique le nouveau mot de passe via token m
 """
 
 import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -260,6 +261,20 @@ def verify_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return _decode_token(token)
+
+
+def verifier_mot_de_passe_admin(request: Request, password: Optional[str]) -> None:
+    """Confirmation d'une action sensible (ex. suppression définitive) par le mot de
+    passe administrateur, même depuis une session « équipe ». Mêmes limites
+    anti-brute-force que la connexion. Lève 401 si le mot de passe est faux."""
+    ip = request.client.host if request.client else "inconnue"
+    _verifier_rate_limit_login(ip)
+    donne = hashlib.sha256((password or "").encode()).hexdigest()
+    if not hmac.compare_digest(donne, _ADMIN_PASSWORD_HASH):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Mot de passe administrateur incorrect",
+        )
 
 
 def require_admin(payload: dict = Depends(verify_token)):

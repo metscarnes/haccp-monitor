@@ -1051,7 +1051,7 @@ async def _achats_reels_par_reception(db, debut, fin):
         else:
             # Niveau 2 : prix BL saisi à la réception (somme des lignes).
             async with db.execute(
-                """SELECT poids_kg, prix_unitaire_ht, montant_ht,
+                """SELECT poids_kg, prix_unitaire_ht, montant_ht, unite_prix, nb_colis,
                           catalogue_fournisseur_id
                    FROM reception_lignes WHERE reception_id = ?""",
                 (rid,),
@@ -1061,10 +1061,13 @@ async def _achats_reels_par_reception(db, debut, fin):
             montant_bl = 0.0
             bl_complet = bool(lignes)
             for l in lignes:
+                # Prix à la pièce / au colis : base = nombre reçu, jamais le poids.
+                par_quantite = l["unite_prix"] in ("piece", "colis")
+                base = l["nb_colis"] if par_quantite else l["poids_kg"]
                 if l["montant_ht"] is not None:
                     montant_bl += float(l["montant_ht"])
-                elif l["prix_unitaire_ht"] is not None and l["poids_kg"] is not None:
-                    montant_bl += float(l["prix_unitaire_ht"]) * float(l["poids_kg"])
+                elif l["prix_unitaire_ht"] is not None and base is not None:
+                    montant_bl += float(l["prix_unitaire_ht"]) * float(base)
                 else:
                     bl_complet = False  # ligne sans prix BL exploitable
 

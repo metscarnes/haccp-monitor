@@ -34,9 +34,6 @@ const elPersonnelGrille   = document.getElementById('rec-personnel-grille');
 const elChargementPerso   = document.getElementById('rec-chargement-personnel');
 // Bandeau « réception non terminée »
 const elRepriseBandeau    = document.getElementById('rec-reprise-bandeau');
-const elRepriseTxt        = document.getElementById('rec-reprise-txt');
-const elRepriseReprendre  = document.getElementById('rec-reprise-reprendre');
-const elRepriseAbandonner = document.getElementById('rec-reprise-abandonner');
 
 // Étape 1
 const elDateReception     = document.getElementById('rec-date-reception');
@@ -596,21 +593,81 @@ async function afficherResumeCommande(id, resumeEl, rowIdx) {
   }
 }
 
+// Fenêtre « mot de passe administrateur » (champ masqué) pour confirmer une
+// action irréversible. `valider(motDePasse)` doit lever une Error dont le message
+// s'affiche (ex. mot de passe incorrect) ; la fenêtre reste alors ouverte.
+// Résout true si l'action a été validée, false si annulée.
+function demanderMotDePasseAdmin(titre, texte, valider) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'rec-dialog-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="rec-dialog">
+        <div class="rec-dialog-titre"></div>
+        <div class="rec-dialog-texte" style="white-space:pre-line;"></div>
+        <input type="password" class="rec-input" autocomplete="current-password"
+               placeholder="Mot de passe administrateur" style="margin-top:.75rem;width:100%;">
+        <div class="rec-erreur" hidden role="alert" style="margin-top:.5rem;"></div>
+        <div class="rec-dialog-actions">
+          <button type="button" class="rec-dialog-btn rec-dialog-btn-quitter">Annuler</button>
+          <button type="button" class="rec-dialog-btn rec-dialog-btn-continuer">Supprimer</button>
+        </div>
+      </div>`;
+    overlay.querySelector('.rec-dialog-titre').textContent = titre;
+    overlay.querySelector('.rec-dialog-texte').textContent = texte;
+    const inp    = overlay.querySelector('input');
+    const err    = overlay.querySelector('.rec-erreur');
+    const btnOk  = overlay.querySelector('.rec-dialog-btn-continuer');
+    const btnNon = overlay.querySelector('.rec-dialog-btn-quitter');
+    const fermer = (ok) => { overlay.remove(); resolve(ok); };
+
+    btnNon.addEventListener('click', () => fermer(false));
+    const confirmer = async () => {
+      if (!inp.value) { inp.focus(); return; }
+      btnOk.disabled = true; btnOk.textContent = '⏳';
+      try {
+        await valider(inp.value);
+        fermer(true);
+      } catch (e) {
+        err.textContent = e.message;
+        err.hidden = false;
+        inp.value = '';
+        inp.focus();
+        btnOk.disabled = false; btnOk.textContent = 'Supprimer';
+      }
+    };
+    btnOk.addEventListener('click', confirmer);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') confirmer(); });
+    document.body.appendChild(overlay);
+    inp.focus();
+  });
+}
+
 async function supprimerCommandeDefinitivement(cmdId, cmdNum, cmdFourn, nbLignes, rowIdx, rowEl) {
-  // Popup de confirmation
-  const msg = `Supprimer définitivement la commande ${cmdNum} (${cmdFourn}) ?\n\n`
-    + `${nbLignes} ligne${nbLignes > 1 ? 's' : ''} sera${nbLignes > 1 ? 'ont' : ''} supprimée${nbLignes > 1 ? 's' : ''}.\n`
-    + `Cette action est irréversible.`;
-  if (!confirm(msg)) return;
+  // Suppression irréversible depuis une tablette partagée : confirmée par le mot
+  // de passe administrateur, vérifié par le serveur.
+  const texte = `Supprimer définitivement la commande ${cmdNum} (${cmdFourn}) ?\n`
+    + `${nbLignes} ligne${nbLignes > 1 ? 's seront supprimées' : ' sera supprimée'}. `
+    + `Cette action est irréversible.\n\n`
+    + `Pour simplement retirer la commande de cette réception, utilisez plutôt ✕.`;
 
   try {
-    const res = await fetch(`/api/achats/commandes/${cmdId}`, { method: 'DELETE', cache: 'no-store' });
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      let detail = txt;
-      try { detail = JSON.parse(txt)?.detail || txt; } catch(_) {}
-      throw Object.assign(new Error(detail), { detail });
-    }
+    const ok = await demanderMotDePasseAdmin('Supprimer la commande', texte, async (mdp) => {
+      const res = await fetch(`/api/achats/commandes/${cmdId}/supprimer-protege`, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: mdp }),
+      });
+      if (!res.ok) {
+        let detail = '';
+        try { detail = (await res.json())?.detail || ''; } catch (_) {}
+        throw new Error(detail || `Erreur ${res.status}`);
+      }
+    });
+    if (!ok) return;
 
     // Retirer du state local
     commandeIds.splice(rowIdx, 1);
@@ -930,47 +987,71 @@ async function chargerPersonnel() {
 // ── Reprise d'une réception non terminée ───────────────────
 // Une fiche créée puis quittée sans clôture reste 'en_cours' : elle n'apparaît
 // nulle part (ni stock, ni produits en attente) et piège la commande liée.
-// Au chargement, on la détecte et on propose de la reprendre ou de l'abandonner.
-let receptionEnCours = null;   // {id, nb_lignes, personnel_id, personnel_prenom, ...}
+// Au chargement, on les liste TOUTES (pas seulement la plus récente) avec, pour
+// chacune, « Reprendre » et « Abandonner ».
+let receptionEnCours = null;   // fiche en cours de reprise {id, personnel_id, personnel_prenom, ...}
 
 async function detecterReceptionEnCours() {
+  let fiches = [];
   try {
-    receptionEnCours = await apiFetch('/api/receptions/en-cours');
+    fiches = await apiFetch('/api/receptions/non-terminees');
   } catch {
-    receptionEnCours = null;
+    fiches = [];
   }
-  if (!receptionEnCours || !receptionEnCours.id || !elRepriseBandeau) return;
-
-  const dateTxt = receptionEnCours.date_reception || '';
-  const heureTxt = (receptionEnCours.heure_reception || '').slice(0, 5);
-  const qui = receptionEnCours.personnel_prenom ? ` par ${receptionEnCours.personnel_prenom}` : '';
-  const nb = receptionEnCours.nb_lignes || 0;
-
-  if (nb === 0) {
-    // Fiche créée à l'étape 1 puis quittée sans saisir aucun produit : il n'y a
-    // rien à « reprendre ». On ne propose que l'abandon (qui débloque la commande
-    // liée), pour éviter de rouvrir un wizard vide qui ressemble à une nouvelle
-    // réception.
-    elRepriseTxt.textContent =
-      `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
-      + `a été démarrée mais aucun produit n'y a été saisi, et elle n'a pas été `
-      + `clôturée. Tant qu'elle existe, la commande liée reste bloquée. `
-      + `Comme elle est vide, abandonnez-la pour débloquer la commande.`;
-    if (elRepriseReprendre) elRepriseReprendre.hidden = true;
-  } else {
-    elRepriseTxt.textContent =
-      `⚠️ Une réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${qui} `
-      + `n'a pas été clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
-      + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
-      + `ni en attente, et la commande liée reste bloquée.`;
-    if (elRepriseReprendre) elRepriseReprendre.hidden = false;
-  }
-  elRepriseBandeau.hidden = false;
+  if (!elRepriseBandeau) return;
+  elRepriseBandeau.innerHTML = '';
+  elRepriseBandeau.hidden = !fiches.length;
+  fiches.forEach(f => elRepriseBandeau.appendChild(blocRepriseFiche(f)));
 }
 
-async function reprendreReceptionEnCours() {
-  if (!receptionEnCours || !receptionEnCours.id) return;
-  elRepriseReprendre.disabled = true;
+// Un bloc d'avertissement + boutons pour UNE fiche non terminée.
+function blocRepriseFiche(fiche) {
+  const bloc = document.createElement('div');
+  bloc.className = 'rec-reprise';
+  const dateTxt  = fmtDate(fiche.date_reception || '');
+  const heureTxt = (fiche.heure_reception || '').slice(0, 5);
+  const fourn    = fiche.fournisseur_nom ? ` — ${fiche.fournisseur_nom}` : '';
+  const qui      = fiche.personnel_prenom ? ` (par ${fiche.personnel_prenom})` : '';
+  const nb       = fiche.nb_lignes || 0;
+
+  const txt = document.createElement('div');
+  txt.className = 'rec-reprise-txt';
+  // Fiche vide : rien à « reprendre », seul l'abandon est proposé (il débloque la
+  // commande liée) — rouvrir un assistant vide ressemblerait à une nouvelle réception.
+  txt.textContent = nb === 0
+    ? `⚠️ Réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${fourn}${qui} : `
+      + `démarrée mais aucun produit saisi, jamais clôturée. Abandonnez-la pour `
+      + `débloquer la commande liée.`
+    : `⚠️ Réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${fourn}${qui} : `
+      + `non clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
+      + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
+      + `ni en attente, et la commande liée reste bloquée.`;
+
+  const actions = document.createElement('div');
+  actions.className = 'rec-reprise-actions';
+  if (nb > 0) {
+    const btnRep = document.createElement('button');
+    btnRep.type = 'button';
+    btnRep.className = 'rec-toggle-btn ok-sel';
+    btnRep.textContent = '↩︎ Reprendre la saisie';
+    btnRep.addEventListener('click', () => reprendreReceptionEnCours(fiche, btnRep));
+    actions.appendChild(btnRep);
+  }
+  const btnAb = document.createElement('button');
+  btnAb.type = 'button';
+  btnAb.className = 'rec-toggle-btn';
+  btnAb.textContent = '🗑 Abandonner';
+  btnAb.addEventListener('click', () => abandonnerReceptionEnCours(fiche, bloc, btnAb));
+  actions.appendChild(btnAb);
+
+  bloc.appendChild(txt);
+  bloc.appendChild(actions);
+  return bloc;
+}
+
+async function reprendreReceptionEnCours(fiche, btn) {
+  receptionEnCours = fiche;
+  btn.disabled = true;
   try {
     const rec = await apiFetch(`/api/receptions/${receptionEnCours.id}`);
 
@@ -1037,28 +1118,26 @@ async function reprendreReceptionEnCours() {
     );
   } catch (e) {
     alert('Impossible de reprendre la réception : ' + e.message);
-    elRepriseReprendre.disabled = false;
+    receptionEnCours = null;
+    btn.disabled = false;
   }
 }
 
-async function abandonnerReceptionEnCours() {
-  if (!receptionEnCours || !receptionEnCours.id) return;
+async function abandonnerReceptionEnCours(fiche, bloc, btn) {
   if (!confirm('Abandonner définitivement cette réception non terminée ? '
     + 'Les produits saisis seront supprimés et la commande liée redeviendra '
     + 'sélectionnable.')) return;
-  elRepriseAbandonner.disabled = true;
+  btn.disabled = true;
   try {
-    await apiFetch(`/api/receptions/${receptionEnCours.id}`, { method: 'DELETE' });
-    receptionEnCours = null;
-    elRepriseBandeau.hidden = true;
+    await apiFetch(`/api/receptions/${fiche.id}`, { method: 'DELETE' });
+    bloc.remove();
+    if (!elRepriseBandeau.children.length) elRepriseBandeau.hidden = true;
   } catch (e) {
     alert('Abandon impossible : ' + e.message);
-    elRepriseAbandonner.disabled = false;
+    btn.disabled = false;
   }
 }
 
-if (elRepriseReprendre)  elRepriseReprendre.addEventListener('click', reprendreReceptionEnCours);
-if (elRepriseAbandonner) elRepriseAbandonner.addEventListener('click', abandonnerReceptionEnCours);
 
 
 // ── ÉTAPE 1 : Camion ───────────────────────────────────────
@@ -3729,7 +3808,7 @@ async function comparerPrixCarte(etat) {
       body: JSON.stringify({ items: [{
         catalogue_fournisseur_id: etat.catalogueId,
         prix_unitaire: prix,
-        unite_prix: etat.uniteprixOcr || 'kg',
+        unite_prix: etat.unitePrix,
       }] }),
     });
     const comp = (r.resultats || [])[0];
@@ -3745,7 +3824,7 @@ async function comparerPrixToutesCartes() {
   const items = cibles.map(e => ({
     catalogue_fournisseur_id: e.catalogueId,
     prix_unitaire: _prixCarte(e),
-    unite_prix: e.uniteprixOcr || 'kg',
+    unite_prix: e.unitePrix,
   }));
   try {
     const r = await apiFetch('/api/achats/catalogue/comparer-prix', {
@@ -3776,7 +3855,13 @@ function _appliquerOcrSurCarte(etat, l) {
   // on garde le premier prix non nul rencontré.
   if (inpPrix && l.prix_unitaire != null && !inpPrix.value) {
     inpPrix.value = l.prix_unitaire;
-    etat.uniteprixOcr = l.unite_prix || 'kg';
+    // L'unité lue sur le BL est celle du prix affiché : elle prime sur le catalogue.
+    if (l.unite_prix) etat.definirUnitePrix(l.unite_prix);
+  }
+  // Montant imprimé sur le BL (cumulé si l'article est réparti sur plusieurs
+  // lignes) : sert de contrôle du total calculé de l'article.
+  if (l.montant_ligne != null) {
+    etat.montantBl = Math.round(((etat.montantBl || 0) + Number(l.montant_ligne)) * 100) / 100;
   }
   // Une incohérence prix×quantité détectée par l'OCR rend la carte « à vérifier ».
   if (l.prix_suspect && l.alerte_prix && !carte.querySelector('.rec-batch-ocr-alerte-prix')) {
@@ -4095,7 +4180,8 @@ function creerCarteBatch(ligneCmd) {
     lotInterne: false,
     nbLotsInternesGeneres: 0,      // compteur pour suffixer les lots internes multiples (-B, -C…)
     recu: true,                    // true = reçu, false = non reçu (ligne ignorée)
-    uniteprixOcr: null,            // unité du prix lu sur le BL ('kg'|'piece'|'colis')
+    unitePrix: uniteParDefautCarte(ligneCmd),  // à quoi se rapporte le prix : 'kg'|'piece'|'colis'
+    montantBl: null,               // montant de la ligne imprimé sur le BL (lu par l'OCR)
     criteres:     { couleur: 1, consistance: 1, exsudat: 1, odeur: 1 },
     observations: { couleur: '', consistance: '', exsudat: '', odeur: '' },
   };
@@ -4166,18 +4252,38 @@ function creerCarteBatch(ligneCmd) {
     dateLabel.textContent = 'DLC';
   }
 
-  // Nb de colis reçus : pré-rempli avec la quantité commandée (quelle que soit l'unité).
+  // Nb de colis (ou de pièces) reçus : pré-rempli avec la quantité commandée.
+  // C'est la base du total quand le prix est à la pièce ou au colis.
   const elNbColis      = carte.querySelector('.rec-batch-nb-colis');
   const elNbColisLabel = carte.querySelector('.rec-batch-nb-colis-label');
   const uniteCmd = (ligneCmd.unite || '').trim();
-  if (elNbColisLabel) {
+  function majLibelleQuantite() {
+    if (!elNbColisLabel) return;
+    const quoi = etat.unitePrix === 'piece' ? 'Nb de pièces reçues' : 'Nb de colis reçus';
     elNbColisLabel.textContent = ligneCmd.quantite_commandee != null && uniteCmd
-      ? `Nb de colis reçus — commandé : ${ligneCmd.quantite_commandee} ${uniteCmd}`
-      : 'Nb de colis reçus';
+      ? `${quoi} — commandé : ${ligneCmd.quantite_commandee} ${labelUnite(uniteCmd)}`
+      : quoi;
   }
   if (elNbColis && ligneCmd.quantite_commandee != null) {
     elNbColis.value = ligneCmd.quantite_commandee;
   }
+  if (elNbColis) elNbColis.addEventListener('input', majTotalReception);
+
+  // Unité du prix (€/kg · €/pièce · €/colis) : modifiable d'un geste si l'OCR ou
+  // le catalogue s'est trompé ; le total de l'article et la facture en dépendent.
+  const btnsUnite = [...carte.querySelectorAll('.rec-batch-unite-prix button')];
+  etat.definirUnitePrix = function (u) {
+    if (!['kg', 'piece', 'colis'].includes(u)) return;
+    etat.unitePrix = u;
+    btnsUnite.forEach(b => b.classList.toggle('actif', b.dataset.unite === u));
+    majLibelleQuantite();
+    majTotalReception();
+  };
+  btnsUnite.forEach(b => b.addEventListener('click', () => {
+    etat.definirUnitePrix(b.dataset.unite);
+    comparerPrixCarte(etat);
+  }));
+  etat.definirUnitePrix(etat.unitePrix);
 
   // Poids reçu : toujours en kg (poids réel pesé, le stock HACCP est en kg).
   const elPoids      = carte.querySelector('.rec-batch-poids');
@@ -4197,9 +4303,6 @@ function creerCarteBatch(ligneCmd) {
   const elPrix = carte.querySelector('.rec-batch-prix');
   if (elPrix) {
     elPrix.addEventListener('input', () => {
-      // L'utilisateur saisit un prix à la main → on suppose qu'il est au kg (cas le
-      // plus courant pour la viande) sauf si l'OCR avait détecté une autre unité.
-      if (!etat.uniteprixOcr) etat.uniteprixOcr = 'kg';
       comparerPrixCarte(etat);
       majTotalReception();
     });
@@ -4389,30 +4492,90 @@ function fmtEuros(n) {
   return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 }
 
+// Unité du prix par défaut d'une carte — même ordre que la facture générée à la
+// clôture : unité lue sur le BL, sinon format du catalogue, sinon unité de commande.
+function uniteParDefautCarte(ligneCmd) {
+  const norm = u => {
+    const v = String(u || '').trim().toLowerCase();
+    return ['kg', 'piece', 'colis'].includes(v) ? v : null;
+  };
+  const art = ligneCmd.catalogue_fournisseur_id
+    ? catalogueBl.find(a => a.id === ligneCmd.catalogue_fournisseur_id) : null;
+  return norm(ligneCmd.unite_prix) || norm(art && art.format_prix) || norm(ligneCmd.unite) || 'kg';
+}
+
+function fmtNombre(n, dec = 2) {
+  return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: dec });
+}
+
+// Total HT d'une carte selon l'unité du prix :
+//   €/kg            → prix × poids reçu (lot principal + lots supplémentaires)
+//   €/pièce, €/colis → prix × nombre de pièces / colis reçus (jamais le poids)
+// Retourne {montant, detail} ou {montant: null, manque} si incalculable.
+function totalCarte(etat) {
+  const prix = _prixCarte(etat);
+  if (prix == null) return { montant: null, manque: 'prix' };
+  if (etat.unitePrix === 'kg') {
+    const poids = pairesLotsBatch(etat)
+      .map(p => parseFloat(p.poids)).filter(v => !isNaN(v))
+      .reduce((a, b) => a + b, 0);
+    if (!poids) return { montant: null, manque: 'poids' };
+    return {
+      montant: Math.round(prix * poids * 100) / 100,
+      detail: `${fmtNombre(poids, 3)} kg × ${fmtNombre(prix)} €/kg`,
+    };
+  }
+  const qte = parseFloat(etat.el.querySelector('.rec-batch-nb-colis')?.value);
+  const nom = etat.unitePrix === 'piece' ? 'pièce' : 'colis';
+  if (isNaN(qte) || qte <= 0) return { montant: null, manque: etat.unitePrix };
+  return {
+    montant: Math.round(prix * qte * 100) / 100,
+    detail: `${fmtNombre(qte, 3)} ${nom}${qte > 1 && nom === 'pièce' ? 's' : ''} × ${fmtNombre(prix)} €/${nom}`,
+  };
+}
+
+function afficherTotalCarte(etat, t) {
+  const zone = etat.el.querySelector('.rec-batch-total-article');
+  if (!zone) return;
+  if (!etat.recu || t.manque === 'prix') { zone.hidden = true; return; }
+  zone.hidden = false;
+  if (t.montant == null) {
+    zone.className = 'rec-batch-total-article incomplet';
+    zone.textContent = t.manque === 'poids'
+      ? 'Total : indiquez le poids reçu.'
+      : `Total : indiquez le nombre de ${t.manque === 'piece' ? 'pièces' : 'colis'} reçus.`;
+    return;
+  }
+  zone.className = 'rec-batch-total-article';
+  const ecartBl = etat.montantBl != null && Math.abs(etat.montantBl - t.montant) > 0.05;
+  zone.innerHTML = `Total article : <strong>${fmtEuros(t.montant)}</strong>`
+    + `<span class="detail">${escHtml(t.detail)}</span>`
+    + (ecartBl ? `<span class="alerte-bl">⚠️ Le BL indique ${fmtEuros(etat.montantBl)} — vérifiez le poids, la quantité ou l'unité du prix.</span>` : '');
+}
+
+// Recalcule le total de chaque carte et celui de la livraison (indicatif : le
+// montant définitif vient de la facture).
 function majTotalReception() {
   if (!elTotalBar) return;
   let total = 0;
-  let auMoinsUnPrix = false;
+  let nbAvecTotal = 0;
+  let nbIncomplets = 0;
 
   if (modeBatch) {
     batchLignes.forEach(etat => {
-      if (!etat.recu) return;
-      const prix = _prixCarte(etat);
-      if (prix == null) return;
-      // Prix unique par article : on l'applique au poids du lot principal + celui
-      // de chaque sous-lot (même article, DLC/lot différents).
-      const poidsPrincipal = parseFloat(etat.el.querySelector('.rec-batch-poids')?.value);
-      if (!isNaN(poidsPrincipal)) { auMoinsUnPrix = true; total += prix * poidsPrincipal; }
-      etat.el.querySelectorAll('.rec-batch-lot-supp-poids').forEach(inp => {
-        const p = parseFloat(inp.value);
-        if (!isNaN(p)) { auMoinsUnPrix = true; total += prix * p; }
-      });
+      const t = totalCarte(etat);
+      afficherTotalCarte(etat, t);
+      if (!etat.recu || t.manque === 'prix') return;
+      if (t.montant == null) { nbIncomplets++; return; }
+      nbAvecTotal++;
+      total += t.montant;
     });
   }
 
-  if (!auMoinsUnPrix) { elTotalBar.hidden = true; return; }
+  if (!nbAvecTotal && !nbIncomplets) { elTotalBar.hidden = true; return; }
   elTotalBar.hidden = false;
-  elTotalHt.textContent = fmtEuros(total);
+  elTotalHt.textContent = fmtEuros(total)
+    + (nbIncomplets ? ` (+ ${nbIncomplets} article${nbIncomplets > 1 ? 's' : ''} sans total)` : '');
 }
 
 // Ajoute un champ « n° de lot + DLC + poids » supplémentaire sur une carte batch.
@@ -4657,8 +4820,9 @@ function pairesLotsBatch(etat) {
   for (const { lot, dlc, poids, interne } of lotsSuppValeursBatch(etat)) {
     if (!lot || seen.has(lot)) continue;
     seen.add(lot);
-    // Poids propre au lot ; à défaut, on retombe sur le poids principal.
-    paires.push({ lot, dlc: dlc || dlcPrincipale, poids: poids || poidsPrincipal, interne });
+    // Poids propre au lot (obligatoire à la validation) : jamais celui du lot
+    // principal, qui serait alors compté deux fois.
+    paires.push({ lot, dlc: dlc || dlcPrincipale, poids, interne });
   }
   return paires;
 }
@@ -4694,30 +4858,34 @@ function _buildPayloadBatch(etat, paire = null) {
     if (etat.dlcType === 'date_abattage') payload.date_abattage = dateVal;
     else                                  payload.dlc           = dateVal;
   }
-  const poids = parseFloat(paire && paire.poids !== undefined && paire.poids !== ''
-    ? paire.poids
-    : etat.el.querySelector('.rec-batch-poids').value);
+  const poids = parseFloat(paire ? paire.poids : etat.el.querySelector('.rec-batch-poids').value);
   if (!isNaN(poids)) payload.poids_kg = poids;
 
-  // Prix d'achat HT (indicatif). Le prix unitaire est identique pour tous les lots
-  // d'un même article → on le met sur chaque ligne. Le montant, lui, dépend du poids
-  // du lot : on ne l'envoie que pour une carte mono-lot (paire == null), sinon il
-  // serait faux par lot (le montant définitif vient de la facture de toute façon).
+  // Prix d'achat HT (indicatif) + son unité, identiques pour tous les lots d'un
+  // même article. Montant de la ligne :
+  //   €/kg            → prix × poids DU LOT (chaque ligne a son propre poids) ;
+  //   €/pièce, €/colis → prix × nombre reçu, porté par la 1re ligne de l'article
+  //                      seulement (les lots suivants : 0 colis / 0 €), sinon la
+  //                      quantité serait comptée une fois par lot (ici et en facture).
+  // 1re ligne de l'article = celle du lot principal (les lots supp. ont un n° distinct)
+  const premiereLigne = !paire
+    || paire.lot === (etat.el.querySelector('.rec-batch-lot').value || '').trim();
   const prixU = parseFloat(etat.el.querySelector('.rec-batch-prix')?.value);
+  const nbColis = parseFloat(etat.el.querySelector('.rec-batch-nb-colis')?.value);
+  const parQuantite = etat.unitePrix === 'piece' || etat.unitePrix === 'colis';
   if (!isNaN(prixU)) {
     payload.prix_unitaire_ht = prixU;
-    if (!paire) {
-      // Mono-lot : si l'OCR a fourni un montant, on l'utilise tel quel ; sinon, on le
-      // dérive prix×poids UNIQUEMENT si le prix est au kg (sûr). Au colis/pièce, on
-      // laisse le montant vide (calcul non fiable sans le poids du colis).
-      if (etat.uniteprixOcr === 'kg' && !isNaN(poids)) {
-        payload.montant_ht = Math.round(prixU * poids * 100) / 100;
-      }
+    payload.unite_prix = etat.unitePrix;
+    if (!parQuantite && !isNaN(poids)) {
+      payload.montant_ht = Math.round(prixU * poids * 100) / 100;
+    } else if (parQuantite && !isNaN(nbColis) && nbColis > 0) {
+      payload.montant_ht = premiereLigne ? Math.round(prixU * nbColis * 100) / 100 : 0;
     }
   }
 
-  const nbColis = parseInt(etat.el.querySelector('.rec-batch-nb-colis')?.value, 10);
-  if (!isNaN(nbColis) && nbColis > 0) payload.nb_colis = nbColis;
+  if (!isNaN(nbColis) && nbColis > 0) {
+    payload.nb_colis = (parQuantite && !premiereLigne) ? 0 : nbColis;
+  }
 
   // Observations sur critères NC
   CRITERES.forEach(c => {
@@ -4749,15 +4917,18 @@ async function validerBatch() {
       return;
     }
 
-    // Poids des lots supplémentaires : optionnel (retombe sur le poids principal),
-    // mais s'il est saisi il doit être > 0.
-    for (const inpP of etat.el.querySelectorAll('.rec-batch-lot-supp-poids')) {
-      const v = inpP.value.trim();
-      if (v !== '' && (parseFloat(v) <= 0 || isNaN(parseFloat(v)))) {
+    // Poids des lots supplémentaires : obligatoire dès que le lot a un n°. Sinon
+    // la ligne reprenait le poids du lot principal → poids compté deux fois
+    // (stock et total faux).
+    for (const row of etat.el.querySelectorAll('.rec-batch-lot-supp-row')) {
+      const lot  = (row.querySelector('.rec-batch-lot-supp-input')?.value || '').trim();
+      const inpP = row.querySelector('.rec-batch-lot-supp-poids');
+      const v = parseFloat((inpP?.value || '').trim());
+      if (lot && (isNaN(v) || v <= 0)) {
         inpP.classList.add('rec-champ-invalide');
         inpP.focus();
         etat.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        alert('Le poids d\'un lot supplémentaire doit être supérieur à 0.');
+        alert(`Indiquez le poids reçu (kg) du lot ${lot} — chaque lot a son propre poids.`);
         return;
       }
     }

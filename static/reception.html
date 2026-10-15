@@ -53,18 +53,9 @@
     <section class="rec-step actif" id="rec-step-0"
              aria-label="Étape 1 — Opérateur">
 
-      <!-- Bandeau réception non terminée (fiche créée puis quittée sans clôture) -->
-      <div class="rec-reprise" id="rec-reprise-bandeau" hidden role="alert">
-        <div class="rec-reprise-txt" id="rec-reprise-txt"></div>
-        <div class="rec-reprise-actions">
-          <button type="button" class="rec-toggle-btn ok-sel" id="rec-reprise-reprendre">
-            ↩︎ Reprendre la saisie
-          </button>
-          <button type="button" class="rec-toggle-btn" id="rec-reprise-abandonner">
-            🗑 Abandonner
-          </button>
-        </div>
-      </div>
+      <!-- Réceptions non terminées (fiches créées puis quittées sans clôture) :
+           un bloc « Reprendre / Abandonner » par fiche, injecté par JS -->
+      <div id="rec-reprise-bandeau" hidden role="alert"></div>
 
       <div class="rec-personnel-titre">Qui réceptionne ?</div>
       <div class="rec-personnel-grille" id="rec-personnel-grille"
@@ -425,8 +416,16 @@
               <label class="rec-champ-label rec-batch-prix-label">Prix d'achat HT</label>
               <input type="number" step="0.01" min="0" inputmode="decimal"
                      class="rec-input rec-batch-prix" placeholder="€ — lu sur le BL">
-              <!-- unité + note d'écart vs catalogue injectées par JS -->
+              <!-- À quoi se rapporte le prix : le total de l'article en dépend -->
+              <div class="rec-batch-unite-prix" role="group" aria-label="Unité du prix">
+                <button type="button" data-unite="kg">€/kg</button>
+                <button type="button" data-unite="piece">€/pièce</button>
+                <button type="button" data-unite="colis">€/colis</button>
+              </div>
+              <!-- note d'écart vs catalogue injectée par JS -->
               <div class="rec-batch-prix-info"></div>
+              <!-- Total de l'article (prix × poids, ou × nombre de pièces / colis) -->
+              <div class="rec-batch-total-article" hidden></div>
             </div>
           </div>
 

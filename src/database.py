@@ -2015,6 +2015,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_etiquettes_a_reimprimer_attente ON etiquettes_a_reimprimer(catalogue_vente_id) WHERE statut = 'en_attente'",
+            # v7.9 — Unité du prix lu sur le BL ('kg' | 'piece' | 'colis') : sans elle,
+            # un prix à la pièce/au colis était multiplié par le poids (montant faux).
+            # NULL (lignes historiques) = repli sur le format du catalogue.
+            "ALTER TABLE reception_lignes ADD COLUMN unite_prix TEXT",
         ]
         for sql in migrations:
             try:
@@ -3953,6 +3957,12 @@ async def _lot_interne_disponible(
     return f"{lot}-{n}"
 
 
+def normaliser_unite_prix(unite: Optional[str]) -> Optional[str]:
+    """Unité du prix d'une ligne de réception : 'kg' | 'piece' | 'colis', sinon None."""
+    u = (unite or "").strip().lower()
+    return u if u in ("kg", "piece", "colis") else None
+
+
 def _calc_statut_attente(data: dict) -> tuple[str, Optional[str]]:
     """Détermine si une ligne de réception est complète ou en attente de traçabilité.
 
@@ -4060,14 +4070,15 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
         INSERT INTO reception_lignes
             (reception_id, produit_id, catalogue_fournisseur_id, fournisseur_id, fournisseur_nom, numero_lot, lot_interne, dlc, dluo,
              date_abattage, dlc_type, statut, attente_motif, designation_libre,
-             origine, poids_kg, prix_unitaire_ht, montant_ht, nb_colis, temperature_reception, temperature_conforme,
+             origine, poids_kg, prix_unitaire_ht, unite_prix, montant_ht, nb_colis,
+             temperature_reception, temperature_conforme,
              temperature_coeur,
              couleur_conforme, couleur_observation,
              consistance_conforme, consistance_observation,
              exsudat_conforme, exsudat_observation,
              odeur_conforme, odeur_observation,
              ph_valeur, ph_conforme, conforme, substitution_article)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             reception_id,
@@ -4087,6 +4098,7 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
             data.get("origine", "France"),
             data.get("poids_kg"),
             data.get("prix_unitaire_ht"),
+            normaliser_unite_prix(data.get("unite_prix")),
             data.get("montant_ht"),
             data.get("nb_colis"),
             temp_recep,
@@ -4545,7 +4557,7 @@ async def update_reception_ligne(
             fournisseur_id = ?, fournisseur_nom = ?, numero_lot = ?, lot_interne = ?,
             dlc = ?, dluo = ?, date_abattage = ?, dlc_type = ?,
             statut = ?, attente_motif = ?,
-            origine = ?, poids_kg = ?, prix_unitaire_ht = ?, montant_ht = ?, nb_colis = ?,
+            origine = ?, poids_kg = ?, prix_unitaire_ht = ?, unite_prix = ?, montant_ht = ?, nb_colis = ?,
             temperature_reception = ?, temperature_conforme = ?,
             temperature_coeur = ?,
             couleur_conforme = ?, couleur_observation = ?,
@@ -4573,6 +4585,7 @@ async def update_reception_ligne(
             _val("origine") or row.get("origine") or "France",
             poids_kg,
             prix_unitaire_ht,
+            normaliser_unite_prix(_val("unite_prix")),
             montant_ht,
             nb_colis,
             temp_recep,
@@ -5202,6 +5215,27 @@ async def get_receptions(
         )
         out.append(d)
     return out
+
+
+async def get_receptions_non_terminees(db: aiosqlite.Connection) -> list[dict]:
+    """TOUTES les réceptions non clôturées (plus récente d'abord), pour le bandeau
+    « reprise » : une fiche plus ancienne ne doit pas rester cachée derrière la
+    dernière (ses produits seraient hors stock et sa commande bloquée)."""
+    cursor = await db.execute(
+        """
+        SELECT r.id, r.date_reception, r.heure_reception, r.created_at,
+               r.personnel_id, r.numero_bon_livraison,
+               TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
+               COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
+               (SELECT COUNT(*) FROM reception_lignes rl WHERE rl.reception_id = r.id) AS nb_lignes
+        FROM receptions r
+        LEFT JOIN personnel    p ON p.id = r.personnel_id
+        LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
+        WHERE r.statut <> 'cloturee'
+        ORDER BY r.created_at DESC, r.id DESC
+        """
+    )
+    return [dict(r) for r in await cursor.fetchall()]
 
 
 async def get_reception_en_cours(db: aiosqlite.Connection) -> Optional[dict]:

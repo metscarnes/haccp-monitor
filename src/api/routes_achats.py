@@ -61,7 +61,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -1676,6 +1676,20 @@ async def delete_commande(commande_id: int):
         await db.execute("DELETE FROM commande_receptions_mapping WHERE commande_id = ?", (commande_id,))
         await db.execute("DELETE FROM commandes WHERE id = ?", (commande_id,))
         await db.commit()
+
+
+class SuppressionProtegeeBody(BaseModel):
+    password: str
+
+
+@router.post("/commandes/{commande_id}/supprimer-protege", status_code=204)
+async def supprimer_commande_protege(commande_id: int, body: SuppressionProtegeeBody, request: Request):
+    """Suppression définitive d'une commande confirmée par le mot de passe
+    administrateur (utilisée depuis l'écran réception, sur tablette, pour éviter
+    qu'une fausse manipulation efface une commande)."""
+    from src.api.routes_auth import verifier_mot_de_passe_admin
+    verifier_mot_de_passe_admin(request, body.password)
+    await delete_commande(commande_id)
 
 
 @router.post("/commandes/{commande_id}/dupliquer", status_code=201)
@@ -4706,7 +4720,7 @@ async def _generer_facture_depuis_reception(
     cur_rl = await db.execute(
         """SELECT rl.id AS reception_ligne_id, rl.catalogue_fournisseur_id,
                   rl.poids_kg AS poids_recu_kg, rl.prix_unitaire_ht AS prix_bl_ht,
-                  rl.nb_colis AS nb_colis,
+                  rl.nb_colis AS nb_colis, rl.unite_prix AS unite_prix_bl,
                   COALESCE(p.nom, cf.designation, rl.designation_libre) AS designation,
                   cf.code_article AS code_article, cf.format_prix AS format_prix
            FROM reception_lignes rl
@@ -4755,15 +4769,18 @@ async def _generer_facture_depuis_reception(
         quantite_commandee = cl["quantite_commandee"] if cl else None
         unite = (cl["unite"] if cl else None) or "kg"
         poids_facture = rl["poids_recu_kg"]
-        # Unité du PRIX : le format catalogue fait foi (c'est lui qui dit si l'article
-        # se facture au kg, au colis ou à la pièce), repli sur l'unité de commande.
-        u = (rl.get("format_prix") or unite or "kg").strip().lower()
+        # Unité du PRIX : celle constatée sur le BL à la réception (le prix pré-rempli
+        # est celui du BL), sinon le format catalogue, sinon l'unité de commande.
+        u = (rl.get("unite_prix_bl") or rl.get("format_prix") or unite or "kg").strip().lower()
         unite_prix = u if u in ("kg",) + UNITES_PRIX_QUANTITE else "kg"
         # Quantité facturée (colis/pièce) : nb de colis pointé à la réception,
         # repli quantité commandée. NULL pour un prix au kg (le poids fait foi).
         quantite_facturee = None
         if unite_prix in UNITES_PRIX_QUANTITE:
-            quantite_facturee = rl.get("nb_colis") or quantite_commandee
+            # 0 est une vraie valeur : lot supplémentaire d'un article compté à la
+            # pièce/au colis, dont la quantité est portée par la 1re ligne.
+            quantite_facturee = (rl["nb_colis"] if rl.get("nb_colis") is not None
+                                 else quantite_commandee)
         # Prix facturé pré-rempli : prix BL (réalité constatée) si dispo, sinon prix commande.
         if prix_source == "bl":
             prix_facture = rl.get("prix_bl_ht") if rl.get("prix_bl_ht") is not None else prix_commande
