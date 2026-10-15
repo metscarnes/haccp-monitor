@@ -362,6 +362,7 @@ async def creer_reception(
     fournisseur_nom:         Optional[str]  = Form(None),
     commentaire:             Optional[str]  = Form(None),
     numero_bon_livraison:    Optional[str]  = Form(None),
+    proprete_problemes:      Optional[str]  = Form(None),
     photo_bl:                List[UploadFile] = File(default=[]),
     photo_proprete:          Optional[UploadFile] = File(None),
 ):
@@ -373,9 +374,30 @@ async def creer_reception(
         "proprete_camion":         proprete_camion,
         "fournisseur_principal_id": fournisseur_principal_id,
         "fournisseur_nom":         fournisseur_nom,
-        "commentaire":             commentaire,
+        "commentaire":             _commentaire_avec_proprete(commentaire, proprete_camion, proprete_problemes),
         "numero_bon_livraison":    (numero_bon_livraison or "").strip() or None,
     }
+
+    # Conversion des photos AVANT de créer la fiche : un fichier illisible doit
+    # être refusé sans laisser derrière lui une réception orpheline « en cours ».
+    # Conversion PDF/image CPU-intensive : déportée sur un thread pour ne pas
+    # geler le serveur (un seul worker Uvicorn).
+    from datetime import datetime, timezone
+    photos_bl_valides = [f for f in photo_bl if f and f.filename]
+    jpegs_bl: List[bytes] = []
+    for upload in photos_bl_valides:
+        raw = await upload.read()
+        try:
+            jpegs_bl.extend(await asyncio.to_thread(_fichier_bl_vers_jpegs, raw, upload.filename))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+    jpeg_proprete: Optional[bytes] = None
+    if photo_proprete and photo_proprete.filename and proprete_camion == "non_satisfaisant":
+        raw = await photo_proprete.read()
+        try:
+            jpeg_proprete = await asyncio.to_thread(_compress_photo, raw)
+        except Exception as e:
+            raise HTTPException(400, f"Photo de propreté illisible : {e}")
 
     async with get_db() as db:
         # Vérifier personnel
@@ -386,18 +408,6 @@ async def creer_reception(
         rid = await create_reception(db, data)
 
         # Photos BL (multi-pages) : page 0 → colonne existante, pages suivantes → reception_bl_pages
-        # PDF accepté : converti en 1 JPEG par page via _fichier_bl_vers_jpegs
-        from datetime import datetime, timezone
-        photos_bl_valides = [f for f in photo_bl if f and f.filename]
-        jpegs_bl: List[bytes] = []
-        for upload in photos_bl_valides:
-            raw = await upload.read()
-            try:
-                # Conversion PDF/image CPU-intensive : déportée sur un thread pour
-                # ne pas geler le serveur (un seul worker Uvicorn sur le Pi).
-                jpegs_bl.extend(await asyncio.to_thread(_fichier_bl_vers_jpegs, raw, upload.filename))
-            except ValueError as e:
-                raise HTTPException(400, str(e))
         for page_num, jpeg in enumerate(jpegs_bl):
             now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
             if page_num == 0:
@@ -418,13 +428,10 @@ async def creer_reception(
             await db.commit()
 
         # Photo NC propreté camion (optionnelle, uniquement si proprete=non_satisfaisant)
-        if photo_proprete and photo_proprete.filename and proprete_camion == "non_satisfaisant":
-            from datetime import datetime, timezone
-            raw = await photo_proprete.read()
-            jpeg = _compress_photo(raw)
+        if jpeg_proprete:
             now_str = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
             filename = f"PROPRETE-{now_str}-{rid}.jpg"
-            (PHOTOS_PROPRETE_DIR / filename).write_bytes(jpeg)
+            (PHOTOS_PROPRETE_DIR / filename).write_bytes(jpeg_proprete)
             await db.execute(
                 "UPDATE receptions SET proprete_photo_filename = ? WHERE id = ?",
                 (filename, rid),
@@ -438,14 +445,38 @@ async def creer_reception(
     return dict(row)
 
 
+def _commentaire_avec_proprete(
+    commentaire: Optional[str], proprete: str, problemes: Optional[str]
+) -> Optional[str]:
+    """Ajoute au commentaire les problèmes de propreté cochés (camion NC accepté),
+    sinon ils ne seraient enregistrés nulle part."""
+    commentaire = (commentaire or "").strip()
+    problemes = (problemes or "").strip()
+    if proprete != "non_satisfaisant" or not problemes:
+        return commentaire or None
+    ligne = f"Propreté camion non satisfaisante : {problemes}"
+    return f"{ligne}\n{commentaire}" if commentaire else ligne
+
+
+async def _reception_modifiable(db, reception_id: int) -> dict:
+    """Renvoie la réception, 404 si absente, 409 si déjà clôturée : une fiche
+    clôturée fait foi pour l'HACCP, on n'y ajoute ni n'y modifie plus de produit
+    (la complétion lot/DLC passe par le module « produits en attente »)."""
+    cur = await db.execute(
+        "SELECT id, statut FROM receptions WHERE id = ?", (reception_id,)
+    )
+    row = await cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Réception non trouvée")
+    if row["statut"] == "cloturee":
+        raise HTTPException(409, "Réception déjà clôturée : modification impossible.")
+    return dict(row)
+
+
 @router.post("/receptions/{reception_id}/lignes", status_code=201)
 async def ajouter_ligne(reception_id: int, body: LigneCreate):
     async with get_db() as db:
-        cur = await db.execute(
-            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
-        )
-        if not await cur.fetchone():
-            raise HTTPException(404, "Réception non trouvée")
+        await _reception_modifiable(db, reception_id)
 
         # produit_id facultatif (réception basée catalogue achats). S'il est fourni,
         # il doit exister. Sinon, designation_libre identifie l'article.
@@ -583,11 +614,13 @@ async def generer_lots_internes(reception_id: int):
 @router.put("/receptions/{reception_id}/lignes/{ligne_id}")
 async def modifier_ligne(reception_id: int, ligne_id: int, body: LigneUpdate):
     async with get_db() as db:
+        await _reception_modifiable(db, reception_id)
         cur = await db.execute(
-            "SELECT id FROM receptions WHERE id = ?", (reception_id,)
+            "SELECT id FROM reception_lignes WHERE id = ? AND reception_id = ?",
+            (ligne_id, reception_id),
         )
         if not await cur.fetchone():
-            raise HTTPException(404, "Réception non trouvée")
+            raise HTTPException(404, "Ligne non trouvée")
 
         updated = await update_reception_ligne(db, ligne_id, body.model_dump(exclude_unset=True))
     if not updated:
@@ -603,12 +636,82 @@ class TempCamionBody(BaseModel):
 async def maj_temperature_camion(reception_id: int, body: TempCamionBody):
     """Met à jour la temp camion + recalcule la conformité de toutes les lignes."""
     async with get_db() as db:
+        await _reception_modifiable(db, reception_id)
         lignes = await update_reception_temperature_camion(
             db, reception_id, body.temperature_camion
         )
     if lignes is None:
         raise HTTPException(404, "Réception non trouvée")
     return {"lignes": lignes}
+
+
+class EnteteBody(BaseModel):
+    """Champs d'en-tête modifiables tant que la fiche n'est pas clôturée."""
+    fournisseur_principal_id: Optional[int] = None
+    fournisseur_nom:          Optional[str] = None
+    proprete_camion:          Optional[str] = None   # 'satisfaisant' | 'non_satisfaisant'
+    proprete_problemes:       Optional[str] = None
+    date_reception:           Optional[str] = None
+    heure_reception:          Optional[str] = None
+
+
+@router.put("/receptions/{reception_id}/entete")
+async def maj_entete_reception(reception_id: int, body: EnteteBody):
+    """Enregistre les changements faits aux étapes camion / BL après la création
+    de la fiche (retour arrière dans l'assistant). Mise à jour PARTIELLE."""
+    data = body.model_dump(exclude_unset=True)
+    async with get_db() as db:
+        await _reception_modifiable(db, reception_id)
+        cur = await db.execute(
+            "SELECT proprete_camion, commentaire FROM receptions WHERE id = ?", (reception_id,)
+        )
+        rec = dict(await cur.fetchone())
+        champs: Dict[str, object] = {}
+
+        if "fournisseur_principal_id" in data or "fournisseur_nom" in data:
+            fid = data.get("fournisseur_principal_id")
+            champs["fournisseur_principal_id"] = fid
+            champs["fournisseur_nom"] = None if fid else ((data.get("fournisseur_nom") or "").strip() or None)
+
+        for cle in ("date_reception", "heure_reception"):
+            if data.get(cle):
+                champs[cle] = data[cle]
+
+        if "proprete_camion" in data or "proprete_problemes" in data:
+            proprete = data.get("proprete_camion") or rec["proprete_camion"] or "satisfaisant"
+            if proprete not in ("satisfaisant", "non_satisfaisant"):
+                raise HTTPException(400, "proprete_camion invalide")
+            champs["proprete_camion"] = proprete
+            champs["camion_conforme"] = 0 if proprete == "non_satisfaisant" else 1
+            # Remplacer l'éventuelle mention de propreté déjà présente au commentaire
+            reste = "\n".join(
+                l for l in (rec["commentaire"] or "").splitlines()
+                if not l.startswith("Propreté camion non satisfaisante")
+            )
+            champs["commentaire"] = _commentaire_avec_proprete(
+                reste, proprete, data.get("proprete_problemes")
+            )
+
+        if champs:
+            sets = ", ".join(f"{k} = ?" for k in champs)
+            await db.execute(
+                f"UPDATE receptions SET {sets} WHERE id = ?", (*champs.values(), reception_id)
+            )
+            await db.commit()
+        return await get_reception(db, reception_id)
+
+
+@router.delete("/receptions/{reception_id}/commandes/{commande_id}")
+async def delier_commande(reception_id: int, commande_id: int):
+    """Retire le lien commande ↔ réception (commande retirée à l'étape BL avant clôture)."""
+    async with get_db() as db:
+        await _reception_modifiable(db, reception_id)
+        await db.execute(
+            "DELETE FROM commande_receptions_mapping WHERE reception_id = ? AND commande_id = ?",
+            (reception_id, commande_id),
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 @router.put("/receptions/{reception_id}/cloturer")
@@ -923,7 +1026,7 @@ async def ocr_bl(reception_id: int):
         # Le nom du fournisseur choisit la consigne de mise en page (et le
         # redressement des BL Elivia) côté OCR.
         cur = await db.execute(
-            "SELECT r.photo_bl_filename, f.nom AS fournisseur_nom "
+            "SELECT r.photo_bl_filename, COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom "
             "FROM receptions r LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id "
             "WHERE r.id = ?",
             (reception_id,),

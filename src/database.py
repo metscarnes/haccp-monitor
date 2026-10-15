@@ -5049,11 +5049,9 @@ async def get_receptions(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    if statut:
-        conditions = [f"r.statut = '{statut}'"]
-    else:
-        conditions = ["r.statut = 'cloturee'"]
-    params: list = []
+    # Statut passé en paramètre SQL (jamais concaténé dans la requête).
+    conditions = ["r.statut = ?"]
+    params: list = [statut or "cloturee"]
 
     if date_debut:
         conditions.append("r.date_reception >= ?")
@@ -5108,7 +5106,7 @@ async def get_receptions(
         SELECT
             r.*,
             TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
-            COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
+            COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom_resolu,
             COUNT(rl.id)        AS nb_lignes,
             SUM(CASE WHEN rl.conforme = 0 THEN 1 ELSE 0 END) AS nb_nc,
             (
@@ -5148,6 +5146,8 @@ async def get_receptions(
     out = []
     for r in rows:
         d = dict(r)
+        # Cf. get_reception : l'alias serait masqué par r.fournisseur_nom.
+        d["fournisseur_nom"] = d.pop("fournisseur_nom_resolu")
         concat = d.pop("bls_supp_noms_concat", None)
         d["bls_supplementaires_noms"] = (
             [n for n in concat.split("||") if n] if concat else []
@@ -5190,7 +5190,7 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
         """
         SELECT r.*,
                TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
-               COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom
+               COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom_resolu
         FROM receptions r
         LEFT JOIN personnel    p ON p.id = r.personnel_id
         LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
@@ -5202,6 +5202,9 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
     if not row:
         return None
     reception = dict(row)
+    # r.* contient déjà une colonne fournisseur_nom (texte libre, souvent NULL) :
+    # un alias du même nom serait masqué par elle. On expose le nom résolu.
+    reception["fournisseur_nom"] = reception.pop("fournisseur_nom_resolu")
 
     cur2 = await db.execute(
         """
@@ -5235,6 +5238,13 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
     )
     bls = await cur3.fetchall()
     reception["bls_supplementaires"] = [dict(b) for b in bls]
+
+    # Commandes liées (reprise d'une fiche non terminée, récap)
+    cur4 = await db.execute(
+        "SELECT commande_id FROM commande_receptions_mapping WHERE reception_id = ? ORDER BY commande_id",
+        (reception_id,),
+    )
+    reception["commande_ids"] = [r[0] for r in await cur4.fetchall()]
     return reception
 
 

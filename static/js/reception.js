@@ -378,7 +378,6 @@ let catalogueIdPrefill = null;    // catalogue_fournisseur_id de la ligne de com
 let dlcTypePrefill     = null;    // dlc_type du catalogue ('dlc'|'date_abattage'|'no_dlc')
 let toutesCommandes    = [];      // cache de toutes les commandes disponibles
 let catalogueBl        = [];      // articles catalogue du fournisseur BL (sans commande)
-let catalogueBlFournId = null;    // fournisseur_id pour lequel catalogueBl est chargé
 
 
 // ── Références DOM — Commande ──────────────────────────────
@@ -509,6 +508,7 @@ function ajouterLigneCommande() {
       // Pour le bloc 0, juste vider le fournisseur
       viderFournisseurBloc(0);
     }
+    recalculerCatalogueBl();
     syncModeFournisseur();
     majSelectorFournisseur();
   });
@@ -633,6 +633,7 @@ async function supprimerCommandeDefinitivement(cmdId, cmdNum, cmdFourn, nbLignes
     }
 
     commandeLignes = construireLignesCommandes();
+    recalculerCatalogueBl();
     syncModeFournisseur();
     majSelectorFournisseur();
 
@@ -653,7 +654,8 @@ function preRemplirFournisseurBloc(idx, fourn) {
   fournisseursListe[idx] = fournisseursListe[idx] || { id: null, nom: '', photos: [] };
   fournisseursListe[idx].id  = fourn.id;
   fournisseursListe[idx].nom = fourn.nom;
-  if (idx === 0) { fournisseurId = fourn.id; if (fourn.id) chargerCatalogueBl(fourn.id); }
+  if (idx === 0) fournisseurId = fourn.id;
+  if (fourn.id) chargerCatalogueBl(fourn.id);
 
   const selWrap    = document.getElementById(`rec-fourn-sel-wrap-${idx}`);
   const selNom     = document.getElementById(`rec-fourn-sel-nom-${idx}`);
@@ -761,8 +763,12 @@ resetInactivite();
 // connexion distante (BL de réception : 1 à plusieurs photos par livraison).
 const PHOTO_MAX_SIDE = 1280;
 const PHOTO_QUALITE  = 0.8;
+// BL : plus de définition, car la photo est lue par l'OCR (n° de lot, DLC en
+// petits caractères) — même plafond que le serveur (BL_MAX_SIDE = 1920).
+const BL_MAX_SIDE    = 1920;
+const BL_QUALITE     = 0.85;
 
-function compresserImage(file) {
+function compresserImage(file, maxSide = PHOTO_MAX_SIDE, qualite = PHOTO_QUALITE) {
   if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) {
     return Promise.resolve(file);
   }
@@ -772,9 +778,9 @@ function compresserImage(file) {
     img.onload = () => {
       URL.revokeObjectURL(url);
       let { width: w, height: h } = img;
-      if (Math.max(w, h) > PHOTO_MAX_SIDE) {
-        if (w >= h) { h = Math.round(h * PHOTO_MAX_SIDE / w); w = PHOTO_MAX_SIDE; }
-        else        { w = Math.round(w * PHOTO_MAX_SIDE / h); h = PHOTO_MAX_SIDE; }
+      if (Math.max(w, h) > maxSide) {
+        if (w >= h) { h = Math.round(h * maxSide / w); w = maxSide; }
+        else        { w = Math.round(w * maxSide / h); h = maxSide; }
       }
       const canvas = document.createElement('canvas');
       canvas.width = w;
@@ -786,7 +792,7 @@ function compresserImage(file) {
                      { type: 'image/jpeg' })
           : file),               // fallback : si toBlob échoue, on garde l'original
         'image/jpeg',
-        PHOTO_QUALITE,
+        qualite,
       );
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
@@ -983,6 +989,24 @@ async function reprendreReceptionEnCours() {
       dernierTempCamionEnvoye = rec.temperature_camion;
     }
     propreteCamion = rec.proprete_camion || 'satisfaisant';
+    if (rec.date_reception)  elDateReception.value = rec.date_reception;
+    if (rec.heure_reception) elHeure.value = String(rec.heure_reception).slice(0, 5);
+
+    // Fournisseur principal (+ son catalogue achats pour la recherche produit),
+    // BL déjà enregistré (marqué envoyé), commandes liées.
+    if (rec.fournisseur_principal_id || rec.fournisseur_nom) {
+      preRemplirFournisseurBloc(0, {
+        id:  rec.fournisseur_principal_id || null,
+        nom: rec.fournisseur_nom || '',
+      });
+      if (rec.fournisseur_principal_id) await chargerCatalogueBl(rec.fournisseur_principal_id);
+    }
+    (rec.bls_supplementaires || []).forEach((b, i) => {
+      fournisseursListe[i + 1] = { id: b.fournisseur_id || null, nom: b.fournisseur_nom || '', photos: [], envoye: true };
+      if (b.fournisseur_id) chargerCatalogueBl(b.fournisseur_id);
+    });
+    commandeIds    = [...(rec.commande_ids || [])];
+    commandesLiees = new Set(commandeIds);
 
     // Restaurer les lignes déjà saisies (avec leurs motifs de NC : la procédure
     // NC du récap en a besoin).
@@ -1213,6 +1237,13 @@ elDialogLivraisonOui.addEventListener('click', () => {
 
 elDialogLivraisonNon.addEventListener('click', () => {
   elDialogLivraison.hidden = true;
+  if (receptionId) {
+    // Le refus crée sa propre fiche : en créer une 2ᵉ laisserait celle-ci orpheline.
+    alert('La fiche de cette réception est déjà créée. Pour refuser la livraison, '
+      + 'quittez la réception puis, à l\'accueil Réception, « Abandonner » cette fiche '
+      + 'et recommencez en choisissant « Refuser ».');
+    return;
+  }
   // Réinitialiser la liste des BL refusés
   refusBlList.forEach(b => { if (b.photoUrl) URL.revokeObjectURL(b.photoUrl); });
   refusBlList = [];
@@ -1359,7 +1390,7 @@ function initBlocRefusBl(idx) {
     }
     photoZone.classList.remove('photo-requise');
     if (elErreurRefusBl) elErreurRefusBl.hidden = true;
-    refusBlList[idx].photoFile = await compresserImage(file);
+    refusBlList[idx].photoFile = await compresserImage(file, BL_MAX_SIDE, BL_QUALITE);
     majBoutonRefusValider();
   });
 
@@ -1476,6 +1507,7 @@ async function allerVersPcr01Camion() {
     if (elDateReception.value) fd.append('date_reception', elDateReception.value);
     if (elTempCamion.value !== '') fd.append('temperature_camion', elTempCamion.value);
     fd.append('proprete_camion', 'non_satisfaisant');
+    if (propreteProblemes.length) fd.append('proprete_problemes', propreteProblemes.join(', '));
     if (propretePhotoFile) {
       fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
     }
@@ -1483,23 +1515,33 @@ async function allerVersPcr01Camion() {
     else if (premier.fournisseurNom) fd.append('fournisseur_nom', premier.fournisseurNom);
     fd.append('photo_bl', premier.photoFile, premier.photoFile.name);
 
-    const rec = await apiFetch('/api/receptions', { method: 'POST', body: fd });
+    // Réessai après un échec : la fiche existe déjà, ne pas en créer une 2ᵉ.
+    const rec = receptionId
+      ? { id: receptionId }
+      : await apiFetch('/api/receptions', { method: 'POST', body: fd });
     receptionId = rec.id;
     const tempEnvoyeeRefus = parseFloat(elTempCamion.value);
     dernierTempCamionEnvoye = isNaN(tempEnvoyeeRefus) ? null : tempEnvoyeeRefus;
 
     // BLs supplémentaires (idx >= 1)
+    const echecsRefus = [];
     for (let i = 1; i < refusBlList.length; i++) {
       const b = refusBlList[i];
+      if (b.envoye) continue;
       const fd2 = new FormData();
       if (b.fournisseurId)  fd2.append('fournisseur_id',  b.fournisseurId);
       if (b.fournisseurNom) fd2.append('fournisseur_nom', b.fournisseurNom);
       fd2.append('photo', b.photoFile, b.photoFile.name);
       try {
         await apiFetch(`/api/receptions/${rec.id}/bls-supplementaires`, { method: 'POST', body: fd2 });
+        b.envoye = true;
       } catch (e) {
         console.warn('BL supplémentaire échoué :', e);
+        echecsRefus.push(b.fournisseurNom || `BL ${i + 1}`);
       }
+    }
+    if (echecsRefus.length) {
+      throw new Error(`BL non enregistré(s) : ${echecsRefus.join(', ')}. Réessayez.`);
     }
 
     // Données PCR01 : 1 fiche par fournisseur concerné
@@ -1634,7 +1676,7 @@ function initBlocFourn(idx) {
     const url = URL.createObjectURL(file);
     fournisseursListe[idx].photos.push({ file, url, isPdf });
     majVignettesBloc(idx);
-    const compressed = await compresserImage(file);
+    const compressed = await compresserImage(file, BL_MAX_SIDE, BL_QUALITE);
     const last = fournisseursListe[idx].photos.length - 1;
     if (fournisseursListe[idx].photos[last]?.file === file) {
       fournisseursListe[idx].photos[last].file = compressed;
@@ -1657,7 +1699,8 @@ function initBlocFourn(idx) {
         results.hidden     = true;
         searchInp.classList.remove('rec-champ-invalide');
         searchInp.title = '';
-        if (idx === 0) { fournisseurId = f.id; chargerCatalogueBl(f.id); }
+        if (idx === 0) fournisseurId = f.id;
+        chargerCatalogueBl(f.id);
         if (elErreur2 && !elErreur2.hidden && fournisseursListe[0].id) elErreur2.hidden = true;
         majSelectorFournisseur();
       });
@@ -1673,7 +1716,8 @@ function initBlocFourn(idx) {
     searchWrap.hidden  = false;
     searchInp.value    = '';
     results.hidden     = true;
-    if (idx === 0) { fournisseurId = null; catalogueBl = []; catalogueBlFournId = null; }
+    if (idx === 0) fournisseurId = null;
+    recalculerCatalogueBl();
     majSelectorFournisseur();
   });
 
@@ -1805,6 +1849,7 @@ function creerBlocFourn(idx, suppressible = true) {
       supBtn.addEventListener('click', () => {
         fournisseursListe.splice(idx, 1);
         bloc.remove();
+        recalculerCatalogueBl();
         majSelectorFournisseur();
         // Renuméroter les titres
         elFournListe.querySelectorAll('.rec-fourn-bloc-titre').forEach((el, i) => {
@@ -1833,13 +1878,17 @@ elBtnCreerFiche.addEventListener('click', creerFiche);
 async function creerFiche() {
   elErreur2.hidden = true;
 
-  // Fiche déjà créée (retour arrière puis avant) : ne pas re-POSTer.
-  // On se contente de propager une éventuelle modif de temp camion puis
-  // de revenir à l'écran produits.
+  // Fiche déjà créée (retour arrière puis avant) : ne pas re-POSTer, mais
+  // enregistrer ce qui a changé aux étapes camion / BL.
   if (receptionId) {
-    await propagerTempCamionSiModifiee();
-    majBlocOcr();
-    allerEtape(3);
+    elBtnCreerFiche.disabled = true;
+    elBtnCreerFiche.textContent = 'Enregistrement…';
+    try {
+      await synchroniserFicheExistante();
+    } finally {
+      elBtnCreerFiche.disabled = false;
+      elBtnCreerFiche.textContent = 'Créer la fiche →';
+    }
     return;
   }
 
@@ -1922,8 +1971,9 @@ async function creerFiche() {
       fd.append('temperature_camion', elTempCamion.value);
     }
     fd.append('proprete_camion', propreteCamion);
-    if (propreteCamion === 'non_satisfaisant' && propretePhotoFile) {
-      fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
+    if (propreteCamion === 'non_satisfaisant') {
+      if (propreteProblemes.length) fd.append('proprete_problemes', propreteProblemes.join(', '));
+      if (propretePhotoFile) fd.append('photo_proprete', propretePhotoFile, propretePhotoFile.name);
     }
     const fourn0 = fournisseursListe[0];
     if (fourn0.id) fd.append('fournisseur_principal_id', fourn0.id);
@@ -1942,34 +1992,17 @@ async function creerFiche() {
     if (blSaisi) numeroBlValide = blSaisi;
     const tempEnvoyee = parseFloat(elTempCamion.value);
     dernierTempCamionEnvoye = isNaN(tempEnvoyee) ? null : tempEnvoyee;
+    fourn0.photos.forEach(p => { p.envoye = true; });
 
-    // BLs supplémentaires (idx >= 1) : 1 requête par fournisseur additionnel
-    for (let i = 1; i < fournisseursListe.length; i++) {
-      const fi = fournisseursListe[i];
-      const fd2 = new FormData();
-      if (fi.id)  fd2.append('fournisseur_id',  fi.id);
-      if (fi.nom) fd2.append('fournisseur_nom', fi.nom);
-      fi.photos.forEach(p => fd2.append('photo', p.file, p.file.name));
-      try {
-        await apiFetch(`/api/receptions/${rec.id}/bls-supplementaires`, { method: 'POST', body: fd2 });
-      } catch (e) {
-        console.warn('BL supplémentaire échoué :', e);
-      }
-    }
-
-    // Enregistrer le LIEN commande ↔ réception (le passage en « livrée » se fait
-    // seulement à la clôture de la réception, pas ici — cf. cloturer_reception).
-    for (const cid of commandeIds.filter(Boolean)) {
-      try {
-        await apiFetch('/api/achats/commande_receptions_mapping', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ commande_id: cid, reception_id: rec.id }),
-        });
-      } catch(e) {
-        console.warn('[haccp] Mapping commande échoué :', e);
-      }
-    }
+    // BLs supplémentaires + liens commande. Un échec n'empêche pas de continuer,
+    // mais il est SIGNALÉ (sinon un BL manque ou la commande ne passe jamais
+    // « livrée » sans que personne le sache) ; on peut réessayer en revenant à
+    // cette étape, seuls les éléments manquants seront renvoyés.
+    const echecs = [
+      ...await envoyerBlsSupplementaires(),
+      ...await synchroniserCommandesLiees(),
+    ];
+    if (echecs.length) signalerEchecsEnvoi(echecs);
 
     // Réinitialiser le formulaire produit et passer à l'étape 3
     reinitFormProduit();
@@ -2011,6 +2044,146 @@ async function creerFiche() {
 }
 
 
+// ── Envois rattachés à une fiche existante (création ou retour arrière) ──
+let commandesLiees = new Set();   // commandes dont le lien est enregistré en base
+
+// Nom du fournisseur d'un bloc BL : choisi dans la liste, sinon tapé à la main.
+function nomFournisseurBloc(i) {
+  const f = fournisseursListe[i];
+  const saisi = (document.getElementById(`rec-fourn-search-${i}`)?.value || '').trim();
+  return (f && f.nom) || saisi || '';
+}
+
+// Envoie les BL des fournisseurs supplémentaires pas encore enregistrés.
+// Retourne la liste des échecs (libellés lisibles).
+async function envoyerBlsSupplementaires() {
+  const echecs = [];
+  for (let i = 1; i < fournisseursListe.length; i++) {
+    const fi = fournisseursListe[i];
+    if (fi.envoye) continue;
+    const nom = nomFournisseurBloc(i);
+    if (!fi.id && !nom) continue;
+    const fd2 = new FormData();
+    if (fi.id) fd2.append('fournisseur_id', fi.id);
+    if (nom)   fd2.append('fournisseur_nom', nom);
+    fi.photos.forEach(p => fd2.append('photo', p.file, p.file.name));
+    try {
+      await apiFetch(`/api/receptions/${receptionId}/bls-supplementaires`, { method: 'POST', body: fd2 });
+      fi.envoye = true;
+      fi.photos.forEach(p => { p.envoye = true; });
+    } catch (e) {
+      console.warn('BL supplémentaire échoué :', e);
+      echecs.push(`bon de livraison de ${nom || `fournisseur ${i + 1}`}`);
+    }
+  }
+  return echecs;
+}
+
+// Aligne les liens commande ↔ réception en base sur les commandes choisies.
+// (Le passage en « livrée » se fait seulement à la clôture — cf. cloturer_reception.)
+async function synchroniserCommandesLiees() {
+  const echecs = [];
+  const voulues = new Set(commandeIds.filter(Boolean));
+  for (const cid of voulues) {
+    if (commandesLiees.has(cid)) continue;
+    try {
+      await apiFetch('/api/achats/commande_receptions_mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commande_id: cid, reception_id: receptionId, personnel_id: personnelId }),
+      });
+      commandesLiees.add(cid);
+    } catch (e) {
+      console.warn('[haccp] Mapping commande échoué :', e);
+      const cmd = toutesCommandes.find(c => c.id === cid);
+      echecs.push(`lien avec la commande ${cmd ? cmd.numero_commande : cid}`);
+    }
+  }
+  for (const cid of [...commandesLiees]) {
+    if (voulues.has(cid)) continue;
+    try {
+      await apiFetch(`/api/receptions/${receptionId}/commandes/${cid}`, { method: 'DELETE' });
+      commandesLiees.delete(cid);
+    } catch (e) {
+      echecs.push(`retrait de la commande ${cid}`);
+    }
+  }
+  return echecs;
+}
+
+function signalerEchecsEnvoi(echecs) {
+  alert(
+    `⚠️ Certains éléments n'ont PAS été enregistrés (connexion instable ?) :\n`
+    + echecs.map(e => `• ${e}`).join('\n')
+    + `\n\nRevenez à l'étape « Bon de livraison » (← Retour) puis « Créer la fiche » `
+    + `pour réessayer : seuls les éléments manquants seront renvoyés.`
+  );
+}
+
+// Retour arrière après création de la fiche : enregistre ce qui a changé aux
+// étapes camion / BL (fournisseur, propreté, date, heure, n° BL, nouvelles
+// pages, BL supplémentaires, commandes liées), puis revient aux produits.
+async function synchroniserFicheExistante() {
+  const echecs = [];
+  const f0 = fournisseursListe[0];
+  const nom0 = nomFournisseurBloc(0);
+  if (!f0.id && !nom0) {
+    elErreur2.textContent = 'Le nom du fournisseur est obligatoire.';
+    elErreur2.hidden = false;
+    return;
+  }
+
+  try {
+    await apiFetch(`/api/receptions/${receptionId}/entete`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fournisseur_principal_id: f0.id || null,
+        fournisseur_nom:          f0.id ? null : nom0,
+        proprete_camion:          propreteCamion,
+        proprete_problemes:       propreteCamion === 'non_satisfaisant' ? propreteProblemes.join(', ') : null,
+        date_reception:           elDateReception.value || null,
+        heure_reception:          elHeure.value || null,
+      }),
+    });
+  } catch (e) {
+    echecs.push('fournisseur / propreté / date de la fiche');
+  }
+  await propagerTempCamionSiModifiee();
+
+  // N° de BL modifié et pas encore validé
+  const blSaisi = (elNumeroBl.value || '').trim();
+  if (blSaisi && blSaisi !== numeroBlValide) {
+    if (!await validerNumeroBl()) echecs.push('n° du bon de livraison');
+  }
+
+  // Nouvelles pages du BL principal
+  const nouvelles = f0.photos.filter(p => !p.envoye);
+  if (nouvelles.length) {
+    const fd = new FormData();
+    nouvelles.forEach(p => fd.append('fichier', p.file, p.file.name));
+    try {
+      await apiFetch(`/api/receptions/${receptionId}/bl-pages`, { method: 'POST', body: fd });
+      nouvelles.forEach(p => { p.envoye = true; });
+    } catch (e) {
+      echecs.push(`${nouvelles.length} nouvelle(s) page(s) du bon de livraison`);
+    }
+  }
+
+  echecs.push(...await envoyerBlsSupplementaires());
+  echecs.push(...await synchroniserCommandesLiees());
+  if (echecs.length) signalerEchecsEnvoi(echecs);
+
+  // Commande liée après coup et aucun produit saisi : passer en vue liste commande
+  if (!modeBatch && !lignesAjoutees.length && commandeIds.some(Boolean) && commandeLignes.length) {
+    entrerModeBatch();
+  }
+  majSelectorFournisseur();
+  majBlocOcr();
+  allerEtape(3);
+}
+
+
 // ── ÉTAPE 3 : Produits ─────────────────────────────────────
 async function chargerProduits() {
   try {
@@ -2020,21 +2193,31 @@ async function chargerProduits() {
   }
 }
 
-async function chargerCatalogueBl(fournId) {
-  if (!fournId || fournId === catalogueBlFournId) return;
-  try {
-    const articles = await apiFetch(`/api/achats/catalogue?fournisseur_id=${fournId}`);
-    catalogueBl = articles;
-    catalogueBlFournId = fournId;
-  } catch {
-    catalogueBl = [];
-    catalogueBlFournId = fournId;
-  }
+// Catalogue achats de CHAQUE fournisseur de la livraison (multi-fournisseurs :
+// la recherche produit doit couvrir tous les fournisseurs, pas seulement le 1er).
+const cataloguesParFourn = new Map();   // fournisseur_id → [articles]
+
+function recalculerCatalogueBl() {
+  const ids = new Set(fournisseursListe.map(f => f.id).filter(Boolean));
+  if (fournisseurId) ids.add(fournisseurId);
+  catalogueBl = [...ids].flatMap(id => cataloguesParFourn.get(id) || []);
 }
 
-// Retourne vrai si on est en mode "sans commande avec fournisseur catalogue disponible"
+async function chargerCatalogueBl(fournId) {
+  if (fournId && !cataloguesParFourn.has(fournId)) {
+    try {
+      cataloguesParFourn.set(fournId, await apiFetch(`/api/achats/catalogue?fournisseur_id=${fournId}`));
+    } catch {
+      cataloguesParFourn.set(fournId, []);
+    }
+  }
+  recalculerCatalogueBl();
+}
+
+// Recherche produit sur le catalogue achats des fournisseurs de la livraison
+// dès qu'il est disponible (sinon : produits internes).
 function useCatalogueBl() {
-  return !commandeIds.some(Boolean) && catalogueBl.length > 0;
+  return catalogueBl.length > 0;
 }
 
 function filtrerCatalogueBl(q) {
@@ -2161,7 +2344,9 @@ function afficherAutoComplete(liste) {
     nom.textContent = labelArticle(p);
     const code = document.createElement('span');
     code.className = 'rec-autocomplete-code';
-    code.textContent = codeArticle(p);
+    // Plusieurs fournisseurs : afficher le fournisseur de l'article catalogue
+    code.textContent = (modeMultiFourn && p.fournisseur_nom)
+      ? `${codeArticle(p)} · ${p.fournisseur_nom}` : codeArticle(p);
     div.appendChild(nom);
     div.appendChild(code);
     div.addEventListener('click', () => selectionnerProduit(p));
@@ -2180,6 +2365,15 @@ function selectionnerProduit(p) {
     catalogueIdPrefill = p.id;
     dlcTypePrefill     = p.dlc_type || null;
     appliquerModeDate(dlcTypePrefill);
+    // Plusieurs fournisseurs : l'article catalogue désigne son fournisseur.
+    if (p.fournisseur_id && modeMultiFourn) {
+      const fIdx = fournisseursListe.findIndex(f => f.id === p.fournisseur_id);
+      fournisseurProduitSelected = {
+        id: p.fournisseur_id,
+        nom: p.fournisseur_nom || (fIdx >= 0 ? fournisseursListe[fIdx].nom : null),
+      };
+      if (elFournProduitSel && fIdx >= 0) elFournProduitSel.value = String(fIdx);
+    }
   } else {
     produitSelectionne = p;
     elProdSelNom.textContent  = p.nom;
@@ -3855,6 +4049,8 @@ function resoudreProduit(designation) {
 // et le `catalogue_fournisseur_id` : sans ça, l'OCR force une DLC sur des articles
 // « sans DLC » ou « date d'abattage » → mise en attente injustifiée.
 function resoudreArticleCatalogue(ocrLigne) {
+  // L'OCR lit le BL du fournisseur principal : on cherche dans SON catalogue.
+  const catalogueBl = cataloguesParFourn.get(fournisseursListe[0]?.id) || [];
   if (!catalogueBl.length) return null;
   const ref = (ocrLigne.reference || '').trim().toLowerCase();
   if (ref) {
@@ -4604,12 +4800,18 @@ async function validerBatch() {
     const prodAffiche = etat.produit || { id: null, nom: etat.designation };
     try {
       // Plusieurs n° de lot → 1 ligne de réception par lot, chacune avec sa DLC.
+      // Les lots déjà enregistrés lors d'un essai précédent (échec au milieu
+      // d'une carte multi-lots) ne sont pas renvoyés : pas de doublon au réessai.
+      etat.lotsEnregistres = etat.lotsEnregistres || new Set();
       for (const paire of pairesLotsBatch(etat)) {
+        const cle = `${paire.lot}|${paire.dlc}|${paire.poids}`;
+        if (etat.lotsEnregistres.has(cle)) continue;
         const ligne = await apiFetch(`/api/receptions/${receptionId}/lignes`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(_buildPayloadBatch(etat, paire)),
         });
+        etat.lotsEnregistres.add(cle);
         lignesAjoutees.push(_ligneToLocal(ligne, prodAffiche));
       }
       // Retirer la carte réussie de batchLignes pour ne jamais la reposter en double.
@@ -4928,6 +5130,16 @@ if (elCmdReviewValider) {
         body: JSON.stringify({ statut: 'confirmee' }),
       });
 
+      // Lier la commande à CETTE réception : elle passera « livrée » à la clôture
+      // et ne réapparaîtra pas comme commande disponible pour une autre livraison.
+      await apiFetch('/api/achats/commande_receptions_mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commande_id: cmd.id, reception_id: receptionId, personnel_id: personnelId }),
+      });
+      commandeIds.push(cmd.id);
+      commandesLiees.add(cmd.id);
+
       elDialogCmdReview.hidden = true;
       if (elBtnCreerCommande) elBtnCreerCommande.textContent = '✓ Commande créée';
       if (elCreerCmdStatut) {
@@ -5150,6 +5362,7 @@ elNcBtnBSuivant.addEventListener('click', () => {
     lignesAjoutees,
     tempCamion:    parseFloat(elTempCamion.value) || null,
     propreteCamion,
+    commandeIds:   commandeIds.filter(Boolean),
   };
   sessionStorage.setItem('haccp_rec_state', JSON.stringify(recState));
 
@@ -5430,6 +5643,8 @@ function restaurerDepuisPcr01() {
     fournisseurId   = state.fournisseurId;
     lignesAjoutees  = state.lignesAjoutees || [];
     propreteCamion  = state.propreteCamion || 'satisfaisant';
+    commandeIds     = state.commandeIds || [];
+    commandesLiees  = new Set(commandeIds);
 
     // Restaurer les inputs DOM nécessaires à remplirRecap()
     if (state.tempCamion !== null && state.tempCamion !== undefined) {
