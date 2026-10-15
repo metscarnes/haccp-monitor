@@ -87,6 +87,29 @@ async def prix_reference_30j(db, catalogue_vente_id: int,
     }
 
 
+async def marge_produit(db, catalogue_vente_id: int) -> dict:
+    """Coût d'achat de référence (choisi dans le comparateur) et marge actuelle du
+    produit, pour juger une promo. Même calcul que les propositions de prix
+    (taux de marque sur HT). `cout_ht` None si le produit n'est relié à aucun achat."""
+    from src.prix_vente import couts_produits, taux_marque
+    cur = await db.execute(
+        "SELECT groupe_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+        (catalogue_vente_id,))
+    groupe = await cur.fetchone()
+    infos = (await couts_produits(db, cv_ids=[catalogue_vente_id],
+                                  actifs_seulement=False)).get(catalogue_vente_id)
+    if infos is None or infos["cout"] is None:
+        return {"cout_ht": None, "groupe_id": groupe["groupe_id"] if groupe else None}
+    return {
+        "cout_ht": infos["cout"],
+        "tva_percent": infos["tva_percent"],
+        "taux_actuel": taux_marque(infos["prix_vente_ttc"], infos["tva_percent"], infos["cout"]),
+        "article": infos["cf_designation"],
+        "fournisseur": infos["fournisseur_nom"],
+        "groupe_id": groupe["groupe_id"] if groupe else None,
+    }
+
+
 async def promos_actives(db) -> dict[int, dict]:
     """Promos en cours, par produit : {catalogue_vente_id: promo}."""
     rows = await db.execute_fetchall(

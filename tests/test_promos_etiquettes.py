@@ -97,6 +97,22 @@ async def test_creer_promo_valide_et_ne_touche_pas_au_catalogue(app_client, db):
     assert ref["promo_en_cours"]["id"] == promo["id"]
 
 
+async def test_reference_donne_la_marge_pour_juger_la_promo(app_client, db):
+    from tests.test_prix_vente_moteur import _scenario
+    s = await _scenario(app_client)       # steak 18,90 € ← cuisse de bœuf 9,80 €/kg HT
+    ref = (await app_client.get(f"/api/prix-etiquettes/promos/reference/{s['steak']}")).json()
+    m = ref["marge"]
+    assert m["cout_ht"] == pytest.approx(9.80)
+    assert m["taux_actuel"] == pytest.approx(1 - 9.80 / (18.90 / 1.055), abs=1e-4)
+    assert m["tva_percent"] == 5.5 and m["article"] == "Cuisse de boeuf"
+    assert m["fournisseur"] == "Elivia Test" and m["groupe_id"] == s["g_steak"]
+
+    # Produit relié à aucun achat : marge inconnue (l'écran le signale).
+    seul = await _produit_vente(app_client, "Sans achat", prix_vente_ttc=9.90)
+    ref = (await app_client.get(f"/api/prix-etiquettes/promos/reference/{seul}")).json()
+    assert ref["marge"] == {"cout_ht": None, "groupe_id": None}
+
+
 async def test_impression_style_promo(app_client, db, monkeypatch):
     cv = await _produit_vente(app_client, "STEAK HACHÉ PROMO", prix_vente_ttc=19.90, unite_vente="kg")
     await _historique(db, cv, [], 19.90)

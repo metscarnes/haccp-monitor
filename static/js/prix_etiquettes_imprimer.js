@@ -293,7 +293,48 @@
   });
 
   // ── Fenêtre « Mettre en promo » ────────────────────────────
-  const promoVue = { produit: null, reference: null, promoId: null };
+  const promoVue = { produit: null, reference: null, promoId: null, marge: null };
+
+  // Seuil sous lequel la marge d'une promo est signalée comme faible.
+  const MARGE_FAIBLE = 0.15;
+
+  // Taux de marque (0..1) d'un prix TTC — même calcul que le serveur (sur HT).
+  function tauxMarque(prixTtc, tva, cout) {
+    const ht = prixTtc / (1 + (tva || 0) / 100);
+    return ht > 0 ? (ht - cout) / ht : null;
+  }
+  const pct = t => `${Math.round(t * 100)} %`;
+
+  // Indicateur de marge : aujourd'hui → avec la promo, coût d'achat, lien comparateur.
+  function promoMarge() {
+    const el = $('promo-marge');
+    const m = promoVue.marge;
+    const p = promoVue.produit;
+    if (!m || !p) { el.hidden = true; return; }
+    const lien = m.groupe_id
+      ? ` · <a href="/comparatif-achats.html?groupe=${m.groupe_id}">Voir dans le comparateur ›</a>` : '';
+    el.hidden = false;
+    if (m.cout_ht == null) {
+      el.className = 'pe-promo-marge';
+      el.innerHTML = `📊 Marge inconnue : ce produit n'est relié à aucun prix d'achat de référence.${lien}`;
+      return;
+    }
+    const prix = parseFloat($('promo-prix').value);
+    const avec = isNaN(prix) ? null : tauxMarque(prix, m.tva_percent, m.cout_ht);
+    let niveau = 'ok', alerte = '';
+    if (avec != null && avec < 0) {
+      niveau = 'perte';
+      alerte = '<br>⚠️ <strong>Vente à perte</strong> : le prix promo est sous le coût d\'achat.';
+    } else if (avec != null && avec < MARGE_FAIBLE) {
+      niveau = 'faible';
+    }
+    el.className = `pe-promo-marge pe-promo-marge--${niveau}`;
+    el.innerHTML = `📊 Marge : <strong>${m.taux_actuel != null ? pct(m.taux_actuel) : '—'}</strong> aujourd'hui`
+      + (avec != null ? ` → <strong>${pct(avec)}</strong> avec la promo` : '')
+      + alerte
+      + `<div class="pe-promo-marge-achat">Coût d'achat : ${prixTexte(m.cout_ht)} HT / ${uniteTexte(p)}`
+      + `${m.article ? ` — ${escHtml(m.article)}` : ''}${m.fournisseur ? ` (${escHtml(m.fournisseur)})` : ''}${lien}</div>`;
+  }
 
   // Prix promo d'une réduction en % — toujours arrondi VERS LE BAS (la réduction
   // réelle est au moins celle demandée) : terminaison ,90 dès 5 €, au centime en
@@ -312,6 +353,7 @@
   }
 
   function promoApercu() {
+    promoMarge();
     const p = promoVue.produit;
     const prix = parseFloat($('promo-prix').value);
     if (!p || !imp.stylePromo) return;
@@ -324,7 +366,9 @@
     const p = produit(id);
     if (!p) return;
     promoVue.produit = p;
+    promoVue.marge = null;
     promoStatut('', 'ok');
+    $('promo-marge').hidden = true;
     $('promo-titre').textContent = `🔥 Promo — ${p.nom}`;
     $('promo-ref').textContent = 'Calcul du prix de référence…';
     $('modal-promo').hidden = false;
@@ -332,6 +376,7 @@
       const ref = await apiFetch(`/api/prix-etiquettes/promos/reference/${id}`);
       const enCours = ref.promo_en_cours;
       promoVue.promoId = enCours?.id ?? null;
+      promoVue.marge = ref.marge ?? null;
       // Promo en cours : sa référence est figée depuis son début.
       promoVue.reference = enCours ? enCours.prix_reference_ttc : ref.prix_reference_ttc;
       $('promo-ref').innerHTML =

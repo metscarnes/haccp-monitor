@@ -779,6 +779,20 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-promo-ref { font-size: var(--text-sm); line-height: 1.5; }
 .pe-promo-saisie { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .pe-modal--promo .pe-modal-actions { flex-wrap: wrap; }
+.pe-promo-marge {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: rgba(107,58,31,.06);
+  border: 1px solid rgba(107,58,31,.18);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.pe-promo-marge[hidden] { display: none; }
+.pe-promo-marge--ok     { background: rgba(45,125,70,.08);  border-color: rgba(45,125,70,.3); }
+.pe-promo-marge--faible { background: rgba(200,120,0,.10);  border-color: rgba(200,120,0,.4); }
+.pe-promo-marge--perte  { background: rgba(201,48,48,.08);  border-color: rgba(201,48,48,.45); color: var(--color-alert); }
+.pe-promo-marge-achat { font-size: var(--text-xs); color: var(--color-offline); }
+.pe-promo-marge a { color: var(--color-accent); font-weight: 700; }
 
 .pe-imp-panier {
   min-height: 0;

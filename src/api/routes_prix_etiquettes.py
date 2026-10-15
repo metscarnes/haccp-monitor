@@ -597,15 +597,17 @@ async def lister_promos_en_cours():
 
 @router.get("/api/prix-etiquettes/promos/reference/{produit_id}")
 async def reference_promo(produit_id: int):
-    """Prix de référence légal (plus bas prix des 30 derniers jours) d'un produit, et
-    sa promo en cours éventuelle (dont le prix de référence est figé)."""
-    from src.promos_etiquettes import prix_reference_30j
+    """Prix de référence légal (plus bas prix des 30 derniers jours) d'un produit, sa
+    promo en cours éventuelle (dont le prix de référence est figé), et sa marge
+    (coût d'achat de référence du comparateur) pour juger la promo."""
+    from src.promos_etiquettes import marge_produit, prix_reference_30j
     async with get_db() as db:
         try:
             ref = await prix_reference_30j(db, produit_id)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
         ref["promo_en_cours"] = (await _promos_actives(db)).get(produit_id)
+        ref["marge"] = await marge_produit(db, produit_id)
         return ref
 
 
