@@ -913,12 +913,18 @@ async def ocr_bl(reception_id: int):
     from src.ocr_bl import extraire_bl, OCRError
 
     async with get_db() as db:
+        # Le nom du fournisseur choisit la consigne de mise en page (et le
+        # redressement des BL Elivia) côté OCR.
         cur = await db.execute(
-            "SELECT photo_bl_filename FROM receptions WHERE id = ?", (reception_id,)
+            "SELECT r.photo_bl_filename, f.nom AS fournisseur_nom "
+            "FROM receptions r LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id "
+            "WHERE r.id = ?",
+            (reception_id,),
         )
         row = await cur.fetchone()
         if not row:
             raise HTTPException(404, "Réception non trouvée")
+        fournisseur_nom = row["fournisseur_nom"]
 
         # Rassembler tous les fichiers : photo principale + pages supplémentaires
         fichiers: List[str] = []
@@ -947,9 +953,9 @@ async def ocr_bl(reception_id: int):
         raise HTTPException(404, "Fichiers photo BL introuvables sur le disque")
 
     try:
-        # Appel réseau à Claude (10-30 s typiques) déporté sur un thread : sinon
+        # Appel réseau à Claude (5-15 s typiques) déporté sur un thread : sinon
         # il gèle tout le serveur (un seul worker Uvicorn) pendant toute sa durée.
-        data = await asyncio.to_thread(extraire_bl, images)
+        data = await asyncio.to_thread(extraire_bl, images, fournisseur_nom)
     except OCRError as e:
         raise HTTPException(502, str(e))
 

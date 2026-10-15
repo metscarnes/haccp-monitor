@@ -10,23 +10,37 @@ Utilisé par l'endpoint POST /api/receptions/{id}/ocr-bl.
 Garde-fou HACCP : le prompt interdit de deviner une date. Tout champ illisible
 revient à null, et chaque ligne porte un niveau de confiance que l'écran de
 validation côté front utilise pour signaler ce qui doit être vérifié.
+
+Vitesse (banc chronométré du 15/10/2026 sur de vrais BL Saveurs d'Antoine,
+Bourdicaud, Dipsa, Elivia) : le temps est dominé par l'ÉCRITURE de la réponse
+(~0,6 s par ligne). D'où : effort bas, une page par appel en parallèle, sortie
+JSON à clés courtes remise au format complet ici, et une consigne de mise en
+page par fournisseur connu (sans elle la précision chute). Résultat : un BL
+Saveurs de 46 lignes passe de ~107 s à ~13 s, sans perte de précision.
 """
 
 import base64
+import io
 import json
 import logging
 import os
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-# Modèle par défaut : bon compromis fiabilité/prix pour des BL imprimés.
-# Surchargé par la variable d'environnement OCR_MODEL si présente.
-MODEL = os.environ.get("OCR_MODEL", "claude-sonnet-5")
+# Modèle et effort par défaut, retenus au banc (cf. docstring). Surchargés par
+# OCR_BL_MODEL / OCR_BL_EFFORT — variables propres au BL, pour que l'ancien
+# OCR_MODEL (partagé avec ocr_facture) ne ramène pas l'ancien réglage lent.
+MODEL = os.environ.get("OCR_BL_MODEL", "claude-sonnet-5-5")
+EFFORT = os.environ.get("OCR_BL_EFFORT", "low")
 
 # Tarifs ($/million de tokens) pour journaliser le coût réel de chaque appel.
 # Sonnet 5 : tarif intro 2/10 jusqu'au 31/08/2026, puis 3/15 (standard retenu
 # ici — coût affiché légèrement surestimé pendant l'intro, jamais sous-estimé).
 _PRIX = {
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5":  (0.10, 0.50),
     "claude-sonnet-5":   (3.00, 15.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5":  (1.00, 5.00),
@@ -108,6 +122,145 @@ Règles générales :
 - Ignore les totaux, conditions de vente, mentions légales.
 
 Réponds uniquement via le format structuré demandé."""
+
+
+# ---------------------------------------------------------------------------
+# Consignes par fournisseur (mise en page connue) — sans elles, la précision
+# chute nettement au banc (lots/DLC décalés, lignes manquées).
+# ---------------------------------------------------------------------------
+
+_CONSIGNES_FOURNISSEUR = {
+    "saveurs": """Document SAVEURS D'ANTOINE (traiteur / charcuterie), « FACTURE LIVRAISON » souvent sur 2 ou 3 pages. Le n° de BL est sur la ligne « BL n° : 0745721 Votre Commande du … ».
+Colonnes : DESIGNATION PRODUIT (code 6 chiffres + libellé, parfois sur 2 lignes) | QTE CMD | QTE LIVREE en UCde | QTE LIVREE en UF | UF | PRIX BRUT | REMISES | PRIX NET | Montant H.T | TVA.
+Sous chaque article, une ou plusieurs sous-lignes en italique « lot [numéro] dlc jj/mm/aa  N p. X,XXX kg » : produis UNE ligne par sous-ligne, avec SA dlc, quantite = N et poids_kg = X de CETTE sous-ligne.
+Le numéro de lot est presque toujours VIDE (seul le mot « lot » est imprimé) → numero_lot null ; ne prends jamais le code article ni un autre nombre pour un lot.
+prix_unitaire = PRIX NET (un « P » devant signale une promo, ignore-le) ; unite_prix = colonne UF (KG → "kg", SCHT/BQT/PIECE/SEAU/COL/ECU/TER → "piece") ; montant_ligne = Montant H.T sur la première sous-ligne de l'article seulement, null sur les suivantes.
+Ignore « Poids : … - Pièces : … », les totaux, conditions et mentions.""",
+    "bourdicaud": """Document BOURDICAUD (volailles). C'est souvent la FACTURE qui sert de BL ; le n° de BL est sur la ligne "BL N° xxxxxxxx du jj/mm/aaaa" au-dessus des articles.
+Colonnes : CODE | DESIGNATION | EAN13 | QTE | POIDS | COLIS | PRIX BASE | UN | P.U. H.T. | MONTANT H.T.
+Sous chaque article, une ligne en italique "LOT <numéro>   DLC <jj/mm/aaaa>" (suivie de qte/poids/colis répétés) : ce lot et cette DLC appartiennent à l'article JUSTE AU-DESSUS.
+Les lignes "Né, élevé, abattu…", "Produit …", "Poulet JA …" sont des mentions, pas des articles. Le code EAN13 (13 chiffres) n'est PAS un lot.
+prix_unitaire = P.U. H.T. ; unite_prix = colonne UN (KG → "kg"). Ignore les annotations manuscrites.""",
+    "dipsa": """Document DIPSA (charcuterie / traiteur). Le fichier peut contenir plusieurs BL ("Bon de livraison 0165xxxx").
+Colonnes : Article (code 6 chiffres) | DESIGNATION | T | NOMBRE | Quantité | LOT | D.L.C. | P.U. Net | MT NET. Tout tient sur UNE ligne par article :
+NOMBRE "1 P" = quantité (pièces) ; Quantité "4,288 K" = poids en kg ; LOT = 7 chiffres (parfois une lettre + chiffres, ex. A024217) ; D.L.C. au format jj/mm/aa ; P.U. Net "x,xxxx /K" = prix au kg.
+Une ligne de type T = "M" (manquant) n'a ni lot ni poids : ne la produis pas. Ignore "Date de commande", "Préparé pour", "01 FRAIS/SEC", les totaux et récapitulatifs.""",
+    "elivia": """Document ELIVIA / SELVI (viande).
+Chaque article = une ligne en gras (désignation, code "Produit VL" ex. 07991-07, Colis, Pièces, Poids net, Poids fact, PU base, PU net "13.3500K" = €/kg, Montant HT), puis un sous-tableau avec UN LOT PAR LIGNE : "N° lot" (ex. AL60046992 ; "N° tuerie" pour les carcasses), "Poids" du lot, et "DLC / DLUO" (jj/mm/aaaa).
+Si la colonne s'appelle "Date abattage", ce n'est PAS une DLC → dlc_brut null. Article à plusieurs lots → une ligne par lot avec le poids DU LOT, prix_unitaire = PU net sur chaque ligne, montant_ligne sur la première seulement.
+Ignore la section Atelier (Interbev, redevances, prestations), Emballage et Support.""",
+}
+
+# Mots-clés (nom fournisseur normalisé) → clé de consigne.
+_MOTS_FOURNISSEUR = {
+    "saveurs": ("saveur", "antoine", "yvas"),
+    "bourdicaud": ("bourdicaud",),
+    "dipsa": ("dipsa",),
+    "elivia": ("elivia", "selvi"),
+}
+
+# Les BL Elivia arrivent toujours à l'horizontale : on les redresse avant l'OCR
+# (sans redressement, lots/DLC mal lus sur ~15 % des lignes au banc).
+_ROTATION_FOURNISSEUR = {"elivia": 90}
+
+
+def _sans_accents(texte: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", texte) if unicodedata.category(c) != "Mn")
+
+
+def cle_fournisseur(nom: str | None) -> str | None:
+    """Reconnaît un fournisseur à mise en page connue d'après son nom (None sinon)."""
+    if not nom:
+        return None
+    n = _sans_accents(nom).lower()
+    for cle, mots in _MOTS_FOURNISSEUR.items():
+        if any(m in n for m in mots):
+            return cle
+    return None
+
+
+def _pivoter_jpeg(jpeg: bytes, angle: int) -> bytes:
+    """Pivote une image JPEG (sens anti-horaire, comme PIL) et la ré-encode."""
+    from PIL import Image
+    img = Image.open(io.BytesIO(jpeg)).convert("RGB").rotate(angle, expand=True)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85, optimize=True)
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Sortie compacte : le modèle écrit des clés courtes (moins de tokens à générer,
+# donc plus rapide), remises ensuite au format complet de _SCHEMA.
+# ---------------------------------------------------------------------------
+
+_CLES_COURTES = {
+    "d": "designation", "r": "reference", "l": "numero_lot", "dlc": "dlc_brut", "dluo": "dluo_brut",
+    "kg": "poids_kg", "q": "quantite", "pu": "prix_unitaire", "u": "unite_prix",
+    "mt": "montant_ligne", "c": "confiance",
+}
+_CONFIANCE_COURTE = {"h": "haute", "m": "moyenne", "b": "basse"}
+_PROPS_LIGNE = _SCHEMA["properties"]["lignes"]["items"]["properties"]
+
+_SCHEMA_COMPACT = {
+    "type": "object",
+    "properties": {
+        "f": {"type": ["string", "null"]},
+        "bl": {"type": ["string", "null"]},
+        "date": {"type": ["string", "null"]},
+        "L": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    court: ({"type": "string", "enum": ["h", "m", "b"]} if court == "c" else _PROPS_LIGNE[long])
+                    for court, long in _CLES_COURTES.items()
+                },
+                "required": list(_CLES_COURTES),
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["f", "bl", "date", "L"],
+    "additionalProperties": False,
+}
+
+_NOTE_COMPACT = (
+    "\n\nFORMAT DE SORTIE COMPACT (clés courtes) : f=fournisseur, bl=numero_bl, date=date_bl_brut, L=lignes ; "
+    "dans chaque ligne : d=designation, r=reference, l=numero_lot, dlc=dlc_brut, dluo=dluo_brut, kg=poids_kg, "
+    "q=quantite, pu=prix_unitaire, u=unite_prix, mt=montant_ligne, c=confiance (h=haute, m=moyenne, b=basse)."
+)
+
+_DESIGNATION_SUITE = "(suite)"
+
+
+def _depuis_compact(d: dict) -> dict:
+    """Remet une réponse compacte au format complet de _SCHEMA."""
+    lignes = []
+    for l in d.get("L", []):
+        ligne = {_CLES_COURTES[k]: v for k, v in l.items() if k in _CLES_COURTES}
+        ligne["confiance"] = _CONFIANCE_COURTE.get(l.get("c"), "basse")
+        lignes.append(ligne)
+    return {"fournisseur": d.get("f"), "numero_bl": d.get("bl"), "date_bl_brut": d.get("date"), "lignes": lignes}
+
+
+def _fusionner_pages(pages: list[dict]) -> dict:
+    """Fusionne les résultats page par page en un seul BL.
+
+    En-tête : première valeur non vide. Une sous-ligne en haut de page qui
+    prolonge l'article de la page précédente arrive avec la désignation
+    « (suite) » : on lui redonne la désignation du dernier article vu.
+    """
+    data = {k: next((p.get(k) for p in pages if p.get(k)), None)
+            for k in ("fournisseur", "numero_bl", "date_bl_brut")}
+    lignes: list[dict] = []
+    for p in pages:
+        for ligne in p.get("lignes", []):
+            if (ligne.get("designation") or "").strip().lower() == _DESIGNATION_SUITE and lignes:
+                ligne["designation"] = lignes[-1]["designation"]
+                ligne["reference"] = ligne.get("reference") or lignes[-1].get("reference")
+            lignes.append(ligne)
+    data["lignes"] = lignes
+    return data
 
 
 class OCRError(Exception):
@@ -206,11 +359,58 @@ def _verifier_coherence_prix(prix_unitaire, unite_prix, poids_kg, quantite, mont
     return False, None
 
 
-def extraire_bl(images_jpeg: list[bytes]) -> dict:
+def _appel_page(client, anthropic, images: list[bytes], texte: str) -> tuple[dict, int, int]:
+    """Un appel Claude (sortie compacte) → (données au format complet, tokens entrée, tokens sortie)."""
+    contenu = [{
+        "type": "image",
+        "source": {"type": "base64", "media_type": "image/jpeg",
+                   "data": base64.standard_b64encode(jpeg).decode()},
+    } for jpeg in images]
+    contenu.append({"type": "text", "text": texte + _NOTE_COMPACT})
+
+    output_config = {"format": {"type": "json_schema", "schema": _SCHEMA_COMPACT}}
+    if EFFORT:
+        output_config["effort"] = EFFORT
+    try:
+        with client.messages.stream(
+            model=MODEL,
+            max_tokens=16000,
+            messages=[{"role": "user", "content": contenu}],
+            output_config=output_config,
+        ) as stream:
+            resp = stream.get_final_message()
+    except anthropic.APIError as e:
+        logger.error("Appel OCR échoué : %s", e)
+        raise OCRError(f"Appel à l'API Claude échoué : {e}")
+
+    brut = None
+    try:
+        brut = next(b.text for b in resp.content if b.type == "text")
+        data = _depuis_compact(json.loads(brut))
+    except (StopIteration, json.JSONDecodeError) as e:
+        logger.error(
+            "Réponse OCR illisible : %s | stop_reason=%s | extrait=%r",
+            e, resp.stop_reason, brut[-300:] if brut else None,
+        )
+        if resp.stop_reason == "max_tokens":
+            raise OCRError(
+                "Le BL est trop volumineux pour l'OCR (réponse tronquée). "
+                "Essaie de le scinder ou de saisir ce BL manuellement."
+            )
+        raise OCRError("Réponse de l'OCR illisible.")
+    return data, resp.usage.input_tokens, resp.usage.output_tokens
+
+
+def extraire_bl(images_jpeg: list[bytes], fournisseur: str | None = None) -> dict:
     """Envoie les images du BL à Claude et renvoie le dict structuré.
+
+    Une page = un appel, lancés en parallèle (le temps est celui de la page la
+    plus longue, pas la somme). Si le fournisseur est reconnu, sa consigne de
+    mise en page est ajoutée et ses photos sont redressées si besoin (Elivia).
 
     Args:
         images_jpeg: liste d'images JPEG (bytes), une par page de BL.
+        fournisseur: nom du fournisseur de la réception (facultatif).
 
     Returns:
         dict conforme à _SCHEMA, enrichi d'un bloc "_meta" (modèle, coût, tokens).
@@ -232,17 +432,15 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
     except ImportError:
         raise OCRError("Le paquet 'anthropic' n'est pas installé (pip install anthropic).")
 
-    contenu = []
-    for jpeg in images_jpeg:
-        contenu.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": "image/jpeg",
-                "data": base64.standard_b64encode(jpeg).decode(),
-            },
-        })
-    contenu.append({"type": "text", "text": _INSTRUCTIONS})
+    cle = cle_fournisseur(fournisseur)
+    angle = _ROTATION_FOURNISSEUR.get(cle)
+    if angle:
+        images_jpeg = [_pivoter_jpeg(j, angle) for j in images_jpeg]
+
+    texte = _INSTRUCTIONS
+    if cle:
+        texte += ("\n\nCONSIGNES SPÉCIFIQUES À CE FOURNISSEUR (mise en page connue) :\n"
+                  + _CONSIGNES_FOURNISSEUR[cle])
 
     # Timeout borné (le défaut du SDK est ~10 min) : sur la connexion du Pi, un
     # incident réseau doit échouer proprement (message clair, HTTP 502) plutôt que
@@ -252,41 +450,32 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
     # totale : un BL long (beaucoup de lignes à générer, > 90 s) va au bout, alors
     # qu'en appel simple il était coupé ("Request timed out").
     client = anthropic.Anthropic(api_key=api_key, timeout=90.0, max_retries=1)
-    try:
-        with client.messages.stream(
-            model=MODEL,
-            max_tokens=16000,
-            messages=[{"role": "user", "content": contenu}],
-            output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-        ) as stream:
-            resp = stream.get_final_message()
-    except anthropic.APIError as e:
-        logger.error("Appel OCR échoué : %s", e)
-        raise OCRError(f"Appel à l'API Claude échoué : {e}")
 
-    texte = None
-    try:
-        texte = next(b.text for b in resp.content if b.type == "text")
-        data = json.loads(texte)
-    except (StopIteration, json.JSONDecodeError) as e:
-        logger.error(
-            "Réponse OCR illisible : %s | stop_reason=%s | extrait=%r",
-            e, resp.stop_reason, texte[-300:] if texte else None,
-        )
-        if resp.stop_reason == "max_tokens":
-            raise OCRError(
-                "Le BL est trop volumineux pour l'OCR (réponse tronquée). "
-                "Essaie de le scinder ou de saisir ce BL manuellement."
-            )
-        raise OCRError("Réponse de l'OCR illisible.")
+    n = len(images_jpeg)
+    if n == 1:
+        resultats = [_appel_page(client, anthropic, images_jpeg, texte)]
+    else:
+        textes = [
+            texte + f"\n\nIMPORTANT : cette image est la PAGE {k + 1}/{n} du BL. Extrais UNIQUEMENT les "
+            "articles imprimés sur cette page. Si des sous-lignes (lot/DLC) en haut de page appartiennent à "
+            "un article commencé à la page précédente, produis-les avec la désignation de cet article si "
+            f"elle est visible, sinon \"{_DESIGNATION_SUITE}\"."
+            for k in range(n)
+        ]
+        with ThreadPoolExecutor(max_workers=min(n, 6)) as pool:
+            resultats = list(pool.map(
+                lambda a: _appel_page(client, anthropic, [a[0]], a[1]), zip(images_jpeg, textes)
+            ))
+    data = _fusionner_pages([r[0] for r in resultats])
+    tokens_in = sum(r[1] for r in resultats)
+    tokens_out = sum(r[2] for r in resultats)
 
     # Coût réel, pour journalisation et suivi
     prix_in, prix_out = _PRIX.get(MODEL, (3.00, 15.00))
-    u = resp.usage
-    cout = (u.input_tokens * prix_in + u.output_tokens * prix_out) / 1_000_000
+    cout = (tokens_in * prix_in + tokens_out * prix_out) / 1_000_000
     logger.info(
-        "OCR BL : %d ligne(s), modèle=%s, %d+%d tokens, coût≈$%.4f",
-        len(data.get("lignes", [])), MODEL, u.input_tokens, u.output_tokens, cout,
+        "OCR BL : %d ligne(s), %d page(s), fournisseur=%s, modèle=%s, %d+%d tokens, coût≈$%.4f",
+        len(data.get("lignes", [])), n, cle or "générique", MODEL, tokens_in, tokens_out, cout,
     )
     # Suivi qualité : combien de lignes ont un prix extrait (signale un BL/fournisseur
     # sans prix lisible si le ratio tombe à 0 sur un BL qui devrait en avoir).
@@ -340,8 +529,10 @@ def extraire_bl(images_jpeg: list[bytes]) -> dict:
 
     data["_meta"] = {
         "modele": MODEL,
-        "tokens_entree": u.input_tokens,
-        "tokens_sortie": u.output_tokens,
+        "tokens_entree": tokens_in,
+        "tokens_sortie": tokens_out,
         "cout_usd": round(cout, 4),
+        "pages": n,
+        "consigne_fournisseur": cle,
     }
     return data
