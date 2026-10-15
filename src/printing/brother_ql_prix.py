@@ -357,17 +357,6 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
 # C'est la dimension EN TRAVERS du rouleau (≈ 58,9 mm imprimables sur 62 mm).
 LABEL_62_PRINTABLE_W = 696
 
-# Résolution DANS LE SENS DE DÉFILEMENT du rouleau. La QL-820NWB avance le
-# papier à 600 dpi (mode haute résolution 300×600). Calculer la longueur en
-# 300 dpi donne une étiquette deux fois trop courte ; on la calcule donc à
-# 600 dpi pour que la largeur demandée (ex. 10 cm) corresponde au réel.
-# ⚠️ Si la longueur imprimée reste fausse, ajuster CETTE valeur (mesurer puis
-# multiplier : nouvelle_valeur = FEED_DPI_actuel × longueur_demandée / longueur_mesurée).
-# Calibration boutique : demandé 10 cm → mesuré 6,5 cm avec FEED_DPI=600,
-# donc 600 × 10 / 6,5 ≈ 923.
-FEED_DPI = 923
-CM_PAR_POUCE = 2.54
-
 
 # Un seul envoi à la fois vers l'imprimante : deux impressions simultanées
 # (deux tablettes) ne doivent pas mélanger leurs données dans le flux.
@@ -377,26 +366,35 @@ _VERROU_IMPRESSION = threading.Lock()
 def _image_pour_rouleau(data: dict):
     """Image de l'étiquette prête pour le rouleau 62mm (taille physique, noir/blanc)."""
     from PIL import Image
+    # Image en paysage, à 300 dpi, identique à l'aperçu :
+    #   largeur = longueur de l'étiquette le long du rouleau (ex. 10 cm),
+    #   hauteur = dimension EN TRAVERS du rouleau (≤ 6,2 cm).
     image = generer_image_prix(data)
+    w, h = image.size
 
-    # Rouleau continu 62mm — on fixe CHAQUE axe à sa vraie taille physique,
-    # indépendamment (comme l'impression navigateur via @page), au lieu de
-    # déduire la largeur depuis le ratio. C'est ce qui garantit que les
-    # dimensions saisies (ex. 10 × 6,2 cm) sortent exactes :
-    #   • EN TRAVERS du rouleau  = la HAUTEUR de l'étiquette → 696 px (300 dpi,
-    #     bridé à la largeur imprimable du 62mm, soit ≈ 5,9 cm max).
-    #   • SENS DE DÉFILEMENT     = la LARGEUR de l'étiquette → calculée à
-    #     FEED_DPI (600 dpi) car c'est la résolution réelle de défilement.
-    # L'image générée est en paysage (largeur horizontale) ; brother_ql la
-    # tourne de 90° via rotate="auto" pour la poser sur le rouleau.
-    largeur_cm = float(data.get("largeur_cm", 10.0))
-    feed_px = max(1, round(largeur_cm / CM_PAR_POUCE * FEED_DPI))
-    image = image.resize((feed_px, LABEL_62_PRINTABLE_W), Image.LANCZOS)
+    # En travers du rouleau, brother_ql exige EXACTEMENT 696 px (≈ 5,9 cm
+    # imprimables sur 62 mm) — sinon il réduit toute l'image pour l'y faire
+    # tenir, ce qui donnait une mini-étiquette. Une étiquette plus haute
+    # (6,2 cm) est légèrement resserrée en travers (≤ 5 %) ; une plus basse
+    # est centrée sur une bande blanche de 696 px. La longueur, elle, n'est
+    # jamais touchée : 300 dpi exact, comme l'impression navigateur.
+    if h > LABEL_62_PRINTABLE_W:
+        image = image.resize((w, LABEL_62_PRINTABLE_W), Image.LANCZOS)
+    elif h < LABEL_62_PRINTABLE_W:
+        bande = Image.new("RGB", (w, LABEL_62_PRINTABLE_W), "white")
+        bande.paste(image, (0, (LABEL_62_PRINTABLE_W - h) // 2))
+        image = bande
 
     # Seuillage binaire : convertit chaque pixel en noir pur ou blanc pur
     # avant d'envoyer à brother_ql. Évite le gris dû à l'anticrénelage du
     # texte, indépendamment du paramètre demi-ton du driver.
-    return image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
+    image = image.convert("L").point(lambda p: 0 if p < 180 else 255, "1")
+
+    # brother_ql ne tourne JAMAIS une image sur rouleau continu (rotate="auto"
+    # n'agit que sur les étiquettes prédécoupées) : on la tourne nous-mêmes
+    # d'un quart de tour pour que sa largeur (696 px) soit en travers du
+    # rouleau et sa longueur dans le sens de défilement.
+    return image.rotate(90, expand=True)
 
 
 def imprimer_lot(configs: list[dict]) -> tuple[bool, str]:
