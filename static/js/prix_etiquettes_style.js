@@ -319,35 +319,21 @@
     }
   });
 
-  // ── Onglets de la page ─────────────────────────────────────
+  // ── Onglet (géré par prix_etiquettes.js → afficherOnglet) ──
   let styleCharge = false;
-  async function afficherOnglet(nom) {
-    if (document.body.dataset.onglet === 'style' && nom !== 'style' && vue.modifie
-        && !confirm('Le style a été modifié sans être enregistré. Quitter quand même ?')) return;
-    document.body.dataset.onglet = nom;
-    document.querySelectorAll('.pe-onglet').forEach(o =>
-      o.classList.toggle('active', o.dataset.onglet === nom));
-    try { localStorage.setItem('pe_onglet', nom); } catch (e) { /* ignore */ }
-    if (nom === 'style') {
-      if (!styleCharge) {
-        styleCharge = true;
-        try { await charger(); } catch (e) { styleCharge = false; statut('Erreur : ' + e.message, 'err'); }
-      } else {
-        apercu();
-      }
-    }
-  }
-  document.querySelectorAll('.pe-onglet').forEach(o =>
-    o.addEventListener('click', () => afficherOnglet(o.dataset.onglet)));
+  window.peVues.style = {
+    async afficher() {
+      if (styleCharge) { apercu(); return; }
+      styleCharge = true;
+      try { await charger(); } catch (e) { styleCharge = false; statut('Erreur : ' + e.message, 'err'); }
+    },
+    quitter() {
+      return !vue.modifie
+        || confirm('Le style a été modifié sans être enregistré. Quitter quand même ?');
+    },
+  };
 
   window.addEventListener('beforeunload', e => {
     if (vue.modifie) { e.preventDefault(); e.returnValue = ''; }
-  });
-
-  document.addEventListener('DOMContentLoaded', async () => {
-    await window.peInit;
-    let onglet = 'libre';
-    try { onglet = localStorage.getItem('pe_onglet') || 'libre'; } catch (e) { /* ignore */ }
-    afficherOnglet(onglet === 'style' ? 'style' : 'libre');
   });
 })();

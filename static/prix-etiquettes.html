@@ -22,9 +22,7 @@
   <a href="/hub.html" class="pe-retour">← Hub</a>
   <div class="pe-header-titre">🏷️ ÉTIQUETTES PRIX</div>
   <div class="pe-header-actions">
-    <button class="pe-btn pe-btn--outline" id="btn-a-reimprimer" title="Étiquettes dont le prix a changé">🏷️ À réimprimer <span class="pe-badge" id="badge-a-reimprimer" hidden>0</span></button>
     <button class="pe-btn pe-btn--outline pe-seulement-libre" id="btn-sauvegarder-modele">💾 Sauvegarder</button>
-    <button class="pe-btn pe-btn--outline" id="btn-impression-masse">🏷️ Impression de masse</button>
     <button class="pe-btn pe-btn--outline pe-seulement-libre" id="btn-imprimer-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
     <button class="pe-btn pe-btn--outline" id="btn-config-imprimante" title="Paramètres imprimante">⚙️ Imprimante</button>
     <button class="pe-btn pe-btn--primary pe-seulement-libre" id="btn-imprimer">🖨️ Imprimer</button>
@@ -35,6 +33,7 @@
      ONGLETS
 ═══════════════════════════════════════════════════ -->
 <nav class="pe-onglets" role="tablist" aria-label="Vues du module">
+  <button class="pe-onglet" role="tab" data-onglet="imprimer">🖨️ Imprimer <span class="pe-badge" id="badge-a-reimprimer" hidden>0</span></button>
   <button class="pe-onglet" role="tab" data-onglet="style">🎨 Style des étiquettes</button>
   <button class="pe-onglet" role="tab" data-onglet="libre">✏️ Étiquette libre</button>
 </nav>
@@ -158,6 +157,48 @@
 </main>
 
 <!-- ═══════════════════════════════════════════════════
+     VUE « IMPRIMER » — l'écran de tous les jours (tablette)
+═══════════════════════════════════════════════════ -->
+<section class="pe-imp pe-vue-imprimer" aria-label="Imprimer des étiquettes">
+
+  <div class="pe-imp-file" id="imp-file" hidden>
+    <div class="pe-imp-file-tete">
+      <span class="pe-imp-file-titre" id="imp-file-titre"></span>
+      <button class="pe-btn pe-btn--primary pe-btn--grand" id="imp-file-tout">+ Tout ajouter</button>
+    </div>
+    <div class="pe-imp-file-liste" id="imp-file-liste"></div>
+  </div>
+
+  <div class="pe-imp-corps">
+    <!-- Catalogue -->
+    <div class="pe-imp-catalogue">
+      <input type="search" class="pe-input pe-input--grand" id="imp-recherche"
+             placeholder="🔍 Chercher un produit…" autocomplete="off">
+      <div class="pe-imp-familles" id="imp-familles" role="group" aria-label="Familles"></div>
+      <div class="pe-imp-produits" id="imp-produits"></div>
+    </div>
+
+    <!-- Liste à imprimer + aperçu -->
+    <div class="pe-imp-panier">
+      <div class="pe-imp-panier-tete">
+        <span class="pe-style-bloc-titre">À imprimer</span>
+        <button class="pe-btn pe-btn--sm pe-btn--ajout" id="imp-vider" hidden>Vider la liste</button>
+      </div>
+      <div class="pe-imp-panier-liste" id="imp-panier"></div>
+      <div class="pe-imp-apercu">
+        <div class="pe-etiquette-cadre" id="imp-cadre">
+          <canvas class="pe-etiquette-canvas" id="imp-canvas"></canvas>
+        </div>
+      </div>
+      <button class="pe-btn pe-btn--primary pe-btn--grand pe-imp-imprimer" id="imp-imprimer" disabled>🖨️ Imprimer</button>
+      <button class="pe-btn pe-btn--sm pe-btn--ajout" id="imp-navigateur" hidden>🖥️ Imprimer via le navigateur (secours)</button>
+      <div class="pe-print-status" id="imp-statut" hidden></div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════
      VUE « STYLE » — l'apparence seulement ; le texte vient du produit
 ═══════════════════════════════════════════════════ -->
 <section class="pe-style pe-vue-style" aria-label="Style des étiquettes">
@@ -228,85 +269,6 @@
       <button class="pe-btn pe-btn--outline" id="btn-save-annuler">Annuler</button>
       <button class="pe-btn pe-btn--primary" id="btn-save-confirmer">Sauvegarder</button>
     </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════
-     MODAL — Impression de masse (catalogue de vente)
-═══════════════════════════════════════════════════ -->
-<div class="pe-modal-overlay" id="modal-masse" role="dialog" aria-modal="true" aria-labelledby="modal-masse-titre" hidden>
-  <div class="pe-modal pe-modal--large">
-    <div class="pe-masse-header">
-      <div class="pe-modal-titre" id="modal-masse-titre">🏷️ Impression de masse</div>
-      <button class="pe-btn-clear" id="btn-masse-fermer" title="Fermer">✕</button>
-    </div>
-
-    <!-- Choix du modèle + aide variables -->
-    <div class="pe-masse-modele">
-      <div class="pe-masse-modele-ligne">
-        <label class="pe-label pe-label--sm">
-          Modèle à appliquer
-          <select class="pe-input" id="masse-modele"></select>
-        </label>
-        <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-modele-defaut"
-                title="Modèle utilisé d'office pour les étiquettes à réimprimer">⭐ Par défaut</button>
-      </div>
-      <p class="pe-masse-aide">
-        Variables utilisables dans le modèle :
-        <code>{nom}</code> <code>{Nom}</code> <code>{NOM}</code>
-        <code>{prix}</code> <code>{prix_unite}</code> <code>{article_unite}</code>
-        <code>{famille}</code> <code>{sous_famille}</code>
-        <br><span style="opacity:.8">{Nom} = 1ʳᵉ lettre majuscule · {NOM} = majuscules ·
-        {article_unite} = « le kg » / « la pièce » selon le catalogue ·
-        {prix_unite} = « 9,90 € / kg » ou « / pièce »</span>
-      </p>
-      <div class="pe-masse-avert" id="masse-avert" hidden>
-        <span id="masse-avert-txt"></span>
-        <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-convertir" hidden>⚙️ Convertir en modèle à variables</button>
-      </div>
-    </div>
-
-    <!-- Barre d'outils : recherche, famille, tout sélectionner, compteur -->
-    <div class="pe-masse-toolbar">
-      <input type="text" id="masse-search" class="pe-input pe-input--sm" placeholder="Rechercher…" autocomplete="off">
-      <select id="masse-filtre-famille" class="pe-input pe-input--sm">
-        <option value="">Toutes les familles</option>
-      </select>
-      <label class="pe-masse-filtre-file">
-        <input type="checkbox" id="masse-filtre-file">
-        🏷️ À réimprimer seulement (<span id="masse-nb-file">0</span>)
-      </label>
-      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-select">Tout sélectionner</button>
-      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-tout-deselect">Tout désélectionner</button>
-      <button class="pe-btn pe-btn--sm pe-btn--outline" id="masse-retirer-file"
-              title="Le prix a changé mais aucune étiquette n'est à refaire">Retirer de « À réimprimer »</button>
-      <span class="pe-masse-compteur" id="masse-compteur">0 sélectionné</span>
-    </div>
-
-    <!-- Tableau -->
-    <div class="pe-masse-table-wrap">
-      <table class="pe-masse-table">
-        <thead>
-          <tr>
-            <th class="pe-masse-col-check"><input type="checkbox" id="masse-check-all" title="Tout cocher (visible)"></th>
-            <th data-tri="nom" class="pe-masse-th-tri">Nom</th>
-            <th data-tri="prix_vente_ttc" class="pe-masse-th-tri">Prix</th>
-            <th data-tri="famille" class="pe-masse-th-tri">Famille</th>
-            <th data-tri="sous_famille" class="pe-masse-th-tri">Sous-famille</th>
-            <th class="pe-masse-col-qte">Qté</th>
-          </tr>
-        </thead>
-        <tbody id="masse-tbody"><!-- injecté par JS --></tbody>
-      </table>
-      <div class="pe-masse-vide" id="masse-vide" hidden>Aucun produit.</div>
-    </div>
-
-    <!-- Pied : actions -->
-    <div class="pe-modal-actions">
-      <button class="pe-btn pe-btn--outline" id="masse-btn-navigateur">🖥️ Aperçu / Imprimer (navigateur)</button>
-      <button class="pe-btn pe-btn--primary" id="masse-btn-wifi">🖨️ Imprimer la sélection (Wi-Fi)</button>
-    </div>
-    <div class="pe-print-status" id="masse-status" hidden></div>
   </div>
 </div>
 
@@ -406,5 +368,6 @@
 
 <script src="/static/js/prix_etiquettes.js"></script>
 <script src="/static/js/prix_etiquettes_style.js"></script>
+<script src="/static/js/prix_etiquettes_imprimer.js"></script>
 </body>
 </html>
