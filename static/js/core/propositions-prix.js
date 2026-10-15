@@ -113,7 +113,8 @@
       .pp-bl-barre { display: flex; align-items: center; gap: 10px; color: #fff; padding: 4px 6px 10px; }
       .pp-bl-barre b { font-size: 1.05rem; }
       .pp-bl-pages { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-      .pp-bl-pages img { max-width: 100%; background: #fff; border-radius: 6px; }
+      .pp-bl-pages canvas { max-width: 100%; height: auto; background: #fff; border-radius: 6px; }
+      .pp-bl-barre .pp-btn { min-width: 52px; font-size: 1.2rem; }
     `;
     document.head.appendChild(st);
   }
@@ -191,27 +192,76 @@
     return `<div class="pp-origine">📦 ${bl}${date ? ` du ${date}` : ''}
       ${p.reception_a_photo_bl
         ? `<button type="button" class="pp-voir-bl" data-reception="${p.reception_id}"
+                   data-fournisseur="${esc(p.fournisseur_nom || '')}"
                    data-titre="${esc(`${bl}${date ? ` du ${date}` : ''}`)}">📄 Voir le BL</button>`
         : '<span>(pas de photo du BL)</span>'}</div>`;
   }
 
-  // Visionneuse du BL dans la page (pas de pop-up) : toutes ses pages, zoomables au doigt.
-  async function voirBL(receptionId, titre) {
+  // Orientation du BL retenue par fournisseur (sur cette tablette) : un fournisseur dont
+  // les BL sont toujours photographiés de travers (Elivia…) s'ouvre directement à l'endroit.
+  const cleRotation = f => `pp_bl_rotation_${(f || '').toLowerCase()}`;
+  function lireRotation(f) {
+    try { return (parseInt(localStorage.getItem(cleRotation(f)), 10) || 0) % 360; } catch (_) { return 0; }
+  }
+  function ecrireRotation(f, angle) {
+    try { localStorage.setItem(cleRotation(f), String(angle)); } catch (_) { /* ignore */ }
+  }
+
+  // Dessine une page tournée de `angle` degrés (sens horaire) dans un canvas : la mise
+  // en page suit la rotation (une page couchée prend sa vraie place, sans chevauchement).
+  function pageTournee(img, angle) {
+    const c = document.createElement('canvas');
+    const couche = angle === 90 || angle === 270;
+    c.width = couche ? img.naturalHeight : img.naturalWidth;
+    c.height = couche ? img.naturalWidth : img.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(angle * Math.PI / 180);
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    return c;
+  }
+
+  // Visionneuse du BL dans la page (pas de pop-up) : toutes ses pages, zoomables au
+  // doigt, orientation réglable (↺ ↻) — l'affichage seulement, la photo n'est pas modifiée.
+  async function voirBL(receptionId, titre, fournisseur) {
+    let angle = lireRotation(fournisseur);
     const ov = document.createElement('div');
     ov.className = 'pp-bl-overlay';
     ov.innerHTML = `<div class="pp-bl-barre"><b>📄 ${esc(titre)}</b>
-        <button type="button" class="pp-btn" style="margin-left:auto">✕ Fermer</button></div>
+        <button type="button" class="pp-btn" data-tourner="-90" title="Tourner à gauche">↺</button>
+        <button type="button" class="pp-btn" data-tourner="90" title="Tourner à droite">↻</button>
+        <button type="button" class="pp-btn pp-bl-fermer" style="margin-left:auto">✕ Fermer</button></div>
       <div class="pp-bl-pages">Chargement…</div>`;
     document.body.appendChild(ov);
-    ov.querySelector('button').addEventListener('click', () => ov.remove());
+    ov.querySelector('.pp-bl-fermer').addEventListener('click', () => ov.remove());
     const pages = ov.querySelector('.pp-bl-pages');
+    let images = [];
+
+    const dessiner = () => {
+      pages.innerHTML = '';
+      images.forEach(img => pages.appendChild(pageTournee(img, angle)));
+    };
+    ov.querySelectorAll('[data-tourner]').forEach(b => b.addEventListener('click', () => {
+      angle = (angle + parseInt(b.dataset.tourner, 10) + 360) % 360;
+      ecrireRotation(fournisseur, angle);
+      dessiner();
+    }));
+
     try {
       const res = await fetch(`/api/receptions/${receptionId}/bl-apercu`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      pages.innerHTML = data.pages.length
-        ? data.pages.map((pg, i) => `<img src="${esc(pg.url)}" alt="Page ${i + 1} du BL">`).join('')
-        : '<span style="color:#fff">Aucune photo pour ce BL.</span>';
+      if (!data.pages.length) {
+        pages.innerHTML = '<span style="color:#fff">Aucune photo pour ce BL.</span>';
+        return;
+      }
+      images = await Promise.all(data.pages.map(pg => new Promise((ok, ko) => {
+        const img = new Image();
+        img.onload = () => ok(img);
+        img.onerror = () => ko(new Error('photo introuvable'));
+        img.src = pg.url;
+      })));
+      dessiner();
     } catch (e) {
       pages.innerHTML = `<span style="color:#fff">Impossible d'afficher le BL (${esc(e.message)}).</span>`;
     }
@@ -324,7 +374,7 @@
       });
       corps.addEventListener('click', async e => {
         const voir = e.target.closest('.pp-voir-bl');
-        if (voir) { voirBL(voir.dataset.reception, voir.dataset.titre); return; }
+        if (voir) { voirBL(voir.dataset.reception, voir.dataset.titre, voir.dataset.fournisseur); return; }
 
         // « Garder » : le prix de vente ne change pas, la proposition est close.
         const garder = e.target.closest('.pp-garder');
