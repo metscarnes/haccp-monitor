@@ -3826,6 +3826,89 @@ def _calc_temperature_conforme(temp_recep: Optional[float], temp_conservation: O
     return 1       # Conforme
 
 
+# Température cible des articles du catalogue achats, qui n'ont pas de fiche
+# « produit interne » (donc pas de temperature_conservation) : dérivée de la
+# famille. Les carcasses (article suivi en date d'abattage) tolèrent +7 °C ;
+# l'épicerie sèche et les emballages ne sont pas soumis au contrôle thermique.
+TEMP_CIBLE_DEFAUT   = "0°C à +4°C"
+TEMP_CIBLE_CARCASSE = "0°C à +7°C"
+FAMILLES_SANS_TEMP  = ("Aide culinaire", "Hygiène et emballage")
+
+
+def temperature_cible_catalogue(famille: Optional[str], dlc_type: Optional[str]) -> Optional[str]:
+    if famille in FAMILLES_SANS_TEMP:
+        return None
+    if dlc_type == "date_abattage":
+        return TEMP_CIBLE_CARCASSE
+    return TEMP_CIBLE_DEFAUT
+
+
+async def temperature_cible_ligne(
+    db: aiosqlite.Connection,
+    produit_id: Optional[int],
+    catalogue_fournisseur_id: Optional[int],
+) -> Optional[str]:
+    """Plage de température cible d'une ligne de réception : celle du produit
+    interne s'il existe, sinon celle déduite de l'article catalogue, sinon la
+    plage par défaut (prudence HACCP : une ligne non identifiée est contrôlée)."""
+    if produit_id:
+        cur = await db.execute(
+            "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
+        )
+        row = await cur.fetchone()
+        if row and row["temperature_conservation"]:
+            return row["temperature_conservation"]
+    if catalogue_fournisseur_id:
+        cur = await db.execute(
+            "SELECT famille, dlc_type FROM catalogue_fournisseur WHERE id = ?",
+            (catalogue_fournisseur_id,),
+        )
+        row = await cur.fetchone()
+        if row:
+            return temperature_cible_catalogue(row["famille"], row["dlc_type"])
+    return TEMP_CIBLE_DEFAUT
+
+
+async def _ajouter_temperature_cible(db: aiosqlite.Connection, lignes: list[dict]) -> list[dict]:
+    """Ajoute `temperature_cible` à chaque ligne (affichage + contrôle à cœur côté écran)."""
+    for l in lignes:
+        l["temperature_cible"] = await temperature_cible_ligne(
+            db, l.get("produit_id"), l.get("catalogue_fournisseur_id")
+        )
+    return lignes
+
+
+async def _lot_interne_disponible(
+    db: aiosqlite.Connection,
+    reception_id: int,
+    lot: str,
+    exclure_ligne_id: Optional[int] = None,
+    reserves: Optional[set] = None,
+) -> str:
+    """Rend un n° de lot interne unique dans la réception.
+
+    Le format {BL}-{code article}-{JJMMAA} est identique pour deux lignes du même
+    article (ou deux articles sans code) : en cas de collision on suffixe -B, -C…
+    pour qu'un rappel produit désigne toujours une seule ligne.
+    """
+    cur = await db.execute(
+        "SELECT numero_lot FROM reception_lignes "
+        "WHERE reception_id = ? AND id != ? AND numero_lot IS NOT NULL",
+        (reception_id, exclure_ligne_id or 0),
+    )
+    pris = {r[0] for r in await cur.fetchall()} | set(reserves or ())
+    if lot not in pris:
+        return lot
+    for i in range(1, 26):
+        candidat = f"{lot}-{chr(65 + i)}"
+        if candidat not in pris:
+            return candidat
+    n = 27
+    while f"{lot}-{n}" in pris:
+        n += 1
+    return f"{lot}-{n}"
+
+
 def _calc_statut_attente(data: dict) -> tuple[str, Optional[str]]:
     """Détermine si une ligne de réception est complète ou en attente de traçabilité.
 
@@ -3875,17 +3958,13 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
     rec_row = await cur.fetchone()
     temp_camion = rec_row["temperature_camion"] if rec_row else None
 
-    # Récupérer temperature_conservation du produit interne (facultatif).
+    # Température cible : produit interne (facultatif) sinon article catalogue.
     # En réception basée sur le catalogue achats, produit_id peut être NULL :
     # la ligne reste valable, identifiée par designation_libre + catalogue_fournisseur_id.
     produit_id = data.get("produit_id")
-    temp_conservation = None
-    if produit_id:
-        cur2 = await db.execute(
-            "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
-        )
-        prod_row = await cur2.fetchone()
-        temp_conservation = prod_row["temperature_conservation"] if prod_row else None
+    temp_conservation = await temperature_cible_ligne(
+        db, produit_id, data.get("catalogue_fournisseur_id")
+    )
 
     # Calculer temperature_conforme selon la logique de tolérance HACCP
     temp_recep = data.get("temperature_reception")
@@ -3922,6 +4001,12 @@ async def add_reception_ligne(db: aiosqlite.Connection, reception_id: int, data:
         cat_row = await cur_dlc.fetchone()
         if cat_row and cat_row["dlc_type"]:
             data["dlc_type"] = cat_row["dlc_type"]
+
+    # Lot interne : jamais deux lignes de la même réception avec le même n°.
+    if data.get("lot_interne") and (data.get("numero_lot") or "").strip():
+        data["numero_lot"] = await _lot_interne_disponible(
+            db, reception_id, data["numero_lot"].strip()
+        )
 
     # Statut traçabilité : en_attente si lot/DLC manquant → exclu du stock
     statut, attente_motif = _calc_statut_attente(data)
@@ -3999,13 +4084,32 @@ async def cloturer_reception(
                 (float(temp), int(ligne_id), reception_id),
             )
 
-    # Mettre à jour les lignes conformes après contrôle à cœur
-    if coeur_conformes:
-        for ligne_id in coeur_conformes:
-            await db.execute(
-                "UPDATE reception_lignes SET conforme = 1 WHERE id = ? AND reception_id = ?",
-                (ligne_id, reception_id),
-            )
+    # Lignes déclarées conformes après contrôle à cœur : le serveur re-vérifie.
+    # Une ligne ne repasse conforme que si (1) la T° à cœur mesurée est dans la
+    # tolérance de sa température cible et (2) la température était son SEUL motif
+    # de NC — une T° à cœur correcte ne corrige ni une odeur ni une couleur.
+    for ligne_id in set(coeur_conformes or []):
+        cur = await db.execute(
+            "SELECT produit_id, catalogue_fournisseur_id, temperature_coeur, ph_conforme, "
+            "couleur_conforme, consistance_conforme, exsudat_conforme, odeur_conforme "
+            "FROM reception_lignes WHERE id = ? AND reception_id = ?",
+            (int(ligne_id), reception_id),
+        )
+        l = await cur.fetchone()
+        if not l or l["temperature_coeur"] is None:
+            continue
+        cible = await temperature_cible_ligne(db, l["produit_id"], l["catalogue_fournisseur_id"])
+        verdict = _calc_temperature_conforme(l["temperature_coeur"], cible)
+        if verdict is None or verdict == 0:
+            continue
+        autres = (l["ph_conforme"], l["couleur_conforme"], l["consistance_conforme"],
+                  l["exsudat_conforme"], l["odeur_conforme"])
+        if any(f == 0 for f in autres):
+            continue
+        await db.execute(
+            "UPDATE reception_lignes SET conforme = 1 WHERE id = ? AND reception_id = ?",
+            (int(ligne_id), reception_id),
+        )
 
     # Vérifier s'il y a des lignes non conformes
     cur = await db.execute(
@@ -4280,45 +4384,44 @@ async def update_reception_ligne(
     ligne_id: int,
     data: dict,
 ) -> Optional[dict]:
-    """Met à jour une ligne de réception et recalcule la conformité."""
-    # Récupérer la ligne existante (valeurs de traçabilité à conserver si non fournies)
-    cur = await db.execute(
-        "SELECT reception_id, produit_id, numero_lot, dlc, dluo, date_abattage, dlc_type, "
-        "catalogue_fournisseur_id, prix_unitaire_ht, montant_ht "
-        "FROM reception_lignes WHERE id = ?", (ligne_id,)
-    )
+    """Met à jour une ligne de réception et recalcule la conformité.
+
+    Mise à jour PARTIELLE : seuls les champs présents dans `data` sont modifiés,
+    les autres gardent leur valeur en base (corriger un n° de lot ne doit effacer
+    ni le poids, ni le fournisseur, ni une non-conformité visuelle constatée).
+    """
+    cur = await db.execute("SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,))
     row = await cur.fetchone()
     if not row:
         return None
+    row = dict(row)
     reception_id = row["reception_id"]
-    produit_id = data.get("produit_id", row["produit_id"])
 
-    cur2 = await db.execute(
-        "SELECT temperature_camion FROM receptions WHERE id = ?", (reception_id,)
-    )
-    rec_row = await cur2.fetchone()
-    temp_camion = rec_row["temperature_camion"] if rec_row else None
+    def _val(key: str):
+        return data[key] if key in data else row.get(key)
 
-    cur3 = await db.execute(
-        "SELECT temperature_conservation FROM produits WHERE id = ?", (produit_id,)
-    )
-    prod_row = await cur3.fetchone()
-    temp_conservation = prod_row["temperature_conservation"] if prod_row else None
+    produit_id               = _val("produit_id")
+    catalogue_fournisseur_id = _val("catalogue_fournisseur_id")
+    temp_conservation = await temperature_cible_ligne(db, produit_id, catalogue_fournisseur_id)
 
     # Recalculer temperature_conforme selon la logique de tolérance HACCP
-    temp_recep = data.get("temperature_reception")
+    temp_recep = _val("temperature_reception")
     temperature_conforme = _calc_temperature_conforme(temp_recep, temp_conservation)
 
     # pH
-    ph_valeur = data.get("ph_valeur")
+    ph_valeur = _val("ph_valeur")
     ph_conforme: Optional[int] = None
     if ph_valeur is not None:
         ph_conforme = 1 if 5.5 <= ph_valeur <= 5.7 else 0
 
-    couleur_conforme     = int(data.get("couleur_conforme",     1))
-    consistance_conforme = int(data.get("consistance_conforme", 1))
-    exsudat_conforme     = int(data.get("exsudat_conforme",     1))
-    odeur_conforme       = int(data.get("odeur_conforme",       1))
+    def _flag(key: str) -> int:
+        v = _val(key)
+        return 1 if v is None else int(v)
+
+    couleur_conforme     = _flag("couleur_conforme")
+    consistance_conforme = _flag("consistance_conforme")
+    exsudat_conforme     = _flag("exsudat_conforme")
+    odeur_conforme       = _flag("odeur_conforme")
 
     conforme = 1
     for flag in (temperature_conforme, ph_conforme,
@@ -4341,6 +4444,9 @@ async def update_reception_ligne(
     dluo          = _merge("dluo")
     date_abattage = _merge("date_abattage")
     dlc_type      = _merge("dlc_type")
+    designation_libre = _merge("designation_libre")
+    fournisseur_id    = _merge("fournisseur_id")
+    fournisseur_nom   = _merge("fournisseur_nom")
 
     # Prix (indicatif) : conserver l'existant si l'appel ne fournit pas de nouvelle valeur,
     # pour qu'une complétion partielle (ex. saisie d'un lot manquant) n'efface pas le prix.
@@ -4351,29 +4457,48 @@ async def update_reception_ligne(
     if montant_ht is None:
         montant_ht = row["montant_ht"]
 
+    # Poids / colis : une valeur vide ne remplace jamais une pesée déjà saisie.
+    poids_kg = data.get("poids_kg")
+    if poids_kg is None:
+        poids_kg = row["poids_kg"]
+    nb_colis = data.get("nb_colis")
+    if nb_colis is None:
+        nb_colis = row["nb_colis"]
+
     # dlc_type toujours dérivé du catalogue si la ligne ne le porte pas : un article
     # 'no_dlc' ne doit jamais rester en attente faute de dlc_type sur la ligne.
-    if not dlc_type and row["catalogue_fournisseur_id"]:
+    if not dlc_type and catalogue_fournisseur_id:
         cur_dlc = await db.execute(
             "SELECT dlc_type FROM catalogue_fournisseur WHERE id = ?",
-            (row["catalogue_fournisseur_id"],),
+            (catalogue_fournisseur_id,),
         )
         cat_row = await cur_dlc.fetchone()
         if cat_row and cat_row["dlc_type"]:
             dlc_type = cat_row["dlc_type"]
 
+    lot_interne = int(_val("lot_interne") or 0)
+    if lot_interne and (numero_lot or "").strip() and numero_lot != row["numero_lot"]:
+        numero_lot = await _lot_interne_disponible(
+            db, reception_id, numero_lot.strip(), exclure_ligne_id=ligne_id
+        )
+
     statut, attente_motif = _calc_statut_attente({
         "numero_lot":    numero_lot,
+        "lot_interne":   lot_interne,
         "dlc":           dlc,
         "dluo":          dluo,
         "date_abattage": date_abattage,
         "dlc_type":      dlc_type,
     })
+    # Une ligne marquée « non reçue » le reste (elle n'entre pas au stock).
+    if row.get("statut") == "non_recu":
+        statut, attente_motif = "non_recu", row.get("attente_motif")
 
     await db.execute(
         """
         UPDATE reception_lignes SET
-            produit_id = ?, fournisseur_id = ?, numero_lot = ?, lot_interne = ?,
+            produit_id = ?, catalogue_fournisseur_id = ?, designation_libre = ?,
+            fournisseur_id = ?, fournisseur_nom = ?, numero_lot = ?, lot_interne = ?,
             dlc = ?, dluo = ?, date_abattage = ?, dlc_type = ?,
             statut = ?, attente_motif = ?,
             origine = ?, poids_kg = ?, prix_unitaire_ht = ?, montant_ht = ?, nb_colis = ?,
@@ -4389,35 +4514,38 @@ async def update_reception_ligne(
         """,
         (
             produit_id,
-            data.get("fournisseur_id"),
+            catalogue_fournisseur_id,
+            designation_libre,
+            fournisseur_id,
+            fournisseur_nom,
             numero_lot,
-            int(data.get("lot_interne", 0)),
+            lot_interne,
             dlc,
             dluo,
             date_abattage,
             dlc_type,
             statut,
             attente_motif,
-            data.get("origine", "France"),
-            data.get("poids_kg"),
+            _val("origine") or row.get("origine") or "France",
+            poids_kg,
             prix_unitaire_ht,
             montant_ht,
-            data.get("nb_colis"),
+            nb_colis,
             temp_recep,
             temperature_conforme,
-            data.get("temperature_coeur"),
+            _val("temperature_coeur"),
             couleur_conforme,
-            data.get("couleur_observation"),
+            _val("couleur_observation"),
             consistance_conforme,
-            data.get("consistance_observation"),
+            _val("consistance_observation"),
             exsudat_conforme,
-            data.get("exsudat_observation"),
+            _val("exsudat_observation"),
             odeur_conforme,
-            data.get("odeur_observation"),
+            _val("odeur_observation"),
             ph_valeur,
             ph_conforme,
             conforme,
-            data.get("substitution_article"),
+            _val("substitution_article"),
             ligne_id,
         ),
     )
@@ -4427,7 +4555,9 @@ async def update_reception_ligne(
         "SELECT * FROM reception_lignes WHERE id = ?", (ligne_id,)
     )
     updated = await cur4.fetchone()
-    return dict(updated) if updated else None
+    if not updated:
+        return None
+    return (await _ajouter_temperature_cible(db, [dict(updated)]))[0]
 
 
 async def get_lignes_en_attente(db: aiosqlite.Connection) -> list[dict]:
@@ -4707,6 +4837,7 @@ async def generer_lots_internes_reception(
     generes = 0
     deja_lot = 0
     restant_attente = 0
+    lots_attribues: set = set()   # lots générés dans cette boucle (pas encore lus en base)
 
     for l in lignes:
         a_lot = bool((l["numero_lot"] or "").strip()) or bool(l["lot_interne"])
@@ -4720,7 +4851,11 @@ async def generer_lots_internes_reception(
             restant_attente += 1
             continue
 
-        lot = format_lot_interne_bl(bl, code, date_reception)
+        lot = await _lot_interne_disponible(
+            db, reception_id, format_lot_interne_bl(bl, code, date_reception),
+            exclure_ligne_id=l["id"], reserves=lots_attribues,
+        )
+        lots_attribues.add(lot)
         statut, attente_motif = _calc_statut_attente({
             "numero_lot":    lot,
             "lot_interne":   1,
@@ -4862,12 +4997,10 @@ async def update_reception_temperature_camion(
 
     cur2 = await db.execute(
         """
-        SELECT rl.id, rl.produit_id, rl.ph_conforme,
+        SELECT rl.id, rl.produit_id, rl.catalogue_fournisseur_id, rl.ph_conforme,
                rl.couleur_conforme, rl.consistance_conforme,
-               rl.exsudat_conforme, rl.odeur_conforme,
-               p.temperature_conservation
+               rl.exsudat_conforme, rl.odeur_conforme
         FROM reception_lignes rl
-        LEFT JOIN produits p ON p.id = rl.produit_id
         WHERE rl.reception_id = ?
         """,
         (reception_id,),
@@ -4875,7 +5008,8 @@ async def update_reception_temperature_camion(
     rows = await cur2.fetchall()
 
     for r in rows:
-        temp_conforme = _calc_temperature_conforme(new_temp, r["temperature_conservation"])
+        cible = await temperature_cible_ligne(db, r["produit_id"], r["catalogue_fournisseur_id"])
+        temp_conforme = _calc_temperature_conforme(new_temp, cible)
         conforme = 1
         for flag in (temp_conforme, r["ph_conforme"],
                      r["couleur_conforme"], r["consistance_conforme"],
@@ -4901,7 +5035,7 @@ async def update_reception_temperature_camion(
         (reception_id,),
     )
     updated = await cur3.fetchall()
-    return [dict(row) for row in updated]
+    return await _ajouter_temperature_cible(db, [dict(row) for row in updated])
 
 
 async def get_receptions(
@@ -5085,7 +5219,7 @@ async def get_reception(db: aiosqlite.Connection, reception_id: int) -> Optional
         (reception_id,),
     )
     lignes = await cur2.fetchall()
-    reception["lignes"] = [dict(l) for l in lignes]
+    reception["lignes"] = await _ajouter_temperature_cible(db, [dict(l) for l in lignes])
 
     # BLs supplémentaires (cas refus livraison multi-fournisseur)
     cur3 = await db.execute(

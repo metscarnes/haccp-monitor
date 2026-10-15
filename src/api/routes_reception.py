@@ -37,6 +37,7 @@ from src.database import (
     update_reception_temperature_camion,
     add_reception_bl_supplementaire,
     supprimer_reception,
+    temperature_cible_ligne,
 )
 
 logger = logging.getLogger(__name__)
@@ -262,7 +263,9 @@ class LigneCreate(BaseModel):
 
 
 class LigneUpdate(BaseModel):
+    """Mise à jour PARTIELLE : seuls les champs envoyés sont modifiés."""
     produit_id: Optional[int] = None
+    designation_libre: Optional[str] = None
     catalogue_fournisseur_id: Optional[int] = None
     fournisseur_id: Optional[int] = None
     fournisseur_nom: Optional[str] = None
@@ -461,7 +464,11 @@ async def ajouter_ligne(reception_id: int, body: LigneCreate):
             "SELECT * FROM reception_lignes WHERE id = ?", (lid,)
         )
         row = await cur3.fetchone()
-    return dict(row)
+        ligne = dict(row)
+        ligne["temperature_cible"] = await temperature_cible_ligne(
+            db, ligne.get("produit_id"), ligne.get("catalogue_fournisseur_id")
+        )
+    return ligne
 
 
 class NumeroBLBody(BaseModel):
@@ -582,7 +589,7 @@ async def modifier_ligne(reception_id: int, ligne_id: int, body: LigneUpdate):
         if not await cur.fetchone():
             raise HTTPException(404, "Réception non trouvée")
 
-        updated = await update_reception_ligne(db, ligne_id, body.model_dump(exclude_none=False))
+        updated = await update_reception_ligne(db, ligne_id, body.model_dump(exclude_unset=True))
     if not updated:
         raise HTTPException(404, "Ligne non trouvée")
     return updated
