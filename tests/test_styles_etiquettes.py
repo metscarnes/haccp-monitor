@@ -37,6 +37,18 @@ async def jeton_styles(client, password=None):
     return r
 
 
+async def entete_admin(client) -> dict:
+    """En-tête d'autorisation administrateur (routes modèles / polices)."""
+    return {"X-Jeton-Styles": (await jeton_styles(client)).json()["jeton"]}
+
+
+async def creer_modele(client, nom, config) -> int:
+    r = await client.post("/api/prix-etiquettes/modeles", json={"nom": nom, "config": config},
+                          headers=await entete_admin(client))
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
 async def test_modele_de_production_repris_en_zones():
     style, converti = normaliser_style(MODELE_PROD)
     assert converti is True
@@ -83,9 +95,7 @@ async def test_prix_barre_dessine_un_trait():
 
 
 async def test_enregistrer_les_styles_normal_et_promo(app_client, db):
-    r = await app_client.post("/api/prix-etiquettes/modeles",
-                              json={"nom": "sauvegarde 3 test", "config": MODELE_PROD})
-    ancien = r.json()["id"]
+    ancien = await creer_modele(app_client, "sauvegarde 3 test", MODELE_PROD)
     styles = (await app_client.get("/api/prix-etiquettes/styles")).json()
     assert styles["normal"]["id"] == ancien and styles["normal"]["converti"] is True
     # Style promo proposé d'office, tiré du style normal (pas encore enregistré).
@@ -126,9 +136,7 @@ async def test_enregistrer_les_styles_normal_et_promo(app_client, db):
 
 
 async def test_style_reserve_a_l_administrateur(app_client, db):
-    r = await app_client.post("/api/prix-etiquettes/modeles",
-                              json={"nom": "Style prod", "config": MODELE_PROD})
-    modele = r.json()["id"]
+    modele = await creer_modele(app_client, "Style prod", MODELE_PROD)
     cfg = (await app_client.get("/api/prix-etiquettes/styles")).json()["normal"]["config"]
 
     # Sans autorisation, ou avec une fausse : refusé, rien n'est modifié.
@@ -140,11 +148,20 @@ async def test_style_reserve_a_l_administrateur(app_client, db):
     # Mauvais mot de passe administrateur : pas d'autorisation.
     assert (await jeton_styles(app_client, "pas-le-bon")).status_code == 401
 
-    # L'étiquette libre ne peut ni modifier ni supprimer un modèle qui sert de style.
+    # Sans autorisation : impossible de créer, modifier ou supprimer un modèle (pas de
+    # styles « maison » qui se multiplient).
+    assert (await app_client.post("/api/prix-etiquettes/modeles",
+                                  json={"nom": "Mon style", "config": MODELE_PROD})).status_code == 401
+    assert (await app_client.put(f"/api/prix-etiquettes/modeles/{modele}",
+                                 json={"nom": "x", "config": MODELE_PROD})).status_code == 401
+    assert (await app_client.delete(f"/api/prix-etiquettes/modeles/{modele}")).status_code == 401
+    # Même autorisé, le modèle qui sert de style ne se modifie / supprime que par l'onglet Style.
+    admin = await entete_admin(app_client)
     r = await app_client.put(f"/api/prix-etiquettes/modeles/{modele}",
-                             json={"nom": "x", "config": MODELE_PROD})
+                             json={"nom": "x", "config": MODELE_PROD}, headers=admin)
     assert r.status_code == 409
-    assert (await app_client.delete(f"/api/prix-etiquettes/modeles/{modele}")).status_code == 409
+    assert (await app_client.delete(f"/api/prix-etiquettes/modeles/{modele}",
+                                    headers=admin)).status_code == 409
 
     # Une police utilisée par le style ne se supprime pas.
     from src.api.routes_prix_etiquettes import FONTS_DIR
@@ -154,7 +171,13 @@ async def test_style_reserve_a_l_administrateur(app_client, db):
         police.write_bytes(b"test")
     try:
         r = await app_client.delete("/api/prix-etiquettes/fonts/MoreSugar-Thin.otf")
-        assert r.status_code == 409 and police.exists()
+        assert r.status_code == 401 and police.exists()            # sans autorisation
+        r = await app_client.delete("/api/prix-etiquettes/fonts/MoreSugar-Thin.otf",
+                                    headers=await entete_admin(app_client))
+        assert r.status_code == 409 and police.exists()            # utilisée par le style
+        r = await app_client.post("/api/prix-etiquettes/upload-font",
+                                  files={"fichier": ("Autre.ttf", b"x", "font/ttf")})
+        assert r.status_code == 401
     finally:
         if cree:
             police.unlink()
@@ -165,3 +188,27 @@ async def test_style_reserve_a_l_administrateur(app_client, db):
     r = await app_client.put("/api/prix-etiquettes/styles/normal",
                              json={"config": cfg, "jeton": r.json()["jeton"]})
     assert r.status_code == 200
+
+
+async def test_etiquette_libre_toujours_au_style_de_la_boutique(app_client, db, monkeypatch):
+    import src.printing.brother_ql_prix as brother
+    recu = {}
+    monkeypatch.setattr(brother, "imprimer_etiquette_prix", lambda d: (recu.update(d), (True, "ok"))[1])
+    # Pas de style : l'étiquette libre est refusée (rien à reprendre).
+    r = await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": "Promo"}]})
+    assert r.status_code == 409
+
+    await creer_modele(app_client, "Style prod", MODELE_PROD)
+    # L'écran tente d'imposer sa taille, sa police, son fond, son format : ignorés.
+    r = await app_client.post("/api/prix-etiquettes/imprimer", json={
+        "largeur_cm": 20, "hauteur_cm": 3, "fond_noir": False,
+        "lignes": [{"texte": "Arrivage du jour", "poids": 3, "taille_px": 200, "gras": True,
+                    "police": "Autre.ttf", "alignement": "left"}, {"texte": "  "},
+                   {"texte": "Fait maison"}]})
+    assert r.status_code == 200, r.text
+    assert (recu["largeur_cm"], recu["hauteur_cm"], recu["fond_noir"]) == (10.0, 6.0, True)
+    assert [l["texte"] for l in recu["lignes"]] == ["Arrivage du jour", "Fait maison"]
+    assert {(l["police"], l["poids"], l["taille_px"], l["gras"], l["alignement"])
+            for l in recu["lignes"]} == {("MoreSugar-Thin.otf", 1, 0, False, "center")}
+    r = await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": " "}]})
+    assert r.status_code == 422

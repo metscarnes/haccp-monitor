@@ -8,7 +8,7 @@
    Ancien prix barré / Prix promo / Économie. Aucune {variable} visible.
 
    Dépend de prix_etiquettes.js (chargé avant) : apiFetch, escHtml,
-   dessinerEtiquette, state, chargerModeles, policeParDefaut.
+   dessinerEtiquette, state, chargerFonts, chargerFontFace, policeParDefaut.
    ============================================================ */
 
 (function () {
@@ -257,6 +257,7 @@
       apiFetch('/api/prix-etiquettes/catalogue?limit=2000'),
     ]);
     vue.styles = styles;
+    afficherPolices();
     vue.produits = (cat.articles ?? []).filter(p => p.prix_vente_ttc != null);
     const normal = styles.normal ? cloner(styles.normal.config) : styleNormalParDefaut();
     vue.brouillons = {
@@ -344,6 +345,50 @@
     }
   }
 
+  // ── Polices (importer / supprimer) : réservé à l'administrateur ──
+  function afficherPolices() {
+    const el = $('style-polices');
+    el.innerHTML = state.fontsDispos.length
+      ? state.fontsDispos.map(f => `<span class="pe-font-chip">${escHtml(f.label)}
+          <button class="pe-font-chip-del" data-police="${escHtml(f.nom)}" title="Supprimer">✕</button></span>`).join('')
+      : '<span class="pe-dim-aide">Aucune police importée (police standard DejaVu).</span>';
+  }
+
+  async function appelPolice(url, options) {
+    const res = await fetch(url, { ...options, cache: 'no-store',
+      headers: { ...(options.headers || {}), 'X-Jeton-Styles': jeton || '',
+                 Authorization: 'Bearer ' + (getAdminToken() || '') } });
+    if (res.status === 401) { verrouiller('Autorisation expirée : déverrouillez à nouveau.'); return false; }
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => ({}))).detail;
+      statut(detail || `Erreur ${res.status}`, 'err');
+      return false;
+    }
+    await chargerFonts();
+    afficherPolices();
+    rendreZones();
+    apercu();
+    return true;
+  }
+
+  $('style-polices').addEventListener('click', async e => {
+    const btn = e.target.closest('[data-police]');
+    if (!btn || !confirm(`Supprimer la police « ${btn.dataset.police} » ?`)) return;
+    if (await appelPolice(`/api/prix-etiquettes/fonts/${encodeURIComponent(btn.dataset.police)}`,
+                          { method: 'DELETE' })) statut('Police supprimée.', 'ok');
+  });
+
+  $('style-police-fichier').addEventListener('change', async e => {
+    const fichier = e.target.files[0];
+    if (!fichier) return;
+    const fd = new FormData();
+    fd.append('fichier', fichier);
+    if (await appelPolice('/api/prix-etiquettes/upload-font', { method: 'POST', body: fd })) {
+      statut(`✓ Police « ${fichier.name} » importée : choisissez-la dans une zone.`, 'ok');
+    }
+    e.target.value = '';
+  });
+
   $('style-deverrouiller').addEventListener('click', ouvrirMotDePasse);
   $('admin-valider').addEventListener('click', validerMotDePasse);
   $('admin-mdp').addEventListener('keydown', e => { if (e.key === 'Enter') validerMotDePasse(); });
@@ -374,7 +419,7 @@
       vue.styles = styles;
       vue.brouillons[vue.type] = cloner(styles[vue.type].config);
       vue.modifie = false;
-      await chargerModeles();    // l'impression de masse et l'éditeur libre suivent
+      state.styleNormal = styles.normal?.config ?? state.styleNormal;   // l'étiquette libre suit
       rendreType();
       statut(`✓ Style ${vue.type === 'promo' ? 'promo' : 'normal'} enregistré.`, 'ok');
     } catch (e) {

@@ -627,6 +627,42 @@ body:not([data-onglet="style"]) .pe-vue-style { display: none !important; }
 body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; }
 .pe-onglet .pe-badge { margin-left: var(--space-1); }
 
+/* ═══ Vue « Étiquette libre » : texte seulement, au style de la boutique ═══ */
+.pe-libre {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(340px, 1fr) minmax(0, 1.2fr);
+  overflow: hidden;
+}
+.pe-libre-saisie {
+  background: var(--color-card);
+  border-right: 1px solid rgba(107,58,31,.12);
+  padding: var(--space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pe-libre-lignes { display: flex; flex-direction: column; gap: var(--space-2); }
+.pe-libre-ligne { display: flex; gap: var(--space-2); align-items: center; }
+.pe-libre-ligne .pe-input { flex: 1; }
+.pe-libre-apercu {
+  background: #E8DFC8;
+  padding: var(--space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.pe-libre-imprimer { width: 100%; max-width: 520px; justify-content: center; }
+@media (max-width: 900px) {
+  .pe-libre { grid-template-columns: 1fr; overflow: visible; }
+  .pe-libre-apercu { order: -1; }
+}
+
 /* ═══ Vue « Imprimer » ═══ */
 .pe-imp {
   flex: 1;

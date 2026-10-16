@@ -99,7 +99,9 @@ class ImpressionUnitaire(ConfigEtiquette):
 async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
     """Envoie l'étiquette à l'imprimante Brother (réseau via tunnel, ou USB)."""
     from src.journal_impressions import prix_imprime
-    from src.printing.brother_ql_prix import appliquer_variables, imprimer_etiquette_prix
+    from src.printing.brother_ql_prix import (
+        appliquer_variables, config_libre, imprimer_etiquette_prix,
+    )
     data = body.model_dump(exclude={"produit_id"})
     produit = None
     if body.produit_id is not None:
@@ -107,6 +109,17 @@ async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
         if produit is None:
             raise HTTPException(status_code=404, detail="Produit introuvable ou désactivé")
         data = appliquer_variables(data, produit)
+    else:
+        # Étiquette libre : seul le TEXTE vient de l'écran ; l'apparence est TOUJOURS
+        # celle du style normal (rien d'autre n'est accepté, quoi que l'écran envoie).
+        async with get_db() as db:
+            normal = (await _styles(db))["normal"]
+        if normal is None:
+            raise HTTPException(status_code=409, detail="Aucun style d'étiquette : "
+                                "l'administrateur doit le créer dans l'onglet Style.")
+        data = config_libre(normal["config"], [l["texte"] for l in data["lignes"]])
+        if not data["lignes"]:
+            raise HTTPException(status_code=422, detail="Étiquette vide : tapez au moins une ligne.")
     # Envoi réseau bloquant → exécuté hors de la boucle async pour ne pas
     # figer toute l'application pendant l'impression.
     ok, message = await run_in_threadpool(imprimer_etiquette_prix, data)
@@ -142,8 +155,9 @@ async def lister_fonts():
 
 
 @router.post("/api/prix-etiquettes/upload-font", status_code=201)
-async def upload_font(fichier: UploadFile = File(...)):
-    """Upload une police TTF ou OTF custom (max 5 Mo)."""
+async def upload_font(request: Request, fichier: UploadFile = File(...)):
+    """Upload une police TTF ou OTF custom (max 5 Mo) — réservé à l'administrateur."""
+    _exiger_jeton_styles(request.headers.get(EN_TETE_JETON))
     ext = Path(fichier.filename).suffix.lower()
     if ext not in EXTENSIONS_AUTORISEES:
         raise HTTPException(status_code=400, detail="Seuls les fichiers .ttf et .otf sont acceptés")
@@ -162,8 +176,10 @@ async def upload_font(fichier: UploadFile = File(...)):
 
 
 @router.delete("/api/prix-etiquettes/fonts/{nom_fichier}", status_code=200)
-async def supprimer_font(nom_fichier: str):
-    """Supprime une police custom uploadée (sauf si un style d'étiquette l'utilise)."""
+async def supprimer_font(nom_fichier: str, request: Request):
+    """Supprime une police custom uploadée (sauf si un style d'étiquette l'utilise) —
+    réservé à l'administrateur."""
+    _exiger_jeton_styles(request.headers.get(EN_TETE_JETON))
     chemin = FONTS_DIR / nom_fichier
     if not chemin.exists() or chemin.suffix.lower() not in EXTENSIONS_AUTORISEES:
         raise HTTPException(status_code=404, detail="Police introuvable")
@@ -202,7 +218,10 @@ async def get_modeles():
 
 
 @router.post("/api/prix-etiquettes/modeles", status_code=201)
-async def creer_modele(body: ModeleCreate):
+async def creer_modele(body: ModeleCreate, request: Request):
+    """Crée un modèle — réservé à l'administrateur : pas de styles « maison » qui se
+    multiplient (une seule apparence pour toutes les étiquettes de la boutique)."""
+    _exiger_jeton_styles(request.headers.get(EN_TETE_JETON))
     config_json = json.dumps(body.config.model_dump(), ensure_ascii=False)
     async with get_db() as db:
         cur = await db.execute(
@@ -222,7 +241,8 @@ async def _refuser_si_style(db, modele_id: int) -> None:
 
 
 @router.put("/api/prix-etiquettes/modeles/{modele_id}")
-async def modifier_modele(modele_id: int, body: ModeleCreate):
+async def modifier_modele(modele_id: int, body: ModeleCreate, request: Request):
+    _exiger_jeton_styles(request.headers.get(EN_TETE_JETON))
     config_json = json.dumps(body.config.model_dump(), ensure_ascii=False)
     async with get_db() as db:
         await _refuser_si_style(db, modele_id)
@@ -237,7 +257,8 @@ async def modifier_modele(modele_id: int, body: ModeleCreate):
 
 
 @router.delete("/api/prix-etiquettes/modeles/{modele_id}", status_code=200)
-async def supprimer_modele(modele_id: int):
+async def supprimer_modele(modele_id: int, request: Request):
+    _exiger_jeton_styles(request.headers.get(EN_TETE_JETON))
     async with get_db() as db:
         await _refuser_si_style(db, modele_id)
         cur = await db.execute(
@@ -544,6 +565,7 @@ class StyleBody(AvecJeton):
 # enregistrement présente — sans redemander le mot de passe à chaque retouche.
 JETON_STYLES_SUJET = "styles-etiquettes"
 JETON_STYLES_DUREE_S = 15 * 60
+EN_TETE_JETON = "X-Jeton-Styles"   # pour les routes sans corps JSON (polices, modèles)
 
 
 def _exiger_jeton_styles(jeton: Optional[str]) -> None:

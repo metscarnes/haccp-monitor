@@ -1,15 +1,13 @@
 'use strict';
 /* ============================================================
-   prix_etiquettes.js — Éditeur étiquettes prix Brother QL-820NWBc
+   prix_etiquettes.js — Module Étiquettes prix (Brother QL-820NWB)
 
-   Fonctionnalités :
-   - Preview live (debounce 500 ms → POST /api/prix-etiquettes/preview)
-   - Cadre de prévisualisation aux vraies proportions physiques
-   - Import article depuis le catalogue achats
-   - Lignes de texte configurables (police, taille, gras, alignement)
-   - Upload polices TTF/OTF custom
-   - Sauvegarde / chargement de modèles
-   - Impression USB via POST /api/prix-etiquettes/imprimer
+   Socle commun de la page (onglets Imprimer / Style / Étiquette libre) :
+   - session, appels API, polices (FontFace + métriques serveur) ;
+   - dessin d'une étiquette sur canvas, miroir exact de l'impression ;
+   - file « À réimprimer », impression navigateur sans pop-up, onglets ;
+   - onglet « Étiquette libre » : du TEXTE seulement, au style de la boutique.
+   Vues : prix_etiquettes_imprimer.js, prix_etiquettes_style.js.
    ============================================================ */
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -61,16 +59,9 @@ function debounce(fn, ms) {
 
 // ── État global ───────────────────────────────────────────────
 const state = {
-  largeur_cm: 10.0,
-  hauteur_cm: 7.5,
-  fond_noir: false,
-  lignes: [],           // [{texte, taille, gras, police, alignement}]
-  fontsDispos: [],      // [{nom, label}]
-  modeles: [],          // [{id, nom, config}]
-  modeleActifId: null,
-  modeleDefautId: null,    // modèle des réimpressions (seul modèle, ou choisi ⭐)
-  catalogueArticle: null,  // produit du catalogue de vente importé (variables {Nom}…)
-  file: new Map(),         // catalogue_vente_id → élément de la file « À réimprimer »
+  fontsDispos: [],      // [{nom, label, ascent, descent}]
+  styleNormal: null,    // config du style « normal » de la boutique
+  file: new Map(),      // catalogue_vente_id → élément de la file « À réimprimer »
 };
 
 // Polices chargées dans le navigateur via FontFace (pour le rendu Canvas).
@@ -119,65 +110,9 @@ const PREVIEW_MAX_H = 460;
 // ── Éléments DOM ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 
-const elLargeur       = $('dim-largeur');
-const elHauteur       = $('dim-hauteur');
-const elFondBlanc     = $('fond-blanc');
-const elFondNoir      = $('fond-noir');
-const elLignesListe   = $('lignes-liste');
-const elBtnAjoutLigne = $('btn-ajouter-ligne');
-const elEtiquetteCadre  = $('etiquette-cadre');
-const elCanvas          = $('etiquette-canvas');
-const elDimsInfo        = $('preview-dims-info');
-const elPrintStatus     = $('print-status');
-const elFontsList       = $('fonts-liste');
-const elUploadFont      = $('input-upload-font');
-const elCatalogueSearch = $('catalogue-search');
-const elCatalogueDropdown = $('catalogue-dropdown');
-const elCatalogueSelect   = $('catalogue-selectionne');
-const elCatalogueNom      = $('catalogue-nom');
-const elCatalogueClear    = $('catalogue-clear');
-const elListeModeles    = $('liste-modeles');
-const elBtnNouveauModele = $('btn-nouveau-modele');
-const elBtnSauvegarder  = $('btn-sauvegarder-modele');
-const elBtnImprimer     = $('btn-imprimer');
-const elBtnImprimerNav  = $('btn-imprimer-navigateur');
-const elModalSave       = $('modal-save');
-const elModelNom        = $('modele-nom');
-const elBtnSaveConfirmer = $('btn-save-confirmer');
-const elBtnSaveAnnuler  = $('btn-save-annuler');
-const tplLigne          = $('tpl-ligne');
-
-// ── Lecture de l'état courant ────────────────────────────────
-
-function lireEtat() {
-  state.largeur_cm = parseFloat(elLargeur.value) || 10;
-  state.hauteur_cm = parseFloat(elHauteur.value) || 7.5;
-
-  // Lire toutes les lignes depuis le DOM
-  state.lignes = [];
-  elLignesListe.querySelectorAll('.pe-ligne').forEach(el => {
-    state.lignes.push({
-      texte:      el.querySelector('.pe-ligne-texte').value,
-      poids:      parseFloat(el.querySelector('.pe-ligne-poids').value) || 1,
-      taille_px:  parseInt(el.querySelector('.pe-ligne-taille-px').value, 10) || 0,
-      gras:       el.querySelector('.pe-ligne-gras').checked,
-      police:     el.querySelector('.pe-ligne-police').value || null,
-      alignement: el.querySelector('.pe-ligne-alignement').value,
-    });
-  });
-}
-
-function configVersEtat(config) {
-  state.largeur_cm = config.largeur_cm ?? 10;
-  state.hauteur_cm = config.hauteur_cm ?? 7.5;
-  state.fond_noir  = config.fond_noir  ?? false;
-  state.lignes     = config.lignes     ?? [];
-}
-
-// ── Prévisualisation — rendu CANVAS 100% LOCAL (zéro réseau) ──────────
-// Miroir fidèle de l'algo backend (brother_ql_prix.generer_image_prix) :
-// auto-fit max par dichotomie + taille_px fixe, mesure via métriques de police.
-// Aucun appel serveur pendant l'édition → aucun lag réseau.
+// ── Dessin d'une étiquette — rendu CANVAS 100% LOCAL (zéro réseau) ──
+// Miroir fidèle de brother_ql_prix.generer_image_prix : auto-fit max par
+// dichotomie + taille_px fixe, mesure via les métriques de police du serveur.
 
 const FONT_FALLBACK = "'DejaVu Prix', Arial, sans-serif";
 
@@ -237,13 +172,6 @@ function mesurer(ctx, ligne, sizePx) {
     inkDescent: m.actualBoundingBoxDescent ?? 0,
     encreG,
   };
-}
-
-// Aperçu de l'éditeur « Libre ».
-function rendrePreview() {
-  lireEtat();
-  dessinerEtiquette({ canvas: elCanvas, cadre: elEtiquetteCadre, info: elDimsInfo },
-                    state, state.catalogueArticle);
 }
 
 // Dessine une étiquette sur un canvas, miroir de brother_ql_prix.generer_image_prix.
@@ -367,256 +295,6 @@ function dessinerEtiquette(cible, config, produit) {
   }
 }
 
-// Rendu instantané à chaque modification (local, pas de debounce nécessaire,
-// mais on garde un micro-délai pour ne pas redessiner à chaque keystroke).
-const debbouncePreview = debounce(rendrePreview, 30);
-
-// ── Fond ─────────────────────────────────────────────────────
-
-function majFond(noir) {
-  state.fond_noir = noir;
-  elFondBlanc.classList.toggle('active', !noir);
-  elFondNoir.classList.toggle('active',   noir);
-  elFondBlanc.setAttribute('aria-pressed', String(!noir));
-  elFondNoir.setAttribute('aria-pressed',  String(noir));
-  debbouncePreview();
-}
-
-elFondBlanc.addEventListener('click', () => majFond(false));
-elFondNoir.addEventListener('click',  () => majFond(true));
-
-// ── Dimensions ───────────────────────────────────────────────
-
-elLargeur.addEventListener('input', debbouncePreview);
-elHauteur.addEventListener('input', debbouncePreview);
-
-// ── Lignes de texte ──────────────────────────────────────────
-
-function creerLigneDOM(data = {}) {
-  // Cloner le template dans un div intermédiaire pour obtenir un vrai Element
-  // (DocumentFragment perd ses références après appendChild)
-  const tmp = document.createElement('div');
-  tmp.appendChild(tplLigne.content.cloneNode(true));
-  const el  = tmp.querySelector('.pe-ligne');
-  const idx = elLignesListe.children.length + 1;
-
-  el.querySelector('.pe-ligne-num').textContent  = `Ligne ${idx}`;
-  el.querySelector('.pe-ligne-texte').value      = data.texte ?? '';
-  el.querySelector('.pe-ligne-gras').checked     = data.gras  ?? false;
-  el.querySelector('.pe-ligne-alignement').value = data.alignement ?? 'center';
-  el.querySelector('.pe-ligne-taille-px').value  = data.taille_px ? data.taille_px : '';
-
-  // Taille relative (= ratio "poids"). On choisit l'option la plus proche de
-  // la valeur demandée — robuste aux anciens modèles (ex: poids 0.5).
-  const selPoids = el.querySelector('.pe-ligne-poids');
-  const poids    = parseFloat(data.poids ?? 1) || 1;
-  let meilleur = selPoids.options[0];
-  [...selPoids.options].forEach(o => {
-    if (Math.abs(parseFloat(o.value) - poids) < Math.abs(parseFloat(meilleur.value) - poids)) {
-      meilleur = o;
-    }
-  });
-  selPoids.value = meilleur.value;
-
-  // Polices custom (nouvelle ligne sans police précisée → police par défaut)
-  const selPolice = el.querySelector('.pe-ligne-police');
-  remplirSelectPolice(selPolice, 'police' in data ? (data.police ?? '') : policeParDefaut());
-  majGrasSelonPolice(el);
-
-  // Suppression
-  el.querySelector('.pe-ligne-suppr').addEventListener('click', () => {
-    el.remove();
-    renuméroterLignes();
-    debbouncePreview();
-  });
-
-  // Tout changement → preview
-  el.querySelectorAll('input, select').forEach(inp => {
-    inp.addEventListener('input', debbouncePreview);
-    inp.addEventListener('change', debbouncePreview);
-  });
-
-  // Changement de police : charger la FontFace correspondante avant de redessiner.
-  selPolice.addEventListener('change', async (e) => {
-    majGrasSelonPolice(el);
-    const nom = e.target.value;
-    if (nom) { await chargerFontFace(nom); rendrePreview(); }
-  });
-
-  return el;   // ← Element réel, pas DocumentFragment
-}
-
-// Police utilisée par défaut pour les nouvelles lignes : Moresugar-Thin si elle
-// a été importée sur le serveur, sinon DejaVu ('').
-const POLICE_DEFAUT_PREFEREE = 'moresugar-thin';
-function policeParDefaut() {
-  const f = state.fontsDispos.find(p => (p.label || '').toLowerCase() === POLICE_DEFAUT_PREFEREE);
-  return f ? f.nom : '';
-}
-
-// « Gras » n'a d'effet que sur DejaVu : une police custom est un seul fichier
-// TTF, imprimé tel quel. On grise la case pour ne pas laisser croire le contraire.
-function majGrasSelonPolice(el) {
-  const custom = !!el.querySelector('.pe-ligne-police').value;
-  const chk = el.querySelector('.pe-ligne-gras');
-  chk.disabled = custom;
-  chk.closest('label').title = custom
-    ? 'Gras sans effet avec une police importée (imprimée telle quelle)'
-    : '';
-}
-
-function renuméroterLignes() {
-  elLignesListe.querySelectorAll('.pe-ligne').forEach((el, i) => {
-    el.querySelector('.pe-ligne-num').textContent = `Ligne ${i + 1}`;
-  });
-}
-
-function remplirSelectPolice(select, valeurActive) {
-  // Garder l'option par défaut
-  select.innerHTML = '<option value="">DejaVu (défaut)</option>';
-  state.fontsDispos.forEach(f => {
-    const opt = document.createElement('option');
-    opt.value = f.nom;
-    opt.textContent = f.label;
-    if (f.nom === valeurActive) opt.selected = true;
-    select.appendChild(opt);
-  });
-}
-
-function majTousSelectsPolice() {
-  elLignesListe.querySelectorAll('.pe-ligne-police').forEach(sel => {
-    const current = sel.value;
-    remplirSelectPolice(sel, current);
-    majGrasSelonPolice(sel.closest('.pe-ligne'));
-  });
-}
-
-elBtnAjoutLigne.addEventListener('click', () => {
-  elLignesListe.appendChild(creerLigneDOM());
-  debbouncePreview();
-});
-
-// ── Polices custom ───────────────────────────────────────────
-
-async function chargerFonts() {
-  try {
-    const data = await apiFetch('/api/prix-etiquettes/fonts');
-    state.fontsDispos = data.fonts ?? [];
-    if (data.defaut) metriquesDefaut = data.defaut;
-    metriquesPolices.clear();
-    state.fontsDispos.forEach(f => {
-      if (f.ascent != null && f.descent != null) {
-        metriquesPolices.set(f.nom, { ascent: f.ascent, descent: f.descent });
-      }
-    });
-    afficherFonts();
-    majTousSelectsPolice();
-    // Charger les TTF custom pour le rendu Canvas, puis redessiner.
-    await Promise.all(state.fontsDispos.map(f => chargerFontFace(f.nom)));
-    rendrePreview();
-  } catch (e) {
-    console.error('Fonts:', e);
-  }
-}
-
-function afficherFonts() {
-  elFontsList.innerHTML = '';
-  if (state.fontsDispos.length === 0) {
-    elFontsList.innerHTML = '<span style="font-size:var(--text-xs);color:var(--color-offline)">Aucune police custom</span>';
-    return;
-  }
-  state.fontsDispos.forEach(f => {
-    const chip = document.createElement('span');
-    chip.className = 'pe-font-chip';
-    chip.innerHTML = `${escHtml(f.label)}<button class="pe-font-chip-del" title="Supprimer" data-nom="${escHtml(f.nom)}">✕</button>`;
-    chip.querySelector('.pe-font-chip-del').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!confirm(`Supprimer la police "${f.label}" ?`)) return;
-      try {
-        await apiFetch(`/api/prix-etiquettes/fonts/${encodeURIComponent(f.nom)}`, { method: 'DELETE' });
-        await chargerFonts();
-        debbouncePreview();
-      } catch (err) {
-        alert('Erreur suppression : ' + err.message);
-      }
-    });
-    elFontsList.appendChild(chip);
-  });
-}
-
-elUploadFont.addEventListener('change', async () => {
-  const file = elUploadFont.files[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append('fichier', file);
-  try {
-    await apiFetch('/api/prix-etiquettes/upload-font', { method: 'POST', body: fd });
-    await chargerFonts();
-    elUploadFont.value = '';
-    debbouncePreview();
-  } catch (e) {
-    alert('Erreur upload police : ' + e.message);
-  }
-});
-
-// ── Catalogue achats ─────────────────────────────────────────
-
-let catalogueTimer;
-
-elCatalogueSearch.addEventListener('input', () => {
-  clearTimeout(catalogueTimer);
-  const q = elCatalogueSearch.value.trim();
-  if (q.length < 1) { fermerDropdownCatalogue(); return; }
-  catalogueTimer = setTimeout(() => rechercherCatalogue(q), 300);
-});
-
-elCatalogueSearch.addEventListener('keydown', e => {
-  if (e.key === 'Escape') fermerDropdownCatalogue();
-});
-
-document.addEventListener('click', e => {
-  if (!elCatalogueSearch.contains(e.target) && !elCatalogueDropdown.contains(e.target)) {
-    fermerDropdownCatalogue();
-  }
-});
-
-async function rechercherCatalogue(q) {
-  try {
-    const data = await apiFetch(`/api/prix-etiquettes/catalogue?q=${encodeURIComponent(q)}`);
-    afficherDropdownCatalogue(data.articles ?? []);
-  } catch (e) {
-    console.error('Catalogue search:', e);
-  }
-}
-
-function afficherDropdownCatalogue(articles) {
-  elCatalogueDropdown.innerHTML = '';
-  if (articles.length === 0) {
-    elCatalogueDropdown.innerHTML = '<div class="pe-catalogue-item" style="color:var(--color-offline)">Aucun résultat</div>';
-  } else {
-    articles.forEach(a => {
-      const div = document.createElement('div');
-      div.className = 'pe-catalogue-item';
-      const prix = a.prix_vente_ttc
-        ? `${parseFloat(a.prix_vente_ttc).toFixed(2)} € TTC`
-        : 'Prix non renseigné';
-      const famille = a.famille ? ` — ${a.famille}` : '';
-      div.innerHTML = `
-        <span class="pe-catalogue-item-nom">${escHtml(a.designation)}</span>
-        <span class="pe-catalogue-item-prix">${escHtml(prix)}${escHtml(famille)}</span>
-      `;
-      div.addEventListener('click', () => selectionnerArticle(a));
-      elCatalogueDropdown.appendChild(div);
-    });
-  }
-  elCatalogueDropdown.hidden = false;
-}
-
-function fermerDropdownCatalogue() {
-  elCatalogueDropdown.hidden = true;
-  elCatalogueDropdown.innerHTML = '';
-}
-
 // Remplace les variables {Nom} {prix}… d'un texte par les valeurs d'un produit du
 // catalogue de vente — miroir de brother_ql_prix.appliquer_variables (même rendu
 // à l'écran qu'à l'impression, où le serveur relit le prix actuel en base).
@@ -654,258 +332,34 @@ function substituerVariables(texte, produit) {
   return Object.entries(valeurs).reduce((t, [cle, val]) => t.split(cle).join(val), texte);
 }
 
-const RE_VARIABLE = /\{(nom|Nom|NOM|prix|prix_kg|prix_unite|unite|article_unite|famille|sous_famille|prix_reference|prix_promo|economie_unite)\}/;
-
-function lignesAVariables() {
-  return [...elLignesListe.querySelectorAll('.pe-ligne-texte')]
-    .some(inp => RE_VARIABLE.test(inp.value || ''));
+// Police utilisée par défaut pour les nouvelles lignes : Moresugar-Thin si elle
+// a été importée sur le serveur, sinon DejaVu ('').
+const POLICE_DEFAUT_PREFEREE = 'moresugar-thin';
+function policeParDefaut() {
+  const f = state.fontsDispos.find(p => (p.label || '').toLowerCase() === POLICE_DEFAUT_PREFEREE);
+  return f ? f.nom : '';
 }
 
-function lignesVides() {
-  return [...elLignesListe.querySelectorAll('.pe-ligne-texte')]
-    .every(inp => !(inp.value || '').trim());
-}
-
-// Id catalogue de VENTE de l'article importé (null si l'article vient d'ailleurs).
-function produitVenteId() {
-  return state.catalogueArticle?.id ?? null;
-}
-
-function selectionnerArticle(article) {
-  state.catalogueArticle = article;
-  elCatalogueNom.textContent = article.designation ?? article.nom ?? '';
-  elCatalogueSelect.hidden = false;
-  elCatalogueSearch.value = '';
-  fermerDropdownCatalogue();
-
-  // Étiquette vierge → on part du modèle par défaut (modèle des prix de la boutique).
-  if (lignesVides()) {
-    const defaut = state.modeles.find(m => m.id === state.modeleDefautId);
-    if (defaut) chargerModele(defaut);
-  }
-
-  // Modèle à variables : on GARDE sa mise en page, l'article remplit {Nom}, {prix}…
-  if (lignesAVariables()) {
-    rendrePreview();
-    return;
-  }
-
-  // Sinon (texte libre) : lignes générées à partir de l'article, comme avant.
-  elLignesListe.innerHTML = '';
-  elLignesListe.appendChild(creerLigneDOM({
-    texte: article.designation ?? article.nom, poids: 1, gras: true, alignement: 'center',
-  }));
-  if (article.prix_vente_ttc) {
-    const prix = parseFloat(article.prix_vente_ttc).toFixed(2).replace('.', ',') + ' €';
-    const piece = String(article.unite_vente || 'kg').toLowerCase() === 'piece';
-    elLignesListe.appendChild(creerLigneDOM({
-      texte: prix, poids: 3, gras: true, alignement: 'center',
-    }));
-    elLignesListe.appendChild(creerLigneDOM({
-      texte: piece ? 'la pièce' : 'le kg', poids: 0.6, gras: false, alignement: 'center',
-    }));
-  }
-
-  debbouncePreview();
-}
-
-elCatalogueClear.addEventListener('click', () => {
-  state.catalogueArticle = null;
-  elCatalogueSelect.hidden = true;
-  elCatalogueNom.textContent = '';
-  rendrePreview();   // les variables réapparaissent telles quelles
-});
-
-// ── Modèles ──────────────────────────────────────────────────
-
-async function chargerModeles() {
+// Polices custom (importées dans l'onglet Style) : chargées pour l'aperçu, avec leurs
+// métriques mesurées par le serveur (mêmes tailles à l'écran qu'à l'impression).
+async function chargerFonts() {
   try {
-    const [data, defaut] = await Promise.all([
-      apiFetch('/api/prix-etiquettes/modeles'),
-      apiFetch('/api/prix-etiquettes/modele-defaut'),
-    ]);
-    state.modeles = data.modeles ?? [];
-    state.modeleDefautId = defaut.modele_id ?? null;
-    afficherModeles();
-  } catch (e) {
-    console.error('Modeles:', e);
-  }
-}
-
-function afficherModeles() {
-  elListeModeles.innerHTML = '';
-  state.modeles.forEach(m => {
-    const chip = document.createElement('div');
-    chip.className = 'pe-modele-chip' + (m.id === state.modeleActifId ? ' active' : '');
-    chip.dataset.id = m.id;
-    // Un modèle qui sert de style (normal / promo) se règle dans l'onglet Style, avec
-    // le mot de passe administrateur : ici, cadenas et pas de suppression.
-    if (m.style) {
-      chip.classList.add('pe-modele-chip--style');
-      chip.title = 'Style des étiquettes : se modifie dans l\'onglet « Style » (administrateur)';
-      chip.innerHTML = `<span class="pe-modele-chip-nom">🔒 ${escHtml(m.nom)}</span>`;
-      chip.querySelector('.pe-modele-chip-nom').addEventListener('click', () => chargerModele(m));
-      elListeModeles.appendChild(chip);
-      return;
-    }
-    chip.innerHTML = `
-      <span class="pe-modele-chip-nom">${escHtml(m.nom)}</span>
-      <button class="pe-modele-chip-del" title="Supprimer ce modèle" data-id="${m.id}">✕</button>
-    `;
-    chip.querySelector('.pe-modele-chip-nom').addEventListener('click', () => chargerModele(m));
-    chip.querySelector('.pe-modele-chip-del').addEventListener('click', async e => {
-      e.stopPropagation();
-      if (!confirm(`Supprimer le modèle "${m.nom}" ?`)) return;
-      try {
-        await apiFetch(`/api/prix-etiquettes/modeles/${m.id}`, { method: 'DELETE' });
-        if (state.modeleActifId === m.id) state.modeleActifId = null;
-        await chargerModeles();
-      } catch (err) {
-        alert('Erreur : ' + err.message);
+    const data = await apiFetch('/api/prix-etiquettes/fonts');
+    state.fontsDispos = data.fonts ?? [];
+    if (data.defaut) metriquesDefaut = data.defaut;
+    metriquesPolices.clear();
+    state.fontsDispos.forEach(f => {
+      if (f.ascent != null && f.descent != null) {
+        metriquesPolices.set(f.nom, { ascent: f.ascent, descent: f.descent });
       }
     });
-    elListeModeles.appendChild(chip);
-  });
-}
-
-function chargerModele(modele) {
-  // Un style sert seulement de point de départ : « Sauvegarder » créera un nouveau
-  // modèle libre au lieu de modifier le style (réservé à l'administrateur).
-  state.modeleActifId = modele.style ? null : modele.id;
-  const config = modele.config;
-  configVersEtat(config);
-
-  // Appliquer au DOM
-  elLargeur.value = state.largeur_cm;
-  elHauteur.value = state.hauteur_cm;
-  majFond(state.fond_noir);
-
-  elLignesListe.innerHTML = '';
-  state.lignes.forEach(l => elLignesListe.appendChild(creerLigneDOM(l)));
-
-  afficherModeles(); // met à jour la chip active
-  rendrePreview();
-}
-
-elBtnNouveauModele.addEventListener('click', () => {
-  state.modeleActifId = null;
-  elLignesListe.innerHTML = '';
-  state.catalogueArticle = null;
-  elCatalogueSelect.hidden = true;
-  elCatalogueSearch.value = '';
-  majFond(false);
-  elLargeur.value = 10;
-  elHauteur.value = 7.5;
-  afficherModeles();
-  rendrePreview();
-});
-
-// ── Sauvegarde modèle ────────────────────────────────────────
-
-elBtnSauvegarder.addEventListener('click', () => {
-  const modeleActif = state.modeles.find(m => m.id === state.modeleActifId);
-  elModelNom.value = modeleActif ? modeleActif.nom : '';
-  elModalSave.hidden = false;
-  elModelNom.focus();
-});
-
-elBtnSaveAnnuler.addEventListener('click', () => { elModalSave.hidden = true; });
-
-elModalSave.addEventListener('click', e => {
-  if (e.target === elModalSave) elModalSave.hidden = true;
-});
-
-elBtnSaveConfirmer.addEventListener('click', async () => {
-  const nom = elModelNom.value.trim();
-  if (!nom) { elModelNom.focus(); return; }
-
-  lireEtat();
-  const config = {
-    largeur_cm: state.largeur_cm,
-    hauteur_cm: state.hauteur_cm,
-    fond_noir:  state.fond_noir,
-    lignes:     state.lignes,
-  };
-
-  try {
-    if (state.modeleActifId) {
-      // Mise à jour du modèle existant
-      await apiFetch(`/api/prix-etiquettes/modeles/${state.modeleActifId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nom, config }),
-      });
-    } else {
-      // Nouveau modèle
-      const res = await apiFetch('/api/prix-etiquettes/modeles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nom, config }),
-      });
-      state.modeleActifId = res.id;
-    }
-    elModalSave.hidden = true;
-    await chargerModeles();
+    await Promise.all(state.fontsDispos.map(f => chargerFontFace(f.nom)));
   } catch (e) {
-    alert('Erreur sauvegarde : ' + e.message);
+    console.error('Polices :', e);
   }
-});
-
-// ── Impression ───────────────────────────────────────────────
-
-function afficherStatut(msg, type) {
-  // type : 'ok' | 'err' | 'loading'
-  elPrintStatus.textContent = msg;
-  elPrintStatus.className = `pe-print-status pe-print-status--${type}`;
-  elPrintStatus.hidden = false;
-  if (type === 'ok') setTimeout(() => { elPrintStatus.hidden = true; }, 4000);
 }
 
-// Contrôles communs aux deux impressions de l'éditeur. Renvoie false si bloquant.
-function verifierAvantImpression() {
-  lireEtat();
-  if (state.lignes.length === 0 || state.lignes.every(l => !l.texte.trim())) {
-    afficherStatut('Ajoutez au moins une ligne de texte avant d\'imprimer.', 'err');
-    return false;
-  }
-  if (!state.catalogueArticle && lignesAVariables()) {
-    afficherStatut('Ce modèle contient des variables ({Nom}, {prix}…) : choisissez d\'abord '
-      + 'un article dans « Import article », sinon elles seraient imprimées telles quelles.', 'err');
-    return false;
-  }
-  return true;
-}
-
-elBtnImprimer.addEventListener('click', async () => {
-  if (!verifierAvantImpression()) return;
-
-  const payload = {
-    largeur_cm: state.largeur_cm,
-    hauteur_cm: state.hauteur_cm,
-    fond_noir:  state.fond_noir,
-    lignes:     state.lignes,
-    // Le serveur remplit les variables avec le prix ACTUEL en base et sort le
-    // produit de la file « À réimprimer ».
-    produit_id: produitVenteId(),
-  };
-
-  elBtnImprimer.disabled = true;
-  afficherStatut('Envoi à l\'imprimante…', 'loading');
-
-  try {
-    await apiFetch('/api/prix-etiquettes/imprimer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
-    chargerFile();
-  } catch (e) {
-    afficherStatut('Erreur impression : ' + e.message, 'err');
-  } finally {
-    elBtnImprimer.disabled = false;
-  }
-});
+// ── Impression : outils communs ──────────────────────────────
 
 // Impression navigateur : on ne sait pas si l'étiquette est vraiment sortie, on
 // demande avant de retirer les produits de la file « À réimprimer ».
@@ -927,30 +381,6 @@ async function proposerSortieFile(ids) {
   await chargerFile();
 }
 
-// ── Impression via le navigateur (Wi-Fi / sans USB serveur) ──
-// Imprime le canvas d'aperçu tel quel, dimensionné à la taille physique
-// réelle de l'étiquette. Sert au test hors boutique et de secours :
-// l'utilisateur choisit l'imprimante dans la boîte de dialogue du navigateur.
-elBtnImprimerNav.addEventListener('click', async () => {
-  if (!verifierAvantImpression()) return;
-  rendrePreview();   // canvas à jour (variables remplies) avant de le copier
-
-  // Le canvas est déjà rendu à la résolution réelle par l'aperçu live.
-  // On reprend EXACTEMENT ses dimensions, hauteur bridée comme dans
-  // rendrePreview() (rouleau 62mm), pour que l'impression colle au canvas.
-  const dataUrl = elCanvas.toDataURL('image/png');
-  const lCm = state.largeur_cm;
-  const hCm = Math.min(state.hauteur_cm, HAUTEUR_MAX_CM);
-
-  await imprimerImagesSansPopup([{ src: dataUrl, alt: 'Étiquette prix' }], lCm, hCm, 'Étiquette prix');
-  afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
-  const id = produitVenteId();
-  noterImpressionNavigateur(id != null
-    ? { type: 'normal', produits: [{ produit_id: id, quantite: 1 }] }
-    : { type: 'libre', libelle: (state.lignes.find(l => l.texte.trim()) || {}).texte || '' });
-  if (id != null) proposerSortieFile([id]);
-});
-
 // Historique : une impression par le navigateur est notée à l'ouverture de la fenêtre
 // d'impression (sans attendre : un échec de l'historique ne gêne jamais l'impression).
 function noterImpressionNavigateur(corps) {
@@ -968,7 +398,6 @@ async function chargerFile() {
   try {
     const data = await apiFetch('/api/prix-etiquettes/a-reimprimer');
     state.file = new Map((data.elements ?? []).map(e => [e.catalogue_vente_id, e]));
-    state.modeleDefautId = data.modele_defaut_id ?? state.modeleDefautId;
   } catch (e) {
     console.error('File à réimprimer :', e);
   }
@@ -1041,66 +470,171 @@ async function afficherOnglet(nom) {
   document.querySelectorAll('.pe-onglet').forEach(o =>
     o.classList.toggle('active', o.dataset.onglet === nom));
   try { localStorage.setItem('pe_onglet', nom); } catch (e) { /* ignore */ }
-  if (nom === 'libre') rendrePreview();
   await peVues[nom]?.afficher?.();
 }
 
 document.querySelectorAll('.pe-onglet').forEach(o =>
   o.addEventListener('click', () => afficherOnglet(o.dataset.onglet)));
 
-// ── Persistance locale des dimensions ────────────────────────
+// ── Étiquette libre : du TEXTE seulement, au style de la boutique ──
+// Pas de taille, de police, de fond, de format ni de modèle à choisir : l'étiquette
+// libre (« Arrivage du jour »…) reprend le style normal — une seule apparence pour
+// toutes les étiquettes. Le serveur la redessine de toute façon avec ce style
+// (brother_ql_prix.config_libre), quoi que l'écran envoie.
+const MAX_LIGNES_LIBRES = 5;
+const CLE_TEXTES_LIBRES = 'pe_libre_textes';
+const elLibreLignes  = $('libre-lignes');
+const elLibreAjouter = $('libre-ajouter');
+const elCanvas       = $('etiquette-canvas');
+const elCadre        = $('etiquette-cadre');
+const elDimsInfo     = $('preview-dims-info');
+const elPrintStatus  = $('print-status');
+const elBtnImprimer  = $('btn-imprimer');
+const elBtnImprimerNav = $('btn-imprimer-navigateur');
+const SANS_STYLE = 'Aucun style d\'étiquette : l\'administrateur doit le créer dans l\'onglet « Style ».';
 
-function sauvegarderDimsLocal() {
-  try {
-    localStorage.setItem('pe_dims', JSON.stringify({
-      largeur_cm: parseFloat(elLargeur.value) || 10,
-      hauteur_cm: parseFloat(elHauteur.value) || 7.5,
-    }));
-  } catch (e) { /* localStorage indisponible */ }
+function afficherStatut(msg, type) {
+  // type : 'ok' | 'err' | 'loading'
+  elPrintStatus.textContent = msg;
+  elPrintStatus.className = `pe-print-status pe-print-status--${type}`;
+  elPrintStatus.hidden = false;
+  if (type === 'ok') setTimeout(() => { elPrintStatus.hidden = true; }, 4000);
 }
 
-function restaurerDimsLocal() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('pe_dims') || '{}');
-    if (saved.largeur_cm) elLargeur.value = saved.largeur_cm;
-    if (saved.hauteur_cm) elHauteur.value = saved.hauteur_cm;
-  } catch (e) { /* ignore */ }
+function textesLibres() {
+  return [...elLibreLignes.querySelectorAll('.pe-libre-texte')].map(i => i.value);
 }
 
-elLargeur.addEventListener('change', sauvegarderDimsLocal);
-elHauteur.addEventListener('change', sauvegarderDimsLocal);
+// Miroir de brother_ql_prix.config_libre : format, fond et police du style normal,
+// lignes de même taille, centrées.
+function configLibre(style, textes) {
+  const lignes = style.lignes || [];
+  const zoneNom = lignes.find(l => l.zone === 'nom') || lignes[0] || {};
+  return {
+    largeur_cm: style.largeur_cm, hauteur_cm: style.hauteur_cm, fond_noir: !!style.fond_noir,
+    lignes: textes.map(t => t.trim()).filter(Boolean).slice(0, MAX_LIGNES_LIBRES).map(texte => ({
+      texte, poids: 1, taille_px: 0, gras: false, police: zoneNom.police || null, alignement: 'center',
+    })),
+  };
+}
+
+function rendreLibre() {
+  try { localStorage.setItem(CLE_TEXTES_LIBRES, JSON.stringify(textesLibres())); } catch (e) { /* ignore */ }
+  elLibreAjouter.disabled = elLibreLignes.children.length >= MAX_LIGNES_LIBRES;
+  if (!state.styleNormal) {
+    elDimsInfo.textContent = SANS_STYLE;
+    return;
+  }
+  dessinerEtiquette({ canvas: elCanvas, cadre: elCadre, info: elDimsInfo },
+                    configLibre(state.styleNormal, textesLibres()), null);
+}
+
+function ajouterLigneLibre(texte = '') {
+  if (elLibreLignes.children.length >= MAX_LIGNES_LIBRES) return;
+  const ligne = document.createElement('div');
+  ligne.className = 'pe-libre-ligne';
+  ligne.innerHTML = `
+    <input type="text" class="pe-input pe-input--grand pe-libre-texte" maxlength="40"
+           placeholder="Ex. Arrivage du jour, Fait maison…">
+    <button class="pe-icone-btn pe-icone-btn--suppr" title="Retirer cette ligne" aria-label="Retirer">✕</button>`;
+  const champ = ligne.querySelector('input');
+  champ.value = texte;
+  champ.addEventListener('input', rendreLibre);
+  ligne.querySelector('button').addEventListener('click', () => {
+    if (elLibreLignes.children.length > 1) ligne.remove(); else champ.value = '';
+    rendreLibre();
+  });
+  elLibreLignes.appendChild(ligne);
+}
+
+function remplirLignesLibres(textes) {
+  elLibreLignes.innerHTML = '';
+  (textes.length ? textes : ['']).slice(0, MAX_LIGNES_LIBRES).forEach(t => ajouterLigneLibre(t));
+  rendreLibre();
+}
+
+elLibreAjouter.addEventListener('click', () => { ajouterLigneLibre(); rendreLibre(); });
+
+// Style normal de la boutique (rechargé à chaque passage sur l'onglet).
+async function chargerStyleNormal() {
+  try {
+    state.styleNormal = (await apiFetch('/api/prix-etiquettes/styles')).normal?.config ?? null;
+  } catch (e) {
+    console.error('Style :', e);
+  }
+}
+
+function verifierAvantImpression() {
+  if (!state.styleNormal) {
+    afficherStatut(SANS_STYLE, 'err');
+    return false;
+  }
+  if (!textesLibres().some(t => t.trim())) {
+    afficherStatut('Tapez au moins une ligne de texte avant d\'imprimer.', 'err');
+    return false;
+  }
+  return true;
+}
+
+elBtnImprimer.addEventListener('click', async () => {
+  if (!verifierAvantImpression()) return;
+  elBtnImprimer.disabled = true;
+  afficherStatut('Envoi à l\'imprimante…', 'loading');
+  try {
+    // Seul le texte part : le serveur applique le style de la boutique.
+    await apiFetch('/api/prix-etiquettes/imprimer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })) }),
+    });
+    afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
+  } catch (e) {
+    afficherStatut('Erreur impression : ' + e.message, 'err');
+  } finally {
+    elBtnImprimer.disabled = false;
+  }
+});
+
+// Secours : impression par le navigateur de l'aperçu, à la taille réelle.
+elBtnImprimerNav.addEventListener('click', async () => {
+  if (!verifierAvantImpression()) return;
+  rendreLibre();
+  const config = configLibre(state.styleNormal, textesLibres());
+  await imprimerImagesSansPopup([{ src: elCanvas.toDataURL('image/png'), alt: 'Étiquette' }],
+    config.largeur_cm, Math.min(config.hauteur_cm, HAUTEUR_MAX_CM), 'Étiquette');
+  afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
+  noterImpressionNavigateur({ type: 'libre', libelle: config.lignes[0]?.texte || '' });
+});
+
+peVues.libre = {
+  async afficher() {
+    await chargerStyleNormal();
+    rendreLibre();
+  },
+};
 
 // ── Init ──────────────────────────────────────────────────────
 
 async function init() {
-  restaurerDimsLocal();
   await chargerFontDefaut();   // DejaVu embarquée pour l'aperçu Canvas
-  rendrePreview();             // premier rendu immédiat (avant les appels réseau)
-  await chargerFonts();
-  await chargerModeles();
-  await chargerFile();
-  rendrePreview();
+  await Promise.all([chargerFonts(), chargerFile(), chargerStyleNormal()]);
 
-  // Import article depuis catalogue achats (bouton 🏷️ du tableau catalogue).
-  // Son id est celui du catalogue ACHATS : on l'efface pour ne pas le confondre
-  // avec un produit de vente (variables, file « À réimprimer »).
+  // Textes de la dernière étiquette libre (confort sur la tablette).
+  let textes = [];
+  try { textes = JSON.parse(localStorage.getItem(CLE_TEXTES_LIBRES) || '[]'); } catch (e) { /* ignore */ }
+
+  // Bouton 🏷️ du catalogue achats : la désignation devient le texte de l'étiquette libre.
   let ongletDepart = null;
   try {
     const raw = sessionStorage.getItem('pe_article_import');
     if (raw) {
       sessionStorage.removeItem('pe_article_import');
       const article = JSON.parse(raw);
-      selectionnerArticle({ ...article, id: null });
+      textes = [article.designation || article.nom || ''];
       ongletDepart = 'libre';
     }
   } catch (e) { /* ignore */ }
-
-  // Ligne de démarrage vide si aucun article importé
-  if (elLignesListe.children.length === 0) {
-    elLignesListe.appendChild(creerLigneDOM({ texte: '', gras: true, alignement: 'center' }));
-  }
-
-  rendrePreview();
+  remplirLignesLibres(Array.isArray(textes) ? textes : []);
 
   // Onglet de départ : « Imprimer » quand on arrive pour imprimer (tuile du Hub
   // ?reimprimer, bouton 🏷️ du catalogue de vente ?produit=), sinon le dernier utilisé.
@@ -1112,7 +646,7 @@ async function init() {
 }
 
 // Promesse exposée : les autres scripts de la page (vues Imprimer, Style) peuvent
-// attendre la fin du chargement initial (polices, modèles, file).
+// attendre la fin du chargement initial (polices, file, style).
 document.addEventListener('DOMContentLoaded', () => { window.peInit = init(); });
 
 // ── Modale configuration imprimante ──────────────────────────

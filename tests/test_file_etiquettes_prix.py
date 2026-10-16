@@ -32,14 +32,10 @@ async def _sortir(client, ids, statut="imprimee", mode="navigateur"):
 
 
 async def _modele(client, nom="Prix", lignes=None):
-    r = await client.post("/api/prix-etiquettes/modeles", json={
-        "nom": nom,
-        "config": {"largeur_cm": 10, "hauteur_cm": 6.2,
-                   "lignes": lignes or [{"texte": "{Nom}"}, {"texte": "{prix}"},
-                                        {"texte": "{article_unite}"}]},
-    })
-    assert r.status_code == 201, r.text
-    return r.json()["id"]
+    from tests.test_styles_etiquettes import creer_modele
+    return await creer_modele(client, nom, {
+        "largeur_cm": 10, "hauteur_cm": 6.2,
+        "lignes": lignes or [{"texte": "{Nom}"}, {"texte": "{prix}"}, {"texte": "{article_unite}"}]})
 
 
 async def test_nouveau_prix_entre_dans_la_file_et_garde_le_prix_en_rayon(app_client, db):
@@ -138,7 +134,8 @@ async def test_impression_unitaire_remplit_les_variables_et_sort_de_la_file(app_
     assert "produit_id" not in recu
     assert await _file(app_client, {pid}) == {}
 
-    # Sans produit : texte imprimé tel quel (comportement historique).
+    # Sans produit : étiquette libre, au style de la boutique.
+    await _modele(app_client, "Style")
     r = await app_client.post("/api/prix-etiquettes/imprimer",
                               json={"lignes": [{"texte": "Promo"}]})
     assert r.status_code == 200 and recu["lignes"][0]["texte"] == "Promo"
@@ -191,6 +188,7 @@ async def test_historique_des_impressions(app_client, db, monkeypatch):
         "config": {"lignes": [{"texte": "{Nom}"}]},
         "produits": [{"produit_id": a, "quantite": 2}, {"produit_id": b, "quantite": 1}]})
     assert r.status_code == 200
+    await _modele(app_client, "Style")                    # l'étiquette libre reprend le style
     await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": "Arrivage du jour"}]})
     await app_client.post("/api/prix-etiquettes/impressions/navigateur",
                           json={"type": "normal", "produits": [{"produit_id": b, "quantite": 3}]})

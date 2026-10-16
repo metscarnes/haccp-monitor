@@ -439,6 +439,26 @@ def normaliser_style(config: dict) -> tuple[dict, bool]:
     return style, converti
 
 
+MAX_LIGNES_LIBRES = 5
+
+
+def config_libre(style: dict, textes: list[str]) -> dict:
+    """Étiquette LIBRE (« Arrivage du jour »…) : seul le texte est libre ; format, fond
+    et police sont ceux du style normal de la boutique — aucune taille, police ni mise
+    en page choisie à la main (une seule apparence pour toutes les étiquettes).
+    Lignes de même taille, centrées, ajustées au mieux. Miroir de configLibre (JS)."""
+    lignes_style = style.get("lignes") or []
+    zone_nom = next((l for l in lignes_style if l.get("zone") == "nom"),
+                    lignes_style[0] if lignes_style else {})
+    textes = [str(t).strip() for t in textes if str(t or "").strip()][:MAX_LIGNES_LIBRES]
+    return {
+        "largeur_cm": style.get("largeur_cm", 10), "hauteur_cm": style.get("hauteur_cm", 6),
+        "fond_noir": bool(style.get("fond_noir")), "type": "libre",
+        "lignes": [{"texte": t, "poids": 1, "taille_px": 0, "gras": False,
+                    "police": zone_nom.get("police"), "alignement": "center"} for t in textes],
+    }
+
+
 def style_promo_par_defaut(normal: dict) -> dict:
     """Style promo proposé tant qu'aucun n'est enregistré : même format, même fond et
     même police que le style normal ; ancien prix barré, prix promo, économie."""
