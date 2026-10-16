@@ -19,7 +19,7 @@ import logging
 import re
 import time
 from datetime import date as _date, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -37,22 +37,33 @@ BOUTIQUE_ID            = 1
 # ===========================================================================
 # Disposition des tuiles du Hub (personnalisée par l'administrateur)
 # ===========================================================================
-# Le serveur ne garde que des identifiants de tuiles ; la liste des tuiles
-# possibles (titre, icône, lien) est dans hub.js. Une seule disposition pour la
-# boutique : tablette, Surface et téléphone affichent le même Hub.
-#   ordre   : tuiles affichées, dans l'ordre de la grille
-#   connues : toutes les tuiles existantes au moment de l'enregistrement — une
-#             tuile ajoutée plus tard dans le code (absente de « connues »)
-#             apparaît donc d'elle-même au lieu d'être prise pour une masquée.
+# Le serveur ne garde que des identifiants ; la liste des tuiles possibles
+# (titre, icône, lien) et la disposition d'origine sont dans hub.js. Une seule
+# disposition pour la boutique : tablette, Surface et téléphone affichent le même Hub.
+#   accueil  : tuiles et dossiers de l'écran d'accueil, dans l'ordre de la grille
+#   dossiers : {id: {titre, icone, tuiles}} — un dossier peut en contenir d'autres
+#   connues  : toutes les tuiles existantes au moment de l'enregistrement — une
+#              tuile ajoutée plus tard dans le code (absente de « connues »)
+#              apparaît donc d'elle-même au lieu d'être prise pour une retirée.
 CLE_DISPOSITION = "hub_disposition"
+VERSION_DISPOSITION = 2
 JETON_DISPOSITION_SUJET = "disposition-hub"
 JETON_DISPOSITION_DUREE_S = 15 * 60
 _ID_TUILE = re.compile(r"^[a-z0-9-]{1,40}$")
+_ID_DOSSIER = re.compile(r"^dossier-[a-z0-9-]{1,32}$")
+_VIDE = {"personnalisee": False, "accueil": [], "dossiers": {}, "connues": []}
+
+
+class Dossier(BaseModel):
+    titre: str = Field(min_length=1, max_length=40)
+    icone: str = Field(default="📁", min_length=1, max_length=8)
+    tuiles: List[str] = Field(default_factory=list, max_length=80)
 
 
 class Disposition(BaseModel):
-    ordre: List[str] = Field(default_factory=list, max_length=60)
-    connues: List[str] = Field(default_factory=list, max_length=60)
+    accueil: List[str] = Field(default_factory=list, max_length=80)
+    dossiers: Dict[str, Dossier] = Field(default_factory=dict, max_length=40)
+    connues: List[str] = Field(default_factory=list, max_length=200)
     jeton: Optional[str] = None      # autorisation remise par /disposition/deverrouiller
 
 
@@ -72,15 +83,40 @@ def _exiger_jeton_disposition(jeton: Optional[str]) -> None:
                         "l'administrateur : déverrouillez avec le mot de passe administrateur.")
 
 
-def _ids_valides(ids: List[str]) -> List[str]:
-    """Garde l'ordre, retire les doublons ; 422 sur un identifiant mal formé."""
-    vus: list = []
-    for i in ids:
-        if not _ID_TUILE.match(i):
-            raise HTTPException(status_code=422, detail=f"Tuile inconnue : {i!r}")
-        if i not in vus:
-            vus.append(i)
-    return vus
+def _verifier_id(i: str) -> None:
+    if not _ID_TUILE.match(i):
+        raise HTTPException(status_code=422, detail=f"Tuile inconnue : {i!r}")
+
+
+def _nettoyer(body: Disposition) -> dict:
+    """Arbre propre à partir de l'accueil : chaque tuile / dossier une seule fois
+    (un dossier placé dans lui-même ou dans un de ses sous-dossiers est ignoré),
+    dossiers cités mais inexistants retirés, dossiers non rangés abandonnés."""
+    for i in body.accueil + body.connues + [t for d in body.dossiers.values() for t in d.tuiles]:
+        _verifier_id(i)
+    for i in body.dossiers:
+        if not _ID_DOSSIER.match(i):
+            raise HTTPException(status_code=422, detail=f"Dossier invalide : {i!r}")
+    vus: set = set()
+    dossiers: dict = {}
+
+    def parcourir(ids: List[str]) -> List[str]:
+        garde = []
+        for i in ids:
+            if i in vus or (i.startswith("dossier-") and i not in body.dossiers):
+                continue
+            vus.add(i)
+            garde.append(i)
+            if i in body.dossiers:
+                d = body.dossiers[i]
+                dossiers[i] = {"titre": d.titre.strip() or "Dossier", "icone": d.icone.strip() or "📁",
+                               "tuiles": parcourir(d.tuiles)}
+        return garde
+
+    accueil = parcourir(body.accueil)
+    connues = list(dict.fromkeys(body.connues + [i for i in vus if not i.startswith("dossier-")]))
+    return {"version": VERSION_DISPOSITION, "accueil": accueil, "dossiers": dossiers,
+            "connues": connues}
 
 
 @router.get("/disposition")
@@ -89,13 +125,16 @@ async def lire_disposition():
     async with get_db() as db:
         brut = await get_parametre(db, BOUTIQUE_ID, CLE_DISPOSITION)
     if not brut:
-        return {"personnalisee": False, "ordre": [], "connues": []}
+        return _VIDE
     try:
         d = json.loads(brut)
-        return {"personnalisee": True, "ordre": d.get("ordre", []), "connues": d.get("connues", [])}
-    except (ValueError, AttributeError):
+        if d.get("version") != VERSION_DISPOSITION:
+            return _VIDE
+        return {"personnalisee": True, "accueil": d["accueil"], "dossiers": d["dossiers"],
+                "connues": d["connues"]}
+    except (ValueError, AttributeError, KeyError):
         logger.warning("hub_disposition illisible, Hub d'origine affiché")
-        return {"personnalisee": False, "ordre": [], "connues": []}
+        return _VIDE
 
 
 @router.post("/disposition/deverrouiller")
@@ -113,12 +152,11 @@ async def deverrouiller_disposition(body: MotDePasse, request: Request):
 @router.put("/disposition")
 async def enregistrer_disposition(body: Disposition):
     _exiger_jeton_disposition(body.jeton)
-    ordre = _ids_valides(body.ordre)
-    connues = _ids_valides(body.connues + ordre)
+    d = _nettoyer(body)
     async with get_db() as db:
-        await set_parametre(db, BOUTIQUE_ID, CLE_DISPOSITION,
-                            json.dumps({"ordre": ordre, "connues": connues}))
-    return {"personnalisee": True, "ordre": ordre, "connues": connues}
+        await set_parametre(db, BOUTIQUE_ID, CLE_DISPOSITION, json.dumps(d, ensure_ascii=False))
+    return {"personnalisee": True, "accueil": d["accueil"], "dossiers": d["dossiers"],
+            "connues": d["connues"]}
 
 
 @router.post("/disposition/reinitialiser")
@@ -129,7 +167,7 @@ async def reinitialiser_disposition(body: Disposition):
         await db.execute("DELETE FROM parametres WHERE boutique_id = ? AND cle = ?",
                          (BOUTIQUE_ID, CLE_DISPOSITION))
         await db.commit()
-    return {"personnalisee": False, "ordre": [], "connues": []}
+    return _VIDE
 
 
 NUISIBLES_TYPES = {

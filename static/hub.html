@@ -23,7 +23,8 @@
        EN-TÊTE
   ========================================================= -->
   <header class="hub-header">
-    <div class="hub-titre">Au Comptoir des Lilas</div>
+    <a href="#" id="hub-retour" class="hub-btn-admin" hidden>← Accueil</a>
+    <div class="hub-titre" id="hub-titre">Au Comptoir des Lilas</div>
     <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
     <button type="button" id="hub-cloche" class="hub-btn-cloche"
             aria-label="Voir les tâches du jour" hidden>
@@ -39,9 +40,10 @@
        BARRE — Mode « Personnaliser l'accueil » (administrateur)
   ========================================================= -->
   <div id="hub-edition-barre" class="hub-edition-barre" hidden>
-    <span class="hub-edition-aide">Glissez une tuile pour la déplacer · ✕ pour la retirer</span>
+    <span class="hub-edition-aide">Glissez pour déplacer · 📁 ranger dans un dossier · ✕ retirer</span>
     <div class="hub-edition-actions">
       <button type="button" id="hub-edition-ajouter" class="hub-edition-btn">＋ Ajouter une tuile</button>
+      <button type="button" id="hub-edition-dossier" class="hub-edition-btn">＋ Nouveau dossier</button>
       <button type="button" id="hub-edition-origine" class="hub-edition-btn">↺ Revenir à l'origine</button>
       <button type="button" id="hub-edition-annuler" class="hub-edition-btn">Annuler</button>
       <button type="button" id="hub-edition-terminer" class="hub-edition-btn hub-edition-btn--ok">✓ Terminer</button>
@@ -57,89 +59,11 @@
   </div>
 
   <!-- ========================================================
-       GRILLE — 5 tuiles, responsive
-       Phone (<480px):   1 col, stack vertical
-       Tablet portrait (480-767px): 2 col (first 4) + 1 below
-       Tablet landscape (768px+):   3 col (first 3) + 2 below
+       GRILLE — tuiles et dossiers, construits par hub.js à partir de la
+       disposition enregistrée (ou de la disposition d'origine).
+       Cachée le temps de lire la disposition (évite un saut visuel).
   ========================================================= -->
-  <!-- Tuiles d'origine ci-dessous ; les autres tuiles possibles et la
-       disposition personnalisée (ordre, tuiles retirées) sont gérées par hub.js.
-       Grille cachée le temps de lire la disposition (évite un saut visuel). -->
-  <main class="hub-grille hub-grille--attente" id="hub-grille" role="main">
-
-    <!-- ── Tâches HACCP ── -->
-    <a class="hub-tuile" id="tuile-taches"
-       href="/taches-hub.html" aria-label="Tâches HACCP">
-      <div class="hub-tuile-icone" aria-hidden="true">✅</div>
-      <div class="hub-tuile-titre">TÂCHES HACCP</div>
-      <div class="hub-tuile-statut">Nettoyage & contrôles</div>
-    </a>
-
-    <!-- ── Production ── -->
-    <a class="hub-tuile" id="tuile-production"
-       href="/production-hub.html" aria-label="Production">
-      <div class="hub-tuile-icone" aria-hidden="true">🏭</div>
-      <div class="hub-tuile-titre">PRODUCTION</div>
-      <div class="hub-tuile-statut">Fabrication, Cuisson, Refroidissement</div>
-    </a>
-
-    <!-- ── Réception ── -->
-    <a class="hub-tuile hub-tuile--chargement" id="tuile-reception"
-       href="/reception.html" aria-label="Contrôles réception">
-      <div class="hub-tuile-icone" aria-hidden="true">📦</div>
-      <div class="hub-tuile-titre">RÉCEPTION</div>
-      <div class="hub-tuile-statut" id="statut-reception">Chargement…</div>
-    </a>
-
-    <!-- ── Ouverture sous-vide ── -->
-    <a class="hub-tuile" id="tuile-ouverture"
-       href="/ouverture.html" aria-label="Ouverture sous-vide">
-      <div class="hub-tuile-icone" aria-hidden="true">✂️</div>
-      <div class="hub-tuile-titre">OUVERTURE</div>
-      <div class="hub-tuile-statut">Traçabilité ouvertures</div>
-    </a>
-
-    <!-- ── Calendrier DLC ── -->
-    <a class="hub-tuile" id="tuile-dlc"
-       href="/dlc.html" aria-label="Calendrier DLC">
-      <div class="hub-tuile-icone" aria-hidden="true">📅</div>
-      <div class="hub-tuile-titre">CALENDRIER DLC</div>
-      <div class="hub-tuile-statut">4 sources unifiées</div>
-    </a>
-
-    <!-- ── Stock unifié ── -->
-    <a class="hub-tuile" id="tuile-inventaire"
-       href="/inventaire.html" aria-label="Stock unifié FIFO">
-      <div class="hub-tuile-icone" aria-hidden="true">📋</div>
-      <div class="hub-tuile-titre">STOCK</div>
-      <div class="hub-tuile-statut">FIFO toutes sources</div>
-    </a>
-
-    <!-- ── Historique unifié (tous les enregistrements) ── -->
-    <a class="hub-tuile" id="tuile-historique"
-       href="/historique.html" aria-label="Historique unifié">
-      <div class="hub-tuile-icone" aria-hidden="true">🗂️</div>
-      <div class="hub-tuile-titre">HISTORIQUE</div>
-      <div class="hub-tuile-statut">Tous les enregistrements</div>
-    </a>
-
-    <!-- ── Achats ── -->
-    <a class="hub-tuile" id="tuile-achats"
-       href="/achats.html" aria-label="Module Achats">
-      <div class="hub-tuile-icone" aria-hidden="true">🛒</div>
-      <div class="hub-tuile-titre">ACHATS</div>
-      <div class="hub-tuile-statut" id="statut-achats">Fournisseurs & commandes</div>
-    </a>
-
-    <!-- ── Étiquettes prix ── -->
-    <a class="hub-tuile" id="tuile-prix-etiquettes"
-       href="/prix-etiquettes.html" aria-label="Étiquettes prix">
-      <div class="hub-tuile-icone" aria-hidden="true">🏷️</div>
-      <div class="hub-tuile-titre">ÉTIQUETTES PRIX</div>
-      <div class="hub-tuile-statut" id="statut-prix-etiquettes">Impression Brother QL</div>
-    </a>
-
-  </main>
+  <main class="hub-grille hub-grille--attente" id="hub-grille" role="main"></main>
 
   <!-- ========================================================
        POPUP — Tâches du jour & à venir
@@ -201,17 +125,39 @@
   <!-- ========================================================
        POPUP — Ajouter une tuile
   ========================================================= -->
-  <div id="hub-ajout-overlay" class="hub-popup-overlay" hidden role="dialog"
-       aria-modal="true" aria-labelledby="hub-ajout-titre">
+  <div id="hub-choix-overlay" class="hub-popup-overlay" hidden role="dialog"
+       aria-modal="true" aria-labelledby="hub-choix-titre">
     <div class="hub-popup">
       <header class="hub-popup-header">
-        <h2 id="hub-ajout-titre" class="hub-popup-titre">＋ Ajouter une tuile</h2>
+        <h2 id="hub-choix-titre" class="hub-popup-titre"></h2>
         <button type="button" class="hub-popup-fermer" data-fermer aria-label="Fermer">✕</button>
       </header>
       <section class="hub-popup-section">
-        <ul id="hub-ajout-liste" class="hub-popup-liste"></ul>
+        <ul id="hub-choix-liste" class="hub-popup-liste"></ul>
       </section>
     </div>
+  </div>
+
+  <!-- ========================================================
+       POPUP — Nouveau dossier / renommer un dossier
+  ========================================================= -->
+  <div id="hub-dossier-overlay" class="hub-popup-overlay" hidden role="dialog"
+       aria-modal="true" aria-labelledby="hub-dossier-titre">
+    <form class="hub-popup hub-popup--petit" id="hub-dossier-form">
+      <header class="hub-popup-header">
+        <h2 id="hub-dossier-titre" class="hub-popup-titre">📁 Nouveau dossier</h2>
+        <button type="button" class="hub-popup-fermer" data-fermer aria-label="Fermer">✕</button>
+      </header>
+      <section class="hub-popup-section">
+        <label for="hub-dossier-nom" class="hub-mdp-label">Nom du dossier</label>
+        <input type="text" id="hub-dossier-nom" class="hub-mdp-champ" maxlength="40" required>
+        <span class="hub-mdp-label hub-dossier-label-icone">Icône</span>
+        <div id="hub-dossier-icones" class="hub-dossier-icones"></div>
+      </section>
+      <footer class="hub-popup-footer">
+        <button type="submit" class="hub-edition-btn hub-edition-btn--ok">Valider</button>
+      </footer>
+    </form>
   </div>
 
   <script src="/static/js/hub.js"></script>

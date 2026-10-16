@@ -741,9 +741,11 @@
       granActive = gran;
       $('per-col-periode').textContent = labelGran[gran];
       $('per-col-evol').textContent = gran === 'jour' ? 'Évol. S-1' : 'Évol. préc.';
+      const tbody = $('periode-body');
       try {
-        const res = await fetch(`${API}/stats/par-periode?granularite=${gran}&limit=60`).then(r => r.json());
-        const tbody = $('periode-body');
+        const rep = await fetch(`${API}/stats/par-periode?granularite=${gran}&limit=60`);
+        if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
+        const res = await rep.json();
         if (!res.lignes.length) {
           tbody.innerHTML = '<tr><td colspan="7">Aucune donnée.</td></tr>';
           return;
@@ -766,7 +768,11 @@
             tr.addEventListener('click', () => focusProfilJour(tr.dataset.date));
           });
         }
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        // Ne pas laisser l'ancien tableau sous un nouvel en-tête (Jour ≠ Semaine)
+        console.error(e);
+        tbody.innerHTML = '<tr><td colspan="7" class="feedback err">Impossible de charger ce tableau. Réessayer plus tard.</td></tr>';
+      }
     }
 
     // Ouvre le bloc Profil, surligne le jour de semaine correspondant à une date, scrolle

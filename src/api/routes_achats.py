@@ -6345,13 +6345,49 @@ async def get_ca_comparer_dates(
 
 # Granularité → expression SQLite qui calcule la clé de période depuis date_ca.
 # jour   : la date elle-même (YYYY-MM-DD)
-# semaine: année + n° de semaine ISO (%G-S%V) — lundi comme premier jour
+# semaine: None → regroupée en Python (année + n° de semaine ISO, « 2026-S42 »).
+#          strftime('%G'/'%V') n'existe qu'à partir de SQLite 3.46 ; la prod
+#          (Debian 12) est en 3.40 → NULL, et le tableau Semaine restait figé.
 # mois   : année-mois (YYYY-MM)
 _GRANULARITES = {
     "jour":    "date_ca",
-    "semaine": "strftime('%G-S%V', date_ca)",
+    "semaine": None,
     "mois":    "strftime('%Y-%m', date_ca)",
 }
+
+
+async def _ca_par_semaine_iso(db, limit: int) -> list[dict]:
+    """Agrège ca_journalier par semaine ISO (lundi→dimanche), plus récente
+    d'abord. Mêmes clés que la requête SQL jour/mois de get_ca_par_periode."""
+    cur = await db.execute(
+        """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, montant_ttc_soir
+           FROM ca_journalier
+           WHERE boutique_id = 1
+           ORDER BY date_ca DESC"""
+    )
+    semaines: dict[str, dict] = {}
+    for j in await cur.fetchall():
+        annee, num, _ = date.fromisoformat(j["date_ca"]).isocalendar()
+        cle = f"{annee}-S{num:02d}"
+        s = semaines.get(cle)
+        if s is None:
+            if len(semaines) >= limit:
+                break
+            s = semaines[cle] = {
+                "periode": cle, "date_debut": j["date_ca"], "date_fin": j["date_ca"],
+                "nb_jours": 0, "total_ttc": 0, "total_tickets": 0,
+                "total_ttc_matin": 0, "total_ttc_soir": 0,
+            }
+        s["date_debut"] = j["date_ca"]          # tri décroissant → le plus ancien en dernier
+        s["nb_jours"] += 1
+        s["total_ttc"]       += j["montant_ttc"] or 0
+        s["total_tickets"]   += j["nb_tickets"] or 0
+        s["total_ttc_matin"] += j["montant_ttc_matin"] or 0
+        s["total_ttc_soir"]  += j["montant_ttc_soir"] or 0
+    for s in semaines.values():
+        for k in ("total_ttc", "total_ttc_matin", "total_ttc_soir"):
+            s[k] = round(s[k], 2)
+    return list(semaines.values())
 
 
 @router.get("/pilotage/ca/stats/par-periode")
@@ -6367,28 +6403,42 @@ async def get_ca_par_periode(
     expr = _GRANULARITES[gran]
 
     async with get_db() as db:
-        cur = await db.execute(
-            f"""SELECT
-                    {expr}                               AS periode,
-                    MIN(date_ca)                         AS date_debut,
-                    MAX(date_ca)                         AS date_fin,
-                    COUNT(*)                             AS nb_jours,
-                    COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
-                    COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
-                    COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
-                    COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir
-                FROM ca_journalier
-                WHERE boutique_id = 1
-                GROUP BY periode
-                ORDER BY periode DESC
-                LIMIT ?""",
-            (limit,),
-        )
-        rows = [dict(r) for r in await cur.fetchall()]
+        if expr is None:
+            rows = await _ca_par_semaine_iso(db, limit)
+        else:
+            rows = await _ca_par_periode_sql(db, expr, limit)
 
     for r in rows:
         r["panier_moyen"] = _panier(r["total_ttc"], r["total_tickets"])
 
+    return await _evolutions_par_periode(gran, rows)
+
+
+async def _ca_par_periode_sql(db, expr: str, limit: int) -> list[dict]:
+    """Agrège ca_journalier par jour ou par mois (clé de période calculée en SQL)."""
+    cur = await db.execute(
+        f"""SELECT
+                {expr}                               AS periode,
+                MIN(date_ca)                         AS date_debut,
+                MAX(date_ca)                         AS date_fin,
+                COUNT(*)                             AS nb_jours,
+                COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
+                COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
+                COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
+                COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir
+            FROM ca_journalier
+            WHERE boutique_id = 1
+            GROUP BY periode
+            ORDER BY periode DESC
+            LIMIT ?""",
+        (limit,),
+    )
+    return [dict(r) for r in await cur.fetchall()]
+
+
+async def _evolutions_par_periode(gran: str, rows: list[dict]) -> dict:
+    """Ajoute à chaque période son évolution (CA et panier) et renvoie la
+    réponse de /stats/par-periode."""
     if gran == "jour":
         # Évolution vs le MÊME JOUR la semaine précédente (date - 7 jours).
         # On indexe par date pour gérer les jours manquants : un mardi se
