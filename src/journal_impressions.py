@@ -17,6 +17,8 @@ from typing import Optional
 
 TYPES = ("normal", "promo", "libre")
 MODES = ("serveur", "navigateur")
+# Étiquette libre : ses lignes séparées par « \n » (5 lignes × 40 caractères au plus).
+LIBELLE_MAX = 250
 
 
 def _maintenant() -> str:
@@ -48,7 +50,7 @@ async def journaliser(db, lignes: list[dict], *, mode: str = "serveur",
                    (lot, imprime_at, catalogue_vente_id, libelle, quantite, type, prix_ttc,
                     mode, role)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (lot, quand, l.get("catalogue_vente_id"), (l.get("libelle") or "")[:120],
+            (lot, quand, l.get("catalogue_vente_id"), (l.get("libelle") or "")[:LIBELLE_MAX],
              int(l["quantite"]), type_, l.get("prix_ttc"), mode, role),
         )
     return lot

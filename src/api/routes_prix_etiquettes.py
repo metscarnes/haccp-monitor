@@ -128,11 +128,12 @@ async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
         raise HTTPException(status_code=503, detail=message)
     if body.produit_id is not None:
         await _sortir_de_la_file([body.produit_id], mode="serveur")
-    # Historique : produit du catalogue, ou étiquette libre (première ligne de texte).
-    premiere = next((l["texte"] for l in data["lignes"] if l["texte"].strip()), "")
+    # Historique : produit du catalogue, ou étiquette libre (TOUTES ses lignes, une par
+    # ligne de texte : l'historique les affiche et peut la réimprimer à l'identique).
+    texte_libre = "\n".join(l["texte"] for l in data["lignes"] if l["texte"].strip())
     await _journaliser(request, [{
         "catalogue_vente_id": body.produit_id,
-        "libelle": produit["nom"] if produit else premiere,
+        "libelle": produit["nom"] if produit else texte_libre,
         "quantite": 1,
         "type": body.type if produit else "libre",
         "prix_ttc": prix_imprime(produit, body.type) if produit else None,

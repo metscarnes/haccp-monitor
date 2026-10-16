@@ -493,9 +493,13 @@
   // Réimpression depuis l'historique : un clic sur « Réimprimer » (toute l'impression),
   // ou cocher plusieurs lignes / impressions puis « Réimprimer la sélection ».
   // Toujours au prix ACTUEL et avec le style du moment (promo si le produit est en promo).
-  // Une étiquette libre ne se réimprime pas d'ici (son texte n'est pas gardé).
+  // Une étiquette libre se réimprime à l'identique : son texte (lignes séparées par « \n »)
+  // repart tel quel, au style du moment.
   let impressionsAffichees = [];
-  const reimprimable = l => l.catalogue_vente_id != null && !!produit(l.catalogue_vente_id);
+  const estLibre = l => l.type === 'libre' && l.catalogue_vente_id == null;
+  const textesDe = l => (l.libelle || '').split('\n').filter(t => t.trim());
+  const reimprimable = l => estLibre(l) ? textesDe(l).length > 0
+                                         : l.catalogue_vente_id != null && !!produit(l.catalogue_vente_id);
 
   function histoStatut(msg, type) {
     const el = $('historique-statut');
@@ -505,28 +509,61 @@
   }
 
   function majBoutonSelection() {
-    const lignes = lignesCochees();
-    const n = lignes.reduce((s, l) => s + l.quantite, 0);
+    const { produits, libres } = lignesCochees();
+    const n = [...produits, ...libres].reduce((s, l) => s + l.quantite, 0);
     const btn = $('historique-reimprimer');
     btn.disabled = n === 0;
     btn.textContent = n ? `🖨️ Réimprimer la sélection (${n} étiquette${n > 1 ? 's' : ''})`
                         : '🖨️ Réimprimer la sélection';
   }
 
-  // Lignes cochées → [{produit_id, quantite}] (un même produit coché deux fois : additionné).
-  function lignesCochees() {
-    const qte = new Map();
-    $('historique-liste').querySelectorAll('.pe-histo-cb-ligne:checked').forEach(cb => {
-      const id = +cb.dataset.produit;
-      qte.set(id, (qte.get(id) || 0) + (+cb.dataset.quantite));
+  // Lignes d'historique → { produits: [{produit_id, quantite}] (un même produit compté
+  // deux fois : additionné), libres: [{textes, quantite}] }.
+  function aReimprimer(lignes) {
+    const qte = new Map(), libres = [];
+    lignes.forEach(l => {
+      if (estLibre(l)) libres.push({ textes: textesDe(l), quantite: l.quantite });
+      else qte.set(l.catalogue_vente_id, (qte.get(l.catalogue_vente_id) || 0) + l.quantite);
     });
-    return [...qte].map(([produit_id, quantite]) => ({ produit_id, quantite }));
+    return { produits: [...qte].map(([produit_id, quantite]) => ({ produit_id, quantite })), libres };
   }
 
-  async function reimprimer(lignes) {
-    if (!lignes.length) return;
+  function lignesCochees() {
+    return aReimprimer([...$('historique-liste').querySelectorAll('.pe-histo-cb-ligne:checked')]
+      .map(cb => impressionsAffichees[+cb.dataset.lot].lignes[+cb.dataset.ligne]));
+  }
+
+  // Étiquettes libres : une par appel (le serveur leur applique le style de la boutique).
+  async function imprimerLibres(libres) {
+    let total = 0;
+    const erreurs = [];
+    for (const { textes, quantite } of libres) {
+      for (let k = 0; k < quantite; k++) {
+        try {
+          await apiFetch('/api/prix-etiquettes/imprimer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'libre', lignes: textes.map(texte => ({ texte })) }),
+          });
+          total++;
+        } catch (e) {
+          erreurs.push(e.message);
+          return { total, erreurs };          // imprimante injoignable : inutile d'insister
+        }
+      }
+    }
+    return { total, erreurs };
+  }
+
+  async function reimprimer({ produits, libres }) {
+    if (!produits.length && !libres.length) return;
     histoStatut('Envoi à l\'imprimante…', 'loading');
-    const resultat = await envoyerALImprimante(lignes);
+    const resultat = produits.length ? await envoyerALImprimante(produits) : { total: 0, erreurs: [] };
+    if (libres.length && !resultat.erreurs.length) {
+      const r = await imprimerLibres(libres);
+      resultat.total += r.total;
+      resultat.erreurs.push(...r.erreurs);
+    }
     const { total, erreurs } = resultat;
     histoStatut(erreurs.length ? `${total} imprimée(s) — Erreur impression : ${erreurs[0]}`
                                : `✓ ${total} étiquette${total > 1 ? 's' : ''} réimprimée${total > 1 ? 's' : ''}.`,
@@ -555,11 +592,12 @@
             <span class="pe-histo-total">${i.total} étiquette${i.total > 1 ? 's' : ''}</span>
             ${possibles.length ? `<button class="pe-btn pe-btn--sm pe-btn--ajout pe-histo-reimp" data-lot="${n}">🖨️ Réimprimer</button>` : ''}
           </div>
-          <ul class="pe-histo-lignes">${i.lignes.map(l => `
+          <ul class="pe-histo-lignes">${i.lignes.map((l, k) => `
             <li>${reimprimable(l)
                 ? `<input type="checkbox" class="pe-histo-cb pe-histo-cb-ligne" data-lot="${n}"
-                          data-produit="${l.catalogue_vente_id}" data-quantite="${l.quantite}">` : ''}
-              ${ICONE_TYPE[l.type] || ''}${escHtml(l.libelle || '—')}
+                          data-ligne="${k}">` : ''}
+              ${ICONE_TYPE[l.type] || ''}${escHtml(estLibre(l) ? textesDe(l).join(' — ') || '—'
+                                                               : l.libelle || '—')}
               ${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
               ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
           </ul>
@@ -596,8 +634,7 @@
     const btn = e.target.closest('.pe-histo-reimp');
     if (!btn) return;
     const i = impressionsAffichees[+btn.dataset.lot];
-    reimprimer(i.lignes.filter(reimprimable)
-      .map(l => ({ produit_id: l.catalogue_vente_id, quantite: l.quantite })));
+    reimprimer(aReimprimer(i.lignes.filter(reimprimable)));
   });
 
   $('historique-reimprimer').addEventListener('click', () => reimprimer(lignesCochees()));

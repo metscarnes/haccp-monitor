@@ -603,7 +603,7 @@ elBtnImprimerNav.addEventListener('click', async () => {
   await imprimerImagesSansPopup([{ src: elCanvas.toDataURL('image/png'), alt: 'Étiquette' }],
     config.largeur_cm, Math.min(config.hauteur_cm, HAUTEUR_MAX_CM), 'Étiquette');
   afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
-  noterImpressionNavigateur({ type: 'libre', libelle: config.lignes[0]?.texte || '' });
+  noterImpressionNavigateur({ type: 'libre', libelle: config.lignes.map(l => l.texte).join('\n') });
 });
 
 peVues.libre = {

@@ -189,7 +189,7 @@ async def test_historique_des_impressions(app_client, db, monkeypatch):
         "produits": [{"produit_id": a, "quantite": 2}, {"produit_id": b, "quantite": 1}]})
     assert r.status_code == 200
     await _modele(app_client, "Style")                    # l'étiquette libre reprend le style
-    await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": "Arrivage du jour"}]})
+    await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": "Paupiette de lapin"}, {"texte": "14,90 €"}]})
     await app_client.post("/api/prix-etiquettes/impressions/navigateur",
                           json={"type": "normal", "produits": [{"produit_id": b, "quantite": 3}]})
 
@@ -198,7 +198,8 @@ async def test_historique_des_impressions(app_client, db, monkeypatch):
     assert serie["mode"] == "serveur" and serie["total"] == 3 and len(serie["imprime_at"]) == 19
     assert [(l["libelle"], l["quantite"], l["prix_ttc"]) for l in serie["lignes"]] == [
         ("Histo A", 2, 10.90), ("Histo B", 1, 3.99)]
-    assert libre["lignes"] == [{"libelle": "Arrivage du jour", "quantite": 1, "type": "libre",
+    # Toutes les lignes sont gardées : l'historique les affiche et peut les réimprimer.
+    assert libre["lignes"] == [{"libelle": "Paupiette de lapin\n14,90 €", "quantite": 1, "type": "libre",
                                 "prix_ttc": None, "catalogue_vente_id": None}]
     assert nav["mode"] == "navigateur" and nav["lignes"][0]["quantite"] == 3
 
