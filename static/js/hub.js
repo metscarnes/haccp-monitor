@@ -6,7 +6,9 @@
    Responsabilités :
    - Horloge temps réel (1 s)
    - Chargement des données depuis 4 endpoints (toutes les 30 s)
-   - Mise à jour des 4 tuiles avec statut coloré
+   - Tuiles et dossiers (Tâches HACCP, Production, Achats, Pilotage…) construits
+     depuis la disposition enregistrée, rangeables par l'administrateur
+   - Mise à jour des tuiles avec statut coloré
    - Bandeau d'alerte si tâches en retard
    - Retour accueil (reload) après 5 min d'inactivité
    ============================================================ */
@@ -39,8 +41,9 @@ let timerInact;
 
 function resetInact() {
   clearTimeout(timerInact);
-  // Pas de rechargement en pleine personnalisation : le rangement serait perdu.
-  timerInact = setTimeout(() => { if (!enEdition) location.reload(); }, INACT_MS);
+  // Retour à l'accueil (hors dossier). Pas en pleine personnalisation :
+  // le rangement en cours serait perdu.
+  timerInact = setTimeout(() => { if (!enEdition) location.replace('/hub.html'); }, INACT_MS);
 }
 
 ['touchstart', 'click', 'keydown', 'mousemove', 'scroll'].forEach(ev =>
@@ -68,11 +71,24 @@ function dot(etat) {
  * @param {string} etat     — "ok" | "attention" | "alerte" | "erreur" | "chargement"
  * @param {string} html     — contenu HTML du statut
  */
+const ETATS_TUILE = ['ok', 'attention', 'alerte', 'erreur', 'chargement'];
+
 function setTuile(idTuile, etat, html) {
   const tuile  = document.getElementById(idTuile);
   const statut = document.getElementById('statut-' + idTuile.replace('tuile-', ''));
-  tuile.className  = `hub-tuile hub-tuile--${etat}`;
+  if (!tuile || !statut) return;
+  // Seule la classe d'état change (garde « dossier », « tenue »…).
+  ETATS_TUILE.forEach(e => tuile.classList.remove('hub-tuile--' + e));
+  tuile.classList.add('hub-tuile--' + etat);
+  tuile.dataset.etat = etat;
   statut.innerHTML = html;
+  majDossiers();   // un dossier prend la couleur de l'alerte qu'il contient
+}
+
+/** Texte de statut seul, sans couleur de bordure. */
+function setStatut(idTuile, html) {
+  const statut = document.getElementById('statut-' + idTuile.replace('tuile-', ''));
+  if (statut) statut.innerHTML = html;
 }
 
 // ── Tuile — Fabrication ───────────────────────────────────────
@@ -295,115 +311,400 @@ async function chargerResumeTaches() {
   }
 }
 
-// ── Personnaliser l'accueil (administrateur) ──────────────────
-// Les tuiles d'origine sont dans hub.html ; celles-ci peuvent être ajoutées.
-// La disposition (ordre + tuiles affichées) est enregistrée sur le serveur :
-// une seule pour la boutique, tous les appareils affichent le même Hub.
-const TUILES_EN_PLUS = [
-  { id: 'pilotage-ca',         href: '/pilotage-ca.html',         icone: '💶', titre: "CHIFFRE D'AFFAIRES",  statut: 'Saisie & comparatif' },
-  { id: 'pilotage',            href: '/pilotage.html',            icone: '📊', titre: 'PILOTAGE',            statut: 'CA, inventaire, marge' },
-  { id: 'inventaire-valorise', href: '/inventaire-valorise.html', icone: '💰', titre: 'INVENTAIRE VALORISÉ', statut: 'Stock en €' },
-  { id: 'marge',               href: '/marge.html',               icone: '📈', titre: 'MARGE',               statut: 'Marge brute' },
-  { id: 'fabrication',         href: '/etiquettes.html',          icone: '🔪', titre: 'FABRICATION',         statut: 'Étiquettes fabrication' },
-  { id: 'cuisson',             href: '/cuisson.html',             icone: '🔥', titre: 'CUISSON',             statut: 'Contrôle ≥ 75 °C' },
-  { id: 'refroidissement',     href: '/refroidissement.html',     icone: '❄️', titre: 'REFROIDISSEMENT',     statut: '≤ 10 °C en ≤ 2 h' },
-  { id: 'catalogue-vente',     href: '/catalogue-vente.html',     icone: '🏷️', titre: 'CATALOGUE VENTE',     statut: 'Produits finis' },
-  { id: 'catalogue',           href: '/catalogue.html',           icone: '📚', titre: 'CATALOGUE',           statut: 'Produits & matières premières' },
-  { id: 'nettoyage',           href: '/nettoyage.html',           icone: '🧹', titre: 'NETTOYAGE',           statut: 'Plan de nettoyage' },
-  { id: 'temperatures',        href: '/',                         icone: '🌡️', titre: 'TEMPÉRATURES',        statut: 'Enceintes froides' },
-  { id: 'etalonnage',          href: '/etalonnage.html',          icone: '🌡️', titre: 'ÉTALONNAGE',          statut: 'Thermomètres' },
-  { id: 'nuisibles',           href: '/nuisibles.html',           icone: '🐛', titre: 'NUISIBLES',           statut: 'Contrôle des pièges' },
-  { id: 'elearning',           href: '/elearning.html',           icone: '🎓', titre: 'E-LEARNING',          statut: 'Formation hygiène' },
-  { id: 'classeur-pms',        href: '/classeur-pms.html',        icone: '📂', titre: 'CLASSEUR PMS',        statut: 'Procédures & traçabilité' },
+// ── Tuiles des sous-modules (anciennes pages Tâches HACCP, Achats, Pilotage) ──
+function formatDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function fmtEur(v) {
+  if (v == null) return '—';
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
+}
+
+async function chargerNettoyage() {
+  try {
+    const data = await apiFetch('/api/nettoyage/status');
+    if (data.valide) {
+      const par = data.operateur ? ` — ${escHtml(data.operateur)}` : '';
+      setTuile('tuile-nettoyage', 'ok', `${dot('ok')} Validé aujourd'hui${par}`);
+    } else {
+      setTuile('tuile-nettoyage', 'alerte', `${dot('alerte')} <strong>Non validé aujourd'hui</strong>`);
+    }
+  } catch {
+    setTuile('tuile-nettoyage', 'erreur', '⚠ Connexion perdue');
+  }
+}
+
+async function chargerEtalonnage() {
+  try {
+    const data = await apiFetch('/api/etalonnage/status');
+    if (data.jamais_fait) {
+      setTuile('tuile-etalonnage', 'alerte',
+        `${dot('alerte')} <strong>Jamais réalisé</strong><br><small>EET01 requis</small>`);
+      return;
+    }
+    if (data.en_retard) {
+      const jours = Math.abs(data.jours_restants);
+      setTuile('tuile-etalonnage', 'alerte',
+        `${dot('alerte')} <strong>En retard de ${jours} j</strong>`
+        + `<br><small>Dernier : ${formatDate(data.dernier_date)}</small>`);
+      return;
+    }
+    const j = data.jours_restants;
+    const etatTuile = j <= 14 ? 'attention' : 'ok';
+    setTuile('tuile-etalonnage', etatTuile,
+      `${dot(etatTuile)} Prochain dans ${j} j<br><small>Dernier : ${formatDate(data.dernier_date)}</small>`);
+  } catch {
+    setTuile('tuile-etalonnage', 'erreur', '⚠ Connexion perdue');
+  }
+}
+
+async function chargerTemperatures() {
+  try {
+    const dash = await apiFetch('/api/boutiques/1/dashboard');
+    if (!dash?.boutique) {
+      setTuile('tuile-temperatures', 'erreur', '⚠ Données indisponibles');
+      return;
+    }
+    const sg    = dash.boutique.statut;
+    const etatTuile = sg === 'alerte' ? 'alerte' : sg === 'attention' ? 'attention' : 'ok';
+    const label = sg === 'alerte' ? 'ALERTE TEMPÉRATURE' : sg === 'attention' ? 'Attention' : 'Tout OK';
+    const mesures = (dash.enceintes ?? [])
+      .filter(e => e.temperature_actuelle !== null)
+      .slice(0, 3)
+      .map(e => {
+        const t   = Number(e.temperature_actuelle).toFixed(1);
+        const nom = escHtml(e.nom.replace('Chambre froide', 'CF').replace('chambre froide', 'CF'));
+        const couleur = e.statut === 'alerte' ? 'style="color:var(--alerte);font-weight:700"' : '';
+        return `<span ${couleur}>${nom}&nbsp;${t}°</span>`;
+      })
+      .join('&ensp;·&ensp;');
+    setTuile('tuile-temperatures', etatTuile,
+      `${dot(etatTuile)} ${label}` + (mesures ? `<br><small>${mesures}</small>` : ''));
+  } catch {
+    setTuile('tuile-temperatures', 'erreur', '⚠ Connexion perdue');
+  }
+}
+
+async function chargerAchats() {
+  const [rF, rC, rFac] = await Promise.allSettled([
+    apiFetch('/api/achats/fournisseurs'),
+    apiFetch('/api/achats/commandes?limit=100'),
+    apiFetch('/api/achats/factures?limit=100'),
+  ]);
+  if (rF.status === 'fulfilled') {
+    const n = rF.value.length;
+    setStatut('tuile-fournisseurs', `${n} fournisseur${n > 1 ? 's' : ''} actif${n > 1 ? 's' : ''}`);
+  }
+  if (rC.status === 'fulfilled') {
+    const n = rC.value.filter(c => c.statut === 'brouillon' || c.statut === 'confirmee').length;
+    setStatut('tuile-commandes', n > 0 ? `${n} commande${n > 1 ? 's' : ''} en cours` : 'Aucune commande en cours');
+  }
+  if (rFac.status === 'fulfilled') {
+    const n = rFac.value.filter(f => f.statut === 'litige').length;
+    if (n > 0) setTuile('tuile-factures', 'attention', `${dot('attention')} ${n} en litige`);
+  }
+}
+
+async function chargerPilotage() {
+  const [rCa, rInv] = await Promise.allSettled([
+    apiFetch('/api/achats/pilotage/ca/stats/resume'),
+    apiFetch('/api/inventaire/sessions?limit=1'),
+  ]);
+  if (rCa.status === 'fulfilled') {
+    const mc = rCa.value.mois_courant || {};
+    setStatut('tuile-pilotage-ca', mc.nb_jours > 0 ? `Mois en cours : ${fmtEur(mc.total_ttc)}` : 'Aucune saisie ce mois-ci');
+  }
+  if (rInv.status === 'fulfilled') {
+    const ses = (rInv.value.sessions || [])[0];
+    if (!ses) {
+      setStatut('tuile-inventaire-valorise', 'Aucun inventaire');
+    } else {
+      const date = new Date(ses.date_inventaire).toLocaleDateString('fr-FR');
+      setStatut('tuile-inventaire-valorise', ses.statut === 'cloture'
+        ? `${date} : ${fmtEur(ses.valeur_totale_ht)}` : `${date} : en cours…`);
+    }
+  }
+}
+
+async function chargerSousModules() {
+  await Promise.allSettled([
+    chargerNettoyage(), chargerEtalonnage(), chargerTemperatures(), chargerAchats(), chargerPilotage(),
+  ]);
+}
+
+// ── Tuiles possibles et disposition d'origine ─────────────────
+// Le serveur n'enregistre que des identifiants : titre, icône et lien sont ici.
+const TUILES = [
+  // Accueil
+  { id: 'reception',           href: '/reception.html',            icone: '📦', titre: 'RÉCEPTION',           statut: 'Chargement…' },
+  { id: 'ouverture',           href: '/ouverture.html',            icone: '✂️', titre: 'OUVERTURE',           statut: 'Traçabilité ouvertures' },
+  { id: 'dlc',                 href: '/dlc.html',                  icone: '📅', titre: 'CALENDRIER DLC',      statut: '4 sources unifiées' },
+  { id: 'inventaire',          href: '/inventaire.html',           icone: '📋', titre: 'STOCK',               statut: 'FIFO toutes sources' },
+  { id: 'historique',          href: '/historique.html',           icone: '🗂️', titre: 'HISTORIQUE',          statut: 'Tous les enregistrements' },
+  { id: 'prix-etiquettes',     href: '/prix-etiquettes.html',      icone: '🏷️', titre: 'ÉTIQUETTES PRIX',     statut: 'Impression Brother QL' },
+  // Tâches HACCP
+  { id: 'nettoyage',           href: '/nettoyage.html',            icone: '🧹', titre: 'NETTOYAGE',           statut: 'Chargement…' },
+  { id: 'etalonnage',          href: '/etalonnage.html',           icone: '🌡️', titre: 'ÉTALONNAGE',          statut: 'Chargement…' },
+  { id: 'temperatures',        href: '/',                          icone: '🌡️', titre: 'TEMPÉRATURES',        statut: 'Chargement…' },
+  { id: 'nuisibles',           href: '/nuisibles.html',            icone: '🐛', titre: 'NUISIBLES',           statut: 'IPM — Plan de lutte' },
+  { id: 'elearning',           href: '/elearning.html',            icone: '🎓', titre: 'E-LEARNING',          statut: 'Formation HACCP' },
+  { id: 'classeur-pms',        href: '/classeur-pms.html',         icone: '📂', titre: 'CLASSEUR PMS',        statut: 'Procédures & traçabilité' },
+  // Production
+  { id: 'fabrication',         href: '/etiquettes.html',           icone: '🔪', titre: 'FABRICATION',         statut: 'Étiquettes & traçabilité' },
+  { id: 'cuisson',             href: '/cuisson.html',              icone: '🔥', titre: 'CUISSON',             statut: 'Rôtissoire — T° ≥ 75 °C' },
+  { id: 'refroidissement',     href: '/refroidissement.html',      icone: '❄️', titre: 'REFROIDISSEMENT',     statut: '≤ 10 °C en ≤ 2 h' },
+  { id: 'catalogue-vente',     href: '/catalogue-vente.html',      icone: '🏷️', titre: 'CATALOGUE VENTE',     statut: 'Produits finis fabriqués' },
+  // Achats
+  { id: 'fournisseurs',        href: '/fournisseurs.html',         icone: '🏢', titre: 'FOURNISSEURS',        statut: 'Fiches fournisseurs' },
+  { id: 'catalogue-achats',    href: '/catalogue-achats.html',     icone: '📋', titre: 'CATALOGUE ACHATS',    statut: 'Articles & prix fournisseurs' },
+  { id: 'commandes',           href: '/commandes.html',            icone: '📝', titre: 'COMMANDES',           statut: 'Commandes fournisseurs' },
+  { id: 'factures',            href: '/factures-achats.html',      icone: '🧾', titre: 'FACTURES',            statut: 'Rapprocher les écarts' },
+  { id: 'comparatif',          href: '/comparatif-achats.html',    icone: '⚖️', titre: 'COMPARATEUR',         statut: 'Prix au kg par fournisseur' },
+  // Pilotage
+  { id: 'pilotage-ca',         href: '/pilotage-ca.html',          icone: '💶', titre: "CHIFFRE D'AFFAIRES",  statut: 'Chargement…' },
+  { id: 'inventaire-valorise', href: '/inventaire-valorise.html',  icone: '💰', titre: 'INVENTAIRE VALORISÉ', statut: 'Chargement…' },
+  { id: 'marge',               href: '/marge.html',                icone: '📈', titre: 'MARGE',               statut: 'CA − coût marchandises' },
+  // Autres pages (pas sur l'accueil d'origine, à ajouter au besoin)
+  { id: 'production-a-cuire',  href: '/production-a-cuire.html',   icone: '🍗', titre: 'À CUIRE',             statut: 'Produits à cuire' },
+  { id: 'produits-attente',    href: '/produits-attente.html',     icone: '⏳', titre: 'PRODUITS EN ATTENTE', statut: 'Lot / DLC à compléter' },
+  { id: 'receptions-historique', href: '/receptions-historique.html', icone: '📑', titre: 'HISTORIQUE RÉCEPTIONS', statut: 'Réceptions passées' },
+  { id: 'historique-nettoyage', href: '/historique-nettoyage.html', icone: '🧽', titre: 'HISTORIQUE NETTOYAGE', statut: 'Nettoyages passés' },
+  { id: 'incidents',           href: '/incidents.html',            icone: '⚠️', titre: 'FICHES INCIDENTS',    statut: 'Fiches PCR01' },
+  { id: 'catalogue',           href: '/catalogue.html',            icone: '📚', titre: 'CATALOGUE PRODUITS',  statut: 'Produits & matières premières' },
+  { id: 'recettes',            href: '/admin-recettes.html',       icone: '📖', titre: 'RECETTES',            statut: 'Gestion des recettes' },
+  { id: 'tutoriel',            href: '/tutoriel-slideshow.html',   icone: '📽️', titre: 'TUTORIEL',            statut: 'Tutoriel HACCP' },
+  { id: 'admin',               href: '/admin.html',                icone: '⚙️', titre: 'ADMINISTRATION',      statut: 'Configuration' },
 ];
 
-const elGrille          = document.getElementById('hub-grille');
-const elBtnPerso        = document.getElementById('hub-btn-perso');
-const elBarre           = document.getElementById('hub-edition-barre');
-const elStatutEdition   = document.getElementById('hub-edition-statut');
-const elMdpOverlay      = document.getElementById('hub-mdp-overlay');
-const elMdpForm         = document.getElementById('hub-mdp-form');
-const elMdp             = document.getElementById('hub-mdp');
-const elMdpErreur       = document.getElementById('hub-mdp-erreur');
-const elAjoutOverlay    = document.getElementById('hub-ajout-overlay');
-const elAjoutListe      = document.getElementById('hub-ajout-liste');
+// Reprend les anciennes pages Tâches HACCP, Production, Achats (et Pilotage dedans).
+const DISPOSITION_ORIGINE = {
+  accueil: ['dossier-taches', 'dossier-production', 'reception', 'ouverture', 'dlc',
+            'inventaire', 'historique', 'dossier-achats', 'prix-etiquettes'],
+  dossiers: {
+    'dossier-taches':     { titre: 'Tâches HACCP', icone: '✅',
+      tuiles: ['nettoyage', 'etalonnage', 'temperatures', 'nuisibles', 'elearning', 'classeur-pms'] },
+    'dossier-production': { titre: 'Production', icone: '🏭',
+      tuiles: ['fabrication', 'cuisson', 'refroidissement', 'catalogue-vente'] },
+    'dossier-achats':     { titre: 'Achats', icone: '🛒',
+      tuiles: ['fournisseurs', 'catalogue-achats', 'commandes', 'factures', 'comparatif', 'dossier-pilotage'] },
+    'dossier-pilotage':   { titre: 'Pilotage', icone: '📊',
+      tuiles: ['pilotage-ca', 'inventaire-valorise', 'marge'] },
+  },
+};
 
-const idDe = (tuile) => tuile.id.replace(/^tuile-/, '');
-const toutesLesTuiles = () => [...elGrille.querySelectorAll('.hub-tuile')];
-const TUILES_ORIGINE = toutesLesTuiles().map(idDe);   // ordre de hub.html
+const ICONES_DOSSIER = ['📁', '✅', '🏭', '🛒', '📊', '🥩', '🔪', '🧾', '📦', '🧹', '🌡️', '💶', '🏷️', '⭐', '🔧', '📚'];
 
+// ── État ──────────────────────────────────────────────────────
+const elGrille         = document.getElementById('hub-grille');
+const elRetour         = document.getElementById('hub-retour');
+const elTitre          = document.getElementById('hub-titre');
+const elBtnPerso       = document.getElementById('hub-btn-perso');
+const elBarre          = document.getElementById('hub-edition-barre');
+const elStatutEdition  = document.getElementById('hub-edition-statut');
+const elMdpOverlay     = document.getElementById('hub-mdp-overlay');
+const elMdpForm        = document.getElementById('hub-mdp-form');
+const elMdp            = document.getElementById('hub-mdp');
+const elMdpErreur      = document.getElementById('hub-mdp-erreur');
+const elChoixOverlay   = document.getElementById('hub-choix-overlay');
+const elChoixTitre     = document.getElementById('hub-choix-titre');
+const elChoixListe     = document.getElementById('hub-choix-liste');
+const elDossierOverlay = document.getElementById('hub-dossier-overlay');
+const elDossierForm    = document.getElementById('hub-dossier-form');
+const elDossierTitre   = document.getElementById('hub-dossier-titre');
+const elDossierNom     = document.getElementById('hub-dossier-nom');
+const elDossierIcones  = document.getElementById('hub-dossier-icones');
+
+const parIdTuile = new Map(TUILES.map(t => [t.id, t]));
+const estDossier = (id) => id.startsWith('dossier-');
+const cloner = (o) => JSON.parse(JSON.stringify(o));
+
+let disposition = { personnalisee: false };   // telle qu'enregistrée sur le serveur
+let etat = cloner(DISPOSITION_ORIGINE);       // affichée (copie de travail en édition)
+let vue = null;                               // dossier ouvert, null = accueil
 let enEdition = false;
 let jetonDispo = null;          // autorisation admin (15 min), en mémoire seulement
 let minuteurJeton = null;
 let apresDeverrouillage = null; // action à reprendre une fois le mot de passe donné
-let dispositionChargee = { personnalisee: false, ordre: [], connues: [] };
 
-// Les tuiles en plus existent toujours dans la page (cachées si non affichées).
-for (const t of TUILES_EN_PLUS) {
-  const a = document.createElement('a');
-  a.className = 'hub-tuile';
-  a.id = 'tuile-' + t.id;
-  a.href = t.href;
-  a.setAttribute('aria-label', t.titre);
-  a.hidden = true;
-  a.innerHTML = `
-    <div class="hub-tuile-icone" aria-hidden="true">${t.icone}</div>
-    <div class="hub-tuile-titre">${escHtml(t.titre)}</div>
-    <div class="hub-tuile-statut">${escHtml(t.statut)}</div>`;
-  elGrille.appendChild(a);
+const listeDe = (v) => (v ? etat.dossiers[v].tuiles : etat.accueil);
+
+/** Dossier qui contient `id` (null = accueil, undefined = nulle part). */
+function parentDe(id) {
+  if (etat.accueil.includes(id)) return null;
+  for (const [k, d] of Object.entries(etat.dossiers)) if (d.tuiles.includes(id)) return k;
+  return undefined;
 }
 
-// Bouton ✕ (retirer), visible seulement en mode personnalisation.
-for (const tuile of toutesLesTuiles()) {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'hub-tuile-retirer';
-  b.setAttribute('aria-label', 'Retirer cette tuile de l\'accueil');
-  b.textContent = '✕';
-  tuile.appendChild(b);
+function idsPlaces(e) {
+  return new Set([...e.accueil, ...Object.values(e.dossiers).flatMap(d => d.tuiles)]);
 }
 
-function appliquerDisposition(d) {
-  const parId = new Map(toutesLesTuiles().map(t => [idDe(t), t]));
-  let affichees;
-  if (!d.personnalisee) {
-    affichees = [...TUILES_ORIGINE];
-  } else {
-    affichees = d.ordre.filter(id => parId.has(id));
-    // Une tuile d'origine créée après l'enregistrement apparaît d'elle-même.
-    const connues = new Set(d.connues);
-    for (const id of TUILES_ORIGINE) {
-      if (!connues.has(id) && !affichees.includes(id)) affichees.push(id);
+/** Le dossier et tous ses sous-dossiers (on ne range pas un dossier en lui-même). */
+function descendants(id) {
+  const res = new Set([id]);
+  for (const t of etat.dossiers[id]?.tuiles ?? []) {
+    if (estDossier(t)) descendants(t).forEach(x => res.add(x));
+  }
+  return res;
+}
+
+function depuisServeur(d) {
+  if (!d?.personnalisee) return cloner(DISPOSITION_ORIGINE);
+  const e = { accueil: [...d.accueil], dossiers: cloner(d.dossiers) };
+  const existe = (id) => (estDossier(id) ? id in e.dossiers : parIdTuile.has(id));
+  e.accueil = e.accueil.filter(existe);
+  for (const k in e.dossiers) e.dossiers[k].tuiles = e.dossiers[k].tuiles.filter(existe);
+  // Tuile ajoutée au code après l'enregistrement : à sa place d'origine.
+  const connues = new Set(d.connues);
+  const places = idsPlaces(e);
+  const origines = [[null, DISPOSITION_ORIGINE.accueil],
+    ...Object.entries(DISPOSITION_ORIGINE.dossiers).map(([k, v]) => [k, v.tuiles])];
+  for (const [lieu, ids] of origines) {
+    for (const id of ids) {
+      if (estDossier(id) || connues.has(id) || places.has(id)) continue;
+      (lieu && e.dossiers[lieu] ? e.dossiers[lieu].tuiles : e.accueil).push(id);
     }
   }
-  for (const id of affichees) {
-    const t = parId.get(id);
-    t.hidden = false;
-    elGrille.appendChild(t);
+  return e;
+}
+
+// ── Construction des tuiles ───────────────────────────────────
+const elements = new Map();   // id → <a> (tuiles et dossiers)
+
+function boutonOutil(action, texte, aide) {
+  return `<button type="button" class="hub-tuile-outil hub-tuile-outil--${action}"
+            data-action="${action}" aria-label="${aide}" title="${aide}">${texte}</button>`;
+}
+
+function creerElement(id) {
+  const a = document.createElement('a');
+  a.className = 'hub-tuile';
+  a.id = 'tuile-' + id;
+  a.dataset.id = id;
+  a.hidden = true;
+  let outils;
+  if (estDossier(id)) {
+    a.classList.add('hub-tuile--dossier');
+    a.href = '#' + id;
+    a.innerHTML = `
+      <div class="hub-tuile-icone" aria-hidden="true"></div>
+      <div class="hub-tuile-titre"></div>
+      <div class="hub-tuile-statut" id="statut-${id}"></div>`;
+    outils = boutonOutil('renommer', '✏️', 'Renommer le dossier')
+           + boutonOutil('ranger', '📁', 'Ranger dans un autre dossier')
+           + boutonOutil('supprimer', '✕', 'Supprimer le dossier (son contenu est gardé)');
+  } else {
+    const t = parIdTuile.get(id);
+    a.href = t.href;
+    a.setAttribute('aria-label', t.titre);
+    a.innerHTML = `
+      <div class="hub-tuile-icone" aria-hidden="true">${t.icone}</div>
+      <div class="hub-tuile-titre">${escHtml(t.titre)}</div>
+      <div class="hub-tuile-statut" id="statut-${id}">${escHtml(t.statut)}</div>`;
+    outils = boutonOutil('ranger', '📁', 'Ranger dans un dossier')
+           + boutonOutil('retirer', '✕', 'Retirer de l\'accueil');
   }
-  for (const [id, t] of parId) {
-    if (!affichees.includes(id)) { t.hidden = true; elGrille.appendChild(t); }
+  a.insertAdjacentHTML('beforeend', `<div class="hub-tuile-outils">${outils}</div>`);
+  elGrille.appendChild(a);
+  elements.set(id, a);
+  return a;
+}
+
+// Toutes les tuiles existent dès le départ (cachées) : leurs statuts en direct
+// se mettent à jour même quand elles sont rangées dans un dossier fermé.
+TUILES.forEach(t => creerElement(t.id));
+
+// « CALENDRIER DLC » → « Calendrier DLC » (sigles gardés en capitales)
+const SIGLES = new Set(['DLC', 'PMS']);
+const titreCourt = (t) => t.split(' ')
+  .map((m, i) => (SIGLES.has(m) ? m : i === 0 ? m.charAt(0) + m.slice(1).toLowerCase() : m.toLowerCase()))
+  .join(' ');
+
+function titreDe(id) {
+  return estDossier(id) ? etat.dossiers[id]?.titre ?? '' : titreCourt(parIdTuile.get(id).titre);
+}
+
+/** Pire état (alerte > attention) parmi les tuiles d'un dossier et de ses sous-dossiers. */
+function etatDossier(id, vus = new Set()) {
+  if (vus.has(id)) return null;
+  vus.add(id);
+  let pire = null;
+  for (const t of etat.dossiers[id]?.tuiles ?? []) {
+    const e = estDossier(t) ? etatDossier(t, vus) : elements.get(t)?.dataset.etat;
+    if (e === 'alerte') return 'alerte';
+    if (e === 'attention') pire = 'attention';
+  }
+  return pire;
+}
+
+function majDossiers() {
+  for (const [id, d] of Object.entries(etat.dossiers)) {
+    const el = elements.get(id) ?? creerElement(id);
+    el.setAttribute('aria-label', 'Dossier ' + d.titre);
+    el.querySelector('.hub-tuile-icone').textContent = d.icone;
+    el.querySelector('.hub-tuile-titre').textContent = d.titre;
+    const noms = d.tuiles.map(titreDe);
+    el.querySelector('.hub-tuile-statut').textContent = noms.length
+      ? noms.slice(0, 3).join(' · ') + (noms.length > 3 ? ` +${noms.length - 3}` : '')
+      : 'Dossier vide';
+    const e = etatDossier(id);
+    el.classList.toggle('hub-tuile--alerte', e === 'alerte');
+    el.classList.toggle('hub-tuile--attention', e === 'attention');
   }
 }
+
+function rendre() {
+  if (vue && !etat.dossiers[vue]) vue = null;
+  for (const [id, el] of elements) {
+    if (estDossier(id) && !etat.dossiers[id]) { el.remove(); elements.delete(id); }
+    else el.hidden = true;
+  }
+  majDossiers();
+  for (const id of listeDe(vue)) {
+    const el = elements.get(id);
+    el.hidden = false;
+    elGrille.appendChild(el);
+  }
+  elRetour.hidden = !vue;
+  if (vue) {
+    const p = parentDe(vue);
+    elRetour.href = p ? '#' + p : '#';
+    elRetour.innerHTML = `← <span class="hub-retour-texte">${escHtml(p ? etat.dossiers[p].titre : 'Accueil')}</span>`;
+    elTitre.textContent = `${etat.dossiers[vue].icone} ${etat.dossiers[vue].titre}`;
+  } else {
+    elTitre.textContent = 'Au Comptoir des Lilas';
+  }
+}
+
+// ── Navigation dans les dossiers (#dossier-xxx dans l'adresse) ──
+function vueDepuisAdresse() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  return etat.dossiers[h] ? h : null;
+}
+
+window.addEventListener('hashchange', () => { vue = vueDepuisAdresse(); rendre(); });
 
 async function chargerDisposition() {
   try {
-    const res = await fetch('/api/hub/disposition', {
-      cache: 'no-store', signal: AbortSignal.timeout(4000),
-    });
-    if (res.ok) dispositionChargee = await res.json();
+    const res = await fetch('/api/hub/disposition', { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    if (res.ok) disposition = await res.json();
   } catch { /* serveur injoignable : Hub d'origine */ }
-  appliquerDisposition(dispositionChargee);
+  etat = depuisServeur(disposition);
+  vue = vueDepuisAdresse();
+  rendre();
   elGrille.classList.remove('hub-grille--attente');
 }
 
+// ── Personnaliser l'accueil (administrateur) ──────────────────
 function statutEdition(msg, erreur = false) {
   elStatutEdition.textContent = msg;
   elStatutEdition.classList.toggle('hub-edition-statut--err', erreur);
   elStatutEdition.hidden = !msg;
 }
 
-// ── Mot de passe administrateur ──
 function demanderMotDePasse(puis) {
   apresDeverrouillage = puis;
   elMdp.value = '';
@@ -442,7 +743,6 @@ elMdpForm.addEventListener('submit', async (e) => {
   }
 });
 
-// ── Entrer / sortir du mode personnalisation ──
 function entrerEdition() {
   enEdition = true;
   document.body.classList.add('hub-edition');
@@ -454,7 +754,8 @@ function sortirEdition() {
   enEdition = false;
   document.body.classList.remove('hub-edition');
   elBarre.hidden = true;
-  elAjoutOverlay.hidden = true;
+  elChoixOverlay.hidden = true;
+  elDossierOverlay.hidden = true;
 }
 
 elBtnPerso.addEventListener('click', () => {
@@ -463,8 +764,9 @@ elBtnPerso.addEventListener('click', () => {
 });
 
 /** Envoie au serveur ; redemande le mot de passe si l'autorisation a expiré. */
-async function envoyerDisposition(url, methode, corps, quandOk) {
-  if (!jetonDispo) { demanderMotDePasse(() => envoyerDisposition(url, methode, corps, quandOk)); return; }
+async function envoyerDisposition(url, methode, corps) {
+  const relancer = () => envoyerDisposition(url, methode, corps);
+  if (!jetonDispo) { demanderMotDePasse(relancer); return; }
   statutEdition('Enregistrement…');
   try {
     const res = await fetch(url, {
@@ -476,122 +778,251 @@ async function envoyerDisposition(url, methode, corps, quandOk) {
     if (res.status === 401) {
       jetonDispo = null;
       statutEdition('Autorisation expirée : redonnez le mot de passe.', true);
-      demanderMotDePasse(() => envoyerDisposition(url, methode, corps, quandOk));
+      demanderMotDePasse(relancer);
       return;
     }
     if (!res.ok) {
       const detail = (await res.json().catch(() => ({}))).detail;
-      statutEdition(detail || `Erreur ${res.status}`, true);
+      statutEdition(typeof detail === 'string' ? detail : `Erreur ${res.status}`, true);
       return;
     }
-    dispositionChargee = await res.json();
-    quandOk();
-  } catch (err) {
+    disposition = await res.json();
+    etat = depuisServeur(disposition);
+    sortirEdition();
+    rendre();
+  } catch {
     statutEdition('Serveur injoignable : rien n\'a été enregistré.', true);
   }
 }
 
 document.getElementById('hub-edition-terminer').addEventListener('click', () => {
-  const ordre = toutesLesTuiles().filter(t => !t.hidden).map(idDe);
   envoyerDisposition('/api/hub/disposition', 'PUT',
-    { ordre, connues: toutesLesTuiles().map(idDe) }, sortirEdition);
+    { accueil: etat.accueil, dossiers: etat.dossiers, connues: TUILES.map(t => t.id) });
 });
 
 document.getElementById('hub-edition-annuler').addEventListener('click', () => {
-  appliquerDisposition(dispositionChargee);
+  etat = depuisServeur(disposition);
   sortirEdition();
+  vue = vueDepuisAdresse();
+  rendre();
 });
 
 document.getElementById('hub-edition-origine').addEventListener('click', () => {
-  if (!confirm('Remettre l\'accueil comme à l\'origine (ordre et tuiles d\'origine) ?')) return;
-  envoyerDisposition('/api/hub/disposition/reinitialiser', 'POST', {}, () => {
-    appliquerDisposition(dispositionChargee);
-    sortirEdition();
+  if (!confirm('Remettre tout l\'accueil comme à l\'origine (tuiles et dossiers) ?')) return;
+  envoyerDisposition('/api/hub/disposition/reinitialiser', 'POST', {});
+});
+
+// ── Popup de choix (ajouter une tuile / ranger dans un dossier) ──
+let surChoix = null;
+
+function ouvrirChoix(titre, options, quandChoisi) {
+  elChoixTitre.textContent = titre;
+  elChoixListe.innerHTML = options.length ? options.map((o, i) => `
+    <li class="hub-popup-item">
+      <button type="button" class="hub-popup-lien hub-choix" data-i="${i}">
+        <span class="hub-popup-icone" aria-hidden="true">${escHtml(o.icone)}</span>
+        <span class="hub-popup-texte">
+          <span class="hub-popup-libelle">${escHtml(o.libelle)}</span>
+          <span class="hub-popup-detail">${escHtml(o.detail ?? '')}</span>
+        </span>
+        <span class="hub-popup-fleche" aria-hidden="true">›</span>
+      </button>
+    </li>`).join('')
+    : listeVideHtml('Toutes les tuiles sont déjà placées');
+  surChoix = (i) => quandChoisi(options[i]);
+  elChoixOverlay.hidden = false;
+}
+
+elChoixListe.addEventListener('click', (e) => {
+  const b = e.target.closest('.hub-choix');
+  if (!b) return;
+  elChoixOverlay.hidden = true;
+  surChoix(Number(b.dataset.i));
+});
+
+/** « Achats › Pilotage » : chemin d'un dossier depuis l'accueil. */
+function cheminDe(id) {
+  const noms = [];
+  for (let d = id; d; d = parentDe(d)) noms.unshift(etat.dossiers[d].titre);
+  return noms.join(' › ');
+}
+
+document.getElementById('hub-edition-ajouter').addEventListener('click', () => {
+  const places = idsPlaces(etat);
+  const libres = TUILES.filter(t => !places.has(t.id)).map(t => ({
+    id: t.id, icone: t.icone, libelle: titreCourt(t.titre),
+    detail: t.statut === 'Chargement…' ? t.href : t.statut,
+  }));
+  ouvrirChoix('＋ Ajouter une tuile ici', libres, (o) => {
+    listeDe(vue).push(o.id);
+    rendre();
+    elements.get(o.id).scrollIntoView({ block: 'nearest' });
   });
 });
 
-// ── Ajouter une tuile ──
-function ouvrirAjout() {
-  const dispo = toutesLesTuiles().filter(t => t.hidden);
-  elAjoutListe.innerHTML = dispo.length ? dispo.map(t => `
-    <li class="hub-popup-item">
-      <button type="button" class="hub-popup-lien hub-ajout-choix" data-tuile="${idDe(t)}">
-        <span class="hub-popup-icone" aria-hidden="true">${t.querySelector('.hub-tuile-icone').textContent}</span>
-        <span class="hub-popup-texte">
-          <span class="hub-popup-libelle">${escHtml(t.querySelector('.hub-tuile-titre').textContent)}</span>
-          <span class="hub-popup-detail">${escHtml(t.getAttribute('href'))}</span>
-        </span>
-        <span class="hub-popup-fleche" aria-hidden="true">＋</span>
-      </button>
-    </li>`).join('')
-    : listeVideHtml('Toutes les tuiles sont déjà sur l\'accueil');
-  elAjoutOverlay.hidden = false;
+function deplacer(id, cible) {
+  const depuis = parentDe(id);
+  if (depuis === undefined) return;
+  const liste = depuis ? etat.dossiers[depuis].tuiles : etat.accueil;
+  liste.splice(liste.indexOf(id), 1);
+  (cible ? etat.dossiers[cible].tuiles : etat.accueil).push(id);
+  rendre();
 }
 
-document.getElementById('hub-edition-ajouter').addEventListener('click', ouvrirAjout);
+function rangerDans(id) {
+  const ici = parentDe(id);
+  const interdits = estDossier(id) ? descendants(id) : new Set();
+  const options = [];
+  if (ici !== null) options.push({ cible: null, icone: '🏠', libelle: 'Accueil', detail: 'Écran principal' });
+  for (const k of Object.keys(etat.dossiers)) {
+    if (k === ici || interdits.has(k) || parentDe(k) === undefined) continue;
+    options.push({ cible: k, icone: etat.dossiers[k].icone, libelle: etat.dossiers[k].titre, detail: cheminDe(k) });
+  }
+  options.push({ nouveau: true, icone: '＋', libelle: 'Nouveau dossier…', detail: 'Créé ici, la tuile va dedans' });
+  ouvrirChoix(`📁 Ranger « ${titreDe(id)} » dans…`, options, (o) => {
+    if (o.nouveau) ouvrirDossier(null, (nouvelId) => deplacer(id, nouvelId));
+    else deplacer(id, o.cible);
+  });
+}
 
-elAjoutListe.addEventListener('click', (e) => {
-  const choix = e.target.closest('.hub-ajout-choix');
-  if (!choix) return;
-  const tuile = document.getElementById('tuile-' + choix.dataset.tuile);
-  tuile.hidden = false;
-  // Placée juste après la dernière tuile affichée (à déplacer ensuite).
-  const visibles = toutesLesTuiles().filter(t => !t.hidden && t !== tuile);
-  if (visibles.length) visibles[visibles.length - 1].after(tuile); else elGrille.prepend(tuile);
-  elAjoutOverlay.hidden = true;
-  tuile.scrollIntoView({ block: 'nearest' });
+// ── Nouveau dossier / renommer ──
+let iconeChoisie = '📁';
+let surDossier = null;
+
+function afficherIcones() {
+  elDossierIcones.innerHTML = ICONES_DOSSIER.map(i => `
+    <button type="button" class="hub-dossier-icone${i === iconeChoisie ? ' hub-dossier-icone--choisie' : ''}"
+            data-icone="${i}" aria-label="Icône ${i}">${i}</button>`).join('');
+}
+
+elDossierIcones.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-icone]');
+  if (!b) return;
+  iconeChoisie = b.dataset.icone;
+  afficherIcones();
 });
 
-for (const overlay of [elMdpOverlay, elAjoutOverlay]) {
+function nouvelIdDossier(nom) {
+  const base = nom.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'perso';
+  let id;
+  do { id = `dossier-${base}-${Math.random().toString(36).slice(2, 6)}`; } while (etat.dossiers[id]);
+  return id;
+}
+
+/** idDossier = null → création dans la vue courante, puis quandOk(id). */
+function ouvrirDossier(idDossier, quandOk) {
+  const d = idDossier ? etat.dossiers[idDossier] : null;
+  elDossierTitre.textContent = d ? '✏️ Renommer le dossier' : '📁 Nouveau dossier';
+  elDossierNom.value = d ? d.titre : '';
+  iconeChoisie = d ? d.icone : '📁';
+  afficherIcones();
+  surDossier = (nom) => {
+    if (d) { d.titre = nom; d.icone = iconeChoisie; rendre(); return; }
+    const id = nouvelIdDossier(nom);
+    etat.dossiers[id] = { titre: nom, icone: iconeChoisie, tuiles: [] };
+    listeDe(vue).push(id);
+    rendre();
+    if (quandOk) quandOk(id);
+  };
+  elDossierOverlay.hidden = false;
+  elDossierNom.focus();
+}
+
+elDossierForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const nom = elDossierNom.value.trim();
+  if (!nom) return;
+  elDossierOverlay.hidden = true;
+  surDossier(nom);
+});
+
+document.getElementById('hub-edition-dossier').addEventListener('click', () => ouvrirDossier(null));
+
+function supprimerDossier(id) {
+  const d = etat.dossiers[id];
+  const ici = parentDe(id);
+  const lieu = ici ? `le dossier « ${etat.dossiers[ici].titre} »` : 'l\'accueil';
+  const msg = d.tuiles.length
+    ? `Supprimer le dossier « ${d.titre} » ? Ses ${d.tuiles.length} tuile(s) reviennent dans ${lieu}.`
+    : `Supprimer le dossier vide « ${d.titre} » ?`;
+  if (!confirm(msg)) return;
+  const liste = ici ? etat.dossiers[ici].tuiles : etat.accueil;
+  liste.splice(liste.indexOf(id), 1, ...d.tuiles);
+  delete etat.dossiers[id];
+  rendre();
+}
+
+for (const overlay of [elMdpOverlay, elChoixOverlay, elDossierOverlay]) {
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay || e.target.closest('[data-fermer]')) overlay.hidden = true;
   });
 }
 
-// ── En mode personnalisation : pas de navigation, ✕ retire la tuile ──
+// ── En mode personnalisation : pas de navigation, outils des tuiles ──
 elGrille.addEventListener('click', (e) => {
   if (!enEdition) return;
   e.preventDefault();
-  const retirer = e.target.closest('.hub-tuile-retirer');
-  if (retirer) retirer.closest('.hub-tuile').hidden = true;
+  const outil = e.target.closest('[data-action]');
+  if (!outil) return;
+  const id = outil.closest('.hub-tuile').dataset.id;
+  const action = outil.dataset.action;
+  if (action === 'retirer') { listeDe(vue).splice(listeDe(vue).indexOf(id), 1); rendre(); }
+  else if (action === 'ranger') rangerDans(id);
+  else if (action === 'renommer') ouvrirDossier(id);
+  else if (action === 'supprimer') supprimerDossier(id);
 }, true);
 
 // ── Glisser-déposer (doigt ou souris) ──
 // Pointer Events plutôt que le glisser-déposer HTML5, qui ne marche pas au
-// doigt sur les tablettes Android. La tuile tenue change de place en direct
-// quand on passe au-dessus d'une autre.
-let tuileTenue = null;
+// doigt sur les tablettes Android. Au-delà de quelques pixels on déplace ;
+// une simple touche sur un dossier l'ouvre (pour ranger à l'intérieur).
+const SEUIL_GLISSER_PX = 10;
+let prise = null;   // { tuile, x, y, glisse }
 
 elGrille.addEventListener('pointerdown', (e) => {
-  if (!enEdition || e.target.closest('.hub-tuile-retirer')) return;
+  if (!enEdition || e.target.closest('[data-action]')) return;
   const tuile = e.target.closest('.hub-tuile');
   if (!tuile) return;
   e.preventDefault();
-  tuileTenue = tuile;
-  tuile.classList.add('hub-tuile--tenue');
+  prise = { tuile, x: e.clientX, y: e.clientY, glisse: false };
   elGrille.setPointerCapture(e.pointerId);
 });
 
 elGrille.addEventListener('pointermove', (e) => {
-  if (!tuileTenue) return;
+  if (!prise) return;
+  if (!prise.glisse) {
+    if (Math.hypot(e.clientX - prise.x, e.clientY - prise.y) < SEUIL_GLISSER_PX) return;
+    prise.glisse = true;
+    prise.tuile.classList.add('hub-tuile--tenue');
+  }
   const sous = document.elementFromPoint(e.clientX, e.clientY)?.closest('.hub-tuile');
-  if (!sous || sous === tuileTenue || sous.hidden) return;
-  const tuiles = toutesLesTuiles();
-  if (tuiles.indexOf(tuileTenue) < tuiles.indexOf(sous)) sous.after(tuileTenue);
-  else sous.before(tuileTenue);
+  if (!sous || sous === prise.tuile || sous.hidden) return;
+  const ordre = [...elGrille.children];
+  if (ordre.indexOf(prise.tuile) < ordre.indexOf(sous)) sous.after(prise.tuile);
+  else sous.before(prise.tuile);
 });
 
-function lacherTuile() {
-  if (!tuileTenue) return;
-  tuileTenue.classList.remove('hub-tuile--tenue');
-  tuileTenue = null;
+function lacher(annule) {
+  if (!prise) return;
+  const { tuile, glisse } = prise;
+  prise = null;
+  tuile.classList.remove('hub-tuile--tenue');
+  if (glisse) {
+    const ordre = [...elGrille.children].filter(el => !el.hidden).map(el => el.dataset.id);
+    listeDe(vue).splice(0, Infinity, ...ordre);
+  } else if (!annule && estDossier(tuile.dataset.id)) {
+    location.hash = tuile.dataset.id;
+  }
 }
-elGrille.addEventListener('pointerup', lacherTuile);
-elGrille.addEventListener('pointercancel', lacherTuile);
+elGrille.addEventListener('pointerup', () => lacher(false));
+elGrille.addEventListener('pointercancel', () => lacher(true));
 
 // ── Init ──────────────────────────────────────────────────────
 chargerDisposition();
 charger();
+chargerSousModules();
 chargerResumeTaches();
 setInterval(charger, REFRESH_MS);
+setInterval(chargerSousModules, 2 * REFRESH_MS);
 setInterval(chargerResumeTaches, REFRESH_MS);

@@ -611,23 +611,67 @@
   cursor: grabbing;
 }
 
-.hub-tuile-retirer {
+/* Outils d'une tuile (📁 ranger, ✕ retirer, ✏️ renommer) : en édition seulement */
+.hub-tuile-outils {
   display: none;
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
+  gap: 0.4rem;
+  z-index: 2;
+}
+.hub-edition .hub-tuile-outils { display: flex; }
+.hub-tuile-outil {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  border: none;
-  background: var(--color-alert);
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 700;
+  border: 1.5px solid rgba(0,0,0,.15);
+  background: #fff;
+  font-size: 1.1rem;
   cursor: pointer;
-  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.hub-edition .hub-tuile-retirer { display: flex; align-items: center; justify-content: center; }
+.hub-tuile-outil--retirer,
+.hub-tuile-outil--supprimer {
+  background: var(--color-alert);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Dossier : effet « pile de fiches » + petit 📁 en coin */
+.hub-tuile--dossier {
+  box-shadow: 6px 6px 0 -1px var(--color-card), 6px 6px 0 1px var(--color-secondary), var(--shadow-card);
+}
+.hub-tuile--dossier .hub-tuile-titre { text-transform: uppercase; }
+.hub-tuile--dossier .hub-tuile-statut { opacity: 0.8; }
+.hub-tuile--dossier::before {
+  content: '📁';
+  position: absolute;
+  top: 0.6rem;
+  left: 0.75rem;
+  font-size: 1rem;
+  opacity: 0.6;
+}
+
+#hub-retour[hidden] { display: none; }
+
+/* Choix de l'icône d'un dossier */
+.hub-dossier-label-icone { margin-top: 1rem; }
+.hub-dossier-icones { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.hub-dossier-icone {
+  width: 48px;
+  height: 48px;
+  font-size: 1.5rem;
+  border-radius: 10px;
+  border: 2px solid rgba(0,0,0,.12);
+  background: #fff;
+  cursor: pointer;
+}
+.hub-dossier-icone--choisie { border-color: var(--color-ok); background: rgba(46,125,50,.12); }
+.hub-mdp-champ { user-select: text; -webkit-user-select: text; }
 
 /* Popups mot de passe / ajout */
 .hub-popup--petit { max-width: 400px; }
@@ -642,7 +686,7 @@
 }
 .hub-mdp-erreur { color: var(--color-alert); margin: 0.6rem 0 0; font-weight: 600; }
 .hub-mdp-erreur[hidden] { display: none; }
-.hub-ajout-choix {
+.hub-choix {
   width: 100%;
   border: none;
   background: transparent;
@@ -651,3 +695,11 @@
   cursor: pointer;
 }
 .hub-popup-overlay[hidden] { display: none; }
+
+/* Téléphone : en-tête compact (retour, titre du dossier, cloche, ✏️, Admin) */
+@media (max-width: 480px) {
+  .hub-header { padding: 0 0.6rem; gap: 0.4rem; }
+  .hub-header .hub-btn-admin { padding: 0.5rem 0.65rem; }
+  .hub-retour-texte { display: none; }
+  .hub-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+}

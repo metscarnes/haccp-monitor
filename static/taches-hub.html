@@ -2,87 +2,12 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#3D2008">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tâches HACCP — Au Comptoir des Lilas</title>
-  <link rel="manifest" href="/static/manifest.json">
-  <link rel="stylesheet" href="/static/css/reset.css">
-  <link rel="stylesheet" href="/static/css/tokens.css">
-  <link rel="stylesheet" href="/static/css/base.css">
-  <link rel="stylesheet" href="/static/css/components.css">
-  <link rel="stylesheet" href="/static/css/layouts.css">
-  <link rel="stylesheet" href="/static/css/pages/hub.css">
+  <!-- Ancienne page intermédiaire : son contenu est désormais le dossier
+       « Tâches HACCP » du Hub, rangeable depuis ✏️. Gardée pour les liens « ← Tâches HACCP ». -->
+  <meta http-equiv="refresh" content="0; url=/hub.html#dossier-taches">
+  <script>location.replace('/hub.html#dossier-taches');</script>
 </head>
-<body class="hub-body">
-<script src="/static/js/core/guard.js"></script>
-
-  <!-- ========================================================
-       EN-TÊTE
-  ========================================================= -->
-  <header class="hub-header">
-    <a href="/hub.html" class="hub-btn-admin" aria-label="Retour au hub">← Hub</a>
-    <div class="hub-titre">TÂCHES HACCP</div>
-    <div id="hub-horloge" class="hub-horloge" aria-live="polite"></div>
-  </header>
-
-  <!-- ========================================================
-       GRILLE — Sous-modules Tâches HACCP
-  ========================================================= -->
-  <main class="hub-grille taches-hub-grille" role="main">
-
-    <!-- ── Nettoyage & Désinfection ── -->
-    <a class="hub-tuile hub-tuile--chargement" id="tuile-nettoyage"
-       href="/nettoyage.html" aria-label="Plan de nettoyage et désinfection">
-      <div class="hub-tuile-icone" aria-hidden="true">🧹</div>
-      <div class="hub-tuile-titre">NETTOYAGE</div>
-      <div class="hub-tuile-statut" id="statut-nettoyage">Chargement…</div>
-    </a>
-
-    <!-- ── Étalonnage Thermomètres ── -->
-    <a class="hub-tuile hub-tuile--chargement" id="tuile-etalonnage"
-       href="/etalonnage.html" aria-label="Étalonnage thermomètres EET01">
-      <div class="hub-tuile-icone" aria-hidden="true">🌡️</div>
-      <div class="hub-tuile-titre">ÉTALONNAGE</div>
-      <div class="hub-tuile-statut" id="statut-etalonnage">Chargement…</div>
-    </a>
-
-    <!-- ── Températures ── -->
-    <a class="hub-tuile hub-tuile--chargement" id="tuile-temperatures"
-       href="/" aria-label="Dashboard températures">
-      <div class="hub-tuile-icone" aria-hidden="true">🌡️</div>
-      <div class="hub-tuile-titre">TEMPÉRATURES</div>
-      <div class="hub-tuile-statut" id="statut-temperatures">Chargement…</div>
-    </a>
-
-    <!-- ── Lutte contre Nuisibles ── -->
-    <a class="hub-tuile" id="tuile-nuisibles"
-       href="/nuisibles.html" aria-label="Lutte contre nuisibles IPM">
-      <div class="hub-tuile-icone" aria-hidden="true">🐛</div>
-      <div class="hub-tuile-titre">NUISIBLES</div>
-      <div class="hub-tuile-statut">IPM — Plan de lutte</div>
-    </a>
-
-    <!-- ── E-Learning ── -->
-    <a class="hub-tuile" id="tuile-elearning"
-       href="/elearning.html" aria-label="Formation E-Learning HACCP">
-      <div class="hub-tuile-icone" aria-hidden="true">🎓</div>
-      <div class="hub-tuile-titre">E-LEARNING</div>
-      <div class="hub-tuile-statut">Formation HACCP</div>
-    </a>
-
-    <!-- ── Classeur PMS ── -->
-    <a class="hub-tuile" id="tuile-classeur-pms"
-       href="/classeur-pms.html" aria-label="Classeur PMS — Procédures et traçabilité">
-      <div class="hub-tuile-icone" aria-hidden="true">📂</div>
-      <div class="hub-tuile-titre">CLASSEUR PMS</div>
-      <div class="hub-tuile-statut">Procédures & traçabilité</div>
-    </a>
-
-  </main>
-
-  <script src="/static/js/taches-hub.js"></script>
-</body>
+<body></body>
 </html>
