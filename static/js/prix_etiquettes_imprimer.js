@@ -477,7 +477,8 @@
 
   // ── Historique des impressions (date, heure, produits, prix imprimé) ──
   const MODE_IMPRESSION = { serveur: '🖨️ imprimante', navigateur: '🖥️ navigateur' };
-  const ICONE_TYPE = { promo: '🔥 ', libre: '✏️ ', normal: '' };
+  const ICONE_TYPE = { promo: '🔥 ', libre: '✏️ ', hors_catalogue: '🆕 ', normal: '' };
+  const UNITE_TEXTE = { kg: ' / kg', piece: ' / pièce' };
 
   // « aujourd'hui à 14:32 », « hier à 09:05 », sinon « 12/10 à 17:40 ».
   function quand(s) {
@@ -494,12 +495,15 @@
   // ou cocher plusieurs lignes / impressions puis « Réimprimer la sélection ».
   // Toujours au prix ACTUEL et avec le style du moment (promo si le produit est en promo).
   // Une étiquette libre se réimprime à l'identique : son texte (lignes séparées par « \n »)
-  // repart tel quel, au style du moment.
+  // repart tel quel, au style du moment. Une étiquette prix hors catalogue (🆕) repart
+  // avec le nom, le prix et l'unité tapés alors.
   let impressionsAffichees = [];
   const estLibre = l => l.type === 'libre' && l.catalogue_vente_id == null;
+  const estHorsCatalogue = l => l.type === 'hors_catalogue' && l.catalogue_vente_id == null;
   const textesDe = l => (l.libelle || '').split('\n').filter(t => t.trim());
   const reimprimable = l => estLibre(l) ? textesDe(l).length > 0
-                                         : l.catalogue_vente_id != null && !!produit(l.catalogue_vente_id);
+    : estHorsCatalogue(l) ? !!l.libelle && l.prix_ttc > 0
+    : l.catalogue_vente_id != null && !!produit(l.catalogue_vente_id);
 
   function histoStatut(msg, type) {
     const el = $('historique-statut');
@@ -509,8 +513,8 @@
   }
 
   function majBoutonSelection() {
-    const { produits, libres } = lignesCochees();
-    const n = [...produits, ...libres].reduce((s, l) => s + l.quantite, 0);
+    const { produits, unitaires } = lignesCochees();
+    const n = [...produits, ...unitaires].reduce((s, l) => s + l.quantite, 0);
     const btn = $('historique-reimprimer');
     btn.disabled = n === 0;
     btn.textContent = n ? `🖨️ Réimprimer la sélection (${n} étiquette${n > 1 ? 's' : ''})`
@@ -518,14 +522,22 @@
   }
 
   // Lignes d'historique → { produits: [{produit_id, quantite}] (un même produit compté
-  // deux fois : additionné), libres: [{textes, quantite}] }.
+  // deux fois : additionné), unitaires: [{url, corps, quantite}] } — les étiquettes
+  // libres et hors catalogue partent une par une.
   function aReimprimer(lignes) {
-    const qte = new Map(), libres = [];
+    const qte = new Map(), unitaires = [];
     lignes.forEach(l => {
-      if (estLibre(l)) libres.push({ textes: textesDe(l), quantite: l.quantite });
-      else qte.set(l.catalogue_vente_id, (qte.get(l.catalogue_vente_id) || 0) + l.quantite);
+      if (estLibre(l)) {
+        unitaires.push({ url: '/api/prix-etiquettes/imprimer', quantite: l.quantite,
+                         corps: { type: 'libre', lignes: textesDe(l).map(texte => ({ texte })) } });
+      } else if (estHorsCatalogue(l)) {
+        unitaires.push({ url: '/api/prix-etiquettes/imprimer-hors-catalogue', quantite: l.quantite,
+                         corps: { nom: l.libelle, prix_vente_ttc: l.prix_ttc, unite_vente: l.unite_vente || 'kg' } });
+      } else {
+        qte.set(l.catalogue_vente_id, (qte.get(l.catalogue_vente_id) || 0) + l.quantite);
+      }
     });
-    return { produits: [...qte].map(([produit_id, quantite]) => ({ produit_id, quantite })), libres };
+    return { produits: [...qte].map(([produit_id, quantite]) => ({ produit_id, quantite })), unitaires };
   }
 
   function lignesCochees() {
@@ -533,17 +545,18 @@
       .map(cb => impressionsAffichees[+cb.dataset.lot].lignes[+cb.dataset.ligne]));
   }
 
-  // Étiquettes libres : une par appel (le serveur leur applique le style de la boutique).
-  async function imprimerLibres(libres) {
+  // Étiquettes libres / hors catalogue : une par appel (le serveur leur applique le
+  // style de la boutique).
+  async function imprimerUnitaires(unitaires) {
     let total = 0;
     const erreurs = [];
-    for (const { textes, quantite } of libres) {
+    for (const { url, corps, quantite } of unitaires) {
       for (let k = 0; k < quantite; k++) {
         try {
-          await apiFetch('/api/prix-etiquettes/imprimer', {
+          await apiFetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ type: 'libre', lignes: textes.map(texte => ({ texte })) }),
+            body: JSON.stringify(corps),
           });
           total++;
         } catch (e) {
@@ -555,12 +568,12 @@
     return { total, erreurs };
   }
 
-  async function reimprimer({ produits, libres }) {
-    if (!produits.length && !libres.length) return;
+  async function reimprimer({ produits, unitaires }) {
+    if (!produits.length && !unitaires.length) return;
     histoStatut('Envoi à l\'imprimante…', 'loading');
     const resultat = produits.length ? await envoyerALImprimante(produits) : { total: 0, erreurs: [] };
-    if (libres.length && !resultat.erreurs.length) {
-      const r = await imprimerLibres(libres);
+    if (unitaires.length && !resultat.erreurs.length) {
+      const r = await imprimerUnitaires(unitaires);
       resultat.total += r.total;
       resultat.erreurs.push(...r.erreurs);
     }
@@ -599,7 +612,7 @@
               ${ICONE_TYPE[l.type] || ''}${escHtml(estLibre(l) ? textesDe(l).join(' — ') || '—'
                                                                : l.libelle || '—')}
               ${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
-              ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
+              ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${estHorsCatalogue(l) ? UNITE_TEXTE[l.unite_vente] || '' : ''}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
           </ul>
         </div>`;
       }).join('') : '<div class="pe-imp-vide">Aucune impression pour l\'instant.</div>';

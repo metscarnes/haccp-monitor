@@ -30,8 +30,24 @@
       <span aria-hidden="true">🔔</span>
       <span id="hub-cloche-badge" class="hub-cloche-badge" hidden>0</span>
     </button>
+    <button type="button" id="hub-btn-perso" class="hub-btn-admin hub-btn-perso"
+            aria-label="Personnaliser l'accueil" title="Ranger, retirer ou ajouter des tuiles">✏️</button>
     <a href="/admin.html" class="hub-btn-admin" aria-label="Configuration">⚙ Admin</a>
   </header>
+
+  <!-- ========================================================
+       BARRE — Mode « Personnaliser l'accueil » (administrateur)
+  ========================================================= -->
+  <div id="hub-edition-barre" class="hub-edition-barre" hidden>
+    <span class="hub-edition-aide">Glissez une tuile pour la déplacer · ✕ pour la retirer</span>
+    <div class="hub-edition-actions">
+      <button type="button" id="hub-edition-ajouter" class="hub-edition-btn">＋ Ajouter une tuile</button>
+      <button type="button" id="hub-edition-origine" class="hub-edition-btn">↺ Revenir à l'origine</button>
+      <button type="button" id="hub-edition-annuler" class="hub-edition-btn">Annuler</button>
+      <button type="button" id="hub-edition-terminer" class="hub-edition-btn hub-edition-btn--ok">✓ Terminer</button>
+    </div>
+    <span id="hub-edition-statut" class="hub-edition-statut" hidden></span>
+  </div>
 
   <!-- ========================================================
        BANDEAU — Connexion perdue (orange, discret)
@@ -46,7 +62,10 @@
        Tablet portrait (480-767px): 2 col (first 4) + 1 below
        Tablet landscape (768px+):   3 col (first 3) + 2 below
   ========================================================= -->
-  <main class="hub-grille" role="main">
+  <!-- Tuiles d'origine ci-dessous ; les autres tuiles possibles et la
+       disposition personnalisée (ordre, tuiles retirées) sont gérées par hub.js.
+       Grille cachée le temps de lire la disposition (évite un saut visuel). -->
+  <main class="hub-grille hub-grille--attente" id="hub-grille" role="main">
 
     <!-- ── Tâches HACCP ── -->
     <a class="hub-tuile" id="tuile-taches"
@@ -104,14 +123,6 @@
       <div class="hub-tuile-statut">Tous les enregistrements</div>
     </a>
 
-    <!-- ── Catalogue produits ── (masqué du hub, accessible depuis l'admin) -->
-    <a class="hub-tuile" id="tuile-catalogue"
-       href="/catalogue.html" aria-label="Catalogue produits" style="display: none">
-      <div class="hub-tuile-icone" aria-hidden="true">📚</div>
-      <div class="hub-tuile-titre">CATALOGUE</div>
-      <div class="hub-tuile-statut">Produits & matières premières</div>
-    </a>
-
     <!-- ── Achats ── -->
     <a class="hub-tuile" id="tuile-achats"
        href="/achats.html" aria-label="Module Achats">
@@ -163,6 +174,43 @@
           🔕 Ne plus afficher pendant 2h
         </button>
       </footer>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       POPUP — Mot de passe administrateur (personnaliser l'accueil)
+  ========================================================= -->
+  <div id="hub-mdp-overlay" class="hub-popup-overlay" hidden role="dialog"
+       aria-modal="true" aria-labelledby="hub-mdp-titre">
+    <form class="hub-popup hub-popup--petit" id="hub-mdp-form">
+      <header class="hub-popup-header">
+        <h2 id="hub-mdp-titre" class="hub-popup-titre">🔒 Personnaliser l'accueil</h2>
+        <button type="button" class="hub-popup-fermer" data-fermer aria-label="Fermer">✕</button>
+      </header>
+      <section class="hub-popup-section">
+        <label for="hub-mdp" class="hub-mdp-label">Mot de passe administrateur</label>
+        <input type="password" id="hub-mdp" class="hub-mdp-champ" autocomplete="current-password">
+        <p id="hub-mdp-erreur" class="hub-mdp-erreur" hidden></p>
+      </section>
+      <footer class="hub-popup-footer">
+        <button type="submit" class="hub-edition-btn hub-edition-btn--ok">Déverrouiller</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- ========================================================
+       POPUP — Ajouter une tuile
+  ========================================================= -->
+  <div id="hub-ajout-overlay" class="hub-popup-overlay" hidden role="dialog"
+       aria-modal="true" aria-labelledby="hub-ajout-titre">
+    <div class="hub-popup">
+      <header class="hub-popup-header">
+        <h2 id="hub-ajout-titre" class="hub-popup-titre">＋ Ajouter une tuile</h2>
+        <button type="button" class="hub-popup-fermer" data-fermer aria-label="Fermer">✕</button>
+      </header>
+      <section class="hub-popup-section">
+        <ul id="hub-ajout-liste" class="hub-popup-liste"></ul>
+      </section>
     </div>
   </div>
 

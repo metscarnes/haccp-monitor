@@ -14,12 +14,17 @@ Sources agrégées :
                               avec exclusion des items dont le devenir est déjà saisi
 """
 
+import json
 import logging
+import re
+import time
 from datetime import date as _date, timedelta
+from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
-from src.database import get_db, get_dlc_calendrier
+from src.database import get_db, get_dlc_calendrier, get_parametre, set_parametre
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,104 @@ router = APIRouter(prefix="/api/hub", tags=["hub"])
 DELAI_ETALONNAGE_JOURS = 92      # ~3 mois (aligné sur routes_etalonnage.py)
 SEUIL_A_VENIR_JOURS    = 14
 BOUTIQUE_ID            = 1
+
+# ===========================================================================
+# Disposition des tuiles du Hub (personnalisée par l'administrateur)
+# ===========================================================================
+# Le serveur ne garde que des identifiants de tuiles ; la liste des tuiles
+# possibles (titre, icône, lien) est dans hub.js. Une seule disposition pour la
+# boutique : tablette, Surface et téléphone affichent le même Hub.
+#   ordre   : tuiles affichées, dans l'ordre de la grille
+#   connues : toutes les tuiles existantes au moment de l'enregistrement — une
+#             tuile ajoutée plus tard dans le code (absente de « connues »)
+#             apparaît donc d'elle-même au lieu d'être prise pour une masquée.
+CLE_DISPOSITION = "hub_disposition"
+JETON_DISPOSITION_SUJET = "disposition-hub"
+JETON_DISPOSITION_DUREE_S = 15 * 60
+_ID_TUILE = re.compile(r"^[a-z0-9-]{1,40}$")
+
+
+class Disposition(BaseModel):
+    ordre: List[str] = Field(default_factory=list, max_length=60)
+    connues: List[str] = Field(default_factory=list, max_length=60)
+    jeton: Optional[str] = None      # autorisation remise par /disposition/deverrouiller
+
+
+class MotDePasse(BaseModel):
+    password: Optional[str] = None   # mot de passe ADMINISTRATEUR (même en session équipe)
+
+
+def _exiger_jeton_disposition(jeton: Optional[str]) -> None:
+    from jose import JWTError, jwt
+    from src.api.routes_auth import _JWT_ALGO, _JWT_SECRET
+    try:
+        if jwt.decode(jeton or "", _JWT_SECRET, algorithms=[_JWT_ALGO]).get("sub") == JETON_DISPOSITION_SUJET:
+            return
+    except JWTError:
+        pass
+    raise HTTPException(status_code=401, detail="Personnalisation du Hub réservée à "
+                        "l'administrateur : déverrouillez avec le mot de passe administrateur.")
+
+
+def _ids_valides(ids: List[str]) -> List[str]:
+    """Garde l'ordre, retire les doublons ; 422 sur un identifiant mal formé."""
+    vus: list = []
+    for i in ids:
+        if not _ID_TUILE.match(i):
+            raise HTTPException(status_code=422, detail=f"Tuile inconnue : {i!r}")
+        if i not in vus:
+            vus.append(i)
+    return vus
+
+
+@router.get("/disposition")
+async def lire_disposition():
+    """Disposition enregistrée, ou {"personnalisee": false} (Hub d'origine)."""
+    async with get_db() as db:
+        brut = await get_parametre(db, BOUTIQUE_ID, CLE_DISPOSITION)
+    if not brut:
+        return {"personnalisee": False, "ordre": [], "connues": []}
+    try:
+        d = json.loads(brut)
+        return {"personnalisee": True, "ordre": d.get("ordre", []), "connues": d.get("connues", [])}
+    except (ValueError, AttributeError):
+        logger.warning("hub_disposition illisible, Hub d'origine affiché")
+        return {"personnalisee": False, "ordre": [], "connues": []}
+
+
+@router.post("/disposition/deverrouiller")
+async def deverrouiller_disposition(body: MotDePasse, request: Request):
+    """Vérifie le mot de passe administrateur et remet l'autorisation (15 min)."""
+    from jose import jwt
+    from src.api.routes_auth import _JWT_ALGO, _JWT_SECRET, verifier_mot_de_passe_admin
+    verifier_mot_de_passe_admin(request, body.password)
+    jeton = jwt.encode({"sub": JETON_DISPOSITION_SUJET,
+                        "exp": int(time.time()) + JETON_DISPOSITION_DUREE_S},
+                       _JWT_SECRET, algorithm=_JWT_ALGO)
+    return {"jeton": jeton, "expire_dans": JETON_DISPOSITION_DUREE_S}
+
+
+@router.put("/disposition")
+async def enregistrer_disposition(body: Disposition):
+    _exiger_jeton_disposition(body.jeton)
+    ordre = _ids_valides(body.ordre)
+    connues = _ids_valides(body.connues + ordre)
+    async with get_db() as db:
+        await set_parametre(db, BOUTIQUE_ID, CLE_DISPOSITION,
+                            json.dumps({"ordre": ordre, "connues": connues}))
+    return {"personnalisee": True, "ordre": ordre, "connues": connues}
+
+
+@router.post("/disposition/reinitialiser")
+async def reinitialiser_disposition(body: Disposition):
+    """« Revenir à l'origine » : efface la disposition personnalisée."""
+    _exiger_jeton_disposition(body.jeton)
+    async with get_db() as db:
+        await db.execute("DELETE FROM parametres WHERE boutique_id = ? AND cle = ?",
+                         (BOUTIQUE_ID, CLE_DISPOSITION))
+        await db.commit()
+    return {"personnalisee": False, "ordre": [], "connues": []}
+
 
 NUISIBLES_TYPES = {
     1: "Rongeurs",
@@ -296,6 +399,26 @@ async def taches_resume():
                 })
         except Exception as exc:
             logger.warning("hub résumé production à cuire : %s", exc)
+
+        # ── 6. Produits à ajouter au catalogue de vente ─────────
+        # Étiquette prix imprimée pour un article absent du catalogue = l'équipe a
+        # mis un nouveau produit en rayon (cf. src/produits_a_creer.py).
+        try:
+            from src.produits_a_creer import compter_demandes
+            n_a_creer = await compter_demandes(db)
+            await db.commit()               # demandes closes d'elles-mêmes
+            if n_a_creer:
+                aujourd_hui.append({
+                    "code":    "produits_a_creer",
+                    "libelle": "Nouveau produit en rayon",
+                    "url":     "/catalogue-vente.html?a_creer=1",
+                    "icone":   "🆕",
+                    "etat":    "a_faire",
+                    "detail":  f"{n_a_creer} produit(s) étiqueté(s) hors catalogue — "
+                               "à ajouter au catalogue de vente",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé produits à créer : %s", exc)
 
     return {
         "date":        today.isoformat(),

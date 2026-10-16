@@ -490,9 +490,108 @@ async function toggleActif(id, actif) {
   await charger();
 }
 
+// ── Produits étiquetés hors catalogue par l'équipe (à créer) ──
+// L'équipe a imprimé une « étiquette prix » (module Étiquettes, onglet Étiquette libre)
+// pour un article absent du catalogue : un nouveau produit est en rayon. « Ajouter »
+// ouvre la fiche pré-remplie (nom, prix, unité) ; après l'enregistrement, la demande
+// est close et la fenêtre « Relier à un article d'achat » s'ouvre comme d'habitude.
+const API_A_CREER = '/api/prix-etiquettes/produits-a-creer';
+let demandes = [];
+let demandeEnCours = null;    // demande dont la fiche « Nouveau produit » est ouverte
+
+function entetesAuth(json = false) {
+  const token = localStorage.getItem('admin_token');
+  return { ...(json ? { 'Content-Type': 'application/json' } : {}),
+           ...(token ? { Authorization: 'Bearer ' + token } : {}) };
+}
+
+function fmtQuand(s) {
+  return s ? `${s.slice(8, 10)}/${s.slice(5, 7)} à ${s.slice(11, 16)}` : '';
+}
+
+async function chargerACreer() {
+  const zone = document.getElementById('zone-a-creer');
+  try {
+    const r = await fetch(API_A_CREER, { headers: entetesAuth() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    demandes = (await r.json()).demandes || [];
+  } catch (e) {
+    console.warn('Produits à créer :', e);
+    return;
+  }
+  zone.hidden = demandes.length === 0;
+  document.getElementById('liste-a-creer').innerHTML = demandes.map(d => `
+    <li class="ach-a-creer-item">
+      <span><strong>${escHtml(d.nom)}</strong> — ${d.prix_vente_ttc != null ? fmtPrix(d.prix_vente_ttc).replace('.', ',') + ' €' : 'sans prix'}
+        ${d.unite_vente === 'piece' ? 'la pièce' : 'le kg'}
+        <span class="ach-a-creer-detail">${d.nb_etiquettes > 1 ? `${d.nb_etiquettes} étiquettes imprimées, ` : 'Étiquette imprimée '}
+          le ${fmtQuand(d.derniere_at)}</span></span>
+      <button type="button" class="ach-btn ach-btn--primary" data-creer="${d.id}">➕ Ajouter au catalogue</button>
+      <button type="button" class="ach-btn" data-ignorer="${d.id}">Ignorer</button>
+    </li>`).join('');
+}
+
+function creerDepuisDemande(id) {
+  const d = demandes.find(x => x.id === id);
+  if (!d) return;
+  ouvrirNouveau();
+  demandeEnCours = d.id;
+  document.getElementById('modal-titre').textContent = 'Nouveau produit fini — demandé par l\'équipe';
+  document.getElementById('v-nom').value = d.nom || '';
+  document.getElementById('v-prix').value = d.prix_vente_ttc ?? '';
+  document.getElementById('v-unite').value = d.unite_vente === 'piece' ? 'piece' : 'kg';
+  majAffichagePoids();
+}
+
+async function ignorerDemande(id) {
+  const d = demandes.find(x => x.id === id);
+  if (!d || !confirm(`Ne pas ajouter « ${d.nom} » au catalogue ?\n\nLa tâche disparaîtra du Hub.`)) return;
+  try {
+    const r = await fetch(`${API_A_CREER}/${id}/ignorer`, { method: 'POST', headers: entetesAuth() });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Erreur');
+  } catch (e) {
+    afficherErreur('Impossible d\'ignorer ce produit : ' + e.message);
+  }
+  await chargerACreer();
+}
+
+// Fiche enregistrée : la demande est close (le serveur la clôt aussi de lui-même dès
+// qu'un produit du même nom existe au catalogue).
+async function cloreDemande(catalogueVenteId) {
+  const id = demandeEnCours;
+  demandeEnCours = null;
+  if (id == null) return;
+  try {
+    await fetch(`${API_A_CREER}/${id}/cree`, {
+      method: 'POST', headers: entetesAuth(true),
+      body: JSON.stringify({ catalogue_vente_id: catalogueVenteId }),
+    });
+  } catch (e) { console.warn('Produit à créer :', e); }
+  await chargerACreer();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('liste-a-creer').addEventListener('click', e => {
+    const creer = e.target.closest('[data-creer]');
+    const ign = e.target.closest('[data-ignorer]');
+    if (creer) creerDepuisDemande(+creer.dataset.creer);
+    else if (ign) ignorerDemande(+ign.dataset.ignorer);
+  });
+  await chargerACreer();
+  // Arrivée depuis la tâche du Hub (?a_creer=1) : la liste est mise en avant.
+  if (new URLSearchParams(location.search).has('a_creer')) {
+    const zone = document.getElementById('zone-a-creer');
+    if (!zone.hidden) {
+      zone.classList.add('ach-a-creer--vise');
+      zone.scrollIntoView({ block: 'start' });
+    }
+  }
+});
+
 // ── Modal ────────────────────────────────────────────────────
 function ouvrirNouveau() {
   modeEdition = false;
+  demandeEnCours = null;
   document.getElementById('modal-titre').textContent = 'Nouveau produit fini';
   document.getElementById('btn-supprimer').hidden = true;
   document.getElementById('btn-relier-achat').hidden = true;  // pas d'id tant que non créé
@@ -584,6 +683,7 @@ async function sauver(e) {
     const produit = await r.json().catch(() => null);
     fermerModal();
     await charger();
+    if (!modeEdition && produit && produit.id) await cloreDemande(produit.id);
     // Après CRÉATION d'un produit de vente, proposer de le relier à un article d'achat
     // (suivi de marge). En édition, on ne déclenche rien (bouton dédié dans la fiche).
     if (!modeEdition && produit && produit.id) {

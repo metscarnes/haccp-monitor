@@ -41,11 +41,39 @@
 <main class="pe-libre pe-vue-libre" aria-label="Étiquette libre">
 
   <section class="pe-libre-saisie">
-    <div class="pe-style-bloc-titre">Texte de l'étiquette</div>
-    <p class="pe-dim-aide">Pour une étiquette hors catalogue (« Arrivage du jour », « Fait maison »…).
-      Elle reprend automatiquement le style de la boutique : seul le texte se change.</p>
-    <div class="pe-libre-lignes" id="libre-lignes"></div>
-    <button class="pe-btn pe-btn--sm pe-btn--ajout" id="libre-ajouter">+ Ajouter une ligne</button>
+    <div class="pe-libre-choix" role="tablist" aria-label="Sorte d'étiquette">
+      <button class="pe-imp-famille active" role="tab" data-sorte="texte">✏️ Texte libre</button>
+      <button class="pe-imp-famille" role="tab" data-sorte="prix">🏷️ Étiquette prix</button>
+    </div>
+
+    <div class="pe-libre-bloc" id="libre-bloc-texte">
+      <div class="pe-style-bloc-titre">Texte de l'étiquette</div>
+      <p class="pe-dim-aide">Pour une étiquette hors catalogue (« Arrivage du jour », « Fait maison »…).
+        Elle reprend automatiquement le style de la boutique : seul le texte se change.</p>
+      <div class="pe-libre-lignes" id="libre-lignes"></div>
+      <button class="pe-btn pe-btn--sm pe-btn--ajout" id="libre-ajouter">+ Ajouter une ligne</button>
+    </div>
+
+    <div class="pe-libre-bloc" id="libre-bloc-prix" hidden>
+      <div class="pe-style-bloc-titre">Article qui n'est pas au catalogue</div>
+      <p class="pe-dim-aide">Étiquette prix officielle de la boutique. Le produit sera signalé
+        au responsable pour qu'il l'ajoute au catalogue de vente.</p>
+      <label class="pe-libre-champ">Nom de l'article
+        <input type="text" class="pe-input pe-input--grand" id="libre-nom" maxlength="40"
+               placeholder="Ex. Paupiette de lapin" autocomplete="off">
+      </label>
+      <div class="pe-libre-existe" id="libre-existe" hidden></div>
+      <label class="pe-libre-champ">Prix TTC (€)
+        <input type="text" class="pe-input pe-input--grand" id="libre-prix" inputmode="decimal"
+               placeholder="Ex. 14,90" autocomplete="off">
+      </label>
+      <div class="pe-libre-champ">Vendu
+        <div class="pe-libre-unites">
+          <button class="pe-imp-famille active" data-unite="kg">au kg</button>
+          <button class="pe-imp-famille" data-unite="piece">à la pièce</button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="pe-libre-apercu" aria-label="Aperçu">

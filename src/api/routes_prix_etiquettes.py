@@ -16,15 +16,18 @@ Endpoints :
   GET/PUT /api/prix-etiquettes/modele-defaut → modèle des réimpressions
   GET  /api/prix-etiquettes/a-reimprimer    → file des étiquettes à refaire (+ /compte, /historique)
   POST /api/prix-etiquettes/a-reimprimer/sortir → imprimées via navigateur / retirées
+  POST /api/prix-etiquettes/imprimer-hors-catalogue → étiquette prix d'un article absent
+                                                du catalogue (+ demande de création)
+  GET  /api/prix-etiquettes/produits-a-creer → demandes en attente (+ /{id}/cree, /{id}/ignorer)
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from src.database import get_db
@@ -139,6 +142,94 @@ async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
         "prix_ttc": prix_imprime(produit, body.type) if produit else None,
     }], mode="serveur")
     return {"ok": True, "message": message}
+
+
+# ---------------------------------------------------------------------------
+# Étiquette prix hors catalogue (onglet Étiquette libre → « Étiquette prix »)
+# ---------------------------------------------------------------------------
+# Nom, prix et unité tapés à la main, toujours au style de la boutique. Un article
+# absent du catalogue de vente = nouveau produit en rayon : il est noté dans
+# produits_a_creer (tâche du Hub) jusqu'à sa création au catalogue.
+
+class ArticleHorsCatalogue(BaseModel):
+    nom: str = Field(min_length=1, max_length=40)
+    prix_vente_ttc: float = Field(gt=0, lt=10000)
+    unite_vente: Literal["kg", "piece"] = "kg"
+
+    @field_validator("nom")
+    @classmethod
+    def _nom_non_vide(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if not v:
+            raise ValueError("Tapez le nom de l'article.")
+        return v
+
+
+async def _noter_hors_catalogue(article: "ArticleHorsCatalogue") -> dict:
+    """Note la demande de création (sauf si le produit existe déjà au catalogue)."""
+    from src.produits_a_creer import noter_demande, produit_existant
+    async with get_db() as db:
+        existant = await produit_existant(db, article.nom)
+        demande_id = None if existant else await noter_demande(
+            db, article.nom, round(article.prix_vente_ttc, 2), article.unite_vente)
+        await db.commit()
+    return {"existant": existant, "demande_id": demande_id}
+
+
+@router.post("/api/prix-etiquettes/imprimer-hors-catalogue")
+async def imprimer_hors_catalogue(body: ArticleHorsCatalogue, request: Request):
+    from src.printing.brother_ql_prix import appliquer_variables, imprimer_etiquette_prix
+    async with get_db() as db:
+        normal = (await _styles(db))["normal"]
+    if normal is None:
+        raise HTTPException(status_code=409, detail="Aucun style d'étiquette : "
+                            "l'administrateur doit le créer dans l'onglet Style.")
+    produit = {"nom": body.nom, "prix_vente_ttc": round(body.prix_vente_ttc, 2),
+               "unite_vente": body.unite_vente}
+    data = appliquer_variables(normal["config"], produit)
+    ok, message = await run_in_threadpool(imprimer_etiquette_prix, data)
+    if not ok:
+        raise HTTPException(status_code=503, detail=message)
+    await _journaliser(request, [{
+        "libelle": body.nom, "quantite": 1, "type": "hors_catalogue",
+        "prix_ttc": produit["prix_vente_ttc"], "unite_vente": body.unite_vente,
+    }], mode="serveur")
+    return {"ok": True, "message": message, **await _noter_hors_catalogue(body)}
+
+
+@router.get("/api/prix-etiquettes/produits-a-creer")
+async def lister_produits_a_creer():
+    from src.produits_a_creer import lister_demandes
+    async with get_db() as db:
+        demandes = await lister_demandes(db)
+        await db.commit()                       # demandes closes d'elles-mêmes
+    return {"demandes": demandes, "total": len(demandes)}
+
+
+class DemandeCreee(BaseModel):
+    catalogue_vente_id: int
+
+
+@router.post("/api/prix-etiquettes/produits-a-creer/{demande_id}/cree")
+async def produit_a_creer_cree(demande_id: int, body: DemandeCreee):
+    from src.produits_a_creer import marquer_cree
+    async with get_db() as db:
+        ok = await marquer_cree(db, demande_id, body.catalogue_vente_id)
+        await db.commit()
+    if not ok:
+        raise HTTPException(status_code=404, detail="Demande introuvable ou déjà traitée")
+    return {"ok": True}
+
+
+@router.post("/api/prix-etiquettes/produits-a-creer/{demande_id}/ignorer")
+async def produit_a_creer_ignorer(demande_id: int):
+    from src.produits_a_creer import ignorer
+    async with get_db() as db:
+        ok = await ignorer(db, demande_id)
+        await db.commit()
+    if not ok:
+        raise HTTPException(status_code=404, detail="Demande introuvable ou déjà traitée")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -825,6 +916,7 @@ class ImpressionNavigateur(BaseModel):
     type: str = "normal"                 # normal | promo | libre
     produits: list[LigneMasse] = []      # étiquettes de produits du catalogue
     libelle: Optional[str] = None        # étiquette libre : son texte
+    article: Optional[ArticleHorsCatalogue] = None   # étiquette prix hors catalogue
 
 
 @router.post("/api/prix-etiquettes/impressions/navigateur", status_code=201)
@@ -838,7 +930,13 @@ async def noter_impression_navigateur(body: ImpressionNavigateur, request: Reque
         "quantite": max(1, p.quantite), "type": body.type,
         "prix_ttc": prix_imprime(produits[p.produit_id], body.type),
     } for p in body.produits if p.produit_id in produits]
-    if not body.produits and body.libelle:
+    if not body.produits and body.article:
+        a = body.article
+        lignes = [{"libelle": a.nom, "quantite": 1, "type": "hors_catalogue",
+                   "prix_ttc": round(a.prix_vente_ttc, 2), "unite_vente": a.unite_vente}]
+    elif not body.produits and body.libelle:
         lignes = [{"libelle": body.libelle, "quantite": 1, "type": "libre"}]
     await _journaliser(request, lignes, mode="navigateur")
+    if not body.produits and body.article:
+        return {"ok": True, **await _noter_hors_catalogue(body.article)}
     return {"ok": True}

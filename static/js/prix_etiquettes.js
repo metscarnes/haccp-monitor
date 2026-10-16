@@ -476,15 +476,23 @@ async function afficherOnglet(nom) {
 document.querySelectorAll('.pe-onglet').forEach(o =>
   o.addEventListener('click', () => afficherOnglet(o.dataset.onglet)));
 
-// ── Étiquette libre : du TEXTE seulement, au style de la boutique ──
-// Pas de taille, de police, de fond, de format ni de modèle à choisir : l'étiquette
-// libre (« Arrivage du jour »…) reprend le style normal — une seule apparence pour
-// toutes les étiquettes. Le serveur la redessine de toute façon avec ce style
-// (brother_ql_prix.config_libre), quoi que l'écran envoie.
+// ── Étiquette libre : texte libre OU étiquette prix, au style de la boutique ──
+// Pas de taille, de police, de fond, de format ni de modèle à choisir : une seule
+// apparence pour toutes les étiquettes (le style normal). Deux sortes :
+//  - « Texte libre » (« Arrivage du jour »…) : le serveur la redessine avec ce style
+//    (brother_ql_prix.config_libre), quoi que l'écran envoie ;
+//  - « Étiquette prix » d'un article absent du catalogue : seuls le nom, le prix et
+//    l'unité se tapent, la mise en page est celle des étiquettes prix. Le serveur note
+//    le produit à créer au catalogue de vente (tâche du Hub).
 const MAX_LIGNES_LIBRES = 5;
 const CLE_TEXTES_LIBRES = 'pe_libre_textes';
+const CLE_SORTE_LIBRE   = 'pe_libre_sorte';
+const CLE_ARTICLE_LIBRE = 'pe_libre_article';
 const elLibreLignes  = $('libre-lignes');
 const elLibreAjouter = $('libre-ajouter');
+const elLibreNom     = $('libre-nom');
+const elLibrePrix    = $('libre-prix');
+const elLibreExiste  = $('libre-existe');
 const elCanvas       = $('etiquette-canvas');
 const elCadre        = $('etiquette-cadre');
 const elDimsInfo     = $('preview-dims-info');
@@ -493,12 +501,14 @@ const elBtnImprimer  = $('btn-imprimer');
 const elBtnImprimerNav = $('btn-imprimer-navigateur');
 const SANS_STYLE = 'Aucun style d\'étiquette : l\'administrateur doit le créer dans l\'onglet « Style ».';
 
+const libre = { sorte: 'texte', unite: 'kg', catalogue: null };
+
 function afficherStatut(msg, type) {
   // type : 'ok' | 'err' | 'loading'
   elPrintStatus.textContent = msg;
   elPrintStatus.className = `pe-print-status pe-print-status--${type}`;
   elPrintStatus.hidden = false;
-  if (type === 'ok') setTimeout(() => { elPrintStatus.hidden = true; }, 4000);
+  if (type === 'ok') setTimeout(() => { elPrintStatus.hidden = true; }, 6000);
 }
 
 function textesLibres() {
@@ -518,16 +528,96 @@ function configLibre(style, textes) {
   };
 }
 
+// « 14,90 » / « 14.9 » / « 14,90 € » → 14.9 ; null si illisible ou ≤ 0.
+function lirePrix(texte) {
+  const v = parseFloat(String(texte || '').replace(/[€\s]/g, '').replace(',', '.'));
+  return Number.isFinite(v) && v > 0 && v < 10000 ? Math.round(v * 100) / 100 : null;
+}
+
+// Article tapé à la main, sous la forme d'un produit du catalogue (pour l'aperçu).
+function articleSaisi() {
+  return { nom: elLibreNom.value.replace(/\s+/g, ' ').trim(),
+           prix_vente_ttc: lirePrix(elLibrePrix.value), unite_vente: libre.unite };
+}
+
+// Nom sans accents ni majuscules (miroir de produits_a_creer.normaliser_nom).
+const normaliser = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/\s+/g, ' ').trim().toLowerCase();
+
+// L'article existe peut-être déjà au catalogue : on le signale, avec un lien vers
+// sa vraie étiquette (prix du catalogue), pour éviter les doublons.
+async function signalerExistants() {
+  const cle = normaliser(elLibreNom.value);
+  if (cle.length < 3) { elLibreExiste.hidden = true; return; }
+  if (!libre.catalogue) {
+    try {
+      libre.catalogue = (await apiFetch('/api/prix-etiquettes/catalogue?limit=2000')).articles ?? [];
+    } catch (e) { libre.catalogue = []; }
+  }
+  if (normaliser(elLibreNom.value) !== cle) return;     // saisie changée entre-temps
+  const proches = libre.catalogue.filter(p => normaliser(p.nom).includes(cle)).slice(0, 3);
+  elLibreExiste.hidden = !proches.length;
+  elLibreExiste.innerHTML = proches.length ? `Déjà au catalogue : ${proches.map(p => `
+    <a href="/prix-etiquettes.html?produit=${p.id}">${escHtml(p.nom)}${p.prix_vente_ttc != null
+      ? ` (${p.prix_vente_ttc.toFixed(2).replace('.', ',')} €)` : ''}</a>`).join(', ')}
+    — touchez-le pour imprimer sa vraie étiquette.` : '';
+}
+
+function sauverSaisie() {
+  try {
+    localStorage.setItem(CLE_TEXTES_LIBRES, JSON.stringify(textesLibres()));
+    localStorage.setItem(CLE_SORTE_LIBRE, libre.sorte);
+    localStorage.setItem(CLE_ARTICLE_LIBRE, JSON.stringify(
+      { nom: elLibreNom.value, prix: elLibrePrix.value, unite: libre.unite }));
+  } catch (e) { /* ignore */ }
+}
+
 function rendreLibre() {
-  try { localStorage.setItem(CLE_TEXTES_LIBRES, JSON.stringify(textesLibres())); } catch (e) { /* ignore */ }
+  sauverSaisie();
   elLibreAjouter.disabled = elLibreLignes.children.length >= MAX_LIGNES_LIBRES;
   if (!state.styleNormal) {
     elDimsInfo.textContent = SANS_STYLE;
     return;
   }
-  dessinerEtiquette({ canvas: elCanvas, cadre: elCadre, info: elDimsInfo },
-                    configLibre(state.styleNormal, textesLibres()), null);
+  const cible = { canvas: elCanvas, cadre: elCadre, info: elDimsInfo };
+  if (libre.sorte === 'prix') {
+    // Mise en page officielle : le style normal, rempli avec l'article tapé.
+    dessinerEtiquette(cible, state.styleNormal, articleSaisi());
+  } else {
+    dessinerEtiquette(cible, configLibre(state.styleNormal, textesLibres()), null);
+  }
 }
+
+function choisirSorte(sorte) {
+  libre.sorte = sorte === 'prix' ? 'prix' : 'texte';
+  document.querySelectorAll('.pe-libre-choix [data-sorte]').forEach(b => {
+    const actif = b.dataset.sorte === libre.sorte;
+    b.classList.toggle('active', actif);
+    b.setAttribute('aria-selected', String(actif));
+  });
+  $('libre-bloc-texte').hidden = libre.sorte !== 'texte';
+  $('libre-bloc-prix').hidden = libre.sorte !== 'prix';
+  rendreLibre();
+}
+
+function choisirUnite(unite) {
+  libre.unite = unite === 'piece' ? 'piece' : 'kg';
+  document.querySelectorAll('.pe-libre-unites [data-unite]').forEach(b =>
+    b.classList.toggle('active', b.dataset.unite === libre.unite));
+  rendreLibre();
+}
+
+document.querySelectorAll('.pe-libre-choix [data-sorte]').forEach(b =>
+  b.addEventListener('click', () => choisirSorte(b.dataset.sorte)));
+document.querySelectorAll('.pe-libre-unites [data-unite]').forEach(b =>
+  b.addEventListener('click', () => choisirUnite(b.dataset.unite)));
+let minuterieExistants = null;
+elLibreNom.addEventListener('input', () => {
+  rendreLibre();
+  clearTimeout(minuterieExistants);
+  minuterieExistants = setTimeout(signalerExistants, 250);
+});
+elLibrePrix.addEventListener('input', rendreLibre);
 
 function ajouterLigneLibre(texte = '') {
   if (elLibreLignes.children.length >= MAX_LIGNES_LIBRES) return;
@@ -569,6 +659,14 @@ function verifierAvantImpression() {
     afficherStatut(SANS_STYLE, 'err');
     return false;
   }
+  if (libre.sorte === 'prix') {
+    const a = articleSaisi();
+    if (!a.nom) { afficherStatut('Tapez le nom de l\'article.', 'err'); elLibreNom.focus(); return false; }
+    if (a.prix_vente_ttc == null) {
+      afficherStatut('Tapez le prix (ex. 14,90).', 'err'); elLibrePrix.focus(); return false;
+    }
+    return true;
+  }
   if (!textesLibres().some(t => t.trim())) {
     afficherStatut('Tapez au moins une ligne de texte avant d\'imprimer.', 'err');
     return false;
@@ -576,18 +674,34 @@ function verifierAvantImpression() {
   return true;
 }
 
+// Message après une étiquette prix : produit signalé, ou déjà au catalogue.
+function messageArticle(rep) {
+  if (rep?.existant) return `✓ Étiquette imprimée. « ${rep.existant.nom} » est déjà au catalogue de vente.`;
+  if (rep?.demande_id) return '✓ Étiquette imprimée. Le produit est signalé au responsable pour l\'ajouter au catalogue.';
+  return '✓ Étiquette imprimée avec succès.';
+}
+
 elBtnImprimer.addEventListener('click', async () => {
   if (!verifierAvantImpression()) return;
   elBtnImprimer.disabled = true;
   afficherStatut('Envoi à l\'imprimante…', 'loading');
   try {
-    // Seul le texte part : le serveur applique le style de la boutique.
-    await apiFetch('/api/prix-etiquettes/imprimer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })) }),
-    });
-    afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
+    if (libre.sorte === 'prix') {
+      const rep = await apiFetch('/api/prix-etiquettes/imprimer-hors-catalogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(articleSaisi()),
+      });
+      afficherStatut(messageArticle(rep), 'ok');
+    } else {
+      // Seul le texte part : le serveur applique le style de la boutique.
+      await apiFetch('/api/prix-etiquettes/imprimer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })) }),
+      });
+      afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
+    }
   } catch (e) {
     afficherStatut('Erreur impression : ' + e.message, 'err');
   } finally {
@@ -599,19 +713,41 @@ elBtnImprimer.addEventListener('click', async () => {
 elBtnImprimerNav.addEventListener('click', async () => {
   if (!verifierAvantImpression()) return;
   rendreLibre();
-  const config = configLibre(state.styleNormal, textesLibres());
+  const style = state.styleNormal;
   await imprimerImagesSansPopup([{ src: elCanvas.toDataURL('image/png'), alt: 'Étiquette' }],
-    config.largeur_cm, Math.min(config.hauteur_cm, HAUTEUR_MAX_CM), 'Étiquette');
+    style.largeur_cm, Math.min(style.hauteur_cm, HAUTEUR_MAX_CM), 'Étiquette');
   afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
-  noterImpressionNavigateur({ type: 'libre', libelle: config.lignes.map(l => l.texte).join('\n') });
+  if (libre.sorte === 'prix') {
+    noterImpressionNavigateur({ type: 'hors_catalogue', article: articleSaisi() });
+  } else {
+    noterImpressionNavigateur({ type: 'libre',
+      libelle: configLibre(style, textesLibres()).lignes.map(l => l.texte).join('\n') });
+  }
 });
 
 peVues.libre = {
   async afficher() {
     await chargerStyleNormal();
+    libre.catalogue = null;            // relu à la prochaine saisie (produits ajoutés)
     rendreLibre();
   },
 };
+
+// Saisie précédente (confort sur la tablette) : sorte, textes, article.
+function restaurerLibre(textes, sorteImposee) {
+  let article = {}, sorte = sorteImposee;
+  try {
+    article = JSON.parse(localStorage.getItem(CLE_ARTICLE_LIBRE) || '{}') || {};
+    sorte = sorte || localStorage.getItem(CLE_SORTE_LIBRE);
+  } catch (e) { /* ignore */ }
+  elLibreNom.value = article.nom || '';
+  elLibrePrix.value = article.prix || '';
+  libre.unite = article.unite === 'piece' ? 'piece' : 'kg';
+  document.querySelectorAll('.pe-libre-unites [data-unite]').forEach(b =>
+    b.classList.toggle('active', b.dataset.unite === libre.unite));
+  remplirLignesLibres(Array.isArray(textes) ? textes : []);
+  choisirSorte(sorte || 'texte');
+}
 
 // ── Init ──────────────────────────────────────────────────────
 
@@ -634,7 +770,7 @@ async function init() {
       ongletDepart = 'libre';
     }
   } catch (e) { /* ignore */ }
-  remplirLignesLibres(Array.isArray(textes) ? textes : []);
+  restaurerLibre(textes, ongletDepart === 'libre' ? 'texte' : null);
 
   // Onglet de départ : « Imprimer » quand on arrive pour imprimer (tuile du Hub
   // ?reimprimer, bouton 🏷️ du catalogue de vente ?produit=), sinon le dernier utilisé.

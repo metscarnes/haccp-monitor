@@ -15,7 +15,9 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-TYPES = ("normal", "promo", "libre")
+# hors_catalogue : étiquette prix d'un article absent du catalogue de vente (nom, prix
+# et unité tapés à la main), cf. src/produits_a_creer.py.
+TYPES = ("normal", "promo", "libre", "hors_catalogue")
 MODES = ("serveur", "navigateur")
 # Étiquette libre : ses lignes séparées par « \n » (5 lignes × 40 caractères au plus).
 LIBELLE_MAX = 250
@@ -36,7 +38,7 @@ def prix_imprime(produit: dict, type_etiquette: str) -> Optional[float]:
 async def journaliser(db, lignes: list[dict], *, mode: str = "serveur",
                       role: Optional[str] = None) -> Optional[str]:
     """Note une impression. lignes = [{catalogue_vente_id?, libelle, quantite, type,
-    prix_ttc}]. Renvoie l'identifiant du lot (None si rien à noter)."""
+    prix_ttc, unite_vente?}]. Renvoie l'identifiant du lot (None si rien à noter)."""
     lignes = [l for l in lignes if (l.get("quantite") or 0) > 0]
     if not lignes:
         return None
@@ -48,17 +50,17 @@ async def journaliser(db, lignes: list[dict], *, mode: str = "serveur",
         await db.execute(
             """INSERT INTO impressions_etiquettes
                    (lot, imprime_at, catalogue_vente_id, libelle, quantite, type, prix_ttc,
-                    mode, role)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    mode, role, unite_vente)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (lot, quand, l.get("catalogue_vente_id"), (l.get("libelle") or "")[:LIBELLE_MAX],
-             int(l["quantite"]), type_, l.get("prix_ttc"), mode, role),
+             int(l["quantite"]), type_, l.get("prix_ttc"), mode, role, l.get("unite_vente")),
         )
     return lot
 
 
 async def lister_impressions(db, limit: int = 50) -> list[dict]:
     """Dernières impressions (lots), de la plus récente : {lot, imprime_at, mode,
-    total, lignes:[{libelle, quantite, type, prix_ttc}]}."""
+    total, lignes:[{libelle, quantite, type, prix_ttc, catalogue_vente_id, unite_vente}]}."""
     lots = await db.execute_fetchall(
         """SELECT lot, MAX(imprime_at) AS imprime_at, MAX(mode) AS mode, SUM(quantite) AS total
            FROM impressions_etiquettes GROUP BY lot
@@ -69,12 +71,13 @@ async def lister_impressions(db, limit: int = 50) -> list[dict]:
     marques = ",".join("?" for _ in ids)
     lignes = await db.execute_fetchall(
         f"""SELECT i.lot, COALESCE(v.nom, i.libelle) AS libelle, i.quantite, i.type, i.prix_ttc,
-                   i.catalogue_vente_id
+                   i.catalogue_vente_id, i.unite_vente
             FROM impressions_etiquettes i
             LEFT JOIN catalogue_vente v ON v.id = i.catalogue_vente_id
             WHERE i.lot IN ({marques}) ORDER BY i.id""", ids)
     par_lot: dict[str, list] = {}
     for l in lignes:
         par_lot.setdefault(l["lot"], []).append(
-            {k: l[k] for k in ("libelle", "quantite", "type", "prix_ttc", "catalogue_vente_id")})
+            {k: l[k] for k in ("libelle", "quantite", "type", "prix_ttc", "catalogue_vente_id",
+                               "unite_vente")})
     return [{**dict(l), "lignes": par_lot.get(l["lot"], [])} for l in lots]

@@ -1248,6 +1248,33 @@ CREATE TABLE IF NOT EXISTS impressions_etiquettes (
 
 CREATE INDEX IF NOT EXISTS idx_impressions_etiquettes_date
     ON impressions_etiquettes(imprime_at DESC);
+
+-- ===========================================================================
+-- v8.2 — Produits étiquetés hors catalogue, à créer (voir src/produits_a_creer.py)
+-- ===========================================================================
+-- Étiquette prix imprimée pour un article absent du catalogue de vente = nouveau
+-- produit en rayon → tâche du Hub jusqu'à sa création au catalogue de vente.
+-- Une seule demande en attente par nom normalisé (sans accents ni majuscules).
+--   statut : en_attente | cree | ignore
+-- impressions_etiquettes.unite_vente : unité d'une étiquette hors catalogue
+-- (type 'hors_catalogue'), pour la réimprimer depuis l'historique.
+CREATE TABLE IF NOT EXISTS produits_a_creer (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom                TEXT    NOT NULL,
+    nom_normalise      TEXT    NOT NULL,
+    prix_vente_ttc     REAL,
+    unite_vente        TEXT    NOT NULL DEFAULT 'kg',
+    nb_etiquettes      INTEGER NOT NULL DEFAULT 1,
+    premiere_at        DATETIME NOT NULL,
+    derniere_at        DATETIME NOT NULL,
+    statut             TEXT    NOT NULL DEFAULT 'en_attente',
+    catalogue_vente_id INTEGER,
+    traite_at          DATETIME,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_produits_a_creer_attente
+    ON produits_a_creer(nom_normalise) WHERE statut = 'en_attente';
 """
 
 SEED_SQL = """
@@ -2097,6 +2124,24 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE SET NULL
             )""",
             "CREATE INDEX IF NOT EXISTS idx_impressions_etiquettes_date ON impressions_etiquettes(imprime_at DESC)",
+            # v8.2 — Produits étiquetés hors catalogue, à créer (cf. SCHEMA_SQL et
+            # src/produits_a_creer.py) + unité des étiquettes hors catalogue dans l'historique.
+            """CREATE TABLE IF NOT EXISTS produits_a_creer (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                nom                TEXT    NOT NULL,
+                nom_normalise      TEXT    NOT NULL,
+                prix_vente_ttc     REAL,
+                unite_vente        TEXT    NOT NULL DEFAULT 'kg',
+                nb_etiquettes      INTEGER NOT NULL DEFAULT 1,
+                premiere_at        DATETIME NOT NULL,
+                derniere_at        DATETIME NOT NULL,
+                statut             TEXT    NOT NULL DEFAULT 'en_attente',
+                catalogue_vente_id INTEGER,
+                traite_at          DATETIME,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE SET NULL
+            )""",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_produits_a_creer_attente ON produits_a_creer(nom_normalise) WHERE statut = 'en_attente'",
+            "ALTER TABLE impressions_etiquettes ADD COLUMN unite_vente TEXT",
         ]
         for sql in migrations:
             try:

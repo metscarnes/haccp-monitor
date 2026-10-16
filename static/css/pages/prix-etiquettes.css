@@ -658,6 +658,20 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
   gap: var(--space-3);
 }
 .pe-libre-imprimer { width: 100%; max-width: 520px; justify-content: center; }
+.pe-libre-choix, .pe-libre-unites { display: flex; gap: var(--space-2); }
+.pe-libre-choix .pe-imp-famille, .pe-libre-unites .pe-imp-famille { flex: 1; min-height: 52px; }
+.pe-libre-bloc { display: flex; flex-direction: column; gap: var(--space-3); }
+.pe-libre-bloc[hidden] { display: none; }
+.pe-libre-champ { display: flex; flex-direction: column; gap: var(--space-1); font-weight: 600; color: var(--color-accent); }
+.pe-libre-existe {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: rgba(200,120,0,.10);
+  border: 1px solid rgba(200,120,0,.35);
+  color: #8a4b00;
+  font-size: var(--text-sm);
+}
+.pe-libre-existe[hidden] { display: none; }
 @media (max-width: 900px) {
   .pe-libre { grid-template-columns: 1fr; overflow: visible; }
   .pe-libre-apercu { order: -1; }
