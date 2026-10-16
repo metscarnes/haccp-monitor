@@ -103,7 +103,10 @@ async def test_enregistrer_les_styles_normal_et_promo(app_client, db):
     r = await app_client.put("/api/prix-etiquettes/styles/normal", json={"config": cfg, "jeton": jeton})
     assert r.status_code == 200, r.text
     normal = r.json()["normal"]
-    assert normal["id"] == ancien                      # même modèle, mis à jour
+    assert normal["id"] == ancien                      # même modèle, mis à jour…
+    assert normal["nom"] == "Étiquette normale"        # …et renommé selon son rôle
+    modeles = (await app_client.get("/api/prix-etiquettes/modeles")).json()["modeles"]
+    assert {m["id"]: m["style"] for m in modeles}[ancien] == "normal"
     assert normal["config"]["lignes"][0]["texte"] == "{Nom}"
     assert normal["config"]["lignes"][0]["poids"] == 2
     cur = await db.execute("SELECT config_json FROM modeles_etiquettes_prix WHERE id = ?", (ancien,))

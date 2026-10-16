@@ -230,33 +230,32 @@
       .map(([produit_id, quantite]) => ({ produit_id, quantite }));
   }
 
-  // Lignes du panier regroupées par style : [{ config, produits }] (normal, puis promo).
-  function seriesParStyle() {
+  // Lignes regroupées par style : [{ config, produits }] (normal, puis promo) — un
+  // produit en promo s'imprime avec le style promo. Produits retirés du catalogue ignorés.
+  function seriesParStyle(lignes = lignesPanier()) {
     const normal = [], promo = [];
-    lignesPanier().forEach(l => (produit(l.produit_id).promo ? promo : normal).push(l));
+    lignes.filter(l => produit(l.produit_id))
+      .forEach(l => (produit(l.produit_id).promo ? promo : normal).push(l));
     return [{ config: imp.style, produits: normal }, { config: imp.stylePromo, produits: promo }]
       .filter(s => s.produits.length && s.config);
   }
 
-  $('imp-imprimer').addEventListener('click', async () => {
-    const series = seriesParStyle();
-    if (!series.length) return;
-    const btn = $('imp-imprimer');
-    btn.disabled = true;
-    statut('Envoi à l\'imprimante…', 'loading');
+  // Envoie des lignes [{produit_id, quantite}] à l'imprimante (prix ACTUELS, style du
+  // moment). Renvoie { total, erreurs, partis } — partis = produits dont TOUS les
+  // exemplaires sont sortis (même règle que le serveur).
+  async function envoyerALImprimante(lignes) {
     let total = 0;
-    const erreurs = [];
-    for (const { config, produits } of series) {
+    const erreurs = [], partis = new Set();
+    for (const { config, produits } of seriesParStyle(lignes)) {
       try {
         const res = await apiFetch('/api/prix-etiquettes/imprimer-masse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ config, produits }),
         });
-        // Comme le serveur : un produit est parti si TOUS ses exemplaires sont partis.
         let reste = res.imprimees;
         produits.forEach(l => {
-          if (reste >= l.quantite) imp.panier.delete(l.produit_id);
+          if (reste >= l.quantite) partis.add(l.produit_id);
           reste -= l.quantite;
         });
         total += res.imprimees;
@@ -266,13 +265,27 @@
         break;                       // imprimante injoignable : inutile d'insister
       }
     }
-    imp.selection = null;
-    sauverPanier();
+    return { total, erreurs, partis };
+  }
+
+  function statutImpression({ total, erreurs }) {
     if (erreurs.length) {
       statut(`${total} imprimée(s) — Erreur impression : ${erreurs[0]}`, 'err');
     } else {
       statut(`✓ ${total} étiquette${total > 1 ? 's' : ''} imprimée${total > 1 ? 's' : ''}.`, 'ok');
     }
+  }
+
+  $('imp-imprimer').addEventListener('click', async () => {
+    if (!seriesParStyle().length) return;
+    const btn = $('imp-imprimer');
+    btn.disabled = true;
+    statut('Envoi à l\'imprimante…', 'loading');
+    const resultat = await envoyerALImprimante(lignesPanier());
+    resultat.partis.forEach(id => imp.panier.delete(id));
+    imp.selection = null;
+    sauverPanier();
+    statutImpression(resultat);
     await chargerFile();
     rendre();
   });
@@ -477,29 +490,117 @@
     return `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} à ${heure}`;
   }
 
-  $('imp-historique').addEventListener('click', async () => {
+  // Réimpression depuis l'historique : un clic sur « Réimprimer » (toute l'impression),
+  // ou cocher plusieurs lignes / impressions puis « Réimprimer la sélection ».
+  // Toujours au prix ACTUEL et avec le style du moment (promo si le produit est en promo).
+  // Une étiquette libre ne se réimprime pas d'ici (son texte n'est pas gardé).
+  let impressionsAffichees = [];
+  const reimprimable = l => l.catalogue_vente_id != null && !!produit(l.catalogue_vente_id);
+
+  function histoStatut(msg, type) {
+    const el = $('historique-statut');
+    el.textContent = msg;
+    el.className = `pe-print-status pe-print-status--${type}`;
+    el.hidden = !msg;
+  }
+
+  function majBoutonSelection() {
+    const lignes = lignesCochees();
+    const n = lignes.reduce((s, l) => s + l.quantite, 0);
+    const btn = $('historique-reimprimer');
+    btn.disabled = n === 0;
+    btn.textContent = n ? `🖨️ Réimprimer la sélection (${n} étiquette${n > 1 ? 's' : ''})`
+                        : '🖨️ Réimprimer la sélection';
+  }
+
+  // Lignes cochées → [{produit_id, quantite}] (un même produit coché deux fois : additionné).
+  function lignesCochees() {
+    const qte = new Map();
+    $('historique-liste').querySelectorAll('.pe-histo-cb-ligne:checked').forEach(cb => {
+      const id = +cb.dataset.produit;
+      qte.set(id, (qte.get(id) || 0) + (+cb.dataset.quantite));
+    });
+    return [...qte].map(([produit_id, quantite]) => ({ produit_id, quantite }));
+  }
+
+  async function reimprimer(lignes) {
+    if (!lignes.length) return;
+    histoStatut('Envoi à l\'imprimante…', 'loading');
+    const resultat = await envoyerALImprimante(lignes);
+    const { total, erreurs } = resultat;
+    histoStatut(erreurs.length ? `${total} imprimée(s) — Erreur impression : ${erreurs[0]}`
+                               : `✓ ${total} étiquette${total > 1 ? 's' : ''} réimprimée${total > 1 ? 's' : ''}.`,
+                erreurs.length ? 'err' : 'ok');
+    statutImpression(resultat);
+    await chargerFile();
+    rendre();
+    await afficherHistorique(false);      // la réimpression apparaît en tête
+  }
+
+  async function afficherHistorique(effacerStatut = true) {
     const el = $('historique-liste');
-    el.innerHTML = '<div class="pe-imp-vide">Chargement…</div>';
-    $('modal-historique').hidden = false;
+    if (effacerStatut) histoStatut('', 'ok');
     try {
       const { impressions } = await apiFetch('/api/prix-etiquettes/impressions?limit=100');
-      el.innerHTML = impressions.length ? impressions.map(i => `
+      impressionsAffichees = impressions;
+      el.innerHTML = impressions.length ? impressions.map((i, n) => {
+        const possibles = i.lignes.filter(reimprimable);
+        return `
         <div class="pe-histo-lot">
           <div class="pe-histo-tete">
+            ${possibles.length ? `<input type="checkbox" class="pe-histo-cb pe-histo-cb-lot" data-lot="${n}"
+                                         aria-label="Sélectionner cette impression">` : '<span class="pe-histo-cb-vide"></span>'}
             <span class="pe-histo-quand">${quand(i.imprime_at)}</span>
             <span class="pe-histo-mode">${MODE_IMPRESSION[i.mode] || escHtml(i.mode)}</span>
             <span class="pe-histo-total">${i.total} étiquette${i.total > 1 ? 's' : ''}</span>
+            ${possibles.length ? `<button class="pe-btn pe-btn--sm pe-btn--ajout pe-histo-reimp" data-lot="${n}">🖨️ Réimprimer</button>` : ''}
           </div>
           <ul class="pe-histo-lignes">${i.lignes.map(l => `
-            <li>${ICONE_TYPE[l.type] || ''}${escHtml(l.libelle || '—')}
+            <li>${reimprimable(l)
+                ? `<input type="checkbox" class="pe-histo-cb pe-histo-cb-ligne" data-lot="${n}"
+                          data-produit="${l.catalogue_vente_id}" data-quantite="${l.quantite}">` : ''}
+              ${ICONE_TYPE[l.type] || ''}${escHtml(l.libelle || '—')}
               ${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
               ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
           </ul>
-        </div>`).join('') : '<div class="pe-imp-vide">Aucune impression pour l\'instant.</div>';
+        </div>`;
+      }).join('') : '<div class="pe-imp-vide">Aucune impression pour l\'instant.</div>';
     } catch (e) {
       el.innerHTML = `<div class="pe-imp-vide">Erreur : ${escHtml(e.message)}</div>`;
     }
+    majBoutonSelection();
+  }
+
+  $('imp-historique').addEventListener('click', () => {
+    $('historique-liste').innerHTML = '<div class="pe-imp-vide">Chargement…</div>';
+    $('modal-historique').hidden = false;
+    afficherHistorique();
   });
+
+  $('historique-liste').addEventListener('change', e => {
+    const cb = e.target;
+    if (cb.classList.contains('pe-histo-cb-lot')) {      // impression entière
+      $('historique-liste').querySelectorAll(`.pe-histo-cb-ligne[data-lot="${cb.dataset.lot}"]`)
+        .forEach(l => { l.checked = cb.checked; });
+    } else if (cb.classList.contains('pe-histo-cb-ligne')) {
+      const lot = $('historique-liste').querySelector(`.pe-histo-cb-lot[data-lot="${cb.dataset.lot}"]`);
+      const lignes = [...$('historique-liste').querySelectorAll(`.pe-histo-cb-ligne[data-lot="${cb.dataset.lot}"]`)];
+      const n = lignes.filter(l => l.checked).length;
+      lot.checked = n === lignes.length;
+      lot.indeterminate = n > 0 && n < lignes.length;
+    }
+    majBoutonSelection();
+  });
+
+  $('historique-liste').addEventListener('click', e => {
+    const btn = e.target.closest('.pe-histo-reimp');
+    if (!btn) return;
+    const i = impressionsAffichees[+btn.dataset.lot];
+    reimprimer(i.lignes.filter(reimprimable)
+      .map(l => ({ produit_id: l.catalogue_vente_id, quantite: l.quantite })));
+  });
+
+  $('historique-reimprimer').addEventListener('click', () => reimprimer(lignesCochees()));
   $('historique-fermer').addEventListener('click', () => { $('modal-historique').hidden = true; });
   $('modal-historique').addEventListener('click', e => {
     if (e.target === $('modal-historique')) $('modal-historique').hidden = true;

@@ -738,6 +738,16 @@ function afficherModeles() {
     const chip = document.createElement('div');
     chip.className = 'pe-modele-chip' + (m.id === state.modeleActifId ? ' active' : '');
     chip.dataset.id = m.id;
+    // Un modèle qui sert de style (normal / promo) se règle dans l'onglet Style, avec
+    // le mot de passe administrateur : ici, cadenas et pas de suppression.
+    if (m.style) {
+      chip.classList.add('pe-modele-chip--style');
+      chip.title = 'Style des étiquettes : se modifie dans l\'onglet « Style » (administrateur)';
+      chip.innerHTML = `<span class="pe-modele-chip-nom">🔒 ${escHtml(m.nom)}</span>`;
+      chip.querySelector('.pe-modele-chip-nom').addEventListener('click', () => chargerModele(m));
+      elListeModeles.appendChild(chip);
+      return;
+    }
     chip.innerHTML = `
       <span class="pe-modele-chip-nom">${escHtml(m.nom)}</span>
       <button class="pe-modele-chip-del" title="Supprimer ce modèle" data-id="${m.id}">✕</button>
@@ -759,7 +769,9 @@ function afficherModeles() {
 }
 
 function chargerModele(modele) {
-  state.modeleActifId = modele.id;
+  // Un style sert seulement de point de départ : « Sauvegarder » créera un nouveau
+  // modèle libre au lieu de modifier le style (réservé à l'administrateur).
+  state.modeleActifId = modele.style ? null : modele.id;
   const config = modele.config;
   configVersEtat(config);
 

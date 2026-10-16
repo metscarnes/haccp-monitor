@@ -146,6 +146,7 @@
   opacity: .6;
 }
 .pe-modele-chip-del:hover { opacity: 1; }
+.pe-modele-chip--style { border-style: dashed; }
 
 /* ── Corps 2 colonnes ── */
 .pe-main {
@@ -820,8 +821,12 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-histo-quand { font-weight: 700; font-variant-numeric: tabular-nums; }
 .pe-histo-mode { color: var(--color-offline); font-size: var(--text-xs); }
 .pe-histo-total { margin-left: auto; font-weight: 700; color: var(--color-accent); white-space: nowrap; }
-.pe-histo-lignes { margin: var(--space-1) 0 0; padding-left: var(--space-4); font-size: var(--text-sm); }
-.pe-histo-lignes li { margin: 2px 0; }
+.pe-histo-lignes { margin: var(--space-1) 0 0; padding-left: var(--space-2); font-size: var(--text-sm); list-style: none; }
+.pe-histo-lignes li { margin: 2px 0; display: flex; align-items: center; gap: var(--space-2); min-height: 36px; }
+.pe-histo-tete { align-items: center; }
+.pe-histo-cb { width: 26px; height: 26px; flex-shrink: 0; }
+.pe-histo-cb-vide { width: 26px; flex-shrink: 0; }
+.pe-histo-reimp { min-height: 40px; }
 .pe-modal--historique { max-width: 640px; max-height: 90vh; }
 .pe-historique-liste { overflow-y: auto; max-height: 65vh; }
 .pe-historique-ligne {

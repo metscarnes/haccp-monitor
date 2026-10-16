@@ -190,11 +190,14 @@ async def get_modeles():
         rows = await db.execute_fetchall(
             "SELECT id, nom, config_json, created_at FROM modeles_etiquettes_prix ORDER BY nom"
         )
+        # Modèles qui servent de style (normal / promo) : signalés pour l'écran
+        # (cadenas, pas de suppression depuis l'étiquette libre).
+        styles = {s["id"]: t for t, s in (await _styles(db)).items() if s and s["id"]}
     modeles = []
     for r in rows:
         style, converti = normaliser_style(json.loads(r[2]))
         modeles.append({"id": r[0], "nom": r[1], "config": style, "converti": converti,
-                        "created_at": r[3]})
+                        "created_at": r[3], "style": styles.get(r[0])})
     return {"modeles": modeles}
 
 
@@ -583,8 +586,9 @@ async def enregistrer_style(type_style: str, body: StyleBody, request: Request):
     async with get_db() as db:
         actuel = (await _styles(db))[type_style]
         if actuel and actuel["id"] is not None:
-            await db.execute("UPDATE modeles_etiquettes_prix SET config_json = ? WHERE id = ?",
-                             (config_json, actuel["id"]))
+            # Le modèle prend le nom de son rôle (« sauvegarde 3 test » → « Étiquette normale »).
+            await db.execute("UPDATE modeles_etiquettes_prix SET nom = ?, config_json = ? WHERE id = ?",
+                             (NOM_STYLE[type_style], config_json, actuel["id"]))
             modele_id = actuel["id"]
         else:
             cur = await db.execute(
