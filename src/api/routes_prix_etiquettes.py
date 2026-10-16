@@ -12,6 +12,7 @@ Endpoints :
   DELETE /api/prix-etiquettes/modeles/{id}  → supprimer un modèle
   GET  /api/prix-etiquettes/catalogue       → recherche catalogue vente (import)
   POST /api/prix-etiquettes/imprimer-masse  → série depuis le catalogue de vente
+  POST /api/prix-etiquettes/imprimer-rapide → série au style de la boutique (popup prix)
   GET/PUT /api/prix-etiquettes/modele-defaut → modèle des réimpressions
   GET  /api/prix-etiquettes/a-reimprimer    → file des étiquettes à refaire (+ /compte, /historique)
   POST /api/prix-etiquettes/a-reimprimer/sortir → imprimées via navigateur / retirées
@@ -538,6 +539,50 @@ async def _modele_defaut_id(db) -> Optional[int]:
     """Modèle utilisé pour les réimpressions : le style « normal » de la boutique."""
     normal = (await _styles(db))["normal"]
     return normal["id"] if normal else None
+
+
+class ImpressionRapide(BaseModel):
+    produits: list[LigneMasse]       # produits du catalogue de vente + quantités
+
+
+@router.post("/api/prix-etiquettes/imprimer-rapide")
+async def imprimer_rapide(body: ImpressionRapide, request: Request):
+    """Impression serveur « en un geste » (popup après un changement de prix de
+    vente) : chaque produit part avec le style de la boutique — style promo s'il
+    est en promotion, style normal sinon — sans passer par le module Étiquettes.
+    Même chemin que /imprimer-masse (file « À réimprimer » et historique compris)."""
+    async with get_db() as db:
+        styles = await _styles(db)
+    produits = await _charger_produits_vente([p.produit_id for p in body.produits])
+
+    series = {"normal": [], "promo": []}
+    for ligne in body.produits:
+        p = produits.get(ligne.produit_id)
+        if p:
+            series["promo" if p.get("promo") else "normal"].append(ligne)
+
+    imprimees, erreurs = 0, []
+    for type_, lignes in series.items():
+        if not lignes:
+            continue
+        style = styles.get(type_)
+        if not style:
+            erreurs.append("Aucun style d'étiquette « normal » : créez-le dans le module Étiquettes.")
+            break
+        try:
+            res = await imprimer_masse(
+                ImpressionMasse(config=ConfigEtiquette(**style["config"]), produits=lignes), request)
+        except HTTPException as e:
+            erreurs.append(e.detail)
+            break
+        imprimees += res["imprimees"]
+        if res["erreurs"]:
+            erreurs.extend(res["erreurs"])
+            break
+
+    if imprimees == 0 and erreurs:
+        raise HTTPException(status_code=503, detail=erreurs[0])
+    return {"imprimees": imprimees, "erreurs": erreurs}
 
 
 @router.get("/api/prix-etiquettes/styles")

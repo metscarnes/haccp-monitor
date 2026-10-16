@@ -115,6 +115,16 @@
       .pp-bl-pages { flex: 1; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
       .pp-bl-pages canvas { max-width: 100%; height: auto; background: #fff; border-radius: 6px; }
       .pp-bl-barre .pp-btn { min-width: 52px; font-size: 1.2rem; }
+      .pp-imp-overlay { z-index: 9200; }
+      .pp-imp-modal { max-width: 520px; }
+      .pp-imp-ligne { display: flex; align-items: center; gap: 10px; padding: 9px 0;
+        border-top: 1px solid #f1e6d2; }
+      .pp-imp-ligne:first-child { border-top: none; }
+      .pp-imp-ligne .pp-nom { flex: 1; }
+      .pp-imp-qte { display: flex; align-items: center; gap: 6px; }
+      .pp-imp-qte button { min-width: 44px; min-height: 44px; border-radius: 10px; border: 1.5px solid #d8c9b2;
+        background: #fff; font-size: 1.2rem; font-weight: 700; color: #6B3A1F; cursor: pointer; }
+      .pp-imp-qte span { min-width: 26px; text-align: center; font-weight: 800; font-size: 1.05rem; }
     `;
     document.head.appendChild(st);
   }
@@ -453,17 +463,10 @@
             + (n ? ` · 🏷️ ${n} étiquette${n > 1 ? 's' : ''} à refaire` : '')
             + (r.erreurs.length ? ` · ${r.erreurs.length} erreur(s) : ${r.erreurs[0].erreur}` : ''),
             r.erreurs.length ? 'err' : 'ok');
-          if (n) {
-            // Imprimer tout de suite : onglet Imprimer du module Étiquettes, liste
-            // pré-remplie avec les étiquettes à refaire. Sinon elles restent dans la
-            // file « À réimprimer » (tuile du Hub) pour plus tard.
-            const lien = document.createElement('a');
-            lien.className = 'pp-btn pp-btn--primaire pp-imprimer';
-            lien.href = '/prix-etiquettes.html?reimprimer=1';
-            lien.textContent = `🖨️ Imprimer ${n > 1 ? `les ${n} étiquettes` : 'l\'étiquette'} maintenant`;
-            msg.appendChild(document.createElement('br'));
-            msg.appendChild(lien);
-          }
+          // Imprimer tout de suite, sans quitter la page : popup d'impression rapide
+          // (style de la boutique). « Plus tard » : elles restent dans la file
+          // « À réimprimer » (tuile du Hub).
+          if (n) ouvrirImpressionRapide(r.appliquees);
         } catch (e) {
           afficherMsg(`Erreur : ${e.message}`, 'err');
           majCompteur();
@@ -471,6 +474,99 @@
       });
 
       charger();
+    });
+  }
+
+  // ── Impression rapide des nouvelles étiquettes ───────────────
+  // Popup par-dessus la fenêtre des prix : 1 étiquette par produit par défaut
+  // (réglable, 0 = ne pas l'imprimer), envoi direct à l'imprimante de la
+  // boutique avec le style par défaut (promo si le produit est en promotion).
+  // `produits` : [{catalogue_vente_id, nom, prix_ttc}] (prix appliqués).
+  function ouvrirImpressionRapide(produits) {
+    injecterStyles();
+    const qtes = new Map(produits.map(p => [p.catalogue_vente_id, 1]));
+    const overlay = document.createElement('div');
+    overlay.className = 'pp-overlay pp-imp-overlay';
+    overlay.innerHTML = `
+      <div class="pp-modal pp-imp-modal" role="dialog" aria-modal="true" aria-label="Imprimer les nouvelles étiquettes">
+        <div class="pp-head">
+          <div>
+            <div class="pp-titre">🏷️ Imprimer les nouvelles étiquettes</div>
+            <div class="pp-sous">Style de la boutique · envoi direct à l'imprimante</div>
+          </div>
+          <button type="button" class="pp-fermer" aria-label="Fermer">✕</button>
+        </div>
+        <div class="pp-corps">
+          ${produits.map(p => `
+            <div class="pp-imp-ligne" data-id="${p.catalogue_vente_id}">
+              <div class="pp-nom">${esc(p.nom)}<div class="pp-detail">nouveau prix ${euro(p.prix_ttc)}</div></div>
+              <div class="pp-imp-qte">
+                <button type="button" data-delta="-1" aria-label="Une de moins">−</button>
+                <span>1</span>
+                <button type="button" data-delta="1" aria-label="Une de plus">+</button>
+              </div>
+            </div>`).join('')}
+        </div>
+        <div class="pp-pied">
+          <div class="pp-msg">Sinon, elles restent dans « À réimprimer » (accueil).</div>
+          <button type="button" class="pp-btn pp-imp-plus-tard">Plus tard</button>
+          <button type="button" class="pp-btn pp-btn--primaire pp-imp-go"></button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const btnGo = overlay.querySelector('.pp-imp-go');
+    const msg = overlay.querySelector('.pp-msg');
+    const total = () => [...qtes.values()].reduce((a, b) => a + b, 0);
+    const majBouton = () => {
+      const t = total();
+      btnGo.disabled = t === 0;
+      btnGo.textContent = `🖨️ Imprimer ${t} étiquette${t > 1 ? 's' : ''}`;
+    };
+    const fermer = () => overlay.remove();
+    majBouton();
+
+    overlay.querySelector('.pp-fermer').addEventListener('click', fermer);
+    overlay.querySelector('.pp-imp-plus-tard').addEventListener('click', fermer);
+    overlay.querySelector('.pp-corps').addEventListener('click', e => {
+      const b = e.target.closest('[data-delta]');
+      if (!b) return;
+      const ligne = b.closest('.pp-imp-ligne');
+      const id = +ligne.dataset.id;
+      const q = Math.max(0, Math.min(20, qtes.get(id) + Number(b.dataset.delta)));
+      qtes.set(id, q);
+      ligne.querySelector('.pp-imp-qte span').textContent = q;
+      majBouton();
+    });
+
+    btnGo.addEventListener('click', async () => {
+      const lignes = [...qtes].filter(([, q]) => q > 0)
+        .map(([produit_id, quantite]) => ({ produit_id, quantite }));
+      btnGo.disabled = true;
+      btnGo.textContent = '⏳ Impression…';
+      msg.className = 'pp-msg';
+      msg.textContent = 'Envoi à l\'imprimante de la boutique…';
+      try {
+        const res = await fetch('/api/prix-etiquettes/imprimer-rapide', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produits: lignes }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        if (data.erreurs && data.erreurs.length) {
+          throw new Error(`${data.imprimees} imprimée(s) seulement — ${data.erreurs[0]}`);
+        }
+        msg.className = 'pp-msg ok';
+        msg.textContent = `✓ ${data.imprimees} étiquette${data.imprimees > 1 ? 's' : ''} imprimée${data.imprimees > 1 ? 's' : ''}.`;
+        setTimeout(fermer, 1500);
+      } catch (e) {
+        msg.className = 'pp-msg err';
+        msg.textContent = `Impression impossible : ${e.message}. Vérifiez que l'imprimante est allumée, puis réessayez — `
+          + `sinon les étiquettes restent dans « À réimprimer ».`;
+        majBouton();
+        btnGo.textContent = '🔁 Réessayer';
+      }
     });
   }
 
