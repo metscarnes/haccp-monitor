@@ -3749,14 +3749,43 @@ function _normLibelle(s) {
     .trim();
 }
 
-// Score de recouvrement de mots entre deux libellés (0 à 1).
+// Mots de conditionnement / unités / mentions commerciales, communs à beaucoup
+// d'articles d'un même fournisseur (« Chipolata BQT 28P/1,680KG PV » et
+// « Merguez BQT 28P/2,24KG PV ») : ils ne disent rien de l'article et faisaient
+// rattacher des articles différents à la même carte.
+const MOTS_CONDITIONNEMENT = new Set([
+  'bqt', 'barquette', 'pce', 'piece', 'pieces', 'pv', 'scht', 'sachet', 'bcl', 'pch',
+  'ter', 'terrine', 'seau', 'plat', 'bras', 'col', 'colis', 'kg', 'gr', 'rg', 'sv',
+  'uvc', 'ppf', 'lsa', 'vf', 'vpf', 'env', 'carton', 'ctn', 'unite',
+]);
+
+// Mots qui identifient l'article : ni chiffres (poids, « 28P », « 12x170G »),
+// ni conditionnement, ni mots vides.
+function _motsSignificatifs(s) {
+  return new Set(_normLibelle(s).split(' ').filter(m =>
+    m.length > 1 && !/\d/.test(m) && !MOTS_CONDITIONNEMENT.has(m) && !STOP_WORDS.has(m)));
+}
+
+// Score de ressemblance entre deux libellés (0 à 1) sur les mots significatifs,
+// rapporté au libellé le PLUS long : « Saucisse herbe » vs « Saucisse francfort » = 0,5
+// (pas 1 comme avec l'ancien calcul rapporté au plus court).
 function _scoreLibelle(a, b) {
-  const ma = new Set(_normLibelle(a).split(' ').filter(Boolean));
-  const mb = new Set(_normLibelle(b).split(' ').filter(Boolean));
+  const ma = _motsSignificatifs(a);
+  const mb = _motsSignificatifs(b);
   if (!ma.size || !mb.size) return 0;
   let communs = 0;
   ma.forEach(m => { if (mb.has(m)) communs++; });
-  return communs / Math.min(ma.size, mb.size);
+  return communs / Math.max(ma.size, mb.size);
+}
+
+// Référence article comparable entre BL papier et catalogue : le papier écrit
+// souvent les codes avec des zéros en tête (Saveur d'Antoine « 001295 » = « 1295 »,
+// Elivia « 07991-07 » = « 7991-7 »).
+function _normRef(r) {
+  return String(r || '').toLowerCase()
+    .split(/[^a-z0-9]+/).filter(Boolean)
+    .map(seg => seg.replace(/^0+(?=.)/, ''))
+    .join('-');
 }
 
 // ── Comparaison prix BL ↔ catalogue (alerte d'écart) ──────────────────────────
@@ -3923,8 +3952,10 @@ function creerCartesDepuisOcr(lignes) {
   // Clé d'article : référence si présente, sinon désignation normalisée.
   const cartesParArticle = new Map();
   lignes.forEach(l => {
-    const cle = (l.reference && l.reference.trim())
-      ? `ref:${l.reference.trim().toLowerCase()}`
+    // Reliquat « 0 livré » (0 colis / 0 kg / 0 €) : pas de carte.
+    if (!Number(l.poids_kg) && !Number(l.quantite) && !Number(l.montant_ligne)) return;
+    const cle = _normRef(l.reference)
+      ? `ref:${_normRef(l.reference)}`
       : `des:${_normLibelle(l.designation)}`;
 
     if (!cartesParArticle.has(cle)) {
@@ -3947,35 +3978,43 @@ function creerCartesDepuisOcr(lignes) {
   });
 }
 
-// Cas AVEC commande : remplir les cartes existantes par appariement de libellé.
-// Chaque ligne OCR rejoint la carte de commande la plus ressemblante (non déjà prise).
+// Cas AVEC commande : remplir les cartes existantes. Ordre d'appariement d'une
+// ligne lue sur le BL :
+//   1) même RÉFÉRENCE article (zéros en tête ignorés) → sans ambiguïté, y compris
+//      pour un article livré en plusieurs lots (même carte, lot supplémentaire) ;
+//   2) même désignation exactement qu'une carte déjà remplie → lot supplémentaire ;
+//   3) carte encore libre la plus ressemblante, si nette (≥ 50 % et sans ex-æquo).
+// Avant, 50 % de mots communs suffisaient à rattacher une ligne à une carte DÉJÀ
+// remplie : « BQT », « 28P », « PV »… faisaient fusionner Chipolata, Merguez,
+// Saucisse herbe et Saucisse francfort sur une seule carte.
 function prefillCartesExistantes(lignes) {
   const dispo = [...batchLignes];   // cartes pas encore appariées
   const orphelines = [];            // lignes OCR sans correspondance
+  const prendre = (etat) => {
+    const i = dispo.indexOf(etat);
+    if (i !== -1) dispo.splice(i, 1);
+  };
 
   lignes.forEach(l => {
-    // 1) Si une carte DÉJÀ appariée correspond à cet article (même article livré
-    //    en plusieurs lots), on l'y rattache : _appliquerOcrSurCarte ajoute un lot.
-    let deja = null, dejaScore = 0;
-    batchLignes.forEach(etat => {
-      if (dispo.includes(etat)) return;  // pas encore appariée → traité en 2)
-      const s = _scoreLibelle(l.designation, etat.designation);
-      if (s > dejaScore) { dejaScore = s; deja = etat; }
-    });
-    if (deja && dejaScore >= 0.5) {
-      _appliquerOcrSurCarte(deja, l);
-      return;
+    const ref = _normRef(l.reference);
+    if (ref) {
+      const parRef = batchLignes.find(e => _normRef(e.ligneCmd.code_article) === ref);
+      if (parRef) { _appliquerOcrSurCarte(parRef, l); prendre(parRef); return; }
     }
 
-    // 2) Sinon, on apparie à la meilleure carte encore disponible.
-    let best = null, bestScore = 0, bestIdx = -1;
-    dispo.forEach((etat, i) => {
+    const deja = batchLignes.find(e =>
+      !dispo.includes(e) && _scoreLibelle(l.designation, e.designation) === 1);
+    if (deja) { _appliquerOcrSurCarte(deja, l); return; }
+
+    let best = null, bestScore = 0, second = 0;
+    dispo.forEach(etat => {
       const s = _scoreLibelle(l.designation, etat.designation);
-      if (s > bestScore) { bestScore = s; best = etat; bestIdx = i; }
+      if (s > bestScore) { second = bestScore; bestScore = s; best = etat; }
+      else if (s > second) { second = s; }
     });
-    if (best && bestScore >= 0.5) {   // appariement suffisamment sûr
+    if (best && bestScore >= 0.5 && bestScore > second) {
       _appliquerOcrSurCarte(best, l);
-      dispo.splice(bestIdx, 1);
+      prendre(best);
     } else {
       orphelines.push(l);
     }
@@ -3983,14 +4022,18 @@ function prefillCartesExistantes(lignes) {
 
   // Lignes OCR non rattachées à la commande : on les ajoute comme cartes en plus
   // (article livré non commandé, ou libellé trop différent). À vérifier par l'humain.
+  // Les lignes « 0 livré » du BL (reliquats à 0 colis / 0 kg / 0 €) sont ignorées.
   orphelines.forEach(l => {
+    const rienLivre = !Number(l.poids_kg) && !Number(l.quantite) && !Number(l.montant_ligne);
+    if (rienLivre) return;
+    const art = resoudreArticleCatalogue(l);
     creerCarteBatch({
-      designation: l.designation || 'Article',
-      code_article: l.reference || null,
-      catalogue_fournisseur_id: null,
+      designation: (art && art.designation) || l.designation || 'Article',
+      code_article: (art && art.code_article) || l.reference || null,
+      catalogue_fournisseur_id: art ? art.id : null,
       quantite_commandee: l.quantite ?? null,
       unite: 'kg',
-      dlc_type: null,
+      dlc_type: art ? (art.dlc_type || 'dlc') : null,
       _fournisseur_id:  fournisseursListe[0]?.id  || null,
       _fournisseur_nom: fournisseursListe[0]?.nom || null,
     });
@@ -4137,9 +4180,9 @@ function resoudreArticleCatalogue(ocrLigne) {
   // L'OCR lit le BL du fournisseur principal : on cherche dans SON catalogue.
   const catalogueBl = cataloguesParFourn.get(fournisseursListe[0]?.id) || [];
   if (!catalogueBl.length) return null;
-  const ref = (ocrLigne.reference || '').trim().toLowerCase();
+  const ref = _normRef(ocrLigne.reference);
   if (ref) {
-    const parRef = catalogueBl.find(a => (a.code_article || '').trim().toLowerCase() === ref);
+    const parRef = catalogueBl.find(a => _normRef(a.code_article) === ref);
     if (parRef) return parRef;
   }
   const cible = _normLibelle(ocrLigne.designation);
