@@ -1225,6 +1225,29 @@ CREATE TABLE IF NOT EXISTS promotions_etiquettes (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_promotions_etiquettes_active
     ON promotions_etiquettes(catalogue_vente_id) WHERE statut = 'active';
+
+-- ===========================================================================
+-- v8.1 — Historique des impressions d'étiquettes prix (journal, jamais modifié)
+-- ===========================================================================
+-- Une ligne par produit et par impression ; `lot` regroupe les lignes d'un même
+-- clic « Imprimer ». prix_ttc = prix IMPRIMÉ (prix promo pour une étiquette promo).
+--   type : normal | promo | libre      mode : serveur | navigateur
+CREATE TABLE IF NOT EXISTS impressions_etiquettes (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    lot                TEXT    NOT NULL,
+    imprime_at         DATETIME NOT NULL,
+    catalogue_vente_id INTEGER,
+    libelle            TEXT,
+    quantite           INTEGER NOT NULL DEFAULT 1,
+    type               TEXT    NOT NULL DEFAULT 'normal',
+    prix_ttc           REAL,
+    mode               TEXT    NOT NULL DEFAULT 'serveur',
+    role               TEXT,
+    FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_impressions_etiquettes_date
+    ON impressions_etiquettes(imprime_at DESC);
 """
 
 SEED_SQL = """
@@ -2059,6 +2082,21 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE CASCADE
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_promotions_etiquettes_active ON promotions_etiquettes(catalogue_vente_id) WHERE statut = 'active'",
+            # v8.1 — Historique des impressions d'étiquettes prix (cf. SCHEMA_SQL).
+            """CREATE TABLE IF NOT EXISTS impressions_etiquettes (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                lot                TEXT    NOT NULL,
+                imprime_at         DATETIME NOT NULL,
+                catalogue_vente_id INTEGER,
+                libelle            TEXT,
+                quantite           INTEGER NOT NULL DEFAULT 1,
+                type               TEXT    NOT NULL DEFAULT 'normal',
+                prix_ttc           REAL,
+                mode               TEXT    NOT NULL DEFAULT 'serveur',
+                role               TEXT,
+                FOREIGN KEY (catalogue_vente_id) REFERENCES catalogue_vente(id) ON DELETE SET NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_impressions_etiquettes_date ON impressions_etiquettes(imprime_at DESC)",
         ]
         for sql in migrations:
             try:

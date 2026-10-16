@@ -22,7 +22,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Query, Request, UploadFile, File
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -96,10 +96,12 @@ class ImpressionUnitaire(ConfigEtiquette):
 
 
 @router.post("/api/prix-etiquettes/imprimer")
-async def imprimer_etiquette(body: ImpressionUnitaire):
+async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
     """Envoie l'étiquette à l'imprimante Brother (réseau via tunnel, ou USB)."""
+    from src.journal_impressions import prix_imprime
     from src.printing.brother_ql_prix import appliquer_variables, imprimer_etiquette_prix
     data = body.model_dump(exclude={"produit_id"})
+    produit = None
     if body.produit_id is not None:
         produit = (await _charger_produits_vente([body.produit_id])).get(body.produit_id)
         if produit is None:
@@ -112,6 +114,15 @@ async def imprimer_etiquette(body: ImpressionUnitaire):
         raise HTTPException(status_code=503, detail=message)
     if body.produit_id is not None:
         await _sortir_de_la_file([body.produit_id], mode="serveur")
+    # Historique : produit du catalogue, ou étiquette libre (première ligne de texte).
+    premiere = next((l["texte"] for l in data["lignes"] if l["texte"].strip()), "")
+    await _journaliser(request, [{
+        "catalogue_vente_id": body.produit_id,
+        "libelle": produit["nom"] if produit else premiere,
+        "quantite": 1,
+        "type": body.type if produit else "libre",
+        "prix_ttc": prix_imprime(produit, body.type) if produit else None,
+    }], mode="serveur")
     return {"ok": True, "message": message}
 
 
@@ -152,10 +163,16 @@ async def upload_font(fichier: UploadFile = File(...)):
 
 @router.delete("/api/prix-etiquettes/fonts/{nom_fichier}", status_code=200)
 async def supprimer_font(nom_fichier: str):
-    """Supprime une police custom uploadée."""
+    """Supprime une police custom uploadée (sauf si un style d'étiquette l'utilise)."""
     chemin = FONTS_DIR / nom_fichier
     if not chemin.exists() or chemin.suffix.lower() not in EXTENSIONS_AUTORISEES:
         raise HTTPException(status_code=404, detail="Police introuvable")
+    async with get_db() as db:
+        styles = await _styles(db)
+    if any(l.get("police") == nom_fichier
+           for s in styles.values() if s for l in s["config"]["lignes"]):
+        raise HTTPException(status_code=409, detail="Police utilisée par le style des "
+                            "étiquettes : changez d'abord la police dans l'onglet Style.")
     chemin.unlink()
     return {"ok": True}
 
@@ -193,10 +210,19 @@ async def creer_modele(body: ModeleCreate):
         return {"id": cur.lastrowid, "nom": body.nom}
 
 
+async def _refuser_si_style(db, modele_id: int) -> None:
+    """Un modèle qui sert de style (normal / promo) ne se modifie que dans l'onglet
+    Style, avec le mot de passe administrateur — jamais depuis l'étiquette libre."""
+    if any(s and s["id"] == modele_id for s in (await _styles(db)).values()):
+        raise HTTPException(status_code=409, detail="Ce modèle est le style des étiquettes : "
+                            "il se modifie dans l'onglet « Style » (mot de passe administrateur).")
+
+
 @router.put("/api/prix-etiquettes/modeles/{modele_id}")
 async def modifier_modele(modele_id: int, body: ModeleCreate):
     config_json = json.dumps(body.config.model_dump(), ensure_ascii=False)
     async with get_db() as db:
+        await _refuser_si_style(db, modele_id)
         cur = await db.execute(
             "UPDATE modeles_etiquettes_prix SET nom=?, config_json=? WHERE id=?",
             (body.nom.strip(), config_json, modele_id),
@@ -210,6 +236,7 @@ async def modifier_modele(modele_id: int, body: ModeleCreate):
 @router.delete("/api/prix-etiquettes/modeles/{modele_id}", status_code=200)
 async def supprimer_modele(modele_id: int):
     async with get_db() as db:
+        await _refuser_si_style(db, modele_id)
         cur = await db.execute(
             "DELETE FROM modeles_etiquettes_prix WHERE id=?", (modele_id,)
         )
@@ -379,7 +406,7 @@ async def preview_masse(body: ImpressionMasse):
 
 
 @router.post("/api/prix-etiquettes/imprimer-masse")
-async def imprimer_masse(body: ImpressionMasse):
+async def imprimer_masse(body: ImpressionMasse, request: Request):
     """
     Imprime une série d'étiquettes via le serveur (Wi-Fi). Pour chaque produit,
     applique les variables au modèle, répète `quantite` exemplaires, puis
@@ -419,6 +446,16 @@ async def imprimer_masse(body: ImpressionMasse):
     non_partis = set(produit_par_exemplaire[imprimees:])
     partis = set(produit_par_exemplaire[:imprimees]) - non_partis
     await _sortir_de_la_file(partis, mode="serveur")
+
+    # Historique : les exemplaires réellement partis, produit par produit.
+    from src.journal_impressions import prix_imprime
+    quantites: dict[int, int] = {}
+    for pid in produit_par_exemplaire[:imprimees]:
+        quantites[pid] = quantites.get(pid, 0) + 1
+    await _journaliser(request, [{
+        "catalogue_vente_id": pid, "libelle": produits[pid]["nom"], "quantite": q,
+        "type": body.config.type, "prix_ttc": prix_imprime(produits[pid], body.config.type),
+    } for pid, q in quantites.items()], mode="serveur")
 
     if imprimees == 0 and erreurs:
         raise HTTPException(status_code=503, detail=erreurs[0])
@@ -485,18 +522,62 @@ async def get_styles():
         return await _styles(db)
 
 
-class StyleBody(BaseModel):
+class MotDePasse(BaseModel):
+    password: Optional[str] = None   # mot de passe ADMINISTRATEUR (même en session équipe)
+
+
+class AvecJeton(BaseModel):
+    jeton: Optional[str] = None      # autorisation remise par /styles/deverrouiller
+
+
+class StyleBody(AvecJeton):
     config: ConfigEtiquette
 
 
+# Le style des étiquettes ne se modifie qu'avec le mot de passe ADMINISTRATEUR, même
+# depuis la session « équipe » de la tablette. Le mot de passe est vérifié une fois
+# (« Déverrouiller », avec la protection anti-essais de la connexion) ; le serveur
+# remet alors une autorisation signée, valable quelques minutes, que chaque
+# enregistrement présente — sans redemander le mot de passe à chaque retouche.
+JETON_STYLES_SUJET = "styles-etiquettes"
+JETON_STYLES_DUREE_S = 15 * 60
+
+
+def _exiger_jeton_styles(jeton: Optional[str]) -> None:
+    """401 si l'autorisation d'édition du style est absente, fausse ou expirée."""
+    from jose import JWTError, jwt
+    from src.api.routes_auth import _JWT_ALGO, _JWT_SECRET
+    try:
+        if jwt.decode(jeton or "", _JWT_SECRET, algorithms=[_JWT_ALGO]).get("sub") == JETON_STYLES_SUJET:
+            return
+    except JWTError:
+        pass
+    raise HTTPException(status_code=401, detail="Modification du style réservée à "
+                        "l'administrateur : déverrouillez avec le mot de passe administrateur.")
+
+
+@router.post("/api/prix-etiquettes/styles/deverrouiller")
+async def deverrouiller_styles(body: MotDePasse, request: Request):
+    """Vérifie le mot de passe administrateur et remet l'autorisation d'édition."""
+    import time
+    from jose import jwt
+    from src.api.routes_auth import _JWT_ALGO, _JWT_SECRET, verifier_mot_de_passe_admin
+    verifier_mot_de_passe_admin(request, body.password)
+    jeton = jwt.encode({"sub": JETON_STYLES_SUJET, "exp": int(time.time()) + JETON_STYLES_DUREE_S},
+                       _JWT_SECRET, algorithm=_JWT_ALGO)
+    return {"jeton": jeton, "expire_dans": JETON_STYLES_DUREE_S}
+
+
 @router.put("/api/prix-etiquettes/styles/{type_style}")
-async def enregistrer_style(type_style: str, body: StyleBody):
+async def enregistrer_style(type_style: str, body: StyleBody, request: Request):
     """« Enregistrer le style » : n'enregistre QUE l'apparence ; le texte des zones
-    (nom, prix, unité…) est fixé par la zone, jamais par ce qui était affiché."""
+    (nom, prix, unité…) est fixé par la zone, jamais par ce qui était affiché.
+    Réservé à l'administrateur (autorisation de /styles/deverrouiller)."""
     from src.database import set_parametre
     from src.printing.brother_ql_prix import TYPES_STYLE, normaliser_style
     if type_style not in TYPES_STYLE:
         raise HTTPException(status_code=404, detail="Style inconnu")
+    _exiger_jeton_styles(body.jeton)
     style, _ = normaliser_style({**body.config.model_dump(), "type": type_style})
     config_json = json.dumps(style, ensure_ascii=False)
     async with get_db() as db:
@@ -514,7 +595,7 @@ async def enregistrer_style(type_style: str, body: StyleBody):
         return await _styles(db)
 
 
-class ModeleDefaut(BaseModel):
+class ModeleDefaut(AvecJeton):
     modele_id: Optional[int] = None
 
 
@@ -525,8 +606,10 @@ async def get_modele_defaut():
 
 
 @router.put("/api/prix-etiquettes/modele-defaut")
-async def set_modele_defaut(body: ModeleDefaut):
+async def set_modele_defaut(body: ModeleDefaut, request: Request):
+    """Change le modèle servant de style normal : réservé à l'administrateur."""
     from src.database import set_parametre
+    _exiger_jeton_styles(body.jeton)
     async with get_db() as db:
         if body.modele_id is not None:
             cur = await db.execute("SELECT 1 FROM modeles_etiquettes_prix WHERE id = ?",
@@ -640,3 +723,50 @@ async def terminer_une_promo(promo_id: int):
             raise HTTPException(status_code=404, detail="Promo introuvable ou déjà terminée")
         await db.commit()
         return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Historique des impressions (date, heure, produits, prix imprimé)
+# ---------------------------------------------------------------------------
+
+async def _journaliser(request: Request, lignes: list[dict], *, mode: str) -> None:
+    """Note une impression dans l'historique (sans jamais faire échouer l'impression)."""
+    from src.api.routes_auth import role_du_token
+    from src.journal_impressions import journaliser
+    try:
+        async with get_db() as db:
+            await journaliser(db, lignes, mode=mode, role=role_du_token(request))
+            await db.commit()
+    except Exception as e:     # l'étiquette est partie : l'historique ne doit pas la bloquer
+        logger.error("Historique des impressions : %s", e)
+
+
+@router.get("/api/prix-etiquettes/impressions")
+async def historique_impressions(limit: int = Query(50, ge=1, le=500)):
+    """Dernières impressions, de la plus récente : date et heure, mode, produits."""
+    from src.journal_impressions import lister_impressions
+    async with get_db() as db:
+        return {"impressions": await lister_impressions(db, limit)}
+
+
+class ImpressionNavigateur(BaseModel):
+    type: str = "normal"                 # normal | promo | libre
+    produits: list[LigneMasse] = []      # étiquettes de produits du catalogue
+    libelle: Optional[str] = None        # étiquette libre : son texte
+
+
+@router.post("/api/prix-etiquettes/impressions/navigateur", status_code=201)
+async def noter_impression_navigateur(body: ImpressionNavigateur, request: Request):
+    """Note une impression faite par le navigateur (fenêtre d'impression ouverte) :
+    le serveur n'imprime rien, il garde la trace avec le prix actuel des produits."""
+    from src.journal_impressions import prix_imprime
+    produits = await _charger_produits_vente([p.produit_id for p in body.produits])
+    lignes = [{
+        "catalogue_vente_id": p.produit_id, "libelle": produits[p.produit_id]["nom"],
+        "quantite": max(1, p.quantite), "type": body.type,
+        "prix_ttc": prix_imprime(produits[p.produit_id], body.type),
+    } for p in body.produits if p.produit_id in produits]
+    if not body.produits and body.libelle:
+        lignes = [{"libelle": body.libelle, "quantite": 1, "type": "libre"}]
+    await _journaliser(request, lignes, mode="navigateur")
+    return {"ok": True}

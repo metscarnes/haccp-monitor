@@ -283,7 +283,10 @@
     statut('Préparation des étiquettes…', 'loading');
     try {
       let n = 0;
-      for (const { config, produits } of series) n += await imprimerSerieNavigateur(config, produits);
+      for (const { config, produits } of series) {
+        n += await imprimerSerieNavigateur(config, produits);
+        noterImpressionNavigateur({ type: config.type || 'normal', produits });
+      }
       statut(`Aperçu de ${n} étiquette(s) ouvert — choisissez l'imprimante.`, 'ok');
       await proposerSortieFile(lignesPanier().map(p => p.produit_id));
       rendre();
@@ -459,32 +462,40 @@
     statut('Promo arrêtée — l\'étiquette normale est dans les étiquettes à refaire.', 'ok');
   });
 
-  // ── Historique des étiquettes refaites ────────────────────
-  const LIBELLE_TRAITEMENT = {
-    serveur: '🖨️ imprimée',
-    navigateur: '🖥️ imprimée (navigateur)',
-    manuel: '✕ retirée de la liste',
-    auto: '↩ prix revenu, rien à refaire',
-  };
-  const dateHeure = s => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)} ${s.slice(11, 16)}` : '');
+  // ── Historique des impressions (date, heure, produits, prix imprimé) ──
+  const MODE_IMPRESSION = { serveur: '🖨️ imprimante', navigateur: '🖥️ navigateur' };
+  const ICONE_TYPE = { promo: '🔥 ', libre: '✏️ ', normal: '' };
+
+  // « aujourd'hui à 14:32 », « hier à 09:05 », sinon « 12/10 à 17:40 ».
+  function quand(s) {
+    if (!s) return '';
+    const jour = s.slice(0, 10), heure = s.slice(11, 16);
+    const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const auj = new Date(), hier = new Date(Date.now() - 86400e3);
+    if (jour === iso(auj)) return `Aujourd'hui à ${heure}`;
+    if (jour === iso(hier)) return `Hier à ${heure}`;
+    return `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)} à ${heure}`;
+  }
 
   $('imp-historique').addEventListener('click', async () => {
     const el = $('historique-liste');
     el.innerHTML = '<div class="pe-imp-vide">Chargement…</div>';
     $('modal-historique').hidden = false;
     try {
-      const { historique } = await apiFetch('/api/prix-etiquettes/a-reimprimer/historique?limit=100');
-      el.innerHTML = historique.length ? historique.map(h => {
-        const pourquoi = h.motif === 'fin_promo' ? 'fin de promo'
-          : h.prix_ancien_ttc == null ? 'nouveau produit' : 'prix changé';
-        const prix = h.prix_ancien_ttc != null
-          ? `${prixTexte(h.prix_ancien_ttc)} → ${prixTexte(h.prix_nouveau_ttc)}` : prixTexte(h.prix_nouveau_ttc);
-        return `<div class="pe-historique-ligne">
-            <span class="pe-historique-date">${dateHeure(h.traite_at)}</span>
-            <span class="pe-historique-nom"><strong>${escHtml(h.nom)}</strong><small>${pourquoi} · ${prix}</small></span>
-            <span class="pe-historique-mode">${LIBELLE_TRAITEMENT[h.mode] || escHtml(h.mode || '')}</span>
-          </div>`;
-      }).join('') : '<div class="pe-imp-vide">Aucune étiquette refaite pour l\'instant.</div>';
+      const { impressions } = await apiFetch('/api/prix-etiquettes/impressions?limit=100');
+      el.innerHTML = impressions.length ? impressions.map(i => `
+        <div class="pe-histo-lot">
+          <div class="pe-histo-tete">
+            <span class="pe-histo-quand">${quand(i.imprime_at)}</span>
+            <span class="pe-histo-mode">${MODE_IMPRESSION[i.mode] || escHtml(i.mode)}</span>
+            <span class="pe-histo-total">${i.total} étiquette${i.total > 1 ? 's' : ''}</span>
+          </div>
+          <ul class="pe-histo-lignes">${i.lignes.map(l => `
+            <li>${ICONE_TYPE[l.type] || ''}${escHtml(l.libelle || '—')}
+              ${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
+              ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
+          </ul>
+        </div>`).join('') : '<div class="pe-imp-vide">Aucune impression pour l\'instant.</div>';
     } catch (e) {
       el.innerHTML = `<div class="pe-imp-vide">Erreur : ${escHtml(e.message)}</div>`;
     }

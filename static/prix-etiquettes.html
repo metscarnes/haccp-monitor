@@ -206,10 +206,25 @@
 
 </section>
 
-<!-- Historique des étiquettes refaites (prix changés, fins de promo) -->
+<!-- Mot de passe administrateur pour modifier le style des étiquettes -->
+<div class="pe-modal-overlay" id="modal-admin" role="dialog" aria-modal="true" aria-labelledby="admin-titre" hidden>
+  <div class="pe-modal">
+    <div class="pe-modal-titre" id="admin-titre">🔒 Mot de passe administrateur</div>
+    <label class="pe-label">Pour modifier le style des étiquettes
+      <input type="password" class="pe-input pe-input--grand" id="admin-mdp" autocomplete="current-password">
+    </label>
+    <div class="pe-print-status" id="admin-statut" hidden></div>
+    <div class="pe-modal-actions">
+      <button class="pe-btn pe-btn--outline" id="admin-annuler">Annuler</button>
+      <button class="pe-btn pe-btn--primary" id="admin-valider">🔓 Déverrouiller</button>
+    </div>
+  </div>
+</div>
+
+<!-- Historique des impressions (date, heure, produits, prix imprimé) -->
 <div class="pe-modal-overlay" id="modal-historique" role="dialog" aria-modal="true" aria-labelledby="historique-titre" hidden>
   <div class="pe-modal pe-modal--historique">
-    <div class="pe-modal-titre" id="historique-titre">🕘 Étiquettes refaites</div>
+    <div class="pe-modal-titre" id="historique-titre">🕘 Historique des impressions</div>
     <div class="pe-historique-liste" id="historique-liste"></div>
     <div class="pe-modal-actions">
       <button class="pe-btn pe-btn--primary" id="historique-fermer">Fermer</button>
@@ -261,6 +276,10 @@
 <section class="pe-style pe-vue-style" aria-label="Style des étiquettes">
 
   <div class="pe-style-reglages">
+    <div class="pe-style-verrou" id="style-verrou">
+      <span>🔒 Le style des étiquettes est réservé à l'administrateur.</span>
+      <button class="pe-btn pe-btn--primary" id="style-deverrouiller">🔓 Déverrouiller</button>
+    </div>
     <div class="pe-segment pe-segment--large" role="group" aria-label="Type d'étiquette">
       <button class="pe-segment-btn" data-type-style="normal">🏷️ Étiquette normale</button>
       <button class="pe-segment-btn" data-type-style="promo">🔥 Étiquette promo</button>

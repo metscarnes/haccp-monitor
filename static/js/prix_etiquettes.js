@@ -933,8 +933,21 @@ elBtnImprimerNav.addEventListener('click', async () => {
   await imprimerImagesSansPopup([{ src: dataUrl, alt: 'Étiquette prix' }], lCm, hCm, 'Étiquette prix');
   afficherStatut('Choisissez l\'imprimante dans la fenêtre d\'impression.', 'ok');
   const id = produitVenteId();
+  noterImpressionNavigateur(id != null
+    ? { type: 'normal', produits: [{ produit_id: id, quantite: 1 }] }
+    : { type: 'libre', libelle: (state.lignes.find(l => l.texte.trim()) || {}).texte || '' });
   if (id != null) proposerSortieFile([id]);
 });
+
+// Historique : une impression par le navigateur est notée à l'ouverture de la fenêtre
+// d'impression (sans attendre : un échec de l'historique ne gêne jamais l'impression).
+function noterImpressionNavigateur(corps) {
+  apiFetch('/api/prix-etiquettes/impressions/navigateur', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corps),
+  }).catch(e => console.warn('Historique des impressions :', e));
+}
 
 // ── File « À réimprimer » (produits dont le prix a changé) ────
 const elBadgeFile = $('badge-a-reimprimer');

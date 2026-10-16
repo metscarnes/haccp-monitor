@@ -292,8 +292,66 @@
   });
   $('style-produit').addEventListener('change', apercu);
 
+  // ── Verrou : modification réservée à l'administrateur ─────
+  // Le mot de passe administrateur est vérifié par le serveur au déverrouillage ; il
+  // remet une autorisation de 15 min (gardée en mémoire seulement) que chaque
+  // « Enregistrer » présente. Quitter l'onglet reverrouille (tablette partagée).
+  let jeton = null, minuteurVerrou = null;
+
+  function verrouiller(message) {
+    jeton = null;
+    clearTimeout(minuteurVerrou);
+    document.querySelector('.pe-style').classList.add('verrouille');
+    if (message) statut(message, 'err');
+  }
+
+  function ouvrirMotDePasse() {
+    $('admin-mdp').value = '';
+    $('admin-statut').hidden = true;
+    $('modal-admin').hidden = false;
+    $('admin-mdp').focus();
+  }
+
+  async function validerMotDePasse() {
+    const el = $('admin-statut');
+    try {
+      const res = await fetch('/api/prix-etiquettes/styles/deverrouiller', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (getAdminToken() || '') },
+        body: JSON.stringify({ password: $('admin-mdp').value }),
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        el.textContent = res.status === 429 ? 'Trop d\'essais : réessayez dans une minute.'
+          : res.status === 401 ? 'Mot de passe administrateur incorrect.' : `Erreur ${res.status}`;
+        el.className = 'pe-print-status pe-print-status--err';
+        el.hidden = false;
+        $('admin-mdp').select();
+        return;
+      }
+      const data = await res.json();
+      jeton = data.jeton;
+      $('modal-admin').hidden = true;
+      document.querySelector('.pe-style').classList.remove('verrouille');
+      clearTimeout(minuteurVerrou);
+      minuteurVerrou = setTimeout(() => verrouiller('Style reverrouillé (15 min écoulées).'),
+                                  (data.expire_dans || 900) * 1000);
+      statut('🔓 Style déverrouillé : modifiez puis « Enregistrer le style ».', 'ok');
+    } catch (e) {
+      el.textContent = 'Erreur : ' + e.message;
+      el.className = 'pe-print-status pe-print-status--err';
+      el.hidden = false;
+    }
+  }
+
+  $('style-deverrouiller').addEventListener('click', ouvrirMotDePasse);
+  $('admin-valider').addEventListener('click', validerMotDePasse);
+  $('admin-mdp').addEventListener('keydown', e => { if (e.key === 'Enter') validerMotDePasse(); });
+  $('admin-annuler').addEventListener('click', () => { $('modal-admin').hidden = true; });
+
   $('style-enregistrer').addEventListener('click', async () => {
     const btn = $('style-enregistrer');
+    if (!jeton) { verrouiller(); ouvrirMotDePasse(); return; }
     btn.disabled = true;
     try {
       const cfg = brouillon();
@@ -301,11 +359,18 @@
         statut('Un texte fixe est vide : remplissez-le ou retirez-le.', 'err');
         return;
       }
-      const styles = await apiFetch(`/api/prix-etiquettes/styles/${vue.type}`, {
+      const res = await fetch(`/api/prix-etiquettes/styles/${vue.type}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config: cfg }),
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (getAdminToken() || '') },
+        body: JSON.stringify({ config: cfg, jeton }),
+        cache: 'no-store',
       });
+      if (res.status === 401) {
+        verrouiller('Autorisation expirée : déverrouillez à nouveau (vos réglages sont conservés).');
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const styles = await res.json();
       vue.styles = styles;
       vue.brouillons[vue.type] = cloner(styles[vue.type].config);
       vue.modifie = false;
@@ -323,13 +388,17 @@
   let styleCharge = false;
   window.peVues.style = {
     async afficher() {
+      if (!jeton) verrouiller();
       if (styleCharge) { apercu(); return; }
       styleCharge = true;
       try { await charger(); } catch (e) { styleCharge = false; statut('Erreur : ' + e.message, 'err'); }
     },
     quitter() {
-      return !vue.modifie
-        || confirm('Le style a été modifié sans être enregistré. Quitter quand même ?');
+      if (vue.modifie && !confirm('Le style a été modifié sans être enregistré. Quitter quand même ?')) {
+        return false;
+      }
+      verrouiller();       // tablette partagée : on referme derrière soi
+      return true;
     },
   };
 

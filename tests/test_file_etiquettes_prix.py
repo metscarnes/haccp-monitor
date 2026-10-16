@@ -169,9 +169,43 @@ async def test_modele_par_defaut(app_client, db):
     autre = await _modele(app_client, "Promo")
     r = await app_client.get("/api/prix-etiquettes/modele-defaut")
     assert r.json() == {"modele_id": None}            # plusieurs → à choisir
-    r = await app_client.put("/api/prix-etiquettes/modele-defaut", json={"modele_id": autre})
+    from tests.test_styles_etiquettes import jeton_styles
+    jeton = (await jeton_styles(app_client)).json()["jeton"]   # réservé à l'administrateur
+    r = await app_client.put("/api/prix-etiquettes/modele-defaut",
+                             json={"modele_id": autre, "jeton": jeton})
     assert r.json() == {"modele_id": autre}
     assert (await app_client.get("/api/prix-etiquettes/a-reimprimer")).json()[
         "modele_defaut_id"] == autre
-    r = await app_client.put("/api/prix-etiquettes/modele-defaut", json={"modele_id": 99999})
+    r = await app_client.put("/api/prix-etiquettes/modele-defaut",
+                             json={"modele_id": 99999, "jeton": jeton})
     assert r.status_code == 404
+
+
+async def test_historique_des_impressions(app_client, db, monkeypatch):
+    a = await _produit_vente(app_client, "Histo A", prix_vente_ttc=10.90, unite_vente="kg")
+    b = await _produit_vente(app_client, "Histo B", prix_vente_ttc=3.99, unite_vente="piece")
+    monkeypatch.setattr(brother, "imprimer_lot", lambda c: (True, "ok"))
+    monkeypatch.setattr(brother, "imprimer_etiquette_prix", lambda d: (True, "ok"))
+
+    r = await app_client.post("/api/prix-etiquettes/imprimer-masse", json={
+        "config": {"lignes": [{"texte": "{Nom}"}]},
+        "produits": [{"produit_id": a, "quantite": 2}, {"produit_id": b, "quantite": 1}]})
+    assert r.status_code == 200
+    await app_client.post("/api/prix-etiquettes/imprimer", json={"lignes": [{"texte": "Arrivage du jour"}]})
+    await app_client.post("/api/prix-etiquettes/impressions/navigateur",
+                          json={"type": "normal", "produits": [{"produit_id": b, "quantite": 3}]})
+
+    h = (await app_client.get("/api/prix-etiquettes/impressions")).json()["impressions"]
+    nav, libre, serie = h[0], h[1], h[2]                    # du plus récent au plus ancien
+    assert serie["mode"] == "serveur" and serie["total"] == 3 and len(serie["imprime_at"]) == 19
+    assert [(l["libelle"], l["quantite"], l["prix_ttc"]) for l in serie["lignes"]] == [
+        ("Histo A", 2, 10.90), ("Histo B", 1, 3.99)]
+    assert libre["lignes"] == [{"libelle": "Arrivage du jour", "quantite": 1, "type": "libre",
+                                "prix_ttc": None, "catalogue_vente_id": None}]
+    assert nav["mode"] == "navigateur" and nav["lignes"][0]["quantite"] == 3
+
+    # Échec de l'imprimante : rien n'est noté.
+    monkeypatch.setattr(brother, "imprimer_lot", lambda c: (False, "Erreur imprimante : timeout"))
+    await app_client.post("/api/prix-etiquettes/imprimer-masse", json={
+        "config": {"lignes": [{"texte": "{Nom}"}]}, "produits": [{"produit_id": a, "quantite": 1}]})
+    assert len((await app_client.get("/api/prix-etiquettes/impressions")).json()["impressions"]) == 3

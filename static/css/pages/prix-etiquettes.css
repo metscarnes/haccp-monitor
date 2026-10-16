@@ -792,6 +792,36 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-promo-marge--faible { background: rgba(200,120,0,.10);  border-color: rgba(200,120,0,.4); }
 .pe-promo-marge--perte  { background: rgba(201,48,48,.08);  border-color: rgba(201,48,48,.45); color: var(--color-alert); }
 .pe-imp-panier-actions { display: flex; gap: var(--space-2); }
+
+/* Style verrouillé (réservé à l'administrateur) : réglages visibles mais inactifs */
+.pe-style-verrou {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: rgba(107,58,31,.08);
+  border: 1.5px solid rgba(107,58,31,.3);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+.pe-style:not(.verrouille) .pe-style-verrou { display: none; }
+.pe-style.verrouille .pe-style-reglages > :not(.pe-style-verrou) {
+  pointer-events: none;
+  opacity: .45;
+}
+.pe-style.verrouille #style-enregistrer { display: none; }
+
+/* Historique des impressions : un bloc par impression */
+.pe-histo-lot { padding: var(--space-2) 0; border-bottom: 1px solid rgba(107,58,31,.12); }
+.pe-histo-tete { display: flex; gap: var(--space-3); align-items: baseline; font-size: var(--text-sm); }
+.pe-histo-quand { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pe-histo-mode { color: var(--color-offline); font-size: var(--text-xs); }
+.pe-histo-total { margin-left: auto; font-weight: 700; color: var(--color-accent); white-space: nowrap; }
+.pe-histo-lignes { margin: var(--space-1) 0 0; padding-left: var(--space-4); font-size: var(--text-sm); }
+.pe-histo-lignes li { margin: 2px 0; }
 .pe-modal--historique { max-width: 640px; max-height: 90vh; }
 .pe-historique-liste { overflow-y: auto; max-height: 65vh; }
 .pe-historique-ligne {

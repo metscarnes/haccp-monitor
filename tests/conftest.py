@@ -75,6 +75,7 @@ async def db():
         phase2_tables = (
             # Enfants en premier (respecter les FK)
             # Prix de vente « marge maintenue » (FK vers catalogue_vente, receptions…)
+            "impressions_etiquettes",              # → catalogue_vente
             "promotions_etiquettes",               # → catalogue_vente
             "etiquettes_a_reimprimer",             # → catalogue_vente
             "modeles_etiquettes_prix",
