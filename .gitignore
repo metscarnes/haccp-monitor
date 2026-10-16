@@ -13,3 +13,5 @@ haccp.db-wal
 __pycache__/
 *.pyc
 *.pyo
+src/__pycache__/database.cpython-314.pyc
+tests/__pycache__/conftest.cpython-314-pytest-8.3.2.pyc
