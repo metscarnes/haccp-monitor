@@ -56,6 +56,14 @@
                   min-height: var(--btn-min,48px); text-align: center; text-transform: capitalize; }
     .date-label:hover { border-color: var(--color-accent); }
     .date-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .date-arrow:disabled { opacity: .35; cursor: default; }
+    .btn-ferme { background: #fff; border: 2px dashed var(--color-border,#ccc); border-radius: var(--radius-sm,6px);
+                 padding: .7rem; font-size: var(--text-base); cursor: pointer; min-height: var(--btn-min-sm,44px); color: #6b7280; }
+    .btn-ferme.active { background: #374151; border: 2px solid #374151; color: #fff; font-weight: 700; }
+    .sections.masque, .meteo-row.masque { display: none; }
+    .oublis { background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius-sm,6px);
+              padding: .6rem .8rem; font-size: var(--text-sm); }
+    td.ferme { color: #6b7280; font-style: italic; }
     .meteo-toggle { display: flex; gap: 8px; }
     .meteo-btn { flex: 1; background: #f3ebdf; border: 2px solid var(--color-border,#ddd);
                  border-radius: var(--radius-sm,6px); padding: .7rem; font-size: var(--text-base);
@@ -174,6 +182,7 @@
         <button type="button" class="date-arrow" id="an-prec" aria-label="Jour précédent">◀</button>
         <button type="button" class="date-label" id="an-label">—</button>
         <button type="button" class="date-arrow" id="an-suiv" aria-label="Jour suivant">▶</button>
+        <input type="date" id="an-date" class="date-hidden">
       </div>
       <div class="profil-banner" id="profil-banner">Chargement…</div>
       <label class="an-suivre"><input type="checkbox" id="an-suivre" checked> Suivre le jour de saisie</label>
@@ -192,8 +201,11 @@
             <input type="date" id="date-ca" class="date-hidden">
           </div>
         </div>
+        <div class="oublis" id="oublis" style="display:none"></div>
 
-        <div class="sections">
+        <button type="button" class="btn-ferme" id="btn-ferme" aria-pressed="false">🔒 Boutique fermée ce jour</button>
+
+        <div class="sections" id="sections">
           <div class="section-box matin">
             <div class="section-titre">🌅 Matin <small>9h – 13h</small></div>
             <div class="form-row">
@@ -228,7 +240,7 @@
           <label for="personnel">Saisi par (optionnel)</label>
           <select id="personnel"><option value="">—</option></select>
         </div>
-        <div class="form-row">
+        <div class="form-row meteo-row" id="meteo-row">
           <label>Météo (optionnel)</label>
           <div class="meteo-toggle">
             <button type="button" class="meteo-btn" data-meteo="soleil">☀️ Soleil</button>
@@ -401,9 +413,22 @@
     const todayIso = () => new Date().toLocaleDateString('sv-SE');
     const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const intOrNull = v => { v = (v ?? '').toString().trim(); return v === '' ? null : parseInt(v, 10); };
+    // GET JSON qui échoue vraiment si le serveur répond en erreur (sinon on
+    // afficherait des données périmées sans le savoir)
+    const getJson = async url => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`Erreur serveur (${r.status})`);
+      return r.json();
+    };
+    const MSG_ERREUR = 'Impossible de charger les données. Vérifier la connexion puis recharger la page.';
 
     let chart = null;
     let meteoSel = null;   // null | 'soleil' | 'pluie'
+    let fermeSel = false;  // boutique fermée ce jour
+    let modifie = false;   // saisie en cours non enregistrée
+    let jourPret = false;  // le jour affiché est bien chargé (sinon pas d'enregistrement)
+    let jeuJour = 0;       // n° de la dernière demande de jour (ignore les réponses en retard)
+    let jeuAnalyse = 0;    // idem pour l'encart d'analyse
     let histoRows = [];    // historique complet (desc) mis en cache pour le graphe
     let zoomJours = 90;    // fenêtre du graphe en jours (0 = tout)
     let analyseDate = null;   // jour analysé par l'encart du haut
@@ -421,18 +446,33 @@
         b.classList.toggle('active', b.dataset.meteo === meteoSel));
     }
 
+    // Boutique fermée ce jour : masque les montants et la météo
+    function appliquerFerme(val) {
+      fermeSel = !!val;
+      $('btn-ferme').classList.toggle('active', fermeSel);
+      $('btn-ferme').setAttribute('aria-pressed', fermeSel);
+      $('btn-ferme').textContent = fermeSel
+        ? '🔒 Boutique fermée ce jour — toucher pour annuler'
+        : '🔒 Boutique fermée ce jour';
+      $('sections').classList.toggle('masque', fermeSel);
+      $('meteo-row').classList.toggle('masque', fermeSel);
+      majPaniers();
+    }
+
     // Dimanche : la boutique n'ouvre que le matin → on grise l'après-midi.
+    // Sauf si un montant d'après-midi est déjà enregistré : on le laisse visible
+    // et modifiable (jamais d'effacement silencieux).
     const estDimanche = iso => {
       const [y, m, d] = iso.split('-').map(Number);
       return new Date(y, m - 1, d).getDay() === 0;
     };
     function majAffichageSoir(iso) {
-      const ferme = estDimanche(iso);
+      const ferme = estDimanche(iso)
+        && !$('montant-soir').value && !$('tickets-soir').value;
       $('box-soir').classList.toggle('ferme', ferme);
       $('soir-ferme').style.display = ferme ? '' : 'none';
       $('montant-soir').disabled = ferme;
       $('tickets-soir').disabled = ferme;
-      if (ferme) { $('montant-soir').value = ''; $('tickets-soir').value = ''; }
     }
 
     function majPaniers() {
@@ -441,7 +481,9 @@
       $('panier-matin').textContent = (mm > 0 && tm > 0) ? `Panier : ${fmtEur(mm / tm)}` : '';
       $('panier-soir').textContent  = (ms > 0 && ts > 0) ? `Panier : ${fmtEur(ms / ts)}` : '';
       const total = mm + ms;
-      $('total-jour').innerHTML = `Total du jour : <b>${total > 0 ? fmtEur(total) : '—'}</b>`;
+      $('total-jour').innerHTML = fermeSel
+        ? 'Total du jour : <b>Fermé</b>'
+        : `Total du jour : <b>${total > 0 ? fmtEur(total) : '—'}</b>`;
     }
 
     async function chargerPersonnel() {
@@ -457,34 +499,66 @@
       } catch (e) { console.error(e); }
     }
 
+    const CHAMPS_SAISIE = ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'];
+
     async function chargerJour(iso) {
+      // Tant que le jour n'est pas chargé, on ne peut pas enregistrer : sinon
+      // les montants d'un autre jour pourraient partir sur celui-ci.
+      const jeu = ++jeuJour;
+      jourPret = false;
+      $('btn-save').disabled = true;
       try {
-        const j = await fetch(`${API}/${iso}`).then(r => r.json());
+        const j = await getJson(`${API}/${iso}`);
+        if (jeu !== jeuJour) return;          // un autre jour a été demandé entre-temps
+        // Remise à zéro complète avant remplissage (rien ne passe d'un jour à l'autre)
+        CHAMPS_SAISIE.forEach(id => $(id).value = '');
+        $('personnel').value = '';
         if (j) {
-          $('montant-matin').value = j.montant_ttc_matin ?? '';
-          $('tickets-matin').value = j.nb_tickets_matin ?? '';
-          $('montant-soir').value  = j.montant_ttc_soir ?? '';
-          $('tickets-soir').value  = j.nb_tickets_soir ?? '';
-          $('commentaire').value   = j.commentaire ?? '';
-          if (j.personnel_id) $('personnel').value = j.personnel_id;
-          appliquerMeteo(j.meteo);
-          $('form-titre').textContent = `Modifier le CA — ${fmtDateLongue(iso)}`;
+          if (!j.ferme) {
+            $('montant-matin').value = j.montant_ttc_matin || '';
+            $('tickets-matin').value = j.nb_tickets_matin ?? '';
+            $('montant-soir').value  = j.montant_ttc_soir || '';
+            $('tickets-soir').value  = j.nb_tickets_soir ?? '';
+          }
+          $('commentaire').value = j.commentaire ?? '';
+          $('personnel').value   = j.personnel_id ?? '';
+          $('form-titre').textContent = 'Modifier le CA déjà enregistré';
           $('btn-save').textContent = 'Mettre à jour';
         } else {
-          ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'].forEach(id => $(id).value = '');
-          appliquerMeteo(null);
-          $('form-titre').textContent = `Saisie du CA — ${fmtDateLongue(iso)}`;
+          $('form-titre').textContent = 'Saisie du chiffre d\'affaires';
           $('btn-save').textContent = 'Enregistrer';
         }
+        appliquerMeteo(j ? j.meteo : null);
         majAffichageSoir(iso);   // grise l'après-midi le dimanche (après le remplissage)
-        majPaniers();
-      } catch (e) { console.error(e); }
+        appliquerFerme(j ? j.ferme : false);
+        modifie = false;
+        jourPret = true;
+        $('btn-save').disabled = false;
+      } catch (e) {
+        if (jeu !== jeuJour) return;
+        console.error(e);
+        const fb = $('feedback');
+        fb.className = 'feedback err';
+        fb.textContent = MSG_ERREUR;
+      }
     }
 
-    // Change le jour courant : met à jour l'input, le libellé long, et recharge
+    // Change le jour courant : met à jour l'input, le libellé long, et recharge.
+    // Demande confirmation si une saisie n'a pas été enregistrée.
+    let jourAffiche = '';   // jour actuellement chargé dans le formulaire
     function setDate(iso) {
+      if (iso > todayIso()) return;          // pas de saisie pour un jour à venir
+      if (modifie && iso !== jourAffiche
+          && !confirm(`La saisie du ${fmtDateLongue(jourAffiche)} n'est pas enregistrée.\n\nChanger de jour quand même ? (la saisie sera perdue)`)) {
+        return;
+      }
+      modifie = false;
+      jourAffiche = iso;
+      $('feedback').className = 'feedback'; $('feedback').textContent = '';
       $('date-ca').value = iso;
+      $('date-ca').max = todayIso();
       $('date-label').textContent = fmtDateLongue(iso);
+      $('jour-suiv').disabled = iso >= todayIso();
       chargerJour(iso);
       // L'encart d'analyse suit le jour de saisie (si la case est cochée)
       if (analyseSuit) setAnalyse(iso);
@@ -497,23 +571,56 @@
       chargerProfilSemaine(iso);
     }
 
+    // Bandeau « jours oubliés » (14 derniers jours non saisis)
+    async function chargerOublis(choisirJour) {
+      try {
+        const d = await getJson(`${API}/stats/prochain-a-saisir`);
+        const el = $('oublis');
+        if (d.oublis > 0 && d.date < todayIso()) {
+          el.style.display = '';
+          el.innerHTML = `⚠️ ${d.oublis === 1 ? '1 jour n\'a pas été saisi' : d.oublis + ' jours n\'ont pas été saisis'} ces 14 derniers jours. `
+            + `<a href="#" id="oublis-go">Aller au ${fmtDateLongue(d.date)}</a>`
+            + ` <span class="mini">(boutique fermée ? utiliser « Boutique fermée ce jour »)</span>`;
+          $('oublis-go').addEventListener('click', ev => { ev.preventDefault(); setDate(d.date); });
+        } else {
+          el.style.display = 'none';
+        }
+        return d.date;
+      } catch (e) {
+        console.error(e);
+        return choisirJour ? veilleIso() : null;
+      }
+    }
+
     async function enregistrer() {
+      if (!jourPret) return;
       const fb = $('feedback');
       fb.className = 'feedback'; fb.textContent = '';
-      const mm = num($('montant-matin').value), ms = num($('montant-soir').value);
-      if (mm === 0 && ms === 0) {
+      // Montant illisible (format refusé par le clavier) → le champ est « invalide »
+      // et sa valeur vide : on le signale au lieu de compter 0.
+      const illisible = ['montant-matin','montant-soir','tickets-matin','tickets-soir']
+        .find(id => !fermeSel && !$(id).disabled && $(id).validity.badInput);
+      if (illisible) {
         fb.className = 'feedback err';
-        fb.textContent = 'Saisir au moins un montant (matin ou après-midi).';
+        fb.textContent = 'Un montant n\'est pas lisible : le retaper (ex. 1250,50).';
+        $(illisible).focus();
+        return;
+      }
+      const mm = num($('montant-matin').value), ms = num($('montant-soir').value);
+      if (!fermeSel && mm === 0 && ms === 0) {
+        fb.className = 'feedback err';
+        fb.textContent = 'Saisir au moins un montant, ou toucher « Boutique fermée ce jour ».';
         return;
       }
       const persRaw = $('personnel').value;
       const body = {
         date_ca: $('date-ca').value,
-        montant_ttc_matin: mm,
-        nb_tickets_matin: intOrNull($('tickets-matin').value),
-        montant_ttc_soir: ms,
-        nb_tickets_soir: intOrNull($('tickets-soir').value),
-        meteo: meteoSel,
+        ferme: fermeSel,
+        montant_ttc_matin: fermeSel ? 0 : mm,
+        nb_tickets_matin: fermeSel ? null : intOrNull($('tickets-matin').value),
+        montant_ttc_soir: fermeSel ? 0 : ms,
+        nb_tickets_soir: fermeSel ? null : intOrNull($('tickets-soir').value),
+        meteo: fermeSel ? null : meteoSel,
         commentaire: $('commentaire').value.trim() || null,
         personnel_id: persRaw === '' ? null : parseInt(persRaw, 10),
       };
@@ -528,21 +635,23 @@
           const err = await r.json().catch(() => ({}));
           throw new Error(err.detail || 'Erreur enregistrement');
         }
+        modifie = false;
         fb.className = 'feedback ok';
-        fb.textContent = 'Enregistré ✓';
-        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(analyseDate), chargerPeriode(granActive)]);
+        fb.textContent = `Enregistré ✓ — ${fmtDateLongue(body.date_ca)}${fermeSel ? ' (fermé)' : ''}`;
+        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(analyseDate),
+                           chargerPeriode(granActive), chargerOublis(false)]);
         await chargerJour($('date-ca').value);
       } catch (e) {
         fb.className = 'feedback err';
         fb.textContent = e.message;
       } finally {
-        $('btn-save').disabled = false;
+        $('btn-save').disabled = !jourPret;
       }
     }
 
     async function chargerStats() {
       try {
-        const s = await fetch(`${API}/stats/resume`).then(r => r.json());
+        const s = await getJson(`${API}/stats/resume`);
         const mc = s.mois_courant || {};
         $('s-total').textContent        = fmtEur(mc.total_ttc);
         $('s-moyen').textContent        = fmtEur(mc.ca_moyen_jour);
@@ -568,8 +677,9 @@
       try {
         // On récupère un large historique (1000 j) : sert l'historique tableau
         // (limité à 90 lignes affichées) ET le graphe (filtré par zoom).
-        const rows = await fetch(`${API}?limit=1000`).then(r => r.json());
-        histoRows = rows;
+        const rows = await getJson(`${API}?limit=1000`);
+        // Le graphe ne trace que les jours ouverts (un jour fermé n'est pas un « 0 € »)
+        histoRows = rows.filter(r => !r.ferme);
         const tbody = $('histo-body');
         const affiches = rows.slice(0, 90);
         if (!affiches.length) {
@@ -580,10 +690,12 @@
             <tr class="${r.date_ca === tj ? 'is-today' : ''}">
               <td>${fmtDateFr(r.date_ca)}</td>
               <td>${r.meteo === 'soleil' ? '☀️' : (r.meteo === 'pluie' ? '🌧️' : '')}</td>
-              <td class="num">${fmtEur(r.montant_ttc_matin)}</td>
+              ${r.ferme
+                ? '<td colspan="4" class="ferme">🔒 Boutique fermée</td>'
+                : `<td class="num">${fmtEur(r.montant_ttc_matin)}</td>
               <td class="num">${fmtEur(r.montant_ttc_soir)}</td>
               <td class="num"><strong>${fmtEur(r.montant_ttc)}</strong></td>
-              <td class="num">${r.nb_tickets ?? '—'}</td>
+              <td class="num">${r.nb_tickets ?? '—'}</td>`}
               <td><span class="row-edit" data-date="${r.date_ca}">Modifier</span></td>
             </tr>`).join('');
           tbody.querySelectorAll('.row-edit').forEach(el => {
@@ -594,7 +706,10 @@
           });
         }
         majCourbe();
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error(e);
+        $('histo-body').innerHTML = `<tr><td colspan="7" class="feedback err">${MSG_ERREUR}</td></tr>`;
+      }
     }
 
     // Filtre les données du graphe selon le zoom actif (0 = tout)
@@ -655,7 +770,10 @@
     function rendreBanniereProfil(p) {
       const dv = p.dernier_vs_jour_type;
       let html = '';
-      if (dv && dv.non_saisi) {
+      if (dv && dv.ferme) {
+        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)}</div>`
+          + `<div class="mini">🔒 Boutique fermée ce jour.</div>`;
+      } else if (dv && dv.non_saisi) {
         html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)}</div>`
           + `<div class="mini">Aucune saisie pour ce jour.</div>`;
       } else if (dv) {
@@ -689,11 +807,13 @@
     }
 
     async function chargerProfilSemaine(jour) {
+      const jeu = ++jeuAnalyse;
       try {
         const url = jour
           ? `${API}/stats/profil-semaine?jour=${jour}`
           : `${API}/stats/profil-semaine`;
-        const p = await fetch(url).then(r => r.json());
+        const p = await getJson(url);
+        if (jeu !== jeuAnalyse) return;       // réponse d'une demande plus ancienne
         // Met à jour le libellé de date de la carte analyse
         if (p.dernier_vs_jour_type) {
           analyseDate = p.dernier_vs_jour_type.date_ca;
@@ -716,7 +836,11 @@
             <td class="num">${j.nb}</td>
           </tr>`;
         }).join('');
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        if (jeu !== jeuAnalyse) return;
+        console.error(e);
+        $('profil-banner').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+      }
     }
 
     // ─── Tableau CA par période (jour / semaine / mois) ────────
@@ -754,12 +878,13 @@
         tbody.innerHTML = res.lignes.map(l => `
           <tr style="text-transform:capitalize" ${cliquable ? `class="row-jour" data-date="${l.periode}"` : ''}>
             <td>${fmtPeriode(l, gran)}</td>
+            ${l.ferme ? '<td colspan="6" class="ferme">🔒 Boutique fermée</td>' : `
             <td class="num"><strong>${fmtEur(l.total_ttc)}</strong></td>
             <td class="num">${fmtEur(l.total_ttc_matin)}</td>
             <td class="num">${fmtEur(l.total_ttc_soir)}</td>
             <td class="num">${l.total_tickets || '—'}</td>
             <td class="num">${fmtEur(l.panier_moyen)}<br><span class="mini">${l.evolution_panier && l.evolution_panier.pct != null ? evoCourt(l.evolution_panier) : ''}</span></td>
-            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>
+            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>`}
           </tr>`).join('');
         // En mode jour, cliquer une ligne ouvre le profil et surligne le jour-type
         if (cliquable) {
@@ -835,7 +960,7 @@
       const n = Math.max(1, parseInt($('cmp-n').value, 10) || 1);
       try {
         const url = `${API}/stats/comparatif?date_debut=${debut}&date_fin=${fin}&preset=${preset}&n=${n}`;
-        const r = await fetch(url).then(x => x.json());
+        const r = await getJson(url);
         const c = r.courant, ref = r.reference;
         const fmtP = p => p.date_debut === p.date_fin ? fmtDateFr(p.date_debut) : `${fmtDateFr(p.date_debut)} → ${fmtDateFr(p.date_fin)}`;
         $('cmp-result-periode').innerHTML =
@@ -847,21 +972,36 @@
             matin: { a: c.total_ttc_matin, b: ref.total_ttc_matin },
             soir:  { a: c.total_ttc_soir,  b: ref.total_ttc_soir } },
           r.evolution);
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error(e);
+        $('cmp-result-periode').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+      }
     }
 
     async function lancerComparerDates() {
       const da = $('cmp-date-a').value, db = $('cmp-date-b').value;
       if (!da || !db) return;
       try {
-        const r = await fetch(`${API}/stats/comparer-dates?date_a=${da}&date_b=${db}`).then(x => x.json());
+        const r = await getJson(`${API}/stats/comparer-dates?date_a=${da}&date_b=${db}`);
         const a = r.a, b = r.b;
+        // Un jour non saisi ou fermé n'est pas « 0 € » : on ne calcule pas d'évolution
+        const etat = j => !j.saisi ? 'non saisi' : (j.ferme ? 'fermé' : null);
+        if (etat(a) || etat(b)) {
+          $('cmp-result-dates').innerHTML = `<div class="mini">Comparaison impossible : `
+            + [[da, a], [db, b]].filter(([, j]) => etat(j))
+                .map(([d, j]) => `${fmtDateLongue(d)} = ${etat(j)}`).join(' · ')
+            + `.</div>`;
+          return;
+        }
         rendreComparatif('cmp-result-dates', fmtDateFr(da), fmtDateFr(db),
           { total: { a: a.montant_ttc, b: b.montant_ttc },
             matin: { a: a.montant_ttc_matin, b: b.montant_ttc_matin },
             soir:  { a: a.montant_ttc_soir,  b: b.montant_ttc_soir } },
           r.evolution);
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error(e);
+        $('cmp-result-dates').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+      }
     }
 
     function setChipActif(preset) {
@@ -912,26 +1052,48 @@
     // Init
     ['montant-matin','tickets-matin','montant-soir','tickets-soir'].forEach(id =>
       $(id).addEventListener('input', majPaniers));
+    // Toute modification marque la saisie « non enregistrée »
+    [...CHAMPS_SAISIE, 'personnel'].forEach(id =>
+      $(id).addEventListener('input', () => { modifie = true; }));
+    $('personnel').addEventListener('change', () => { modifie = true; });
     $('btn-save').addEventListener('click', enregistrer);
     document.querySelectorAll('.meteo-btn').forEach(b =>
-      b.addEventListener('click', () => setMeteo(b.dataset.meteo)));
+      b.addEventListener('click', () => { setMeteo(b.dataset.meteo); modifie = true; }));
+    $('btn-ferme').addEventListener('click', () => { appliquerFerme(!fermeSel); modifie = true; });
+    // Quitter la page avec une saisie non enregistrée → alerte du navigateur
+    window.addEventListener('beforeunload', ev => {
+      if (modifie) { ev.preventDefault(); ev.returnValue = ''; }
+    });
 
     // Navigation jour : flèches préc/suivant + libellé cliquable (sélecteur natif)
-    $('jour-prec').addEventListener('click', () => setDate(decalerIso($('date-ca').value, -1)));
-    $('jour-suiv').addEventListener('click', () => setDate(decalerIso($('date-ca').value, +1)));
+    $('jour-prec').addEventListener('click', () => setDate(decalerIso(jourAffiche, -1)));
+    $('jour-suiv').addEventListener('click', () => setDate(decalerIso(jourAffiche, +1)));
     $('date-label').addEventListener('click', () => {
       const inp = $('date-ca');
       if (inp.showPicker) inp.showPicker(); else inp.focus();
     });
-    $('date-ca').addEventListener('change', () => setDate($('date-ca').value));
+    // Le sélecteur natif change sa valeur AVANT setDate : on remet le jour
+    // affiché (setDate compare à l'ancien jour et le garde si l'utilisateur annule).
+    $('date-ca').addEventListener('change', () => {
+      const choisi = $('date-ca').value;
+      $('date-ca').value = jourAffiche;
+      if (choisi) setDate(choisi);
+    });
 
     // Encart analyse : navigation propre (détache automatiquement le suivi)
     $('an-prec').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, -1)); });
     $('an-suiv').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, +1)); });
+    // Sélecteur propre à l'encart : choisir un jour à analyser ne touche pas à la saisie
     $('an-label').addEventListener('click', () => {
-      // Réutilise le sélecteur de saisie : on copie sa valeur puis on détache
-      const inp = $('date-ca');
+      const inp = $('an-date');
+      inp.value = analyseDate || '';
+      inp.max = todayIso();
       if (inp.showPicker) inp.showPicker(); else inp.focus();
+    });
+    $('an-date').addEventListener('change', () => {
+      if (!$('an-date').value) return;
+      $('an-suivre').checked = false; analyseSuit = false;
+      setAnalyse($('an-date').value);
     });
     $('an-suivre').addEventListener('change', (e) => {
       analyseSuit = e.target.checked;
@@ -950,12 +1112,12 @@
     initRepliable();
     initZoom();
 
-    chargerPersonnel();
-    // Jour par défaut : le dernier jour non saisi (sinon la veille en secours)
-    setDate(veilleIso());   // affichage immédiat le temps que l'appel réponde
-    fetch(`${API}/stats/prochain-a-saisir`).then(r => r.json())
-      .then(d => { if (d && d.date) setDate(d.date); })
-      .catch(() => {});
+    // Jour par défaut : le plus ancien jour oublié des 14 derniers jours, sinon
+    // aujourd'hui. Un seul chargement (pas de « veille » affichée puis remplacée).
+    $('btn-save').disabled = true;
+    $('date-label').textContent = 'Chargement…';
+    Promise.all([chargerPersonnel(), chargerOublis(true)])
+      .then(([, jour]) => setDate(jour || veilleIso()));
     chargerStats();
     chargerHistorique();
     // L'encart analyse est rafraîchi par setDate (il suit la saisie au démarrage)

@@ -295,6 +295,7 @@ class CaJournalierUpsert(BaseModel):
     nb_tickets_soir:   Optional[int] = None
     meteo:             Optional[str] = None   # 'soleil' | 'pluie' | None
     commentaire:       Optional[str] = None
+    ferme:             bool = False            # boutique fermée ce jour (CA = 0, hors moyennes)
     personnel_id:      Optional[int] = None
 
 
@@ -6132,6 +6133,15 @@ async def imprimer_facture(facture_id: int):
 # PILOTAGE — Chiffre d'affaires journalier
 # ===========================================================================
 
+def _aujourdhui_paris() -> date:
+    """Date du jour à la boutique (heure de Paris), même si le serveur est en UTC."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("Europe/Paris")).date()
+    except Exception:
+        return date.today()
+
+
 def _panier(ttc, nb):
     """Panier moyen = CA / tickets, ou None si tickets manquant/nul."""
     if nb and ttc is not None:
@@ -6155,7 +6165,8 @@ async def _agg_periode(db, debut: str, fin: str) -> dict:
     """
     cur = await db.execute(
         """SELECT
-               COUNT(*)                             AS nb_jours,
+               -- jours fermés : CA 0, ne comptent pas dans le CA moyen / jour
+               COALESCE(SUM(ferme = 0), 0)          AS nb_jours,
                COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
                COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
                COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
@@ -6360,7 +6371,7 @@ async def _ca_par_semaine_iso(db, limit: int) -> list[dict]:
     """Agrège ca_journalier par semaine ISO (lundi→dimanche), plus récente
     d'abord. Mêmes clés que la requête SQL jour/mois de get_ca_par_periode."""
     cur = await db.execute(
-        """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, montant_ttc_soir
+        """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, montant_ttc_soir, ferme
            FROM ca_journalier
            WHERE boutique_id = 1
            ORDER BY date_ca DESC"""
@@ -6375,11 +6386,13 @@ async def _ca_par_semaine_iso(db, limit: int) -> list[dict]:
                 break
             s = semaines[cle] = {
                 "periode": cle, "date_debut": j["date_ca"], "date_fin": j["date_ca"],
-                "nb_jours": 0, "total_ttc": 0, "total_tickets": 0,
+                "nb_jours": 0, "ferme": 1, "total_ttc": 0, "total_tickets": 0,
                 "total_ttc_matin": 0, "total_ttc_soir": 0,
             }
         s["date_debut"] = j["date_ca"]          # tri décroissant → le plus ancien en dernier
-        s["nb_jours"] += 1
+        if not j["ferme"]:
+            s["nb_jours"] += 1
+            s["ferme"] = 0
         s["total_ttc"]       += j["montant_ttc"] or 0
         s["total_tickets"]   += j["nb_tickets"] or 0
         s["total_ttc_matin"] += j["montant_ttc_matin"] or 0
@@ -6421,7 +6434,8 @@ async def _ca_par_periode_sql(db, expr: str, limit: int) -> list[dict]:
                 {expr}                               AS periode,
                 MIN(date_ca)                         AS date_debut,
                 MAX(date_ca)                         AS date_fin,
-                COUNT(*)                             AS nb_jours,
+                SUM(ferme = 0)                       AS nb_jours,
+                MIN(ferme)                           AS ferme,   -- 1 = toute la période fermée
                 COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
                 COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
                 COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
@@ -6447,6 +6461,8 @@ async def _evolutions_par_periode(gran: str, rows: list[dict]) -> dict:
         for r in rows:
             d = date.fromisoformat(r["periode"])
             ref = par_date.get((d - timedelta(days=7)).isoformat())
+            if r["ferme"] or (ref and ref["ferme"]):
+                ref = None                      # pas d'évolution vers / depuis un jour fermé
             ref_ca     = ref["total_ttc"] if ref else None
             ref_panier = ref["panier_moyen"] if ref else None
             r["evolution"]        = _evolution(r["total_ttc"], ref_ca) if ref_ca is not None else {"delta": None, "pct": None}
@@ -6522,7 +6538,7 @@ async def get_ca_profil_semaine(
                    SUM(CASE WHEN montant_ttc_matin > 0 THEN montant_ttc_matin END) AS somme_ttc_matin,
                    SUM(CASE WHEN montant_ttc_matin > 0 THEN nb_tickets_matin END)  AS somme_tickets_matin
                FROM ca_journalier
-               WHERE boutique_id = 1
+               WHERE boutique_id = 1 AND ferme = 0
                GROUP BY dow"""
         )
         par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
@@ -6530,7 +6546,7 @@ async def get_ca_profil_semaine(
         # Jour analysé : celui demandé (`jour`) ou le dernier saisi par défaut.
         cols_jour = ("date_ca, montant_ttc, nb_tickets, "
                      "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir, "
-                     "CAST(strftime('%w', date_ca) AS INTEGER) AS dow")
+                     "ferme, CAST(strftime('%w', date_ca) AS INTEGER) AS dow")
         if jour:
             cur = await db.execute(
                 f"SELECT {cols_jour} FROM ca_journalier "
@@ -6547,12 +6563,12 @@ async def get_ca_profil_semaine(
                     "date_ca": jour, "montant_ttc": 0, "nb_tickets": None,
                     "montant_ttc_matin": 0, "nb_tickets_matin": None,
                     "montant_ttc_soir": 0, "nb_tickets_soir": None,
-                    "dow": int(d.strftime("%w")), "_non_saisi": True,
+                    "dow": int(d.strftime("%w")), "ferme": 0, "_non_saisi": True,
                 }
         else:
             cur = await db.execute(
                 f"SELECT {cols_jour} FROM ca_journalier "
-                "WHERE boutique_id = 1 ORDER BY date_ca DESC LIMIT 1"
+                "WHERE boutique_id = 1 AND ferme = 0 ORDER BY date_ca DESC LIMIT 1"
             )
             dernier = await cur.fetchone()
             dernier = dict(dernier) if dernier else None
@@ -6564,7 +6580,7 @@ async def get_ca_profil_semaine(
             cur = await db.execute(
                 "SELECT montant_ttc, nb_tickets, "
                 "montant_ttc_matin, nb_tickets_matin, montant_ttc_soir, nb_tickets_soir "
-                "FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ?",
+                "FROM ca_journalier WHERE boutique_id = 1 AND date_ca = ? AND ferme = 0",
                 (ref_date,),
             )
             row = await cur.fetchone()
@@ -6574,7 +6590,7 @@ async def get_ca_profil_semaine(
         async def _moy(jours: int):
             cur = await db.execute(
                 "SELECT AVG(montant_ttc) AS m FROM ca_journalier "
-                "WHERE boutique_id = 1 AND date_ca >= date('now', ?)",
+                "WHERE boutique_id = 1 AND ferme = 0 AND date_ca >= date('now', ?)",
                 (f"-{jours} days",),
             )
             row = await cur.fetchone()
@@ -6649,6 +6665,7 @@ async def get_ca_profil_semaine(
             "perimetre": perimetre,   # 'matin' | 'journee'
             "en_cours":  en_cours,    # True seulement si journée d'aujourd'hui non finie
             "non_saisi": dernier.get("_non_saisi", False),
+            "ferme":     bool(dernier["ferme"]),
             "ca": {
                 "valeur":            valeur_ca,
                 "s1":                ca_s1,
@@ -6673,32 +6690,44 @@ async def get_ca_profil_semaine(
     }
 
 
+_CA_FENETRE_OUBLIS = 14   # jours remontés pour retrouver une saisie oubliée
+
+
 @router.get("/pilotage/ca/stats/prochain-a-saisir")
 async def get_ca_prochain_a_saisir():
-    """Jour sur lequel ouvrir la saisie par défaut : le LENDEMAIN de la
-    dernière saisie. On ignore les trous anciens : on suit la continuité de la
-    saisie, pas le premier jour manquant.
+    """Jour sur lequel ouvrir la saisie par défaut : le plus ancien jour NON
+    saisi des 14 derniers jours (jusqu'à hier, et pas avant la toute première
+    saisie), sinon aujourd'hui. Jamais un jour futur.
 
-    On autorise J+1 même futur proche (on prépare la saisie du lendemain),
-    plafonné à demain pour éviter de partir loin si une date est aberrante.
-    Aucune saisie encore → on propose hier.
+    `oublis` = nombre de jours non saisis dans cette fenêtre (bandeau d'alerte).
+    Un jour fermé enregistré compte comme saisi.
     """
-    today = date.today()
+    today = _aujourdhui_paris()
     async with get_db() as db:
         cur = await db.execute(
-            "SELECT MAX(date_ca) AS d FROM ca_journalier WHERE boutique_id = 1"
+            "SELECT MIN(date_ca) AS d FROM ca_journalier WHERE boutique_id = 1"
         )
         row = await cur.fetchone()
-        derniere = row["d"] if row else None
+        premiere = row["d"] if row else None
+        if not premiere:
+            return {"date": (today - timedelta(days=1)).isoformat(), "oublis": 0}
 
-    if not derniere:
-        return {"date": (today - timedelta(days=1)).isoformat()}
+        debut = max(today - timedelta(days=_CA_FENETRE_OUBLIS), date.fromisoformat(premiere))
+        cur = await db.execute(
+            "SELECT date_ca FROM ca_journalier "
+            "WHERE boutique_id = 1 AND date_ca >= ? AND date_ca < ?",
+            (debut.isoformat(), today.isoformat()),
+        )
+        saisis = {r["date_ca"] for r in await cur.fetchall()}
 
-    suivant = date.fromisoformat(derniere) + timedelta(days=1)
-    demain = today + timedelta(days=1)
-    if suivant > demain:
-        suivant = demain
-    return {"date": suivant.isoformat()}
+    manquants = []
+    d = debut
+    while d < today:
+        if d.isoformat() not in saisis:
+            manquants.append(d.isoformat())
+        d += timedelta(days=1)
+    return {"date": manquants[0] if manquants else today.isoformat(),
+            "oublis": len(manquants)}
 
 
 @router.get("/pilotage/ca/{date_ca}")
@@ -6718,7 +6747,20 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
     """Enregistre ou corrige le CA d'un jour, ventilé matin/soir.
 
     Le total du jour (montant_ttc / nb_tickets) est la somme des deux sections.
+    `ferme` = boutique fermée : montants et tickets forcés à 0 / vide.
     """
+    try:
+        jour = date.fromisoformat(body.date_ca)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Date invalide (format attendu AAAA-MM-JJ)")
+    if jour > _aujourdhui_paris():
+        raise HTTPException(400, "Impossible de saisir le CA d'un jour qui n'est pas encore passé")
+    body.date_ca = jour.isoformat()
+    if body.ferme:
+        body.montant_ttc_matin = body.montant_ttc_soir = 0.0
+        body.nb_tickets_matin = body.nb_tickets_soir = None
+    elif not (body.montant_ttc_matin or body.montant_ttc_soir):
+        raise HTTPException(400, "Saisir au moins un montant, ou indiquer que la boutique était fermée")
     for nom, val in (("matin", body.montant_ttc_matin), ("soir", body.montant_ttc_soir)):
         if val < 0:
             raise HTTPException(400, f"Le montant {nom} ne peut pas être négatif")
@@ -6740,9 +6782,10 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
                    (boutique_id, date_ca, montant_ttc, nb_tickets,
                     montant_ttc_matin, nb_tickets_matin,
                     montant_ttc_soir, nb_tickets_soir,
-                    meteo, commentaire, personnel_id)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    meteo, commentaire, personnel_id, ferme)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
+                   ferme             = excluded.ferme,
                    montant_ttc       = excluded.montant_ttc,
                    nb_tickets        = excluded.nb_tickets,
                    montant_ttc_matin = excluded.montant_ttc_matin,
@@ -6756,7 +6799,7 @@ async def upsert_ca_jour(body: CaJournalierUpsert):
             (body.date_ca, total_ttc, total_tickets,
              body.montant_ttc_matin, body.nb_tickets_matin,
              body.montant_ttc_soir, body.nb_tickets_soir,
-             meteo, body.commentaire, body.personnel_id),
+             meteo, body.commentaire, body.personnel_id, int(body.ferme)),
         )
         await db.commit()
         cur = await db.execute(

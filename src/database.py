@@ -1043,6 +1043,7 @@ CREATE TABLE IF NOT EXISTS ca_journalier (
     nb_tickets_soir   INTEGER,
     meteo             TEXT,   -- 'soleil' | 'pluie' | NULL (non renseigné)
     commentaire       TEXT,
+    ferme             INTEGER NOT NULL DEFAULT 0,   -- v8.4 : boutique fermée (hors moyennes)
     personnel_id      INTEGER,
     created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -2148,6 +2149,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE catalogue_vente ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE impressions_etiquettes ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE produits_a_creer ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
+            # v8.4 — Pilotage CA : jour de fermeture enregistrable (CA 0, éteint le
+            # rappel du Hub) et exclu des moyennes / paniers / profils.
+            "ALTER TABLE ca_journalier ADD COLUMN ferme INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             try:
