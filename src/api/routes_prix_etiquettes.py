@@ -64,6 +64,9 @@ class ConfigEtiquette(BaseModel):
     fond_noir: bool = False
     type: str = "normal"         # normal | promo (styles)
     lignes: list[LigneTexte] = []
+    # Logo « Fait maison » : étiquette libre seulement (pour un produit du catalogue,
+    # c'est la case de sa fiche qui décide, cf. appliquer_variables).
+    fait_maison: bool = False
 
 
 class ModeleCreate(BaseModel):
@@ -121,7 +124,8 @@ async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
         if normal is None:
             raise HTTPException(status_code=409, detail="Aucun style d'étiquette : "
                                 "l'administrateur doit le créer dans l'onglet Style.")
-        data = config_libre(normal["config"], [l["texte"] for l in data["lignes"]])
+        data = config_libre(normal["config"], [l["texte"] for l in data["lignes"]],
+                            fait_maison=body.fait_maison)
         if not data["lignes"]:
             raise HTTPException(status_code=422, detail="Étiquette vide : tapez au moins une ligne.")
     # Envoi réseau bloquant → exécuté hors de la boucle async pour ne pas
@@ -140,6 +144,7 @@ async def imprimer_etiquette(body: ImpressionUnitaire, request: Request):
         "quantite": 1,
         "type": body.type if produit else "libre",
         "prix_ttc": prix_imprime(produit, body.type) if produit else None,
+        "fait_maison": bool(data.get("fait_maison")),
     }], mode="serveur")
     return {"ok": True, "message": message}
 
@@ -155,6 +160,7 @@ class ArticleHorsCatalogue(BaseModel):
     nom: str = Field(min_length=1, max_length=40)
     prix_vente_ttc: float = Field(gt=0, lt=10000)
     unite_vente: Literal["kg", "piece"] = "kg"
+    fait_maison: bool = False
 
     @field_validator("nom")
     @classmethod
@@ -171,7 +177,8 @@ async def _noter_hors_catalogue(article: "ArticleHorsCatalogue") -> dict:
     async with get_db() as db:
         existant = await produit_existant(db, article.nom)
         demande_id = None if existant else await noter_demande(
-            db, article.nom, round(article.prix_vente_ttc, 2), article.unite_vente)
+            db, article.nom, round(article.prix_vente_ttc, 2), article.unite_vente,
+            fait_maison=article.fait_maison)
         await db.commit()
     return {"existant": existant, "demande_id": demande_id}
 
@@ -185,7 +192,7 @@ async def imprimer_hors_catalogue(body: ArticleHorsCatalogue, request: Request):
         raise HTTPException(status_code=409, detail="Aucun style d'étiquette : "
                             "l'administrateur doit le créer dans l'onglet Style.")
     produit = {"nom": body.nom, "prix_vente_ttc": round(body.prix_vente_ttc, 2),
-               "unite_vente": body.unite_vente}
+               "unite_vente": body.unite_vente, "fait_maison": body.fait_maison}
     data = appliquer_variables(normal["config"], produit)
     ok, message = await run_in_threadpool(imprimer_etiquette_prix, data)
     if not ok:
@@ -193,6 +200,7 @@ async def imprimer_hors_catalogue(body: ArticleHorsCatalogue, request: Request):
     await _journaliser(request, [{
         "libelle": body.nom, "quantite": 1, "type": "hors_catalogue",
         "prix_ttc": produit["prix_vente_ttc"], "unite_vente": body.unite_vente,
+        "fait_maison": body.fait_maison,
     }], mode="serveur")
     return {"ok": True, "message": message, **await _noter_hors_catalogue(body)}
 
@@ -382,7 +390,7 @@ async def rechercher_catalogue(
     async with get_db() as db:
         promos = await _promos_actives(db)
         sql = """
-            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
+            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente, fait_maison
             FROM catalogue_vente
             WHERE boutique_id = 1 AND actif = 1
         """
@@ -404,6 +412,7 @@ async def rechercher_catalogue(
                 "famille": r[3],
                 "sous_famille": r[4],
                 "unite_vente": r[5],
+                "fait_maison": bool(r[6]),
                 "promo": promos.get(r[0]),
             }
             for r in rows
@@ -465,7 +474,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
         promos = await _promos_actives(db)   # remplit {prix_reference} {prix_promo}…
         cur = await db.execute(
             f"""
-            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente
+            SELECT id, nom, prix_vente_ttc, famille, sous_famille, unite_vente, fait_maison
             FROM catalogue_vente
             WHERE boutique_id = 1 AND actif = 1 AND id IN ({placeholders})
             """,
@@ -480,6 +489,7 @@ async def _charger_produits_vente(ids: list[int]) -> dict[int, dict]:
             "famille": r[3],
             "sous_famille": r[4],
             "unite_vente": r[5],
+            "fait_maison": bool(r[6]),
             "promo": promos.get(r[0]),
         }
         for r in rows
@@ -916,6 +926,7 @@ class ImpressionNavigateur(BaseModel):
     type: str = "normal"                 # normal | promo | libre
     produits: list[LigneMasse] = []      # étiquettes de produits du catalogue
     libelle: Optional[str] = None        # étiquette libre : son texte
+    fait_maison: bool = False            # étiquette libre : logo « Fait maison »
     article: Optional[ArticleHorsCatalogue] = None   # étiquette prix hors catalogue
 
 
@@ -933,9 +944,11 @@ async def noter_impression_navigateur(body: ImpressionNavigateur, request: Reque
     if not body.produits and body.article:
         a = body.article
         lignes = [{"libelle": a.nom, "quantite": 1, "type": "hors_catalogue",
-                   "prix_ttc": round(a.prix_vente_ttc, 2), "unite_vente": a.unite_vente}]
+                   "prix_ttc": round(a.prix_vente_ttc, 2), "unite_vente": a.unite_vente,
+                   "fait_maison": a.fait_maison}]
     elif not body.produits and body.libelle:
-        lignes = [{"libelle": body.libelle, "quantite": 1, "type": "libre"}]
+        lignes = [{"libelle": body.libelle, "quantite": 1, "type": "libre",
+                   "fait_maison": body.fait_maison}]
     await _journaliser(request, lignes, mode="navigateur")
     if not body.produits and body.article:
         return {"ok": True, **await _noter_hors_catalogue(body.article)}

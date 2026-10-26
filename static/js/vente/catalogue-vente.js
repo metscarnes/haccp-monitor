@@ -271,7 +271,7 @@ function afficherTable(liste) {
                style="width:20px;height:20px;accent-color:var(--color-accent);display:block;margin:auto;cursor:pointer;opacity:1;visibility:visible;appearance:checkbox;-webkit-appearance:checkbox;">
       </td>
       <td class="ach-cell-nom">
-        ${escHtml(p.nom)}
+        ${escHtml(p.nom)}${p.fait_maison ? ' <span title="Fait maison : logo sur ses étiquettes prix">🏠</span>' : ''}
         ${!p.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
       </td>
       <td>${p.code_vente ? `<code>${escHtml(p.code_vente)}</code>` : '<span style="color:#9ca3af">—</span>'}</td>
@@ -540,6 +540,7 @@ function creerDepuisDemande(id) {
   document.getElementById('v-nom').value = d.nom || '';
   document.getElementById('v-prix').value = d.prix_vente_ttc ?? '';
   document.getElementById('v-unite').value = d.unite_vente === 'piece' ? 'piece' : 'kg';
+  document.getElementById('v-fait-maison').checked = !!d.fait_maison;
   majAffichagePoids();
 }
 
@@ -626,6 +627,7 @@ function ouvrirEdition(id) {
   majSousFamille(p.famille || '', document.getElementById('v-sous-famille'), p.sous_famille || '');
   document.getElementById('v-code').value = p.code_vente || '';
   document.getElementById('v-suivi-cuisson-auto').checked = !!p.suivi_cuisson_auto;
+  document.getElementById('v-fait-maison').checked = !!p.fait_maison;
   document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('btn-relier-achat').hidden = false;
   document.getElementById('form-erreur').hidden = true;
@@ -649,6 +651,7 @@ function viderForm() {
   document.getElementById('v-format').value = 'standard_60x40';
   document.getElementById('v-code').value = '';
   document.getElementById('v-suivi-cuisson-auto').checked = false;
+  document.getElementById('v-fait-maison').checked = false;
   document.getElementById('form-erreur').hidden = true;
 }
 
@@ -672,6 +675,7 @@ async function sauver(e) {
     sous_famille:             document.getElementById('v-sous-famille').value || null,
     code_vente:               document.getElementById('v-code').value.trim() || null,
     suivi_cuisson_auto:       document.getElementById('v-suivi-cuisson-auto').checked,
+    fait_maison:              document.getElementById('v-fait-maison').checked,
   };
 
   try {

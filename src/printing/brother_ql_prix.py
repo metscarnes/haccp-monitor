@@ -58,6 +58,39 @@ DEJAVU_BOLD    = FONTS_SYSTEM_DIR / "DejaVuSans-Bold.ttf"
 # Épaisseur du trait d'un texte barré, en fraction de la taille de police.
 EPAISSEUR_BARRE = 0.07
 
+# Logo « Fait maison » (scripts/generer_logo_fait_maison.py) : posé dans une colonne
+# réservée à gauche de l'étiquette, le texte s'ajuste dans la place restante.
+# Géométrie en fraction de la HAUTEUR de l'étiquette — miroir de prix_etiquettes.js.
+LOGO_FAIT_MAISON   = Path(__file__).parent.parent.parent / "static" / "img" / "fait-maison.png"
+FM_COLONNE         = 0.44     # largeur de la colonne du logo
+FM_HAUTEUR         = 0.62     # hauteur du logo
+FM_RATIO           = 0.86     # largeur / hauteur du logo
+_logo_fm_cache: dict = {}
+
+
+def _masque_fait_maison(lw: int, lh: int):
+    """Forme du logo (canal alpha) à la taille voulue, ou None si le fichier manque."""
+    from PIL import Image
+    cle = (lw, lh)
+    if cle not in _logo_fm_cache:
+        try:
+            alpha = Image.open(LOGO_FAIT_MAISON).convert("RGBA").getchannel("A")
+            _logo_fm_cache[cle] = alpha.resize((lw, lh), Image.LANCZOS)
+        except OSError as e:
+            logger.error("Logo « Fait maison » introuvable : %s", e)
+            _logo_fm_cache[cle] = None
+    return _logo_fm_cache[cle]
+
+
+def geometrie_fait_maison(w: int, h: int, marge_h: int) -> dict:
+    """Colonne du logo et zone laissée au texte (px). Miroir de geometrieFaitMaison (JS)."""
+    col = round(h * FM_COLONNE)
+    # Logo aussi haut que possible, sans déborder de sa colonne.
+    lh = round(min(h * FM_HAUTEUR, (col - marge_h * 0.6) / FM_RATIO))
+    lw = round(lh * FM_RATIO)
+    return {"x_logo": round(marge_h / 2 + (col - lw) / 2), "y_logo": (h - lh) // 2,
+            "lw": lw, "lh": lh, "x0": col + round(marge_h / 2), "x1": w - marge_h}
+
 
 def cm_to_px(cm: float) -> int:
     return max(1, round(cm * PX_PAR_CM))
@@ -145,6 +178,7 @@ def generer_image_prix(data: dict):
       largeur_cm  float   — largeur de l'étiquette (ex: 10.0)
       hauteur_cm  float   — hauteur de l'étiquette (ex: 7.5)
       fond_noir   bool    — True = fond noir, texte blanc
+      fait_maison bool    — logo « Fait maison » à gauche (le texte se range à droite)
       lignes      list    — liste de dicts décrivant chaque ligne :
         {
           "texte"      : str,
@@ -175,7 +209,10 @@ def generer_image_prix(data: dict):
 
     marge_h  = round(w * 0.05)
     marge_v  = round(h * 0.06)
-    zone_w   = max(1, w - 2 * marge_h)
+    # Zone du texte : toute la largeur, ou à droite de la colonne du logo.
+    fm = geometrie_fait_maison(w, h, marge_h) if data.get("fait_maison") else None
+    x0, x1   = (fm["x0"], fm["x1"]) if fm else (marge_h, w - marge_h)
+    zone_w   = max(1, x1 - x0)
     zone_h   = max(1, h - 2 * marge_v)
     n_lignes = len(lignes_brutes)
     inter    = round(h * 0.025)  # espace vertical entre lignes
@@ -256,14 +293,18 @@ def generer_image_prix(data: dict):
     img  = Image.new("RGB", (w, h), color=couleur_fond)
     draw = ImageDraw.Draw(img)
     y    = y_start
+    if fm:
+        masque = _masque_fait_maison(fm["lw"], fm["lh"])
+        if masque is not None:
+            img.paste(couleur_texte, (fm["x_logo"], fm["y_logo"]), masque)
 
     for l in lignes_rendues:
         if l["alignement"] == "right":
-            x = w - marge_h - l["text_w"]
+            x = x1 - l["text_w"]
         elif l["alignement"] == "left":
-            x = marge_h
+            x = x0
         else:
-            x = (w - l["text_w"]) // 2
+            x = x0 + (zone_w - l["text_w"]) // 2
 
         # off_y recolle le haut réel des glyphes sur la position voulue.
         draw.text((x, y - l["off_y"]), l["texte"], font=l["font"], fill=couleur_texte)
@@ -367,6 +408,9 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
         return texte
 
     nouvelle = dict(config)
+    # Logo « Fait maison » : suit le produit (case de sa fiche au catalogue de vente).
+    if "fait_maison" in produit:
+        nouvelle["fait_maison"] = bool(produit.get("fait_maison"))
     nouvelle["lignes"] = [
         {**ligne, "texte": substituer(ligne.get("texte", ""))}
         for ligne in config.get("lignes", [])
@@ -442,7 +486,7 @@ def normaliser_style(config: dict) -> tuple[dict, bool]:
 MAX_LIGNES_LIBRES = 5
 
 
-def config_libre(style: dict, textes: list[str]) -> dict:
+def config_libre(style: dict, textes: list[str], fait_maison: bool = False) -> dict:
     """Étiquette LIBRE (« Arrivage du jour »…) : seul le texte est libre ; format, fond
     et police sont ceux du style normal de la boutique — aucune taille, police ni mise
     en page choisie à la main (une seule apparence pour toutes les étiquettes).
@@ -454,6 +498,7 @@ def config_libre(style: dict, textes: list[str]) -> dict:
     return {
         "largeur_cm": style.get("largeur_cm", 10), "hauteur_cm": style.get("hauteur_cm", 6),
         "fond_noir": bool(style.get("fond_noir")), "type": "libre",
+        "fait_maison": bool(fait_maison),
         "lignes": [{"texte": t, "poids": 1, "taille_px": 0, "gras": False,
                     "police": zone_nom.get("police"), "alignement": "center"} for t in textes],
     }

@@ -200,7 +200,8 @@ async def test_historique_des_impressions(app_client, db, monkeypatch):
         ("Histo A", 2, 10.90), ("Histo B", 1, 3.99)]
     # Toutes les lignes sont gardées : l'historique les affiche et peut les réimprimer.
     assert libre["lignes"] == [{"libelle": "Paupiette de lapin\n14,90 €", "quantite": 1, "type": "libre",
-                                "prix_ttc": None, "catalogue_vente_id": None, "unite_vente": None}]
+                                "prix_ttc": None, "catalogue_vente_id": None, "unite_vente": None,
+                                "fait_maison": False}]
     assert nav["mode"] == "navigateur" and nav["lignes"][0]["quantite"] == 3
 
     # Échec de l'imprimante : rien n'est noté.

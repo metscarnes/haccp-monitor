@@ -2142,6 +2142,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             )""",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_produits_a_creer_attente ON produits_a_creer(nom_normalise) WHERE statut = 'en_attente'",
             "ALTER TABLE impressions_etiquettes ADD COLUMN unite_vente TEXT",
+            # v8.3 — Logo « Fait maison » sur les étiquettes prix : case de la fiche du
+            # produit (catalogue de vente) ; gardé aussi pour les étiquettes libres / hors
+            # catalogue (historique → réimpression à l'identique, produit à créer).
+            "ALTER TABLE catalogue_vente ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE impressions_etiquettes ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE produits_a_creer ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             try:

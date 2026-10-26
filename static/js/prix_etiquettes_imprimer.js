@@ -123,7 +123,7 @@
       const enPromo = p.promo
         ? `<span class="pe-tag-promo">🔥 ${prixTexte(p.promo.prix_promo_ttc)} jusqu'au ${dateCourte(p.promo.date_fin)}</span>` : '';
       return `<div class="pe-imp-produit">
-          <div class="pe-imp-produit-nom">${escHtml(p.nom)}${aRefaire}${enPromo}</div>
+          <div class="pe-imp-produit-nom">${escHtml(p.nom)}${p.fait_maison ? ' <span title="Fait maison : logo sur ses étiquettes">🏠</span>' : ''}${aRefaire}${enPromo}</div>
           <div class="pe-imp-produit-prix">${sansPrix ? 'pas de prix' : `${prixTexte(p.prix_vente_ttc)} / ${uniteTexte(p)}`}</div>
           <button class="pe-imp-promo-btn ${p.promo ? 'active' : ''}" data-promo="${p.id}"
                   ${sansPrix ? 'disabled' : ''} title="Mettre en promo" aria-label="Promo ${escHtml(p.nom)}">🔥</button>
@@ -529,10 +529,12 @@
     lignes.forEach(l => {
       if (estLibre(l)) {
         unitaires.push({ url: '/api/prix-etiquettes/imprimer', quantite: l.quantite,
-                         corps: { type: 'libre', lignes: textesDe(l).map(texte => ({ texte })) } });
+                         corps: { type: 'libre', lignes: textesDe(l).map(texte => ({ texte })),
+                                  fait_maison: !!l.fait_maison } });
       } else if (estHorsCatalogue(l)) {
         unitaires.push({ url: '/api/prix-etiquettes/imprimer-hors-catalogue', quantite: l.quantite,
-                         corps: { nom: l.libelle, prix_vente_ttc: l.prix_ttc, unite_vente: l.unite_vente || 'kg' } });
+                         corps: { nom: l.libelle, prix_vente_ttc: l.prix_ttc, unite_vente: l.unite_vente || 'kg',
+                                  fait_maison: !!l.fait_maison } });
       } else {
         qte.set(l.catalogue_vente_id, (qte.get(l.catalogue_vente_id) || 0) + l.quantite);
       }
@@ -611,7 +613,7 @@
                           data-ligne="${k}">` : ''}
               ${ICONE_TYPE[l.type] || ''}${escHtml(estLibre(l) ? textesDe(l).join(' — ') || '—'
                                                                : l.libelle || '—')}
-              ${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
+              ${l.fait_maison ? ' 🏠' : ''}${l.quantite > 1 ? `<strong>×${l.quantite}</strong>` : ''}
               ${l.prix_ttc != null ? `— ${prixTexte(l.prix_ttc)}${estHorsCatalogue(l) ? UNITE_TEXTE[l.unite_vente] || '' : ''}${l.type === 'promo' ? ' (promo)' : ''}` : ''}</li>`).join('')}
           </ul>
         </div>`;

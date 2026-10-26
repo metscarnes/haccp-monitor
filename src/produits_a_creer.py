@@ -49,7 +49,8 @@ async def produit_existant(db, nom: str) -> Optional[dict]:
     return None
 
 
-async def noter_demande(db, nom: str, prix_ttc: Optional[float], unite: str) -> Optional[int]:
+async def noter_demande(db, nom: str, prix_ttc: Optional[float], unite: str,
+                        fait_maison: bool = False) -> Optional[int]:
     """Note (ou met à jour) la demande pour ce produit. Renvoie son id, ou None si le
     produit existe déjà au catalogue de vente (rien à créer)."""
     nom = re.sub(r"\s+", " ", str(nom or "")).strip()[:NOM_MAX]
@@ -63,14 +64,15 @@ async def noter_demande(db, nom: str, prix_ttc: Optional[float], unite: str) -> 
     if rows:
         await db.execute(
             """UPDATE produits_a_creer SET nom = ?, prix_vente_ttc = ?, unite_vente = ?,
-                      nb_etiquettes = nb_etiquettes + 1, derniere_at = ?
-               WHERE id = ?""", (nom, prix_ttc, unite, quand, rows[0]["id"]))
+                      fait_maison = ?, nb_etiquettes = nb_etiquettes + 1, derniere_at = ?
+               WHERE id = ?""", (nom, prix_ttc, unite, 1 if fait_maison else 0, quand, rows[0]["id"]))
         return rows[0]["id"]
     cur = await db.execute(
         """INSERT INTO produits_a_creer
-               (nom, nom_normalise, prix_vente_ttc, unite_vente, nb_etiquettes,
+               (nom, nom_normalise, prix_vente_ttc, unite_vente, fait_maison, nb_etiquettes,
                 premiere_at, derniere_at, statut)
-           VALUES (?, ?, ?, ?, 1, ?, ?, 'en_attente')""", (nom, cle, prix_ttc, unite, quand, quand))
+           VALUES (?, ?, ?, ?, ?, 1, ?, ?, 'en_attente')""",
+        (nom, cle, prix_ttc, unite, 1 if fait_maison else 0, quand, quand))
     return cur.lastrowid
 
 
@@ -87,7 +89,8 @@ async def lister_demandes(db) -> list[dict]:
     """Demandes en attente, la plus récente d'abord."""
     await _clore_les_existants(db)
     rows = await db.execute_fetchall(
-        """SELECT id, nom, prix_vente_ttc, unite_vente, nb_etiquettes, premiere_at, derniere_at
+        """SELECT id, nom, prix_vente_ttc, unite_vente, fait_maison, nb_etiquettes,
+                  premiere_at, derniere_at
            FROM produits_a_creer WHERE statut = 'en_attente'
            ORDER BY derniere_at DESC, id DESC""")
     return [dict(r) for r in rows]

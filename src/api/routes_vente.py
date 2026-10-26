@@ -65,6 +65,8 @@ class ProduitVenteCreate(BaseModel):
     # v7.4 : produit reçu déjà préparé (plat traiteur), à réchauffer/refroidir sans
     # transformation — alimente GET /api/cuisson/a-traiter (tuile Hub "À CUIRE").
     suivi_cuisson_auto: Optional[bool] = False
+    # v8.3 : logo « Fait maison » sur les étiquettes prix du produit.
+    fait_maison: Optional[bool] = False
 
 
 class ProduitVenteUpdate(BaseModel):
@@ -81,6 +83,7 @@ class ProduitVenteUpdate(BaseModel):
     sous_famille: Optional[str] = None
     actif: Optional[bool] = None
     suivi_cuisson_auto: Optional[bool] = None
+    fait_maison: Optional[bool] = None
 
 
 class DecisionPrix(BaseModel):
@@ -636,12 +639,12 @@ async def creer_produit_vente(body: ProduitVenteCreate, auth=Depends(require_adm
             """INSERT INTO catalogue_vente
                    (boutique_id, nom, code_vente, prix_vente_ttc, unite_vente, poids_piece_kg,
                     tva_percent, dlc_jours, temperature_conservation, format_etiquette,
-                    famille, sous_famille, suivi_cuisson_auto)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    famille, sous_famille, suivi_cuisson_auto, fait_maison)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.nom, body.code_vente, body.prix_vente_ttc, unite, poids,
              body.tva_percent, body.dlc_jours, body.temperature_conservation,
              body.format_etiquette, body.famille, body.sous_famille,
-             1 if body.suivi_cuisson_auto else 0),
+             1 if body.suivi_cuisson_auto else 0, 1 if body.fait_maison else 0),
         )
         await tracer_changement_prix_vente(
             db, cur.lastrowid, None, body.prix_vente_ttc, motif="creation", role=_role(auth),

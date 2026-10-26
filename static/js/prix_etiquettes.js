@@ -106,6 +106,43 @@ const EPAISSEUR_BARRE = 0.07;
 // Taille max du cadre de prévisualisation en pixels CSS
 const PREVIEW_MAX_W = 520;
 const PREVIEW_MAX_H = 460;
+// Logo « Fait maison » : colonne réservée à gauche, géométrie en fraction de la
+// hauteur — miroir de brother_ql_prix (FM_COLONNE, FM_HAUTEUR, FM_RATIO).
+const FM_COLONNE = 0.44;
+const FM_HAUTEUR = 0.62;
+const FM_RATIO   = 0.86;
+const logoFaitMaison = new Image();
+
+// Chargé avant le premier aperçu (sans lui, le logo manquerait à l'écran).
+function chargerLogoFaitMaison() {
+  return new Promise(ok => {
+    logoFaitMaison.onload = logoFaitMaison.onerror = ok;
+    logoFaitMaison.src = '/static/img/fait-maison.png';
+  });
+}
+
+// Colonne du logo et zone laissée au texte — miroir de geometrie_fait_maison (Python).
+function geometrieFaitMaison(w, h, margeH) {
+  const col = Math.round(h * FM_COLONNE);
+  const lh = Math.round(Math.min(h * FM_HAUTEUR, (col - margeH * 0.6) / FM_RATIO));
+  const lw = Math.round(lh * FM_RATIO);
+  return { xLogo: Math.round(margeH / 2 + (col - lw) / 2), yLogo: Math.floor((h - lh) / 2),
+           lw, lh, x0: col + Math.round(margeH / 2), x1: w - margeH };
+}
+
+// Logo peint de la couleur du texte (le fichier n'est qu'une forme blanche).
+function dessinerLogoFaitMaison(ctx, g, encre) {
+  if (!logoFaitMaison.complete || !logoFaitMaison.naturalWidth) return;
+  const tampon = document.createElement('canvas');
+  tampon.width = g.lw;
+  tampon.height = g.lh;
+  const t = tampon.getContext('2d');
+  t.drawImage(logoFaitMaison, 0, 0, g.lw, g.lh);
+  t.globalCompositeOperation = 'source-in';
+  t.fillStyle = encre;
+  t.fillRect(0, 0, g.lw, g.lh);
+  ctx.drawImage(tampon, g.xLogo, g.yLogo);
+}
 
 // ── Éléments DOM ─────────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -177,8 +214,9 @@ function mesurer(ctx, ligne, sizePx) {
 // Dessine une étiquette sur un canvas, miroir de brother_ql_prix.generer_image_prix.
 //   cible   : { canvas, cadre (élément aux proportions réelles), info (texte des dimensions),
 //               maxW, maxH (taille max du cadre à l'écran) }
-//   config  : { largeur_cm, hauteur_cm, fond_noir, lignes }
+//   config  : { largeur_cm, hauteur_cm, fond_noir, lignes, fait_maison }
 //   produit : produit du catalogue de vente (+ promo) qui remplit les variables, ou null
+//             (son fait_maison l'emporte sur celui de la config, comme à l'impression)
 function dessinerEtiquette(cible, config, produit) {
   const { canvas, cadre, info } = cible;
   const maxW = cible.maxW ?? PREVIEW_MAX_W;
@@ -236,7 +274,12 @@ function dessinerEtiquette(cible, config, produit) {
 
   const margeH = Math.round(w * 0.05);
   const margeV = Math.round(h * 0.06);
-  const zoneW  = Math.max(1, w - 2 * margeH);
+  // Zone du texte : toute la largeur, ou à droite de la colonne du logo.
+  const faitMaison = produit && 'fait_maison' in produit ? !!produit.fait_maison : !!config.fait_maison;
+  const fm = faitMaison ? geometrieFaitMaison(w, h, margeH) : null;
+  const x0 = fm ? fm.x0 : margeH;
+  const x1 = fm ? fm.x1 : w - margeH;
+  const zoneW  = Math.max(1, x1 - x0);
   const zoneH  = Math.max(1, h - 2 * margeV);
   const inter  = Math.round(h * 0.025);
   const n = lignes.length;
@@ -275,13 +318,14 @@ function dessinerEtiquette(cible, config, produit) {
   const blocH = rendues.reduce((s, l) => s + l.h, 0) + inter * (n - 1);
   let y = Math.max(margeV, Math.floor((h - blocH) / 2));
 
+  if (fm) dessinerLogoFaitMaison(ctx, fm, encre);
   ctx.fillStyle = encre;
   ctx.textBaseline = 'alphabetic';
   for (const l of rendues) {
     let x;
-    if (l.alignement === 'right')      x = w - margeH - l.w;
-    else if (l.alignement === 'left')  x = margeH;
-    else                               x = Math.floor((w - l.w) / 2);
+    if (l.alignement === 'right')      x = x1 - l.w;
+    else if (l.alignement === 'left')  x = x0;
+    else                               x = x0 + Math.floor((zoneW - l.w) / 2);
     ctx.font = l.spec;
     // Comme PIL (y - off_y) : le haut réel des glyphes est posé sur y.
     ctx.fillText(l.texte, x, y + l.inkAscent);
@@ -501,7 +545,8 @@ const elBtnImprimer  = $('btn-imprimer');
 const elBtnImprimerNav = $('btn-imprimer-navigateur');
 const SANS_STYLE = 'Aucun style d\'étiquette : l\'administrateur doit le créer dans l\'onglet « Style ».';
 
-const libre = { sorte: 'texte', unite: 'kg', catalogue: null };
+const libre = { sorte: 'texte', unite: 'kg', faitMaison: false, catalogue: null };
+const CLE_FM_LIBRE = 'pe_libre_fait_maison';
 
 function afficherStatut(msg, type) {
   // type : 'ok' | 'err' | 'loading'
@@ -516,12 +561,13 @@ function textesLibres() {
 }
 
 // Miroir de brother_ql_prix.config_libre : format, fond et police du style normal,
-// lignes de même taille, centrées.
-function configLibre(style, textes) {
+// lignes de même taille, centrées (+ logo « Fait maison » si demandé).
+function configLibre(style, textes, faitMaison = false) {
   const lignes = style.lignes || [];
   const zoneNom = lignes.find(l => l.zone === 'nom') || lignes[0] || {};
   return {
     largeur_cm: style.largeur_cm, hauteur_cm: style.hauteur_cm, fond_noir: !!style.fond_noir,
+    fait_maison: !!faitMaison,
     lignes: textes.map(t => t.trim()).filter(Boolean).slice(0, MAX_LIGNES_LIBRES).map(texte => ({
       texte, poids: 1, taille_px: 0, gras: false, police: zoneNom.police || null, alignement: 'center',
     })),
@@ -537,7 +583,8 @@ function lirePrix(texte) {
 // Article tapé à la main, sous la forme d'un produit du catalogue (pour l'aperçu).
 function articleSaisi() {
   return { nom: elLibreNom.value.replace(/\s+/g, ' ').trim(),
-           prix_vente_ttc: lirePrix(elLibrePrix.value), unite_vente: libre.unite };
+           prix_vente_ttc: lirePrix(elLibrePrix.value), unite_vente: libre.unite,
+           fait_maison: libre.faitMaison };
 }
 
 // Nom sans accents ni majuscules (miroir de produits_a_creer.normaliser_nom).
@@ -569,6 +616,7 @@ function sauverSaisie() {
     localStorage.setItem(CLE_SORTE_LIBRE, libre.sorte);
     localStorage.setItem(CLE_ARTICLE_LIBRE, JSON.stringify(
       { nom: elLibreNom.value, prix: elLibrePrix.value, unite: libre.unite }));
+    localStorage.setItem(CLE_FM_LIBRE, libre.faitMaison ? '1' : '');
   } catch (e) { /* ignore */ }
 }
 
@@ -584,7 +632,7 @@ function rendreLibre() {
     // Mise en page officielle : le style normal, rempli avec l'article tapé.
     dessinerEtiquette(cible, state.styleNormal, articleSaisi());
   } else {
-    dessinerEtiquette(cible, configLibre(state.styleNormal, textesLibres()), null);
+    dessinerEtiquette(cible, configLibre(state.styleNormal, textesLibres(), libre.faitMaison), null);
   }
 }
 
@@ -607,8 +655,19 @@ function choisirUnite(unite) {
   rendreLibre();
 }
 
+// Logo « Fait maison » : un bouton pour les deux sortes d'étiquette.
+function choisirFaitMaison(oui) {
+  libre.faitMaison = !!oui;
+  const btn = $('libre-fait-maison');
+  btn.classList.toggle('active', libre.faitMaison);
+  btn.setAttribute('aria-pressed', String(libre.faitMaison));
+  btn.textContent = libre.faitMaison ? '🏠 Logo « Fait maison » ajouté ✓' : '🏠 Ajouter le logo « Fait maison »';
+  rendreLibre();
+}
+
 document.querySelectorAll('.pe-libre-choix [data-sorte]').forEach(b =>
   b.addEventListener('click', () => choisirSorte(b.dataset.sorte)));
+$('libre-fait-maison').addEventListener('click', () => choisirFaitMaison(!libre.faitMaison));
 document.querySelectorAll('.pe-libre-unites [data-unite]').forEach(b =>
   b.addEventListener('click', () => choisirUnite(b.dataset.unite)));
 let minuterieExistants = null;
@@ -698,7 +757,8 @@ elBtnImprimer.addEventListener('click', async () => {
       await apiFetch('/api/prix-etiquettes/imprimer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })) }),
+        body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })),
+                               fait_maison: libre.faitMaison }),
       });
       afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
     }
@@ -720,7 +780,7 @@ elBtnImprimerNav.addEventListener('click', async () => {
   if (libre.sorte === 'prix') {
     noterImpressionNavigateur({ type: 'hors_catalogue', article: articleSaisi() });
   } else {
-    noterImpressionNavigateur({ type: 'libre',
+    noterImpressionNavigateur({ type: 'libre', fait_maison: libre.faitMaison,
       libelle: configLibre(style, textesLibres()).lignes.map(l => l.texte).join('\n') });
   }
 });
@@ -735,10 +795,11 @@ peVues.libre = {
 
 // Saisie précédente (confort sur la tablette) : sorte, textes, article.
 function restaurerLibre(textes, sorteImposee) {
-  let article = {}, sorte = sorteImposee;
+  let article = {}, sorte = sorteImposee, fm = false;
   try {
     article = JSON.parse(localStorage.getItem(CLE_ARTICLE_LIBRE) || '{}') || {};
     sorte = sorte || localStorage.getItem(CLE_SORTE_LIBRE);
+    fm = !!localStorage.getItem(CLE_FM_LIBRE);
   } catch (e) { /* ignore */ }
   elLibreNom.value = article.nom || '';
   elLibrePrix.value = article.prix || '';
@@ -747,12 +808,14 @@ function restaurerLibre(textes, sorteImposee) {
     b.classList.toggle('active', b.dataset.unite === libre.unite));
   remplirLignesLibres(Array.isArray(textes) ? textes : []);
   choisirSorte(sorte || 'texte');
+  choisirFaitMaison(fm);
 }
 
 // ── Init ──────────────────────────────────────────────────────
 
 async function init() {
-  await chargerFontDefaut();   // DejaVu embarquée pour l'aperçu Canvas
+  await Promise.all([chargerFontDefaut(),       // DejaVu embarquée pour l'aperçu Canvas
+                     chargerLogoFaitMaison()]);
   await Promise.all([chargerFonts(), chargerFile(), chargerStyleNormal()]);
 
   // Textes de la dernière étiquette libre (confort sur la tablette).
