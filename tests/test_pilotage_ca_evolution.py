@@ -60,10 +60,16 @@ async def test_evolution_mois_en_cours_perimetre_egal(app_client, db):
     courant = next(l for l in lignes if l["periode"] == debut_mois.strftime("%Y-%m"))
     assert courant["total_ttc"] == pytest.approx(total_courant, abs=0.01)
 
-    # L'évolution doit être calculée contre le total tronqué (périmètre égal),
-    # pas contre le total complet du mois précédent (qui inclurait les 1000€).
-    attendu_delta = round(total_courant - total_attendu_tronque, 2)
-    assert courant["evolution"]["delta"] == pytest.approx(attendu_delta, abs=0.01)
+    # L'évolution compare les journées TERMINÉES (jusqu'à hier) aux mêmes N
+    # premiers jours du mois précédent — jamais au mois précédent entier (qui
+    # inclurait les 1000€), ni la journée en cours à une journée complète.
+    n_termines = nb_jours_ecoules - 1
+    if n_termines == 0:            # 1er du mois : rien de comparable encore
+        assert courant["evolution"]["delta"] is None
+    else:
+        attendu_delta = round(50.0 * n_termines - 100.0 * n_termines, 2)
+        assert courant["evolution"]["delta"] == pytest.approx(attendu_delta, abs=0.01)
+    assert courant["evolution_label"] == "vs même nb de jours"
 
 
 @pytest.mark.anyio

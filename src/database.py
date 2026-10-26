@@ -1054,6 +1054,21 @@ CREATE TABLE IF NOT EXISTS ca_journalier (
 CREATE INDEX IF NOT EXISTS idx_ca_journalier_date
     ON ca_journalier(boutique_id, date_ca DESC);
 
+-- v8.5 — Ajustements caisse/banque du CA (module Marge / inventaire).
+-- Un écart de rapprochement n'est PAS une journée de vente : il vit ici, hors
+-- ca_journalier, pour ne fausser ni le suivi quotidien (moyennes, paniers,
+-- jours saisis) ni être écrasé par une saisie du jour. Daté au dernier jour de
+-- la période calée ; compté dans le CA de la marge uniquement.
+CREATE TABLE IF NOT EXISTS ca_ajustements (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    date_ca      DATE    NOT NULL,
+    montant_ttc  REAL    NOT NULL,
+    personnel_id INTEGER,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (boutique_id, date_ca)
+);
+
 -- Inventaire VALORISÉ (stock comptable en €) — voir migration v7.0 pour le détail.
 CREATE TABLE IF NOT EXISTS inventaires (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2152,6 +2167,26 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # v8.4 — Pilotage CA : jour de fermeture enregistrable (CA 0, éteint le
             # rappel du Hub) et exclu des moyennes / paniers / profils.
             "ALTER TABLE ca_journalier ADD COLUMN ferme INTEGER NOT NULL DEFAULT 0",
+            # v8.5 — Ajustements caisse/banque sortis de ca_journalier (cf. SCHEMA_SQL).
+            # On ne déplace que les lignes d'ajustement PURES (aucun montant matin/soir) :
+            # une ligne déjà ressaisie à l'écran CA est une vraie journée, on la laisse.
+            """CREATE TABLE IF NOT EXISTS ca_ajustements (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id  INTEGER NOT NULL DEFAULT 1,
+                date_ca      DATE    NOT NULL,
+                montant_ttc  REAL    NOT NULL,
+                personnel_id INTEGER,
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (boutique_id, date_ca)
+            )""",
+            """INSERT OR IGNORE INTO ca_ajustements (boutique_id, date_ca, montant_ttc, personnel_id)
+               SELECT boutique_id, date_ca, montant_ttc, personnel_id FROM ca_journalier
+               WHERE commentaire = 'Ajustement caisse/banque' AND ferme = 0
+                 AND COALESCE(montant_ttc_matin, 0) = 0 AND COALESCE(montant_ttc_soir, 0) = 0""",
+            """DELETE FROM ca_journalier
+               WHERE commentaire = 'Ajustement caisse/banque' AND ferme = 0
+                 AND COALESCE(montant_ttc_matin, 0) = 0 AND COALESCE(montant_ttc_soir, 0) = 0
+                 AND date_ca IN (SELECT date_ca FROM ca_ajustements)""",
         ]
         for sql in migrations:
             try:

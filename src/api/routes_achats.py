@@ -6133,13 +6133,18 @@ async def imprimer_facture(facture_id: int):
 # PILOTAGE — Chiffre d'affaires journalier
 # ===========================================================================
 
-def _aujourdhui_paris() -> date:
-    """Date du jour à la boutique (heure de Paris), même si le serveur est en UTC."""
+def _maintenant_paris() -> datetime:
+    """Heure de la boutique (Paris), même si le serveur est en UTC."""
     try:
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("Europe/Paris")).date()
+        return datetime.now(ZoneInfo("Europe/Paris")).replace(tzinfo=None)
     except Exception:
-        return date.today()
+        return datetime.now()
+
+
+def _aujourdhui_paris() -> date:
+    """Date du jour à la boutique (heure de Paris), même si le serveur est en UTC."""
+    return _maintenant_paris().date()
 
 
 def _panier(ttc, nb):
@@ -6149,10 +6154,36 @@ def _panier(ttc, nb):
     return None
 
 
+# Panier moyen honnête : les tickets sont facultatifs, donc on ne divise que le
+# CA des sections DONT on connaît les tickets (sinon le CA d'un jour sans
+# tickets gonfle le panier). Anciennes saisies sans ventilation (seulement un
+# total + nb_tickets) : on prend le total.
+_SQL_TTC_TICKETE = """(CASE
+    WHEN nb_tickets_matin IS NULL AND nb_tickets_soir IS NULL
+        THEN CASE WHEN nb_tickets > 0 THEN montant_ttc END
+    ELSE COALESCE(CASE WHEN nb_tickets_matin > 0 THEN montant_ttc_matin END, 0)
+       + COALESCE(CASE WHEN nb_tickets_soir  > 0 THEN montant_ttc_soir  END, 0)
+END)"""
+_SQL_TICKETS        = "(CASE WHEN nb_tickets > 0 THEN nb_tickets END)"
+_SQL_TTC_MATIN_TK   = "(CASE WHEN nb_tickets_matin > 0 THEN montant_ttc_matin END)"
+_SQL_TICKETS_MATIN  = "(CASE WHEN nb_tickets_matin > 0 THEN nb_tickets_matin END)"
+_SQL_TTC_SOIR_TK    = "(CASE WHEN nb_tickets_soir > 0 THEN montant_ttc_soir END)"
+_SQL_TICKETS_SOIR   = "(CASE WHEN nb_tickets_soir > 0 THEN nb_tickets_soir END)"
+
+
+def _ttc_tickete(d: dict):
+    """Version Python de _SQL_TTC_TICKETE pour une journée."""
+    tm, ts = d.get("nb_tickets_matin"), d.get("nb_tickets_soir")
+    if tm is None and ts is None:
+        return d.get("montant_ttc") if (d.get("nb_tickets") or 0) > 0 else None
+    return ((d.get("montant_ttc_matin") or 0) if (tm or 0) > 0 else 0) \
+         + ((d.get("montant_ttc_soir") or 0) if (ts or 0) > 0 else 0)
+
+
 def _enrichir_ca(row) -> dict:
     """Ajoute les paniers moyens calculés (global + par section)."""
     d = dict(row)
-    d["panier_moyen"]       = _panier(d.get("montant_ttc"),       d.get("nb_tickets"))
+    d["panier_moyen"]       = _panier(_ttc_tickete(d),            d.get("nb_tickets"))
     d["panier_moyen_matin"] = _panier(d.get("montant_ttc_matin"), d.get("nb_tickets_matin"))
     d["panier_moyen_soir"]  = _panier(d.get("montant_ttc_soir"),  d.get("nb_tickets_soir"))
     return d
@@ -6162,33 +6193,48 @@ async def _agg_periode(db, debut: str, fin: str) -> dict:
     """Agrège le CA d'une période [debut, fin] (dates ISO incluses).
 
     Renvoie totaux, moyennes, paniers (global/matin/soir) et répartition %.
+    Le CA moyen / jour ne compte que les journées TERMINÉES (avant aujourd'hui)
+    et ouvertes : la journée en cours (matin seul) ferait baisser la moyenne.
     """
+    today = _aujourdhui_paris().isoformat()
     cur = await db.execute(
-        """SELECT
-               -- jours fermés : CA 0, ne comptent pas dans le CA moyen / jour
-               COALESCE(SUM(ferme = 0), 0)          AS nb_jours,
+        f"""SELECT
+               -- jours fermés : CA 0, ne comptent pas comme jours de vente
+               COALESCE(SUM(ferme = 0), 0)                          AS nb_jours,
+               COALESCE(SUM(ferme = 0 AND date_ca < :today), 0)     AS nb_jours_complets,
+               COALESCE(SUM(CASE WHEN date_ca < :today THEN montant_ttc END), 0) AS total_ttc_complets,
                COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
                COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
                COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
                COALESCE(SUM(nb_tickets_matin), 0)   AS total_tickets_matin,
                COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir,
-               COALESCE(SUM(nb_tickets_soir), 0)    AS total_tickets_soir
+               COALESCE(SUM(nb_tickets_soir), 0)    AS total_tickets_soir,
+               SUM({_SQL_TTC_TICKETE})              AS ttc_tickete,
+               SUM({_SQL_TICKETS})                  AS tickets_tk,
+               SUM({_SQL_TTC_MATIN_TK})             AS ttc_matin_tk,
+               SUM({_SQL_TICKETS_MATIN})            AS tickets_matin_tk,
+               SUM({_SQL_TTC_SOIR_TK})              AS ttc_soir_tk,
+               SUM({_SQL_TICKETS_SOIR})             AS tickets_soir_tk
            FROM ca_journalier
-           WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?""",
-        (debut, fin),
+           WHERE boutique_id = 1 AND date_ca >= :debut AND date_ca <= :fin""",
+        {"debut": debut, "fin": fin, "today": today},
     )
     r = dict(await cur.fetchone())
-    nbj = r["nb_jours"] or 0
+    nbc = r.pop("nb_jours_complets") or 0
+    total_complets = r.pop("total_ttc_complets") or 0
     r["date_debut"]          = debut
     r["date_fin"]            = fin
-    r["ca_moyen_jour"]       = round(r["total_ttc"] / nbj, 2) if nbj else None
-    r["panier_moyen"]        = _panier(r["total_ttc"],       r["total_tickets"])
-    r["panier_moyen_matin"]  = _panier(r["total_ttc_matin"], r["total_tickets_matin"])
-    r["panier_moyen_soir"]   = _panier(r["total_ttc_soir"],  r["total_tickets_soir"])
-    tot = r["total_ttc"] or 0
-    if tot > 0:
-        r["part_matin"] = round(100 * r["total_ttc_matin"] / tot, 1)
-        r["part_soir"]  = round(100 * r["total_ttc_soir"]  / tot, 1)
+    r["nb_jours_complets"]   = nbc
+    r["ca_moyen_jour"]       = round(total_complets / nbc, 2) if nbc else None
+    r["panier_moyen"]        = _panier(r.pop("ttc_tickete"),  r.pop("tickets_tk"))
+    r["panier_moyen_matin"]  = _panier(r.pop("ttc_matin_tk"), r.pop("tickets_matin_tk"))
+    r["panier_moyen_soir"]   = _panier(r.pop("ttc_soir_tk"),  r.pop("tickets_soir_tk"))
+    # Répartition sur le CA ventilé (les anciennes saisies « total seul » n'ont
+    # ni matin ni après-midi : elles fausseraient les deux parts).
+    ventile = (r["total_ttc_matin"] or 0) + (r["total_ttc_soir"] or 0)
+    if ventile > 0:
+        r["part_matin"] = round(100 * r["total_ttc_matin"] / ventile, 1)
+        r["part_soir"]  = round(100 - r["part_matin"], 1)
     else:
         r["part_matin"] = None
         r["part_soir"]  = None
@@ -6238,7 +6284,7 @@ async def get_ca_historique(
 @router.get("/pilotage/ca/stats/resume")
 async def get_ca_stats():
     """Totaux & moyennes : mois en cours et 30 derniers jours glissants."""
-    today = date.today()
+    today = _aujourdhui_paris()
     fin = today.isoformat()
     async with get_db() as db:
         return {
@@ -6354,53 +6400,55 @@ async def get_ca_comparer_dates(
     }
 
 
-# Granularité → expression SQLite qui calcule la clé de période depuis date_ca.
-# jour   : la date elle-même (YYYY-MM-DD)
-# semaine: None → regroupée en Python (année + n° de semaine ISO, « 2026-S42 »).
-#          strftime('%G'/'%V') n'existe qu'à partir de SQLite 3.46 ; la prod
-#          (Debian 12) est en 3.40 → NULL, et le tableau Semaine restait figé.
-# mois   : année-mois (YYYY-MM)
-_GRANULARITES = {
-    "jour":    "date_ca",
-    "semaine": None,
-    "mois":    "strftime('%Y-%m', date_ca)",
-}
+# ── CA par période (jour / semaine / mois) ─────────────────────────────────
+# Regroupement fait en Python : strftime('%G'/'%V') (semaine ISO) n'existe
+# qu'à partir de SQLite 3.46 et la prod (Debian 12) est en 3.40. Le volume
+# (une ligne par jour) reste petit.
+_GRANULARITES = ("jour", "semaine", "mois")
 
 
-async def _ca_par_semaine_iso(db, limit: int) -> list[dict]:
-    """Agrège ca_journalier par semaine ISO (lundi→dimanche), plus récente
-    d'abord. Mêmes clés que la requête SQL jour/mois de get_ca_par_periode."""
-    cur = await db.execute(
-        """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, montant_ttc_soir, ferme
-           FROM ca_journalier
-           WHERE boutique_id = 1
-           ORDER BY date_ca DESC"""
-    )
-    semaines: dict[str, dict] = {}
-    for j in await cur.fetchall():
-        annee, num, _ = date.fromisoformat(j["date_ca"]).isocalendar()
-        cle = f"{annee}-S{num:02d}"
-        s = semaines.get(cle)
-        if s is None:
-            if len(semaines) >= limit:
-                break
-            s = semaines[cle] = {
-                "periode": cle, "date_debut": j["date_ca"], "date_fin": j["date_ca"],
-                "nb_jours": 0, "ferme": 1, "total_ttc": 0, "total_tickets": 0,
-                "total_ttc_matin": 0, "total_ttc_soir": 0,
-            }
-        s["date_debut"] = j["date_ca"]          # tri décroissant → le plus ancien en dernier
-        if not j["ferme"]:
-            s["nb_jours"] += 1
-            s["ferme"] = 0
-        s["total_ttc"]       += j["montant_ttc"] or 0
-        s["total_tickets"]   += j["nb_tickets"] or 0
-        s["total_ttc_matin"] += j["montant_ttc_matin"] or 0
-        s["total_ttc_soir"]  += j["montant_ttc_soir"] or 0
-    for s in semaines.values():
-        for k in ("total_ttc", "total_ttc_matin", "total_ttc_soir"):
-            s[k] = round(s[k], 2)
-    return list(semaines.values())
+def _bornes_periode(d: date, gran: str) -> tuple[str, date, date]:
+    """Clé et bornes CALENDAIRES de la période qui contient `d`
+    (jour : d ; semaine ISO : lundi→dimanche ; mois : 1er→dernier jour)."""
+    if gran == "jour":
+        return d.isoformat(), d, d
+    if gran == "semaine":
+        annee, num, _ = d.isocalendar()
+        lundi = d - timedelta(days=d.weekday())
+        return f"{annee}-S{num:02d}", lundi, lundi + timedelta(days=6)
+    import calendar
+    debut = d.replace(day=1)
+    fin = d.replace(day=calendar.monthrange(d.year, d.month)[1])
+    return d.strftime("%Y-%m"), debut, fin
+
+
+def _agreger_jours(jours: list[dict]) -> dict:
+    """Totaux d'une liste de journées ca_journalier (mêmes règles que _agg_periode)."""
+    ttc_tk = [t for t in (_ttc_tickete(j) for j in jours) if t is not None]
+    tickets = sum(j["nb_tickets"] for j in jours if (j["nb_tickets"] or 0) > 0)
+    return {
+        "nb_jours":        sum(1 for j in jours if not j["ferme"]),
+        "ferme":           int(bool(jours) and all(j["ferme"] for j in jours)),
+        "total_ttc":       round(sum(j["montant_ttc"] or 0 for j in jours), 2),
+        "total_tickets":   sum(j["nb_tickets"] or 0 for j in jours),
+        "total_ttc_matin": round(sum(j["montant_ttc_matin"] or 0 for j in jours), 2),
+        "total_ttc_soir":  round(sum(j["montant_ttc_soir"] or 0 for j in jours), 2),
+        "panier_moyen":    _panier(sum(ttc_tk), tickets) if ttc_tk else None,
+    }
+
+
+_SANS_EVOLUTION = {"delta": None, "pct": None}
+
+
+def _evolutions(courant: dict, ref: Optional[dict]) -> tuple[dict, dict]:
+    """(évolution CA, évolution panier) d'un agrégat vs sa référence."""
+    if ref is None or courant["ferme"] or ref["ferme"] or not ref["nb_jours"]:
+        return _SANS_EVOLUTION, _SANS_EVOLUTION
+    evo_ca = _evolution(courant["total_ttc"], ref["total_ttc"])
+    evo_panier = (_evolution(courant["panier_moyen"], ref["panier_moyen"])
+                  if courant["panier_moyen"] is not None and ref["panier_moyen"] is not None
+                  else _SANS_EVOLUTION)
+    return evo_ca, evo_panier
 
 
 @router.get("/pilotage/ca/stats/par-periode")
@@ -6408,105 +6456,69 @@ async def get_ca_par_periode(
     granularite: str = Query("jour", description="jour | semaine | mois"),
     limit:       int = Query(60, ge=1, le=1000),
 ):
-    """CA agrégé par période, du plus récent au plus ancien, avec évolution
-    vs la période précédente (sur le total)."""
+    """CA agrégé par période, du plus récent au plus ancien, avec évolution :
+    - jour : vs le même jour la semaine précédente (S-1) ;
+    - semaine / mois : vs la période calendaire précédente. Si la période est
+      EN COURS, on compare à durée égale (mêmes N premiers jours, journées
+      terminées seulement) : sinon 25 jours d'octobre seraient comparés aux
+      30 jours de septembre (fausse baisse).
+    Les jours fermés ne sont jamais une base de comparaison."""
     gran = granularite.lower().strip()
     if gran not in _GRANULARITES:
         raise HTTPException(400, "granularite doit valoir jour, semaine ou mois")
-    expr = _GRANULARITES[gran]
 
     async with get_db() as db:
-        if expr is None:
-            rows = await _ca_par_semaine_iso(db, limit)
+        cur = await db.execute(
+            """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, nb_tickets_matin,
+                      montant_ttc_soir, nb_tickets_soir, ferme
+               FROM ca_journalier
+               WHERE boutique_id = 1
+               ORDER BY date_ca"""
+        )
+        jours = [dict(r) for r in await cur.fetchall()]
+
+    # Regroupement par période calendaire
+    groupes: dict[str, dict] = {}
+    for j in jours:
+        cle, debut_cal, fin_cal = _bornes_periode(date.fromisoformat(j["date_ca"]), gran)
+        g = groupes.setdefault(cle, {"debut_cal": debut_cal, "fin_cal": fin_cal, "jours": []})
+        g["jours"].append(j)
+
+    hier = _aujourdhui_paris() - timedelta(days=1)
+    lignes = []
+    for cle in sorted(groupes, reverse=True)[:limit]:
+        g = groupes[cle]
+        ligne = {"periode": cle,
+                 "date_debut": g["jours"][0]["date_ca"], "date_fin": g["jours"][-1]["date_ca"],
+                 **_agreger_jours(g["jours"])}
+
+        if gran == "jour":
+            ref_g = groupes.get((g["debut_cal"] - timedelta(days=7)).isoformat())
+            ref = _agreger_jours(ref_g["jours"]) if ref_g else None
+            evo, evo_panier = _evolutions(ligne, ref)
+            label = "vs S-1"
         else:
-            rows = await _ca_par_periode_sql(db, expr, limit)
-
-    for r in rows:
-        r["panier_moyen"] = _panier(r["total_ttc"], r["total_tickets"])
-
-    return await _evolutions_par_periode(gran, rows)
-
-
-async def _ca_par_periode_sql(db, expr: str, limit: int) -> list[dict]:
-    """Agrège ca_journalier par jour ou par mois (clé de période calculée en SQL)."""
-    cur = await db.execute(
-        f"""SELECT
-                {expr}                               AS periode,
-                MIN(date_ca)                         AS date_debut,
-                MAX(date_ca)                         AS date_fin,
-                SUM(ferme = 0)                       AS nb_jours,
-                MIN(ferme)                           AS ferme,   -- 1 = toute la période fermée
-                COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
-                COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
-                COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
-                COALESCE(SUM(montant_ttc_soir), 0)   AS total_ttc_soir
-            FROM ca_journalier
-            WHERE boutique_id = 1
-            GROUP BY periode
-            ORDER BY periode DESC
-            LIMIT ?""",
-        (limit,),
-    )
-    return [dict(r) for r in await cur.fetchall()]
-
-
-async def _evolutions_par_periode(gran: str, rows: list[dict]) -> dict:
-    """Ajoute à chaque période son évolution (CA et panier) et renvoie la
-    réponse de /stats/par-periode."""
-    if gran == "jour":
-        # Évolution vs le MÊME JOUR la semaine précédente (date - 7 jours).
-        # On indexe par date pour gérer les jours manquants : un mardi se
-        # compare au mardi d'avant, pas à la ligne précédente de la liste.
-        par_date = {r["periode"]: r for r in rows}
-        for r in rows:
-            d = date.fromisoformat(r["periode"])
-            ref = par_date.get((d - timedelta(days=7)).isoformat())
-            if r["ferme"] or (ref and ref["ferme"]):
-                ref = None                      # pas d'évolution vers / depuis un jour fermé
-            ref_ca     = ref["total_ttc"] if ref else None
-            ref_panier = ref["panier_moyen"] if ref else None
-            r["evolution"]        = _evolution(r["total_ttc"], ref_ca) if ref_ca is not None else {"delta": None, "pct": None}
-            r["evolution_panier"] = _evolution(r["panier_moyen"], ref_panier) if (r["panier_moyen"] is not None and ref_panier is not None) else {"delta": None, "pct": None}
-            r["evolution_label"]  = "vs S-1"
-    else:
-        # Semaine/Mois : vs période précédente (ligne suivante car tri desc).
-        # Comparaison à périmètre égal : si la période courante est EN COURS
-        # (non terminée), on ne compare que contre les N premiers jours de la
-        # période précédente (N = nb de jours écoulés dans la période
-        # courante), pas contre le total du mois/semaine précédent entier —
-        # sinon 3 jours d'août seraient comparés aux 31 jours de juillet.
-        today = date.today()
-        for i, r in enumerate(rows):
-            prec = rows[i + 1] if i + 1 < len(rows) else None
-            prec_ca     = prec["total_ttc"] if prec else None
-            prec_panier = prec["panier_moyen"] if prec else None
-
-            debut_courant = date.fromisoformat(r["date_debut"])
-            fin_courant   = date.fromisoformat(r["date_fin"])
-            en_cours = fin_courant >= today and i == 0
-            if prec is not None and en_cours:
-                jours_ecoules = (min(fin_courant, today) - debut_courant).days
-                debut_prec = date.fromisoformat(prec["date_debut"])
-                fin_tronquee = (debut_prec + timedelta(days=jours_ecoules)).isoformat()
-                async with get_db() as db:
-                    cur = await db.execute(
-                        """SELECT COALESCE(SUM(montant_ttc), 0) AS total_ttc,
-                                  COALESCE(SUM(nb_tickets), 0)  AS total_tickets
-                           FROM ca_journalier
-                           WHERE boutique_id = 1 AND date_ca BETWEEN ? AND ?""",
-                        (prec["date_debut"], fin_tronquee),
-                    )
-                    tronque = dict(await cur.fetchone())
-                prec_ca     = tronque["total_ttc"]
-                prec_panier = _panier(tronque["total_ttc"], tronque["total_tickets"])
-                r["evolution_label"] = "vs préc. (périmètre égal)"
+            # Période précédente : la veille du 1er jour de celle-ci
+            cle_prec, debut_prec, fin_prec = _bornes_periode(g["debut_cal"] - timedelta(days=1), gran)
+            prec_g = groupes.get(cle_prec)
+            if g["fin_cal"] > hier:
+                # En cours : journées terminées de la période (jusqu'à hier) vs
+                # le même nombre de premiers jours de la période précédente.
+                n = (hier - g["debut_cal"]).days
+                courant = _agreger_jours([j for j in g["jours"] if j["date_ca"] <= hier.isoformat()])
+                borne = min(debut_prec + timedelta(days=n), fin_prec).isoformat() if n >= 0 else ""
+                ref = (_agreger_jours([j for j in prec_g["jours"] if j["date_ca"] <= borne])
+                       if prec_g and n >= 0 else None)
+                label = "vs même nb de jours"
             else:
-                r["evolution_label"] = "vs préc."
+                courant = ligne
+                ref = _agreger_jours(prec_g["jours"]) if prec_g else None
+                label = "vs préc."
+            evo, evo_panier = _evolutions(courant, ref)
+        ligne.update(evolution=evo, evolution_panier=evo_panier, evolution_label=label)
+        lignes.append(ligne)
 
-            r["evolution"]        = _evolution(r["total_ttc"], prec_ca) if prec_ca is not None else {"delta": None, "pct": None}
-            r["evolution_panier"] = _evolution(r["panier_moyen"], prec_panier) if (r["panier_moyen"] is not None and prec_panier is not None) else {"delta": None, "pct": None}
-
-    return {"granularite": gran, "lignes": rows}
+    return {"granularite": gran, "lignes": lignes}
 
 
 @router.get("/pilotage/ca/stats/profil-semaine")
@@ -6516,10 +6528,13 @@ async def get_ca_profil_semaine(
     """Profil par jour de semaine (moyenne CA lundi→dimanche) + moyennes
     glissantes 7 / 30 derniers jours, et analyse d'un jour (le dernier saisi
     par défaut, ou `jour` si fourni)."""
+    today = _aujourdhui_paris()
     async with get_db() as db:
         # Moyenne par jour de semaine. strftime('%w') : 0=dimanche … 6=samedi
+        # Journées terminées seulement (avant aujourd'hui) : la journée en cours
+        # (matin seul) ferait baisser la moyenne de son jour de semaine.
         cur = await db.execute(
-            """SELECT
+            f"""SELECT
                    CAST(strftime('%w', date_ca) AS INTEGER) AS dow,
                    COUNT(*)               AS nb,
                    AVG(montant_ttc)       AS ca_moyen,
@@ -6531,15 +6546,16 @@ async def get_ca_profil_semaine(
                    -- la moyenne matin.
                    AVG(CASE WHEN montant_ttc_matin > 0 THEN montant_ttc_matin END) AS ca_moyen_matin,
                    AVG(CASE WHEN montant_ttc_soir  > 0 THEN montant_ttc_soir  END) AS ca_moyen_soir,
-                   AVG(nb_tickets)        AS tickets_moyen,
-                   SUM(montant_ttc)       AS somme_ttc,
-                   SUM(nb_tickets)        AS somme_tickets,
-                   -- Sommes matin (jours matin > 0) pour le panier matin du jour-type
-                   SUM(CASE WHEN montant_ttc_matin > 0 THEN montant_ttc_matin END) AS somme_ttc_matin,
-                   SUM(CASE WHEN montant_ttc_matin > 0 THEN nb_tickets_matin END)  AS somme_tickets_matin
+                   AVG({_SQL_TICKETS})    AS tickets_moyen,
+                   -- Panier du jour-type = CA des sections avec tickets / leurs tickets
+                   SUM({_SQL_TTC_TICKETE})  AS somme_ttc_tk,
+                   SUM({_SQL_TICKETS})      AS somme_tickets,
+                   SUM({_SQL_TTC_MATIN_TK}) AS somme_ttc_matin,
+                   SUM({_SQL_TICKETS_MATIN}) AS somme_tickets_matin
                FROM ca_journalier
-               WHERE boutique_id = 1 AND ferme = 0
-               GROUP BY dow"""
+               WHERE boutique_id = 1 AND ferme = 0 AND date_ca < ?
+               GROUP BY dow""",
+            (today.isoformat(),),
         )
         par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
 
@@ -6586,12 +6602,13 @@ async def get_ca_profil_semaine(
             row = await cur.fetchone()
             semaine_prec = dict(row) if row else None
 
-        # Moyennes glissantes : 7 et 30 derniers jours calendaires
+        # Moyennes glissantes : 7 et 30 derniers jours TERMINÉS (hier inclus,
+        # aujourd'hui exclu), jours ouverts seulement
         async def _moy(jours: int):
             cur = await db.execute(
                 "SELECT AVG(montant_ttc) AS m FROM ca_journalier "
-                "WHERE boutique_id = 1 AND ferme = 0 AND date_ca >= date('now', ?)",
-                (f"-{jours} days",),
+                "WHERE boutique_id = 1 AND ferme = 0 AND date_ca >= ? AND date_ca < ?",
+                ((today - timedelta(days=jours)).isoformat(), today.isoformat()),
             )
             row = await cur.fetchone()
             return round(row["m"], 2) if row and row["m"] is not None else None
@@ -6614,7 +6631,7 @@ async def get_ca_profil_semaine(
             "ca_moyen_soir": round(d["ca_moyen_soir"], 2) if d and d["ca_moyen_soir"] is not None else None,
             "tickets_moyen": round(d["tickets_moyen"]) if d and d["tickets_moyen"] is not None else None,
             # Panier moyen du jour-type = somme CA / somme tickets (pondéré, pas moyenne de paniers)
-            "panier_moyen": _panier(d["somme_ttc"], d["somme_tickets"]) if d else None,
+            "panier_moyen": _panier(d["somme_ttc_tk"], d["somme_tickets"]) if d else None,
         })
 
     # Analyse du dernier jour saisi : CA et panier, vs S-1 et vs moyenne jour-type.
@@ -6627,7 +6644,7 @@ async def get_ca_profil_semaine(
     HEURE_OUVERTURE_APREM = 16   # la boutique rouvre à 16h
     dernier_vs_dow = None
     if dernier:
-        now = datetime.now()
+        now = _maintenant_paris()
         d_info = par_dow.get(dernier["dow"], {})
 
         est_aujourdhui = dernier["date_ca"] == now.date().isoformat()
@@ -6653,9 +6670,9 @@ async def get_ca_profil_semaine(
             valeur_ca     = dernier["montant_ttc"]
             moy_dow_ca    = d_info.get("ca_moyen")
             ca_s1         = semaine_prec["montant_ttc"] if semaine_prec else None
-            panier_jour   = _panier(dernier["montant_ttc"], dernier["nb_tickets"])
-            moy_dow_panier = _panier(d_info.get("somme_ttc"), d_info.get("somme_tickets"))
-            panier_s1     = _panier(semaine_prec["montant_ttc"], semaine_prec["nb_tickets"]) if semaine_prec else None
+            panier_jour   = _panier(_ttc_tickete(dernier), dernier["nb_tickets"])
+            moy_dow_panier = _panier(d_info.get("somme_ttc_tk"), d_info.get("somme_tickets"))
+            panier_s1     = _panier(_ttc_tickete(semaine_prec), semaine_prec["nb_tickets"]) if semaine_prec else None
             perimetre     = "journee"
 
         dernier_vs_dow = {

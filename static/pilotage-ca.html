@@ -261,7 +261,7 @@
       <h2 class="collapsible">Indicateurs — mois en cours</h2>
       <div class="stats-row">
         <div class="stat-box"><div class="val" id="s-total">—</div><div class="lbl">CA cumulé</div></div>
-        <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour</div></div>
+        <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour<br><span class="mini">journées terminées</span></div></div>
         <div class="stat-box"><div class="val" id="s-panier">—</div><div class="lbl">Panier moyen</div></div>
       </div>
       <div class="repartition" id="repartition" style="display:none">
@@ -801,8 +801,8 @@
       } else {
         html = 'Pas encore de données à analyser.';
       }
-      html += `<div class="pb-glissante">Moyenne glissante du CA : `
-        + `7 j = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 j = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
+      html += `<div class="pb-glissante">CA moyen par jour ouvert : `
+        + `7 derniers jours = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 derniers jours = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
       return html;
     }
 
@@ -884,7 +884,9 @@
             <td class="num">${fmtEur(l.total_ttc_soir)}</td>
             <td class="num">${l.total_tickets || '—'}</td>
             <td class="num">${fmtEur(l.panier_moyen)}<br><span class="mini">${l.evolution_panier && l.evolution_panier.pct != null ? evoCourt(l.evolution_panier) : ''}</span></td>
-            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}</td>`}
+            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}${
+              l.evolution.pct != null && l.evolution_label === 'vs même nb de jours'
+                ? '<br><span class="mini">en cours : à nb de jours égal</span>' : ''}</td>`}
           </tr>`).join('');
         // En mode jour, cliquer une ligne ouvre le profil et surligne le jour-type
         if (cliquable) {
@@ -963,8 +965,21 @@
         const r = await getJson(url);
         const c = r.courant, ref = r.reference;
         const fmtP = p => p.date_debut === p.date_fin ? fmtDateFr(p.date_debut) : `${fmtDateFr(p.date_debut)} → ${fmtDateFr(p.date_fin)}`;
+        const nbJ = p => `${p.nb_jours} jour${p.nb_jours > 1 ? 's' : ''} saisi${p.nb_jours > 1 ? 's' : ''}`;
+        // Avertissements : comparaison faussée si les deux côtés n'ont pas le même
+        // nombre de jours saisis, ou si la journée d'aujourd'hui (pas finie) est dedans
+        const alertes = [];
+        if (!c.nb_jours || !ref.nb_jours) {
+          alertes.push(`Aucun jour saisi sur la période ${!c.nb_jours ? 'courante' : 'de référence'} : pas de comparaison possible.`);
+        } else if (c.nb_jours !== ref.nb_jours) {
+          alertes.push(`Pas le même nombre de jours saisis (${c.nb_jours} contre ${ref.nb_jours}) : l'écart en € est faussé.`);
+        }
+        if (c.date_fin >= todayIso() && c.date_debut <= todayIso()) {
+          alertes.push('La période inclut aujourd\'hui : journée pas encore terminée.');
+        }
         $('cmp-result-periode').innerHTML =
-          `<div class="cmp-periodes">Courante : <b>${fmtP(c)}</b> &nbsp;·&nbsp; Référence : <b>${fmtP(ref)}</b></div>`;
+          `<div class="cmp-periodes">Courante : <b>${fmtP(c)}</b> (${nbJ(c)}) &nbsp;·&nbsp; Référence : <b>${fmtP(ref)}</b> (${nbJ(ref)})</div>`
+          + alertes.map(a => `<div class="oublis" style="margin-bottom:8px">⚠️ ${a}</div>`).join('');
         const tmp = document.createElement('div'); tmp.id = '_cmp_tmp';
         $('cmp-result-periode').appendChild(tmp);
         rendreComparatif('_cmp_tmp', 'Courante', 'Référence',

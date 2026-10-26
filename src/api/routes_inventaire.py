@@ -842,7 +842,8 @@ class CaAjustementBody(BaseModel):
     personnel_id: Optional[int] = None
 
 
-# Date dédiée pour la ligne d'ajustement (le dernier jour de la période).
+# Ancien marqueur des lignes d'ajustement quand elles vivaient dans ca_journalier
+# (avant v8.5) — sert à la migration vers ca_ajustements (src/database.py).
 LIBELLE_AJUSTEMENT = "Ajustement caisse/banque"
 
 
@@ -850,10 +851,10 @@ LIBELLE_AJUSTEMENT = "Ajustement caisse/banque"
 async def ajuster_ca_periode(body: CaAjustementBody):
     """Cale le CA TTC TOTAL d'une période sur une valeur cible (rapprochement banque).
 
-    Non destructif : les saisies journalières restent intactes. L'écart (cible − somme
-    actuelle hors ligne d'ajustement existante) est porté par UNE ligne d'ajustement datée
-    au dernier jour de la période (commentaire dédié). Réappeler recalcule l'écart depuis la
-    base réelle, donc c'est idempotent (pas d'empilement).
+    Non destructif : les saisies journalières (ca_journalier) restent intactes. L'écart
+    (cible − somme des saisies) est porté par UN ajustement daté au dernier jour de la
+    période, dans la table dédiée ca_ajustements (hors suivi quotidien du CA). Réappeler
+    remplace l'ajustement de la période : idempotent (pas d'empilement).
     """
     if body.date_debut > body.date_fin:
         raise HTTPException(422, "date_debut doit précéder date_fin")
@@ -861,74 +862,34 @@ async def ajuster_ca_periode(body: CaAjustementBody):
         raise HTTPException(422, "le montant cible ne peut pas être négatif")
 
     async with get_db() as db:
-        # Somme RÉELLE hors ligne d'ajustement (pour repartir d'une base propre).
         async with db.execute(
             """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc
                FROM ca_journalier
-               WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?
-                 AND COALESCE(commentaire, '') <> ?""",
-            (BOUTIQUE_ID, body.date_debut, body.date_fin, LIBELLE_AJUSTEMENT),
+               WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?""",
+            (BOUTIQUE_ID, body.date_debut, body.date_fin),
         ) as cur:
             base = float((await cur.fetchone())["ttc"] or 0)
 
         ecart = round(body.montant_ttc_cible - base, 2)
         date_ajust = body.date_fin
 
-        # Si la date d'ajustement porte une VRAIE saisie (pas l'ajustement), on refuse
-        # d'écraser : on déplace l'ajustement sur cette même date en additionnant — mais
-        # pour rester simple et lisible, on stocke l'ajustement comme une ligne dédiée
-        # SEULEMENT si la date est libre ou ne contient que l'ancien ajustement.
-        async with db.execute(
-            """SELECT montant_ttc, commentaire FROM ca_journalier
-               WHERE boutique_id = ? AND date_ca = ?""",
-            (BOUTIQUE_ID, date_ajust),
-        ) as cur:
-            existant = await cur.fetchone()
-
-        if existant and (existant["commentaire"] or "") != LIBELLE_AJUSTEMENT:
-            # Le dernier jour a une vraie saisie → on porte l'ajustement la veille libre.
-            # On cherche une date libre en remontant (max 7 jours) sinon on empile sur fin.
-            d = date.fromisoformat(body.date_fin)
-            d1 = date.fromisoformat(body.date_debut)
-            date_ajust = None
-            for _ in range(7):
-                d = d - timedelta(days=1)
-                if d < d1:
-                    break
-                async with db.execute(
-                    "SELECT 1 FROM ca_journalier WHERE boutique_id = ? AND date_ca = ?",
-                    (BOUTIQUE_ID, d.isoformat()),
-                ) as cur:
-                    if not await cur.fetchone():
-                        date_ajust = d.isoformat()
-                        break
-            if date_ajust is None:
-                raise HTTPException(
-                    409,
-                    "Aucun jour libre pour l'ajustement sur cette période. "
-                    "Corrigez le CA jour par jour dans Pilotage.",
-                )
-
+        # Un seul ajustement par période : on retire les anciens avant de reposer l'écart.
+        await db.execute(
+            "DELETE FROM ca_ajustements WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?",
+            (BOUTIQUE_ID, body.date_debut, body.date_fin),
+        )
         if abs(ecart) < 0.005:
-            # Cible = base : on supprime toute ligne d'ajustement résiduelle.
-            await db.execute(
-                "DELETE FROM ca_journalier WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ? AND commentaire = ?",
-                (BOUTIQUE_ID, body.date_debut, body.date_fin, LIBELLE_AJUSTEMENT),
-            )
             await db.commit()
             return {"ok": True, "ecart": 0.0, "base_ttc": round(base, 2),
                     "cible_ttc": body.montant_ttc_cible, "ligne_ajustement": None}
 
         await db.execute(
-            """INSERT INTO ca_journalier
-                   (boutique_id, date_ca, montant_ttc, nb_tickets, commentaire, personnel_id)
-               VALUES (?, ?, ?, NULL, ?, ?)
+            """INSERT INTO ca_ajustements (boutique_id, date_ca, montant_ttc, personnel_id)
+               VALUES (?, ?, ?, ?)
                ON CONFLICT(boutique_id, date_ca) DO UPDATE SET
                    montant_ttc  = excluded.montant_ttc,
-                   commentaire  = excluded.commentaire,
-                   personnel_id = excluded.personnel_id,
-                   updated_at   = CURRENT_TIMESTAMP""",
-            (BOUTIQUE_ID, date_ajust, ecart, LIBELLE_AJUSTEMENT, body.personnel_id),
+                   personnel_id = excluded.personnel_id""",
+            (BOUTIQUE_ID, date_ajust, ecart, body.personnel_id),
         )
         await db.commit()
         return {"ok": True, "ecart": ecart, "base_ttc": round(base, 2),
@@ -937,15 +898,22 @@ async def ajuster_ca_periode(body: CaAjustementBody):
 
 
 async def _ca_periode_ht(db, debut, fin, tva_pct):
-    """CA HT de la période = somme TTC ca_journalier [debut, fin] / (1 + tva/100)."""
+    """CA HT de la période = (somme TTC ca_journalier + ajustements caisse/banque)
+    sur [debut, fin] / (1 + tva/100). nb_jours = jours ouverts saisis."""
     async with db.execute(
-        """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc, COUNT(*) AS nb_jours
+        """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc, COALESCE(SUM(ferme = 0), 0) AS nb_jours
            FROM ca_journalier
            WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?""",
         (BOUTIQUE_ID, debut, fin),
     ) as cur:
         row = await cur.fetchone()
-    ttc = float(row["ttc"] or 0)
+    async with db.execute(
+        """SELECT COALESCE(SUM(montant_ttc), 0) AS ttc FROM ca_ajustements
+           WHERE boutique_id = ? AND date_ca >= ? AND date_ca <= ?""",
+        (BOUTIQUE_ID, debut, fin),
+    ) as cur:
+        ajust = float((await cur.fetchone())["ttc"] or 0)
+    ttc = float(row["ttc"] or 0) + ajust
     ht = round(ttc / (1 + tva_pct / 100), 2) if tva_pct >= 0 else ttc
     return {"ttc": round(ttc, 2), "ht": ht, "nb_jours": row["nb_jours"]}
 
