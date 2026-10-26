@@ -6664,6 +6664,8 @@ async def get_ca_profil_semaine(
             panier_jour   = _panier(dernier["montant_ttc_matin"], dernier["nb_tickets_matin"])
             moy_dow_panier = _panier(d_info.get("somme_ttc_matin"), d_info.get("somme_tickets_matin"))
             panier_s1     = _panier(semaine_prec["montant_ttc_matin"], semaine_prec["nb_tickets_matin"]) if semaine_prec else None
+            tickets_jour  = dernier["nb_tickets_matin"]
+            tickets_s1    = semaine_prec["nb_tickets_matin"] if semaine_prec else None
             perimetre     = "matin"
         else:
             # ── Mode JOURNÉE complète ───────────────────────────────
@@ -6673,6 +6675,8 @@ async def get_ca_profil_semaine(
             panier_jour   = _panier(_ttc_tickete(dernier), dernier["nb_tickets"])
             moy_dow_panier = _panier(d_info.get("somme_ttc_tk"), d_info.get("somme_tickets"))
             panier_s1     = _panier(_ttc_tickete(semaine_prec), semaine_prec["nb_tickets"]) if semaine_prec else None
+            tickets_jour  = dernier["nb_tickets"]
+            tickets_s1    = semaine_prec["nb_tickets"] if semaine_prec else None
             perimetre     = "journee"
 
         dernier_vs_dow = {
@@ -6696,6 +6700,11 @@ async def get_ca_profil_semaine(
                 "moyenne_jour_type": moy_dow_panier,
                 "evo_s1":            _evolution(panier_jour, panier_s1) if (panier_jour is not None and panier_s1 is not None) else {"delta": None, "pct": None},
                 "evo_moyenne":       _evolution(panier_jour, moy_dow_panier) if (panier_jour is not None and moy_dow_panier) else {"delta": None, "pct": None},
+            },
+            "tickets": {
+                "valeur": tickets_jour,
+                "s1":     tickets_s1,
+                "evo_s1": _evolution(tickets_jour, tickets_s1) if (tickets_jour is not None and tickets_s1) else {"delta": None, "pct": None},
             },
         }
 

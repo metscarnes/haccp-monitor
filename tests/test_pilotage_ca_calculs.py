@@ -50,6 +50,15 @@ async def test_panier_ignore_le_ca_sans_tickets(app_client, db):
 
 
 @pytest.mark.anyio
+async def test_ce_jour_la_tickets_vs_semaine_precedente(app_client, db):
+    await _saisir(app_client, "2026-09-12", matin=900, tm=40, soir=600, ts=30)   # samedi S-1
+    await _saisir(app_client, "2026-09-19", matin=1000, tm=45, soir=700, ts=32)
+    dv = (await app_client.get(f"{API}/stats/profil-semaine", params={"jour": "2026-09-19"})).json()["dernier_vs_jour_type"]
+    assert dv["perimetre"] == "journee"
+    assert dv["tickets"] == {"valeur": 77, "s1": 70, "evo_s1": {"delta": 7, "pct": 10.0}}
+
+
+@pytest.mark.anyio
 async def test_journee_en_cours_hors_moyennes(app_client, db):
     today = _aujourdhui_paris()
     hier = (today - timedelta(days=1)).isoformat()

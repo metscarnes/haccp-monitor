@@ -11,379 +11,282 @@
   <link rel="stylesheet" href="/static/css/components.css">
   <link rel="stylesheet" href="/static/css/layouts.css">
   <style>
-    .achats-header {
-      background: var(--color-accent);
-      color: #fff;
+    /* Page CA quotidien — 3 parties : Saisir / Ce jour-là / Tendances.
+       Un seul jour choisi pour toute la page (saisie + analyse). */
+    .ca-header {
+      background: var(--color-accent); color: #fff;
       padding: var(--space-3) var(--space-4);
       display: flex; align-items: center; gap: var(--space-3);
       position: sticky; top: 0; z-index: var(--z-header);
     }
-    .achats-header-titre { flex: 1; font-size: var(--text-xl); font-weight: 700; text-align: center; }
-    .achats-retour {
+    .ca-header-titre { flex: 1; font-size: var(--text-xl); font-weight: 700; text-align: center; letter-spacing: .04em; }
+    .ca-retour {
       background: rgba(255,255,255,.15); color: #fff; border: none;
       padding: .6rem 1rem; border-radius: var(--radius-sm); font-size: var(--text-base);
       text-decoration: none; min-height: var(--btn-min-sm); display: inline-flex; align-items: center;
     }
-    .wrap { max-width: 900px; margin: 0 auto; padding: var(--space-4); display: grid; gap: var(--space-4); }
-    .card { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #e2e2e2);
-            border-radius: var(--radius-md, 10px); padding: var(--space-4); }
-    .card h2 { margin: 0 0 var(--space-3); font-size: var(--text-lg); }
-    .form-grid { display: grid; gap: var(--space-3); }
-    .form-row { display: flex; flex-direction: column; gap: 4px; }
-    .form-row label { font-weight: 600; font-size: var(--text-sm); }
-    .form-row input, .form-row select, .form-row textarea {
-      padding: .7rem; font-size: var(--text-base); border: 1px solid var(--color-border, #ccc);
-      border-radius: var(--radius-sm, 6px); width: 100%;
-    }
-    .sections { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
-    .section-box { border: 1px solid var(--color-border, #e2e2e2); border-radius: var(--radius-sm, 6px);
-                   padding: var(--space-3); display: grid; gap: var(--space-2); }
-    .section-box.matin { background: #fffaf2; }
-    .section-box.soir  { background: #f5f7ff; position: relative; }
-    .section-box.soir.ferme .form-row,
-    .section-box.soir.ferme .panier-hint { opacity: .35; pointer-events: none; }
-    .soir-ferme { margin-top: var(--space-2); font-size: var(--text-sm); font-weight: 600; color: #6b7280; }
-    .section-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: 4px; }
-    .section-titre small { font-weight: 400; color: #6b7280; }
-    .montant-input { font-size: 1.35rem !important; font-weight: 700; text-align: right; }
-    .date-nav { display: flex; align-items: center; gap: 8px; }
-    .date-arrow { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: var(--radius-sm,6px);
-                  font-size: 1.2rem; line-height: 1; padding: 0 1rem; cursor: pointer;
-                  min-height: var(--btn-min,48px); min-width: 52px; color: var(--color-accent); }
-    .date-arrow:hover { background: #e9dcc7; }
-    .date-label { flex: 1; background: #fff; border: 1px solid var(--color-border,#ccc); border-radius: var(--radius-sm,6px);
-                  padding: .7rem; font-size: var(--text-base); font-weight: 600; cursor: pointer;
-                  min-height: var(--btn-min,48px); text-align: center; text-transform: capitalize; }
-    .date-label:hover { border-color: var(--color-accent); }
+    .wrap { max-width: 900px; margin: 0 auto; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+    .card { background: #fff; border: 1px solid #E4D5BC; border-radius: 12px; padding: 20px;
+            display: flex; flex-direction: column; gap: 16px; }
+    .card-tete { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #7A5A3E; margin: 0 0 4px; }
+    .h2 { font-size: 22px; font-weight: 700; margin: 0; color: var(--color-text); }
+    .muted { color: #6E5844; font-size: 14px; }
+    .up { color: #166534; font-weight: 700; }
+    .down { color: #B91C1C; font-weight: 700; }
+    .flat { color: #6E5844; font-weight: 700; }
+
+    /* Boutons */
+    .btn-ghost { background: #fff; border: 1px solid #D9C6A6; border-radius: 8px; min-height: 48px; padding: 0 16px;
+                 font: inherit; font-size: 15px; color: var(--color-text); display: inline-flex; align-items: center;
+                 justify-content: center; gap: 8px; cursor: pointer; }
+    .btn-ghost:disabled { opacity: .35; cursor: default; }
+    .btn-ghost.on { background: var(--color-accent); border-color: var(--color-accent); color: #fff; font-weight: 700; }
+    .btn-ferme { border-style: dashed; }
+    .btn-ferme.on { background: #374151; border: 1px solid #374151; color: #fff; }
+    .btn-save { background: var(--color-accent); color: #fff; border: none; border-radius: 10px; min-height: 56px;
+                padding: 0 32px; font: inherit; font-size: 18px; font-weight: 700; cursor: pointer; }
+    .btn-save:disabled { opacity: .5; cursor: default; }
+    .seg { display: flex; background: #F1E6D2; border-radius: 10px; padding: 4px; gap: 4px; }
+    .seg button { flex: 1; border: none; background: transparent; border-radius: 7px; min-height: 40px;
+                  font: inherit; font-size: 14px; color: #5A4632; cursor: pointer; padding: 0 12px; }
+    .seg button.on { background: #fff; color: var(--color-text); font-weight: 700; box-shadow: 0 1px 2px rgba(61,32,8,.15); }
+
+    /* Saisie */
+    .statut { border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .statut.a-saisir { background: #FDF1D8; color: #8A4B0A; }
+    .statut.saisi    { background: #DCFCE7; color: #166534; }
+    .statut.ferme    { background: #E5E7EB; color: #374151; }
+    .date-nav { display: flex; gap: 8px; align-items: stretch; }
+    .date-nav .date-label { flex: 1; font-size: 18px; font-weight: 700; }
     .date-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-    .date-arrow:disabled { opacity: .35; cursor: default; }
-    .btn-ferme { background: #fff; border: 2px dashed var(--color-border,#ccc); border-radius: var(--radius-sm,6px);
-                 padding: .7rem; font-size: var(--text-base); cursor: pointer; min-height: var(--btn-min-sm,44px); color: #6b7280; }
-    .btn-ferme.active { background: #374151; border: 2px solid #374151; color: #fff; font-weight: 700; }
-    .sections.masque, .meteo-row.masque { display: none; }
-    .oublis { background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius-sm,6px);
-              padding: .6rem .8rem; font-size: var(--text-sm); }
-    td.ferme { color: #6b7280; font-style: italic; }
-    .meteo-toggle { display: flex; gap: 8px; }
-    .meteo-btn { flex: 1; background: #f3ebdf; border: 2px solid var(--color-border,#ddd);
-                 border-radius: var(--radius-sm,6px); padding: .7rem; font-size: var(--text-base);
-                 cursor: pointer; min-height: var(--btn-min-sm,44px); }
-    .meteo-btn.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-    .panier-hint { font-size: var(--text-sm); color: var(--color-text-muted, #777); min-height: 1.2em; }
-    .total-jour { font-size: var(--text-base); font-weight: 700; text-align: right;
-                  padding-top: var(--space-2); border-top: 1px dashed var(--color-border, #ddd); }
-    .total-jour b { color: var(--color-accent); font-size: 1.2rem; }
-    .btn-primary {
-      background: var(--color-accent); color: #fff; border: none; padding: .9rem;
-      font-size: var(--text-base); font-weight: 700; border-radius: var(--radius-sm, 6px);
-      cursor: pointer; min-height: var(--btn-min, 48px);
-    }
-    .btn-primary:disabled { opacity: .5; cursor: default; }
-    .feedback { font-size: var(--text-sm); min-height: 1.2em; }
-    .feedback.ok { color: #166534; }
-    .feedback.err { color: #b91c1c; }
-    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
-    .stat-box { text-align: center; padding: var(--space-3); background: #f3ebdf; border-radius: var(--radius-sm, 6px); }
-    .stat-box .val { font-size: 1.3rem; font-weight: 700; color: var(--color-accent); }
-    .stat-box .lbl { font-size: var(--text-sm); color: #6b7280; }
-    .repartition { display: flex; height: 26px; border-radius: var(--radius-sm,6px); overflow: hidden;
-                   margin-top: var(--space-2); font-size: var(--text-sm); font-weight: 700; color: #fff; }
-    .repartition .seg-matin { background: #d97706; display: flex; align-items: center; justify-content: center; }
-    .repartition .seg-soir  { background: #4f46e5; display: flex; align-items: center; justify-content: center; }
+    .oublis { background: #FEF3C7; border: 1px solid #F0C36A; border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+    .sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .section-box { border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .section-box.matin { border: 1px solid #EAD9BC; background: #FFFBF3; }
+    .section-box.soir  { border: 1px solid #DCDDF2; background: #F7F7FD; }
+    .section-box.soir.ferme > :not(.section-titre):not(.soir-ferme) { opacity: .35; pointer-events: none; }
+    .section-titre { font-weight: 700; font-size: 16px; }
+    .section-titre small { font-weight: 400; color: #6E5844; font-size: 14px; }
+    .soir-ferme { font-size: 14px; font-weight: 600; color: #6E5844; }
+    .champ { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .champ label { font-size: 14px; font-weight: 600; }
+    .inp { border: 1px solid #D9C6A6; border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 16px;
+           color: var(--color-text); width: 100%; box-sizing: border-box; background: #fff; min-height: 48px; }
+    .inp.big { font-size: 26px; font-weight: 700; text-align: right; min-height: 56px; }
+    .options { display: flex; gap: 8px; flex-wrap: wrap; }
+    .options .btn-ghost { flex: 1 1 140px; }
+    .options .btn-ferme { flex: 1 1 220px; }
+    .masque { display: none !important; }
+    .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .pied-saisie { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+                   border-top: 1px dashed #E4D5BC; padding-top: 16px; }
+    .total-jour { font-size: 16px; }
+    .total-jour strong { font-size: 26px; color: var(--color-accent); margin-left: 8px; }
+    .feedback { font-size: 14px; min-height: 1.2em; }
+    .feedback.ok { color: #166534; font-weight: 600; }
+    .feedback.err { color: #B91C1C; font-weight: 600; }
+
+    /* Tuiles */
+    .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+    .tuile { background: #FBF6EC; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .tuile-lbl { font-size: 13px; color: #6E5844; }
+    .tuile-val { font-size: 24px; font-weight: 700; color: var(--color-text); }
+    .tuile-sous { font-size: 14px; }
+    .phrase { margin: 0; font-size: 17px; line-height: 1.5; }
+    .repartition { display: flex; height: 28px; border-radius: 6px; overflow: hidden; font-size: 13px; font-weight: 700; color: #fff; }
+    .repartition div { display: flex; align-items: center; padding-left: 10px; white-space: nowrap; overflow: hidden; }
+    .rep-matin { background: #B45309; }
+    .rep-soir  { background: #4338CA; }
+
+    /* Jour type */
+    .jour-type { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; align-items: end; height: 160px; }
+    .jt-col { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; justify-content: flex-end; }
+    .jt-val { font-size: 12px; white-space: nowrap; }
+    .jt-barre { width: 100%; background: #D9C1A3; border-radius: 6px 6px 0 0; min-height: 2px; }
+    .jt-col.actif .jt-barre { background: var(--color-accent); }
+    .jt-col.actif .jt-val, .jt-col.actif .jt-nom { font-weight: 700; }
+    .jt-nom { font-size: 13px; text-align: center; }
+
+    /* Tableau détail */
+    .table-box { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--color-border, #eee); padding: 8px; text-align: left; font-size: var(--text-sm); }
-    th { color: #6b7280; font-weight: 600; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #EFE4D2; text-align: left; font-size: 15px; }
+    th { font-size: 13px; color: #6E5844; font-weight: 600; }
     td.num, th.num { text-align: right; white-space: nowrap; }
-    tr.is-today { background: #fff7ed; }
-    .row-edit { color: var(--color-accent); cursor: pointer; text-decoration: underline; font-size: var(--text-sm); }
+    tr.non-saisi { background: #FBF6EC; }
+    tr.non-saisi td.etat { color: #8A4B0A; font-weight: 600; }
+    tr.jour-ferme td.etat { color: #6E5844; font-style: italic; }
+    tr.selection { box-shadow: inset 4px 0 0 var(--color-accent); background: #FFF7ED; }
+    .lien { background: none; border: none; color: var(--color-accent); text-decoration: underline; font: inherit;
+            font-size: 15px; cursor: pointer; padding: 8px 4px; min-height: 44px; }
+    .alerte { background: #FEF3C7; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
     canvas { max-width: 100%; }
 
-    /* Comparaison */
-    .cmp-tabs { display: flex; gap: 4px; margin-bottom: var(--space-3); border-bottom: 2px solid var(--color-border,#eee); }
-    .cmp-tab { background: none; border: none; padding: .6rem 1rem; font-size: var(--text-base); cursor: pointer;
-               color: #6b7280; border-bottom: 3px solid transparent; margin-bottom: -2px; }
-    .cmp-tab.active { color: var(--color-accent); font-weight: 700; border-bottom-color: var(--color-accent); }
-    .cmp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--space-3); }
-    .chip { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
-            padding: .45rem .9rem; font-size: var(--text-sm); cursor: pointer; min-height: var(--btn-min-sm,40px); }
-    .chip.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-    .cmp-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); align-items: end; }
-    .cmp-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: var(--space-3) 0; font-size: var(--text-sm); }
-    .cmp-custom select, .cmp-custom input { padding: .5rem; border: 1px solid var(--color-border,#ccc); border-radius: var(--radius-sm,6px); }
-    .cmp-result { margin-top: var(--space-3); }
-    .cmp-grid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 1px; background: var(--color-border,#eee);
-                border: 1px solid var(--color-border,#eee); border-radius: var(--radius-sm,6px); overflow: hidden; }
-    .cmp-grid > div { background: #fff; padding: 8px 10px; font-size: var(--text-sm); }
-    .cmp-grid .head { background: #6b2d0f; color: #fff; font-weight: 600; }
-    .cmp-grid .lbl { font-weight: 600; }
-    .cmp-grid .num { text-align: right; white-space: nowrap; }
-    .evo-up { color: #166534; font-weight: 700; }
-    .evo-down { color: #b91c1c; font-weight: 700; }
-    .evo-flat { color: #6b7280; }
-    .cmp-periodes { font-size: var(--text-sm); color: #6b7280; margin-bottom: 8px; }
-
-    /* Sections repliables */
-    .card > h2.collapsible { cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
-    .card > h2.collapsible::before { content: '▾'; font-size: .9em; transition: transform .15s; color: var(--color-accent); }
-    .card.collapsed > h2.collapsible::before { transform: rotate(-90deg); }
-    .card.collapsed > :not(h2) { display: none !important; }
-
-    /* Onglets périodes (réutilise le style chips/tabs) */
-    .periode-tabs { display: flex; gap: 4px; margin-bottom: var(--space-3); }
-    .periode-tab { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
-                   padding: .45rem 1.1rem; font-size: var(--text-sm); cursor: pointer; min-height: var(--btn-min-sm,40px); }
-    .periode-tab.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-
-    /* Zoom courbe */
-    .zoom-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
-    .zoom-tab { background: #f3ebdf; border: 1px solid var(--color-border,#ddd); border-radius: 999px;
-                padding: .35rem .9rem; font-size: var(--text-sm); cursor: pointer; }
-    .zoom-tab.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-
-    /* Carte d'analyse du jour (en tête) */
-    .card-analyse { border: 2px solid var(--color-accent); }
-    .analyse-nav { display: flex; align-items: center; gap: 8px; margin-bottom: var(--space-3); }
-    .analyse-nav .date-label { flex: 1; }
-    .an-suivre { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-2);
-                 font-size: var(--text-sm); color: #6b7280; cursor: pointer; }
-
-    /* Profil par jour de semaine */
-    .profil-banner { background: #f3ebdf; border-radius: var(--radius-sm,6px); padding: var(--space-3);
-                     margin-bottom: var(--space-3); }
-    .profil-banner b { color: var(--color-accent); }
-    .pb-titre { font-weight: 700; font-size: var(--text-base); margin-bottom: var(--space-2); }
-    .pb-badge { display: inline-block; background: #d97706; color: #fff; font-size: var(--text-xs,.72rem);
-                font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
-    .pb-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 14px; align-items: baseline; font-size: var(--text-sm); }
-    .pb-grid .pb-metric { font-weight: 600; }
-    .pb-grid .pb-val { font-size: var(--text-base); font-weight: 700; }
-    .pb-grid .pb-head { color: #6b7280; font-weight: 600; font-size: var(--text-xs, .75rem); text-transform: uppercase; letter-spacing: .03em; }
-    .pb-glissante { margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px dashed #d4c5af;
-                    font-size: var(--text-sm); color: #6b7280; }
-    .mini { font-size: var(--text-sm); color: #6b7280; }
-    tr.row-highlight { background: #fef3c7; box-shadow: inset 3px 0 0 var(--color-accent); }
-    tr.row-jour:hover { background: #faf5ec; }
+    @media (max-width: 600px) {
+      .sections, .duo { grid-template-columns: minmax(0, 1fr); }
+      .jt-val { font-size: 10px; }
+    }
   </style>
 </head>
 <body>
 <script src="/static/js/core/guard.js"></script>
 
-  <header class="achats-header">
-    <a href="/pilotage.html" class="achats-retour">← Pilotage</a>
-    <div class="achats-header-titre">💶 CHIFFRE D'AFFAIRES</div>
+  <header class="ca-header">
+    <a href="/pilotage.html" class="ca-retour">← Pilotage</a>
+    <div class="ca-header-titre">CHIFFRE D'AFFAIRES</div>
     <div style="width:80px"></div>
   </header>
 
   <main class="wrap" role="main">
 
-    <!-- Analyse du jour (toujours visible, en tête) -->
-    <section class="card card-analyse">
-      <div class="analyse-nav">
-        <button type="button" class="date-arrow" id="an-prec" aria-label="Jour précédent">◀</button>
-        <button type="button" class="date-label" id="an-label">—</button>
-        <button type="button" class="date-arrow" id="an-suiv" aria-label="Jour suivant">▶</button>
-        <input type="date" id="an-date" class="date-hidden">
+    <!-- ① SAISIR -->
+    <section class="card" aria-labelledby="t-saisir">
+      <div class="card-tete">
+        <div>
+          <p class="eyebrow">1 · Saisir</p>
+          <h2 class="h2" id="t-saisir">Le chiffre d'affaires du jour</h2>
+        </div>
+        <span class="statut a-saisir" id="statut">Chargement…</span>
       </div>
-      <div class="profil-banner" id="profil-banner">Chargement…</div>
-      <label class="an-suivre"><input type="checkbox" id="an-suivre" checked> Suivre le jour de saisie</label>
+
+      <div class="date-nav">
+        <button type="button" class="btn-ghost" id="jour-prec" aria-label="Jour précédent" style="min-width:56px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <button type="button" class="btn-ghost date-label" id="date-label">Chargement…</button>
+        <button type="button" class="btn-ghost" id="jour-suiv" aria-label="Jour suivant" style="min-width:56px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <input type="date" id="date-ca" class="date-hidden" aria-label="Choisir un jour">
+      </div>
+
+      <div class="oublis" id="oublis" style="display:none"></div>
+
+      <div class="sections" id="sections">
+        <div class="section-box matin">
+          <div class="section-titre">Matin <small>9 h – 13 h</small></div>
+          <div class="champ">
+            <label for="montant-matin">Montant TTC (€)</label>
+            <input type="number" id="montant-matin" class="inp big" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+          </div>
+          <div class="champ">
+            <label for="tickets-matin">Tickets</label>
+            <input type="number" id="tickets-matin" class="inp" inputmode="numeric" step="1" min="0" placeholder="—">
+          </div>
+          <div class="muted" id="panier-matin"></div>
+        </div>
+        <div class="section-box soir" id="box-soir">
+          <div class="section-titre">Après-midi <small>16 h – 19 h 30</small></div>
+          <div class="champ">
+            <label for="montant-soir">Montant TTC (€)</label>
+            <input type="number" id="montant-soir" class="inp big" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
+          </div>
+          <div class="champ">
+            <label for="tickets-soir">Tickets</label>
+            <input type="number" id="tickets-soir" class="inp" inputmode="numeric" step="1" min="0" placeholder="—">
+          </div>
+          <div class="muted" id="panier-soir"></div>
+          <div class="soir-ferme" id="soir-ferme" style="display:none">Fermé l'après-midi le dimanche</div>
+        </div>
+      </div>
+
+      <div class="options">
+        <button type="button" class="btn-ghost meteo-btn" data-meteo="soleil" aria-pressed="false" id="meteo-soleil">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          Soleil
+        </button>
+        <button type="button" class="btn-ghost meteo-btn" data-meteo="pluie" aria-pressed="false" id="meteo-pluie">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.4A4 4 0 0 1 17 15H7z"/><path d="M9 19l-1 2M13 19l-1 2M17 19l-1 2"/></svg>
+          Pluie
+        </button>
+        <button type="button" class="btn-ghost btn-ferme" id="btn-ferme" aria-pressed="false">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <span id="btn-ferme-txt">Boutique fermée ce jour</span>
+        </button>
+      </div>
+
+      <div class="duo">
+        <div class="champ">
+          <label for="commentaire">Commentaire (facultatif)</label>
+          <input type="text" id="commentaire" class="inp" placeholder="Marché, travaux dans la rue…">
+        </div>
+        <div class="champ">
+          <label for="personnel">Saisi par (facultatif)</label>
+          <select id="personnel" class="inp"><option value="">—</option></select>
+        </div>
+      </div>
+
+      <div class="pied-saisie">
+        <div class="total-jour" id="total-jour">Total du jour <strong>—</strong></div>
+        <button type="button" class="btn-save" id="btn-save" disabled>Enregistrer</button>
+      </div>
+      <div class="feedback" id="feedback" role="status"></div>
     </section>
 
-    <!-- Saisie -->
-    <section class="card">
-      <h2 id="form-titre">Saisie du chiffre d'affaires</h2>
-      <div class="form-grid">
-        <div class="form-row">
-          <label>Jour</label>
-          <div class="date-nav">
-            <button type="button" class="date-arrow" id="jour-prec" aria-label="Jour précédent">◀</button>
-            <button type="button" class="date-label" id="date-label">—</button>
-            <button type="button" class="date-arrow" id="jour-suiv" aria-label="Jour suivant">▶</button>
-            <input type="date" id="date-ca" class="date-hidden">
-          </div>
-        </div>
-        <div class="oublis" id="oublis" style="display:none"></div>
-
-        <button type="button" class="btn-ferme" id="btn-ferme" aria-pressed="false">🔒 Boutique fermée ce jour</button>
-
-        <div class="sections" id="sections">
-          <div class="section-box matin">
-            <div class="section-titre">🌅 Matin <small>9h – 13h</small></div>
-            <div class="form-row">
-              <label for="montant-matin">CA TTC (€)</label>
-              <input type="number" id="montant-matin" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
-            </div>
-            <div class="form-row">
-              <label for="tickets-matin">Tickets</label>
-              <input type="number" id="tickets-matin" inputmode="numeric" step="1" min="0" placeholder="—">
-            </div>
-            <div class="panier-hint" id="panier-matin"></div>
-          </div>
-
-          <div class="section-box soir" id="box-soir">
-            <div class="section-titre">🌇 Après-midi <small>16h – 19h30</small></div>
-            <div class="form-row">
-              <label for="montant-soir">CA TTC (€)</label>
-              <input type="number" id="montant-soir" class="montant-input" inputmode="decimal" step="0.01" min="0" placeholder="0,00">
-            </div>
-            <div class="form-row">
-              <label for="tickets-soir">Tickets</label>
-              <input type="number" id="tickets-soir" inputmode="numeric" step="1" min="0" placeholder="—">
-            </div>
-            <div class="panier-hint" id="panier-soir"></div>
-            <div class="soir-ferme" id="soir-ferme" style="display:none">🔒 Fermé l'après-midi (dimanche)</div>
-          </div>
-        </div>
-
-        <div class="total-jour" id="total-jour">Total du jour : <b>—</b></div>
-
-        <div class="form-row">
-          <label for="personnel">Saisi par (optionnel)</label>
-          <select id="personnel"><option value="">—</option></select>
-        </div>
-        <div class="form-row meteo-row" id="meteo-row">
-          <label>Météo (optionnel)</label>
-          <div class="meteo-toggle">
-            <button type="button" class="meteo-btn" data-meteo="soleil">☀️ Soleil</button>
-            <button type="button" class="meteo-btn" data-meteo="pluie">🌧️ Pluie</button>
-          </div>
-        </div>
-        <div class="form-row">
-          <label for="commentaire">Commentaire (optionnel)</label>
-          <input type="text" id="commentaire" placeholder="Ex. fermeture exceptionnelle, marché…">
-        </div>
-        <button class="btn-primary" id="btn-save">Enregistrer</button>
-        <div class="feedback" id="feedback"></div>
+    <!-- ② CE JOUR-LÀ -->
+    <section class="card" aria-labelledby="t-jour">
+      <div>
+        <p class="eyebrow">2 · Ce jour-là</p>
+        <h2 class="h2" id="t-jour">—</h2>
       </div>
+      <div id="jour-contenu"><p class="muted">Chargement…</p></div>
     </section>
 
-    <!-- Indicateurs -->
-    <section class="card" data-section>
-      <h2 class="collapsible">Indicateurs — mois en cours</h2>
-      <div class="stats-row">
-        <div class="stat-box"><div class="val" id="s-total">—</div><div class="lbl">CA cumulé</div></div>
-        <div class="stat-box"><div class="val" id="s-moyen">—</div><div class="lbl">CA moyen / jour<br><span class="mini">journées terminées</span></div></div>
-        <div class="stat-box"><div class="val" id="s-panier">—</div><div class="lbl">Panier moyen</div></div>
-      </div>
-      <div class="repartition" id="repartition" style="display:none">
-        <div class="seg-matin" id="seg-matin"></div>
-        <div class="seg-soir" id="seg-soir"></div>
-      </div>
-      <div class="stats-row" style="margin-top:var(--space-3)">
-        <div class="stat-box"><div class="val" id="s-panier-matin">—</div><div class="lbl">Panier moyen matin</div></div>
-        <div class="stat-box"><div class="val" id="s-panier-soir">—</div><div class="lbl">Panier moyen après-midi</div></div>
-        <div class="stat-box"><div class="val" id="s-jours">—</div><div class="lbl">Jours saisis</div></div>
-      </div>
-    </section>
-
-    <!-- Profil par jour de semaine -->
-    <section class="card collapsed" data-section>
-      <h2 class="collapsible">Profil par jour de semaine</h2>
-      <table>
-        <thead>
-          <tr><th>Jour</th><th class="num">CA moyen</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets moy.</th><th class="num">Panier moy.</th><th class="num">Occur.</th></tr>
-        </thead>
-        <tbody id="profil-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
-      </table>
-    </section>
-
-    <!-- Tableau par période -->
-    <section class="card collapsed" data-section>
-      <h2 class="collapsible">CA par période</h2>
-      <div class="periode-tabs">
-        <button class="periode-tab active" data-gran="jour">Jour</button>
-        <button class="periode-tab" data-gran="semaine">Semaine</button>
-        <button class="periode-tab" data-gran="mois">Mois</button>
-      </div>
-      <table>
-        <thead>
-          <tr><th id="per-col-periode">Jour</th><th class="num">Total</th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Tickets</th><th class="num">Panier</th><th class="num" id="per-col-evol">Évol. S-1</th></tr>
-        </thead>
-        <tbody id="periode-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
-      </table>
-    </section>
-
-    <!-- Comparaison -->
-    <section class="card collapsed" data-section>
-      <h2 class="collapsible">Comparaison</h2>
-      <div class="cmp-tabs">
-        <button class="cmp-tab active" data-mode="periode">Période vs décalage</button>
-        <button class="cmp-tab" data-mode="dates">Comparer 2 dates</button>
-      </div>
-
-      <!-- Mode période -->
-      <div id="cmp-periode">
-        <div class="cmp-chips" id="cmp-chips">
-          <button class="chip" data-preset="j-1" data-n="1">Jour préc. (J-1)</button>
-          <button class="chip" data-preset="s-1" data-n="1">Semaine -1 (S-1)</button>
-          <button class="chip" data-preset="m-1" data-n="1">Mois -1 (M-1)</button>
-          <button class="chip" data-preset="a-1" data-n="1">Année -1 (A-1)</button>
+    <!-- ③ TENDANCES -->
+    <section class="card" aria-labelledby="t-tend">
+      <div class="card-tete">
+        <div>
+          <p class="eyebrow">3 · Tendances</p>
+          <h2 class="h2" id="t-tend">—</h2>
         </div>
-        <div class="cmp-row">
-          <div class="form-row">
-            <label for="cmp-debut">Période — du</label>
-            <input type="date" id="cmp-debut">
-          </div>
-          <div class="form-row">
-            <label for="cmp-fin">au</label>
-            <input type="date" id="cmp-fin">
+        <div class="seg" role="group" aria-label="Période" id="seg-tendance" style="min-width:280px">
+          <button type="button" data-val="semaine">Semaine</button>
+          <button type="button" data-val="mois" class="on">Mois</button>
+          <button type="button" data-val="annee">Année</button>
+        </div>
+      </div>
+      <div class="tuiles" id="tend-tuiles"></div>
+      <div id="tend-alerte"></div>
+
+      <figure style="margin:0;display:flex;flex-direction:column;gap:8px">
+        <div class="card-tete" style="align-items:center">
+          <figcaption style="font-weight:600">CA total par jour</figcaption>
+          <div class="seg" role="group" aria-label="Durée de la courbe" id="seg-courbe" style="min-width:240px">
+            <button type="button" data-val="30">30 j</button>
+            <button type="button" data-val="90" class="on">90 j</button>
+            <button type="button" data-val="365">1 an</button>
           </div>
         </div>
-        <div class="cmp-custom">
-          <span>Comparer à :</span>
-          <select id="cmp-unite">
-            <option value="j-1">Jour(s)</option>
-            <option value="s-1">Semaine(s)</option>
-            <option value="m-1">Mois</option>
-            <option value="a-1">Année(s)</option>
-          </select>
-          <span>en arrière ×</span>
-          <input type="number" id="cmp-n" min="1" max="520" value="1" style="width:80px">
-          <button class="btn-primary" id="cmp-go" style="min-height:auto;padding:.6rem 1rem">Comparer</button>
-        </div>
-        <div id="cmp-result-periode" class="cmp-result"></div>
+        <canvas id="chart-ca" height="220" role="img" aria-label="Courbe du chiffre d'affaires total par jour"></canvas>
+        <div class="muted">Trait plein : CA du jour · pointillés : moyenne des 30 jours précédents · jours fermés non tracés</div>
+      </figure>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="font-weight:600">Un jour de semaine type <span class="muted" style="font-weight:400">(CA moyen des journées terminées)</span></div>
+        <div class="jour-type" id="jour-type"></div>
       </div>
 
-      <!-- Mode 2 dates -->
-      <div id="cmp-dates" style="display:none">
-        <div class="cmp-row">
-          <div class="form-row">
-            <label for="cmp-date-a">Date A</label>
-            <input type="date" id="cmp-date-a">
-          </div>
-          <div class="form-row">
-            <label for="cmp-date-b">Date B (référence)</label>
-            <input type="date" id="cmp-date-b">
-          </div>
-          <div class="form-row" style="justify-content:flex-end">
-            <button class="btn-primary" id="cmp-dates-go" style="min-height:auto;padding:.6rem 1rem">Comparer</button>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="card-tete" style="align-items:center">
+          <div style="font-weight:600">Détail</div>
+          <div class="seg" role="group" aria-label="Détail par" id="seg-detail" style="min-width:300px">
+            <button type="button" data-val="jour" class="on">Jours</button>
+            <button type="button" data-val="semaine">Semaines</button>
+            <button type="button" data-val="mois">Mois</button>
           </div>
         </div>
-        <div id="cmp-result-dates" class="cmp-result"></div>
+        <div class="table-box">
+          <table>
+            <thead>
+              <tr><th id="det-col-periode">Jour</th><th class="num">CA</th><th class="num" id="det-col-evol">vs semaine d'avant</th>
+                  <th class="num">Panier</th><th class="num">Tickets</th><th></th></tr>
+            </thead>
+            <tbody id="detail-body"><tr><td colspan="6" class="muted">Chargement…</td></tr></tbody>
+          </table>
+        </div>
+        <button type="button" class="lien" id="detail-plus" style="align-self:center">Voir plus</button>
       </div>
-    </section>
-
-    <!-- Courbe -->
-    <section class="card" data-section>
-      <h2 class="collapsible">Évolution</h2>
-      <div class="zoom-tabs" id="zoom-tabs">
-        <button class="zoom-tab" data-jours="7">7 j</button>
-        <button class="zoom-tab" data-jours="30">30 j</button>
-        <button class="zoom-tab active" data-jours="90">90 j</button>
-        <button class="zoom-tab" data-jours="365">1 an</button>
-        <button class="zoom-tab" data-jours="0">Tout</button>
-      </div>
-      <canvas id="chart-ca" height="220"></canvas>
-    </section>
-
-    <!-- Historique -->
-    <section class="card collapsed" data-section>
-      <h2 class="collapsible">Historique</h2>
-      <table>
-        <thead>
-          <tr><th>Date</th><th></th><th class="num">Matin</th><th class="num">Après-midi</th><th class="num">Total</th><th class="num">Tickets</th><th></th></tr>
-        </thead>
-        <tbody id="histo-body"><tr><td colspan="7">Chargement…</td></tr></tbody>
-      </table>
     </section>
 
   </main>
@@ -394,123 +297,134 @@
     const API = '/api/achats/pilotage/ca';
     const $ = id => document.getElementById(id);
 
+    // ─── Formats & dates (ISO AAAA-MM-JJ, sans dérive de fuseau) ─────────
     const fmtEur = v => v == null ? '—'
       : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
-    const fmtDateFr = iso => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
-    // Date longue : « jeudi 26 juin 2026 » (à partir d'un ISO YYYY-MM-DD)
-    const fmtDateLongue = iso => {
-      const [y, m, d] = iso.split('-').map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString('fr-FR',
-        { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    };
-    // Décale un ISO de n jours (sans dérive de fuseau)
-    const decalerIso = (iso, n) => {
-      const [y, m, d] = iso.split('-').map(Number);
-      const dt = new Date(y, m - 1, d); dt.setDate(dt.getDate() + n);
-      return dt.toLocaleDateString('sv-SE');
-    };
-    const veilleIso = () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toLocaleDateString('sv-SE'); };
+    const fmtEurRond = v => v == null ? '—'
+      : new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(v);
+    const versDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
+    const fmtDateLongue = iso => versDate(iso).toLocaleDateString('fr-FR',
+      { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const fmtJourMois = iso => versDate(iso).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const fmtDdMm = iso => { const [, m, d] = iso.split('-'); return `${d}/${m}`; };
+    const fmtJourCourt = iso => `${versDate(iso).toLocaleDateString('fr-FR', { weekday: 'short' })} ${fmtDdMm(iso)}`;
+    const decalerIso = (iso, n) => { const dt = versDate(iso); dt.setDate(dt.getDate() + n); return dt.toLocaleDateString('sv-SE'); };
     const todayIso = () => new Date().toLocaleDateString('sv-SE');
+    const veilleIso = () => decalerIso(todayIso(), -1);
+    const NOMS_JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const nomJour = iso => NOMS_JOURS[versDate(iso).getDay()];
+    const maj1 = s => s.charAt(0).toUpperCase() + s.slice(1);
     const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const intOrNull = v => { v = (v ?? '').toString().trim(); return v === '' ? null : parseInt(v, 10); };
-    // GET JSON qui échoue vraiment si le serveur répond en erreur (sinon on
-    // afficherait des données périmées sans le savoir)
     const getJson = async url => {
       const r = await fetch(url);
       if (!r.ok) throw new Error(`Erreur serveur (${r.status})`);
       return r.json();
     };
     const MSG_ERREUR = 'Impossible de charger les données. Vérifier la connexion puis recharger la page.';
+    const erreurHtml = `<p class="feedback err">${MSG_ERREUR}</p>`;
 
+    // Évolution « ▲ +12 % » (pct) ou en € (delta)
+    const evoPct = evo => {
+      if (!evo || evo.pct == null) return '<span class="flat">—</span>';
+      const cls = evo.pct > 0 ? 'up' : (evo.pct < 0 ? 'down' : 'flat');
+      const fl = evo.pct > 0 ? '▲' : (evo.pct < 0 ? '▼' : '=');
+      return `<span class="${cls}">${fl} ${evo.pct > 0 ? '+' : ''}${String(evo.pct).replace('.', ',')} %</span>`;
+    };
+    const evoEur = (delta, fmt = fmtEur) => {
+      if (delta == null) return '';
+      const cls = delta > 0 ? 'up' : (delta < 0 ? 'down' : 'flat');
+      const fl = delta > 0 ? '▲' : (delta < 0 ? '▼' : '=');
+      return `<span class="${cls}">${fl} ${delta > 0 ? '+' : ''}${fmt(delta)}</span>`;
+    };
+
+    // ─── État ───────────────────────────────────────────────────────────
+    let jourAffiche = '';   // LE jour de la page (saisie + « Ce jour-là »)
+    let meteoSel = null;    // null | 'soleil' | 'pluie'
+    let fermeSel = false;   // boutique fermée ce jour
+    let modifie = false;    // saisie non enregistrée
+    let jourPret = false;   // jour chargé (sinon pas d'enregistrement)
+    let jeuJour = 0;        // n° de demande (ignore les réponses en retard)
+    let jeuAnalyse = 0;
+    let tendance = 'mois';
+    let courbeJours = 90;
+    let detailGran = 'jour';
+    let detailLimite = 21;
+    let histo = [];         // journées saisies (ouvertes), plus récente d'abord
     let chart = null;
-    let meteoSel = null;   // null | 'soleil' | 'pluie'
-    let fermeSel = false;  // boutique fermée ce jour
-    let modifie = false;   // saisie en cours non enregistrée
-    let jourPret = false;  // le jour affiché est bien chargé (sinon pas d'enregistrement)
-    let jeuJour = 0;       // n° de la dernière demande de jour (ignore les réponses en retard)
-    let jeuAnalyse = 0;    // idem pour l'encart d'analyse
-    let histoRows = [];    // historique complet (desc) mis en cache pour le graphe
-    let zoomJours = 90;    // fenêtre du graphe en jours (0 = tout)
-    let analyseDate = null;   // jour analysé par l'encart du haut
-    let analyseSuit = true;   // l'encart suit-il le jour de saisie ?
 
-    function setMeteo(val) {
-      // Re-cliquer la valeur active la désélectionne
-      meteoSel = (meteoSel === val) ? null : val;
-      document.querySelectorAll('.meteo-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.meteo === meteoSel));
-    }
+    // ═══ ① SAISIR ═══════════════════════════════════════════════════════
+    const CHAMPS_SAISIE = ['montant-matin', 'tickets-matin', 'montant-soir', 'tickets-soir', 'commentaire'];
+
     function appliquerMeteo(val) {
       meteoSel = val || null;
-      document.querySelectorAll('.meteo-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.meteo === meteoSel));
+      document.querySelectorAll('.meteo-btn').forEach(b => {
+        const on = b.dataset.meteo === meteoSel;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on);
+      });
     }
 
-    // Boutique fermée ce jour : masque les montants et la météo
     function appliquerFerme(val) {
       fermeSel = !!val;
-      $('btn-ferme').classList.toggle('active', fermeSel);
+      $('btn-ferme').classList.toggle('on', fermeSel);
       $('btn-ferme').setAttribute('aria-pressed', fermeSel);
-      $('btn-ferme').textContent = fermeSel
-        ? '🔒 Boutique fermée ce jour — toucher pour annuler'
-        : '🔒 Boutique fermée ce jour';
+      $('btn-ferme-txt').textContent = fermeSel ? 'Boutique fermée — toucher pour annuler' : 'Boutique fermée ce jour';
       $('sections').classList.toggle('masque', fermeSel);
-      $('meteo-row').classList.toggle('masque', fermeSel);
-      majPaniers();
+      document.querySelectorAll('.meteo-btn').forEach(b => b.classList.toggle('masque', fermeSel));
+      majTotal();
     }
 
-    // Dimanche : la boutique n'ouvre que le matin → on grise l'après-midi.
-    // Sauf si un montant d'après-midi est déjà enregistré : on le laisse visible
-    // et modifiable (jamais d'effacement silencieux).
-    const estDimanche = iso => {
-      const [y, m, d] = iso.split('-').map(Number);
-      return new Date(y, m - 1, d).getDay() === 0;
-    };
+    // Dimanche : après-midi grisé, sauf s'il porte déjà un montant (jamais effacé)
     function majAffichageSoir(iso) {
-      const ferme = estDimanche(iso)
-        && !$('montant-soir').value && !$('tickets-soir').value;
+      const ferme = versDate(iso).getDay() === 0 && !$('montant-soir').value && !$('tickets-soir').value;
       $('box-soir').classList.toggle('ferme', ferme);
       $('soir-ferme').style.display = ferme ? '' : 'none';
       $('montant-soir').disabled = ferme;
       $('tickets-soir').disabled = ferme;
     }
 
-    function majPaniers() {
+    function majTotal() {
       const mm = num($('montant-matin').value), tm = parseInt($('tickets-matin').value, 10);
       const ms = num($('montant-soir').value),  ts = parseInt($('tickets-soir').value, 10);
       $('panier-matin').textContent = (mm > 0 && tm > 0) ? `Panier : ${fmtEur(mm / tm)}` : '';
       $('panier-soir').textContent  = (ms > 0 && ts > 0) ? `Panier : ${fmtEur(ms / ts)}` : '';
       const total = mm + ms;
+      const tickets = (tm > 0 ? tm : 0) + (ts > 0 ? ts : 0);
       $('total-jour').innerHTML = fermeSel
-        ? 'Total du jour : <b>Fermé</b>'
-        : `Total du jour : <b>${total > 0 ? fmtEur(total) : '—'}</b>`;
+        ? 'Total du jour <strong>Fermé</strong>'
+        : `Total du jour <strong>${total > 0 ? fmtEur(total) : '—'}</strong>`
+          + (tickets ? ` <span class="muted">· ${tickets} tickets</span>` : '');
+    }
+
+    function majStatut(j) {
+      const s = $('statut');
+      s.className = 'statut ' + (!j ? 'a-saisir' : (j.ferme ? 'ferme' : 'saisi'));
+      s.textContent = !j ? 'Pas encore saisi' : (j.ferme ? 'Boutique fermée' : 'Déjà enregistré');
+      $('btn-save').textContent = j ? 'Mettre à jour' : 'Enregistrer';
     }
 
     async function chargerPersonnel() {
       try {
-        const list = await fetch('/api/admin/personnel').then(r => r.json());
-        const sel = $('personnel');
+        const list = await getJson('/api/admin/personnel');
         (list || []).forEach(p => {
           const o = document.createElement('option');
           o.value = p.id;
           o.textContent = p.prenom + (p.nom ? ' ' + p.nom : '');
-          sel.appendChild(o);
+          $('personnel').appendChild(o);
         });
       } catch (e) { console.error(e); }
     }
 
-    const CHAMPS_SAISIE = ['montant-matin','tickets-matin','montant-soir','tickets-soir','commentaire'];
-
     async function chargerJour(iso) {
-      // Tant que le jour n'est pas chargé, on ne peut pas enregistrer : sinon
-      // les montants d'un autre jour pourraient partir sur celui-ci.
+      // Tant que le jour n'est pas chargé, Enregistrer est bloqué : sinon les
+      // montants d'un autre jour pourraient partir sur celui-ci.
       const jeu = ++jeuJour;
       jourPret = false;
       $('btn-save').disabled = true;
       try {
         const j = await getJson(`${API}/${iso}`);
         if (jeu !== jeuJour) return;          // un autre jour a été demandé entre-temps
-        // Remise à zéro complète avant remplissage (rien ne passe d'un jour à l'autre)
         CHAMPS_SAISIE.forEach(id => $(id).value = '');
         $('personnel').value = '';
         if (j) {
@@ -522,32 +436,26 @@
           }
           $('commentaire').value = j.commentaire ?? '';
           $('personnel').value   = j.personnel_id ?? '';
-          $('form-titre').textContent = 'Modifier le CA déjà enregistré';
-          $('btn-save').textContent = 'Mettre à jour';
-        } else {
-          $('form-titre').textContent = 'Saisie du chiffre d\'affaires';
-          $('btn-save').textContent = 'Enregistrer';
         }
         appliquerMeteo(j ? j.meteo : null);
-        majAffichageSoir(iso);   // grise l'après-midi le dimanche (après le remplissage)
+        majAffichageSoir(iso);
         appliquerFerme(j ? j.ferme : false);
+        majStatut(j);
         modifie = false;
         jourPret = true;
         $('btn-save').disabled = false;
+        rendreCeJour(iso, j);
       } catch (e) {
         if (jeu !== jeuJour) return;
         console.error(e);
-        const fb = $('feedback');
-        fb.className = 'feedback err';
-        fb.textContent = MSG_ERREUR;
+        $('feedback').className = 'feedback err';
+        $('feedback').textContent = MSG_ERREUR;
       }
     }
 
-    // Change le jour courant : met à jour l'input, le libellé long, et recharge.
-    // Demande confirmation si une saisie n'a pas été enregistrée.
-    let jourAffiche = '';   // jour actuellement chargé dans le formulaire
+    // Change LE jour de la page (saisie + analyse). Confirme si saisie non enregistrée.
     function setDate(iso) {
-      if (iso > todayIso()) return;          // pas de saisie pour un jour à venir
+      if (!iso || iso > todayIso()) return;    // pas de jour à venir
       if (modifie && iso !== jourAffiche
           && !confirm(`La saisie du ${fmtDateLongue(jourAffiche)} n'est pas enregistrée.\n\nChanger de jour quand même ? (la saisie sera perdue)`)) {
         return;
@@ -557,38 +465,33 @@
       $('feedback').className = 'feedback'; $('feedback').textContent = '';
       $('date-ca').value = iso;
       $('date-ca').max = todayIso();
-      $('date-label').textContent = fmtDateLongue(iso);
+      $('date-label').textContent = maj1(fmtDateLongue(iso));
       $('jour-suiv').disabled = iso >= todayIso();
+      $('t-jour').textContent = maj1(fmtJourMois(iso));
+      $('jour-contenu').innerHTML = '<p class="muted">Chargement…</p>';
+      surlignerDetail();
+      majJourType();
       chargerJour(iso);
-      // L'encart d'analyse suit le jour de saisie (si la case est cochée)
-      if (analyseSuit) setAnalyse(iso);
     }
 
-    // Change le jour analysé par l'encart du haut
-    function setAnalyse(iso) {
-      analyseDate = iso;
-      $('an-label').textContent = fmtDateLongue(iso);
-      chargerProfilSemaine(iso);
-    }
-
-    // Bandeau « jours oubliés » (14 derniers jours non saisis)
-    async function chargerOublis(choisirJour) {
+    // Bandeau « jours oubliés » (14 derniers jours) ; renvoie le jour à ouvrir
+    async function chargerOublis(auDemarrage) {
       try {
         const d = await getJson(`${API}/stats/prochain-a-saisir`);
         const el = $('oublis');
         if (d.oublis > 0 && d.date < todayIso()) {
           el.style.display = '';
-          el.innerHTML = `⚠️ ${d.oublis === 1 ? '1 jour n\'a pas été saisi' : d.oublis + ' jours n\'ont pas été saisis'} ces 14 derniers jours. `
-            + `<a href="#" id="oublis-go">Aller au ${fmtDateLongue(d.date)}</a>`
-            + ` <span class="mini">(boutique fermée ? utiliser « Boutique fermée ce jour »)</span>`;
-          $('oublis-go').addEventListener('click', ev => { ev.preventDefault(); setDate(d.date); });
+          el.innerHTML = `<strong>${d.oublis === 1 ? '1 jour oublié' : d.oublis + ' jours oubliés'}</strong> ces 14 derniers jours, `
+            + `dont le ${fmtJourMois(d.date)}. <button type="button" class="lien" id="oublis-go">Le saisir</button>`
+            + ` <span class="muted">— boutique fermée ? Utiliser « Boutique fermée ce jour ».</span>`;
+          $('oublis-go').addEventListener('click', () => setDate(d.date));
         } else {
           el.style.display = 'none';
         }
         return d.date;
       } catch (e) {
         console.error(e);
-        return choisirJour ? veilleIso() : null;
+        return auDemarrage ? veilleIso() : null;
       }
     }
 
@@ -596,9 +499,7 @@
       if (!jourPret) return;
       const fb = $('feedback');
       fb.className = 'feedback'; fb.textContent = '';
-      // Montant illisible (format refusé par le clavier) → le champ est « invalide »
-      // et sa valeur vide : on le signale au lieu de compter 0.
-      const illisible = ['montant-matin','montant-soir','tickets-matin','tickets-soir']
+      const illisible = ['montant-matin', 'montant-soir', 'tickets-matin', 'tickets-soir']
         .find(id => !fermeSel && !$(id).disabled && $(id).validity.badInput);
       if (illisible) {
         fb.className = 'feedback err';
@@ -614,7 +515,7 @@
       }
       const persRaw = $('personnel').value;
       const body = {
-        date_ca: $('date-ca').value,
+        date_ca: jourAffiche,
         ferme: fermeSel,
         montant_ttc_matin: fermeSel ? 0 : mm,
         nb_tickets_matin: fermeSel ? null : intOrNull($('tickets-matin').value),
@@ -638,9 +539,8 @@
         modifie = false;
         fb.className = 'feedback ok';
         fb.textContent = `Enregistré ✓ — ${fmtDateLongue(body.date_ca)}${fermeSel ? ' (fermé)' : ''}`;
-        await Promise.all([chargerStats(), chargerHistorique(), chargerProfilSemaine(analyseDate),
-                           chargerPeriode(granActive), chargerOublis(false)]);
-        await chargerJour($('date-ca').value);
+        await Promise.all([chargerOublis(false), chargerHisto(), chargerTendance(), chargerDetail()]);
+        await chargerJour(jourAffiche);
       } catch (e) {
         fb.className = 'feedback err';
         fb.textContent = e.message;
@@ -649,495 +549,320 @@
       }
     }
 
-    async function chargerStats() {
+    // ═══ ② CE JOUR-LÀ ═══════════════════════════════════════════════════
+    async function rendreCeJour(iso, j) {
+      const jeu = ++jeuAnalyse;
+      const el = $('jour-contenu');
+      if (!j) {
+        $('t-jour').textContent = `${maj1(fmtJourMois(iso))} : pas encore saisi`;
+        el.innerHTML = '<p class="muted">Le bilan apparaîtra ici après l\'enregistrement.</p>';
+        return;
+      }
+      if (j.ferme) {
+        $('t-jour').textContent = `${maj1(fmtJourMois(iso))} : boutique fermée`;
+        el.innerHTML = '<p class="muted">Jour de fermeture : il ne compte ni dans les moyennes ni dans les comparaisons.</p>';
+        return;
+      }
       try {
-        const s = await getJson(`${API}/stats/resume`);
-        const mc = s.mois_courant || {};
-        $('s-total').textContent        = fmtEur(mc.total_ttc);
-        $('s-moyen').textContent        = fmtEur(mc.ca_moyen_jour);
-        $('s-panier').textContent       = fmtEur(mc.panier_moyen);
-        $('s-panier-matin').textContent = fmtEur(mc.panier_moyen_matin);
-        $('s-panier-soir').textContent  = fmtEur(mc.panier_moyen_soir);
-        $('s-jours').textContent        = mc.nb_jours ?? 0;
+        const p = await getJson(`${API}/stats/profil-semaine?jour=${iso}`);
+        if (jeu !== jeuAnalyse) return;
+        const dv = p.dernier_vs_jour_type;
+        const matin = dv.perimetre === 'matin';
+        const jn = nomJour(iso);
+        const ref = matin ? `le matin du ${jn} précédent` : `le ${jn} précédent`;
+        const moy = matin ? `un matin de ${jn} moyen` : `un ${jn} moyen`;
+        $('t-jour').textContent = `${maj1(fmtJourMois(iso))} : ${fmtEurRond(dv.ca.valeur)}${matin ? ' (matin)' : ''}`;
 
-        const rep = $('repartition');
-        if (mc.part_matin != null && mc.part_soir != null) {
-          rep.style.display = 'flex';
-          $('seg-matin').style.width = mc.part_matin + '%';
-          $('seg-soir').style.width  = mc.part_soir + '%';
-          $('seg-matin').textContent = mc.part_matin >= 10 ? `Matin ${mc.part_matin}%` : '';
-          $('seg-soir').textContent  = mc.part_soir  >= 10 ? `Après-midi ${mc.part_soir}%` : '';
-        } else {
-          rep.style.display = 'none';
+        const morceaux = [];
+        if (dv.ca.s1 != null) morceaux.push(`${evoPct(dv.ca.evo_s1)} par rapport à ${ref} (${fmtEurRond(dv.ca.s1)})`);
+        if (dv.ca.moyenne_jour_type != null) morceaux.push(`${evoPct(dv.ca.evo_moyenne)} par rapport à ${moy} (${fmtEurRond(dv.ca.moyenne_jour_type)})`);
+        let phrase = morceaux.length
+          ? morceaux.join(' et ') + '.'
+          : `Pas encore de ${jn} précédent saisi pour comparer.`;
+        if (dv.en_cours) phrase = `<strong>Journée en cours</strong> : on compare le matin seulement. ${phrase}`;
+
+        const s1Court = fmtJourCourt(decalerIso(iso, -7));
+        const sousTuile = (delta, fmt) => delta == null
+          ? `<span class="muted">pas de ${s1Court} saisi</span>`
+          : `${evoEur(delta, fmt)} <span class="muted">vs ${s1Court}</span>`;
+        const tickDelta = (dv.tickets.valeur != null && dv.tickets.s1 != null) ? dv.tickets.valeur - dv.tickets.s1 : null;
+
+        let rep = '';
+        const mm = j.montant_ttc_matin || 0, ms = j.montant_ttc_soir || 0;
+        if (mm > 0 && ms > 0) {
+          const pm = Math.round(100 * mm / (mm + ms));
+          rep = `<div style="display:flex;flex-direction:column;gap:6px">
+              <div class="muted">Répartition de la journée</div>
+              <div class="repartition">
+                <div class="rep-matin" style="width:${pm}%">${pm >= 15 ? `Matin ${pm} %` : ''}</div>
+                <div class="rep-soir" style="width:${100 - pm}%">${100 - pm >= 15 ? `Après-midi ${100 - pm} %` : ''}</div>
+              </div>
+            </div>`;
         }
+        el.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <p class="phrase">${phrase}</p>
+            <div class="tuiles">
+              <div class="tuile"><span class="tuile-lbl">Chiffre d'affaires${matin ? ' (matin)' : ''}</span>
+                <span class="tuile-val">${fmtEur(dv.ca.valeur)}</span>
+                <span class="tuile-sous">${sousTuile(dv.ca.s1 != null ? dv.ca.evo_s1.delta : null, fmtEurRond)}</span></div>
+              <div class="tuile"><span class="tuile-lbl">Panier moyen</span>
+                <span class="tuile-val">${fmtEur(dv.panier.valeur)}</span>
+                <span class="tuile-sous">${dv.panier.valeur == null ? '<span class="muted">tickets non saisis</span>' : sousTuile(dv.panier.s1 != null ? dv.panier.evo_s1.delta : null, fmtEur)}</span></div>
+              <div class="tuile"><span class="tuile-lbl">Tickets</span>
+                <span class="tuile-val">${dv.tickets.valeur ?? '—'}</span>
+                <span class="tuile-sous">${dv.tickets.valeur == null ? '<span class="muted">non saisis</span>' : sousTuile(tickDelta, v => String(v))}</span></div>
+            </div>
+            ${rep}
+            ${j.commentaire ? `<p class="muted" style="margin:0">Commentaire : ${j.commentaire.replace(/</g, '&lt;')}</p>` : ''}
+          </div>`;
+      } catch (e) {
+        if (jeu !== jeuAnalyse) return;
+        console.error(e);
+        el.innerHTML = erreurHtml;
+      }
+    }
+
+    // ═══ ③ TENDANCES ════════════════════════════════════════════════════
+    // Période en cours jusqu'à HIER (journées terminées), comparée à la même
+    // durée de la période d'avant (préréglages s-1 / m-1 / a-1 du serveur).
+    function bornesTendance(type) {
+      const fin = veilleIso();
+      const d = versDate(fin);
+      let debut;
+      if (type === 'semaine') debut = decalerIso(fin, -((d.getDay() + 6) % 7));   // lundi
+      else if (type === 'mois') debut = fin.slice(0, 8) + '01';
+      else debut = fin.slice(0, 5) + '01-01';
+      return { debut, fin };
+    }
+    function titreTendance(type, b) {
+      if (type === 'semaine') return `Semaine du ${fmtJourMois(b.debut)}`;
+      if (type === 'mois') return maj1(versDate(b.debut).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+      return `Année ${b.debut.slice(0, 4)}`;
+    }
+
+    async function chargerTendance() {
+      const b = bornesTendance(tendance);
+      const preset = { semaine: 's-1', mois: 'm-1', annee: 'a-1' }[tendance];
+      $('t-tend').textContent = `${titreTendance(tendance, b)}, jusqu'à hier`;
+      try {
+        const r = await getJson(`${API}/stats/comparatif?date_debut=${b.debut}&date_fin=${b.fin}&preset=${preset}&n=1`);
+        const c = r.courant, ref = r.reference;
+        const refTxt = `vs ${fmtDdMm(ref.date_debut)} → ${fmtDdMm(ref.date_fin)}`;
+        const panierDelta = (c.panier_moyen != null && ref.panier_moyen != null) ? c.panier_moyen - ref.panier_moyen : null;
+        $('tend-tuiles').innerHTML = `
+          <div class="tuile"><span class="tuile-lbl">CA de la période</span>
+            <span class="tuile-val">${fmtEurRond(c.total_ttc)}</span>
+            <span class="tuile-sous">${ref.nb_jours ? `${evoPct(r.evolution.total_ttc)} <span class="muted">${refTxt}</span>` : '<span class="muted">rien à comparer</span>'}</span></div>
+          <div class="tuile"><span class="tuile-lbl">CA moyen / jour ouvert</span>
+            <span class="tuile-val">${fmtEurRond(c.ca_moyen_jour)}</span>
+            <span class="tuile-sous muted">${c.nb_jours} jour${c.nb_jours > 1 ? 's' : ''} ouvert${c.nb_jours > 1 ? 's' : ''}</span></div>
+          <div class="tuile"><span class="tuile-lbl">Panier moyen</span>
+            <span class="tuile-val">${fmtEur(c.panier_moyen)}</span>
+            <span class="tuile-sous">${panierDelta == null ? '<span class="muted">—</span>' : `${evoEur(panierDelta)} <span class="muted">vs avant</span>`}</span></div>
+          <div class="tuile"><span class="tuile-lbl">Matin / après-midi</span>
+            <span class="tuile-val">${c.part_matin == null ? '—' : `${Math.round(c.part_matin)} / ${Math.round(c.part_soir)} %`}</span>
+            <span class="tuile-sous muted">part du CA</span></div>`;
+        $('tend-alerte').innerHTML = (c.nb_jours && ref.nb_jours && c.nb_jours !== ref.nb_jours)
+          ? `<div class="alerte">À savoir : ${c.nb_jours} jours ouverts saisis, contre ${ref.nb_jours} sur la période d'avant.</div>`
+          : '';
+      } catch (e) {
+        console.error(e);
+        $('tend-tuiles').innerHTML = erreurHtml;
+        $('tend-alerte').innerHTML = '';
+      }
+    }
+
+    // Courbe : CA total par jour + moyenne des 30 jours précédents
+    async function chargerHisto() {
+      try {
+        const rows = await getJson(`${API}?limit=1000`);
+        histo = rows.filter(r => !r.ferme);
+        majCourbe();
       } catch (e) { console.error(e); }
     }
 
-    async function chargerHistorique() {
-      try {
-        // On récupère un large historique (1000 j) : sert l'historique tableau
-        // (limité à 90 lignes affichées) ET le graphe (filtré par zoom).
-        const rows = await getJson(`${API}?limit=1000`);
-        // Le graphe ne trace que les jours ouverts (un jour fermé n'est pas un « 0 € »)
-        histoRows = rows.filter(r => !r.ferme);
-        const tbody = $('histo-body');
-        const affiches = rows.slice(0, 90);
-        if (!affiches.length) {
-          tbody.innerHTML = '<tr><td colspan="7">Aucune saisie pour le moment.</td></tr>';
-        } else {
-          const tj = todayIso();
-          tbody.innerHTML = affiches.map(r => `
-            <tr class="${r.date_ca === tj ? 'is-today' : ''}">
-              <td>${fmtDateFr(r.date_ca)}</td>
-              <td>${r.meteo === 'soleil' ? '☀️' : (r.meteo === 'pluie' ? '🌧️' : '')}</td>
-              ${r.ferme
-                ? '<td colspan="4" class="ferme">🔒 Boutique fermée</td>'
-                : `<td class="num">${fmtEur(r.montant_ttc_matin)}</td>
-              <td class="num">${fmtEur(r.montant_ttc_soir)}</td>
-              <td class="num"><strong>${fmtEur(r.montant_ttc)}</strong></td>
-              <td class="num">${r.nb_tickets ?? '—'}</td>`}
-              <td><span class="row-edit" data-date="${r.date_ca}">Modifier</span></td>
-            </tr>`).join('');
-          tbody.querySelectorAll('.row-edit').forEach(el => {
-            el.addEventListener('click', () => {
-              setDate(el.dataset.date);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
-          });
-        }
-        majCourbe();
-      } catch (e) {
-        console.error(e);
-        $('histo-body').innerHTML = `<tr><td colspan="7" class="feedback err">${MSG_ERREUR}</td></tr>`;
-      }
-    }
-
-    // Filtre les données du graphe selon le zoom actif (0 = tout)
     function majCourbe() {
-      let rows = histoRows;
-      if (zoomJours > 0) {
-        const limite = decalerIso(todayIso(), -zoomJours);
-        rows = histoRows.filter(r => r.date_ca >= limite);
-      }
-      const data = [...rows].reverse(); // chrono croissant
-      const labels = data.map(r => fmtDateFr(r.date_ca));
-      const ctx = $('chart-ca');
+      const limite = decalerIso(todayIso(), -courbeJours);
+      const asc = [...histo].reverse();                       // chronologique
+      const data = asc.filter(r => r.date_ca >= limite);
+      const moy = data.map(r => {
+        const debut = decalerIso(r.date_ca, -30);
+        const fen = asc.filter(x => x.date_ca >= debut && x.date_ca < r.date_ca);
+        return fen.length ? Math.round(fen.reduce((s, x) => s + x.montant_ttc, 0) / fen.length) : null;
+      });
       if (chart) chart.destroy();
-      chart = new Chart(ctx, {
+      chart = new Chart($('chart-ca'), {
         type: 'line',
         data: {
-          labels,
+          labels: data.map(r => fmtJourCourt(r.date_ca)),
           datasets: [
-            {
-              label: 'Matin', data: data.map(r => r.montant_ttc_matin),
-              borderColor: '#d97706', backgroundColor: 'rgba(217,119,6,.10)',
-              fill: false, tension: .25, pointRadius: 2,
-            },
-            {
-              label: 'Après-midi', data: data.map(r => r.montant_ttc_soir),
-              borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.10)',
-              fill: false, tension: .25, pointRadius: 2,
-            },
-            {
-              label: 'Total', data: data.map(r => r.montant_ttc),
-              borderColor: '#6b2d0f', backgroundColor: 'rgba(107,45,15,.12)',
-              fill: true, tension: .25, pointRadius: 2, borderWidth: 2,
-            },
+            { label: 'CA du jour', data: data.map(r => r.montant_ttc), borderColor: '#6B3A1F',
+              backgroundColor: 'rgba(107,58,31,.08)', fill: true, tension: .25, pointRadius: 2, borderWidth: 2.5 },
+            { label: 'Moyenne 30 jours', data: moy, borderColor: '#C9A27E', borderDash: [6, 5],
+              fill: false, tension: .3, pointRadius: 0, borderWidth: 2 },
           ],
         },
         options: {
           responsive: true,
           interaction: { mode: 'index', intersect: false },
-          plugins: { legend: { display: true } },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: c => `${c.dataset.label} : ${fmtEurRond(c.parsed.y)}` } },
+          },
           scales: {
-            y: { beginAtZero: true, ticks: { callback: v => v + ' €' } },
-            x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
+            y: { beginAtZero: true, ticks: { callback: v => fmtEurRond(v) } },
+            x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
           },
         },
       });
     }
 
-    // ─── Profil par jour de semaine + moyennes glissantes ──────
-    // Cellule d'évolution courte : « ▲ +20% » (pour la grille de la bannière)
-    const evoCourt = (evo) => {
-      if (!evo || evo.pct == null) return '<span class="evo-flat">—</span>';
-      const cls = evo.pct > 0 ? 'evo-up' : (evo.pct < 0 ? 'evo-down' : 'evo-flat');
-      const fl = evo.pct > 0 ? '▲' : (evo.pct < 0 ? '▼' : '=');
-      const s = evo.pct >= 0 ? '+' : '';
-      return `<span class="${cls}">${fl} ${s}${evo.pct}%</span>`;
-    };
-
-    function rendreBanniereProfil(p) {
-      const dv = p.dernier_vs_jour_type;
-      let html = '';
-      if (dv && dv.ferme) {
-        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)}</div>`
-          + `<div class="mini">🔒 Boutique fermée ce jour.</div>`;
-      } else if (dv && dv.non_saisi) {
-        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)}</div>`
-          + `<div class="mini">Aucune saisie pour ce jour.</div>`;
-      } else if (dv) {
-        const jt = dv.jour_nom.toLowerCase() + 's';   // « samedis »
-        const modeMatin = dv.perimetre === 'matin';
-        // Badge « journée en cours » seulement si c'est réellement aujourd'hui non fini
-        const badge = dv.en_cours
-          ? `<span class="pb-badge">🌅 Journée en cours — matin seul</span>`
-          : (modeMatin ? `<span class="pb-badge">🌅 Matin seul</span>` : '');
-        const labelCA = modeMatin ? 'CA matin' : 'CA';
-        const colMoy  = modeMatin ? `vs moy. matins (${jt})` : `vs moy. ${jt}`;
-        // fmtDateLongue inclut déjà le jour de semaine → pas de doublon
-        html = `<div class="pb-titre">📅 ${fmtDateLongue(dv.date_ca)} ${badge}</div>`
-          + `<div class="pb-grid">`
-          + `<div></div><div class="pb-head">vs S-1</div><div class="pb-head">${colMoy}</div>`
-          // Ligne CA
-          + `<div class="pb-metric">${labelCA} <span class="pb-val">${fmtEur(dv.ca.valeur)}</span></div>`
-          + `<div>${evoCourt(dv.ca.evo_s1)} <span class="mini">(${fmtEur(dv.ca.s1)})</span></div>`
-          + `<div>${evoCourt(dv.ca.evo_moyenne)} <span class="mini">(${fmtEur(dv.ca.moyenne_jour_type)})</span></div>`
-          // Ligne Panier
-          + `<div class="pb-metric">Panier <span class="pb-val">${fmtEur(dv.panier.valeur)}</span></div>`
-          + `<div>${evoCourt(dv.panier.evo_s1)} <span class="mini">(${fmtEur(dv.panier.s1)})</span></div>`
-          + `<div>${evoCourt(dv.panier.evo_moyenne)} <span class="mini">(${fmtEur(dv.panier.moyenne_jour_type)})</span></div>`
-          + `</div>`;
-      } else {
-        html = 'Pas encore de données à analyser.';
-      }
-      html += `<div class="pb-glissante">CA moyen par jour ouvert : `
-        + `7 derniers jours = <b>${fmtEur(p.moyenne_glissante_7j)}</b> · 30 derniers jours = <b>${fmtEur(p.moyenne_glissante_30j)}</b></div>`;
-      return html;
-    }
-
-    async function chargerProfilSemaine(jour) {
-      const jeu = ++jeuAnalyse;
+    // Jour de semaine type (lun → dim), le jour de la page mis en avant
+    let profilJours = null;
+    async function chargerJourType() {
       try {
-        const url = jour
-          ? `${API}/stats/profil-semaine?jour=${jour}`
-          : `${API}/stats/profil-semaine`;
-        const p = await getJson(url);
-        if (jeu !== jeuAnalyse) return;       // réponse d'une demande plus ancienne
-        // Met à jour le libellé de date de la carte analyse
-        if (p.dernier_vs_jour_type) {
-          analyseDate = p.dernier_vs_jour_type.date_ca;
-          $('an-label').textContent = fmtDateLongue(analyseDate);
-        }
-        $('profil-banner').innerHTML = rendreBanniereProfil(p);
-
-        const tj_dow = new Date().getDay(); // pour surligner le jour courant
-        $('profil-body').innerHTML = p.jours.map(j => {
-          // Dimanche : pas d'après-midi → « Fermé » plutôt que « — »
-          const aprem = j.dow === 0 ? '<span class="mini">Fermé</span>' : fmtEur(j.ca_moyen_soir);
-          return `
-          <tr data-dow="${j.dow}" class="${j.dow === tj_dow ? 'is-today' : ''}">
-            <td>${j.nom}</td>
-            <td class="num"><strong>${fmtEur(j.ca_moyen)}</strong></td>
-            <td class="num">${fmtEur(j.ca_moyen_matin)}</td>
-            <td class="num">${aprem}</td>
-            <td class="num">${j.tickets_moyen ?? '—'}</td>
-            <td class="num">${fmtEur(j.panier_moyen)}</td>
-            <td class="num">${j.nb}</td>
-          </tr>`;
-        }).join('');
+        profilJours = (await getJson(`${API}/stats/profil-semaine`)).jours;
+        majJourType();
       } catch (e) {
-        if (jeu !== jeuAnalyse) return;
         console.error(e);
-        $('profil-banner').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+        $('jour-type').innerHTML = erreurHtml;
       }
+    }
+    function majJourType() {
+      if (!profilJours) return;
+      const dowActif = jourAffiche ? versDate(jourAffiche).getDay() : -1;
+      const max = Math.max(1, ...profilJours.map(j => j.ca_moyen || 0));
+      $('jour-type').innerHTML = profilJours.map(j => {
+        const h = j.ca_moyen ? Math.max(4, Math.round(110 * j.ca_moyen / max)) : 2;
+        const nom = j.nom.slice(0, 3) + (j.dow === 0 ? '<br>matin' : '');
+        return `<div class="jt-col${j.dow === dowActif ? ' actif' : ''}" title="${j.nom} : moyenne sur ${j.nb} jour(s)">
+            <span class="jt-val">${j.ca_moyen ? fmtEurRond(j.ca_moyen) : '—'}</span>
+            <div class="jt-barre" style="height:${h}px"></div>
+            <span class="jt-nom">${nom}</span>
+          </div>`;
+      }).join('');
     }
 
-    // ─── Tableau CA par période (jour / semaine / mois) ────────
-    let granActive = 'jour';
-    const labelGran = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' };
-    // Jour abrégé + date : « lun. 28/06 »
-    const fmtJourCourt = iso => {
-      const [y, m, d] = iso.split('-').map(Number);
-      const jour = new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'short' });
-      return `${jour} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
-    };
-    function fmtPeriode(l, gran) {
-      if (gran === 'jour')    return fmtJourCourt(l.periode);
-      if (gran === 'semaine') return l.periode.replace('-S', ' · sem. ');  // 2026-S26 → 2026 · sem. 26
-      if (gran === 'mois') {
-        const [y, m] = l.periode.split('-');
-        return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-      }
-      return l.periode;
-    }
-    async function chargerPeriode(gran) {
-      granActive = gran;
-      $('per-col-periode').textContent = labelGran[gran];
-      $('per-col-evol').textContent = gran === 'jour' ? 'Évol. S-1' : 'Évol. préc.';
-      const tbody = $('periode-body');
+    // Détail Jours / Semaines / Mois ; en Jours, les jours manquants sont listés
+    // « Non saisi » (avec un bouton pour les saisir).
+    async function chargerDetail() {
+      const tbody = $('detail-body');
+      $('det-col-periode').textContent = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' }[detailGran];
+      $('det-col-evol').textContent = detailGran === 'jour' ? 'vs semaine d\'avant' : 'vs période d\'avant';
       try {
-        const rep = await fetch(`${API}/stats/par-periode?granularite=${gran}&limit=60`);
-        if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
-        const res = await rep.json();
-        if (!res.lignes.length) {
-          tbody.innerHTML = '<tr><td colspan="7">Aucune donnée.</td></tr>';
+        const res = await getJson(`${API}/stats/par-periode?granularite=${detailGran}&limit=${detailLimite}`);
+        let lignes = res.lignes;
+        if (detailGran === 'jour') {
+          const parDate = Object.fromEntries(lignes.map(l => [l.periode, l]));
+          const plusAncien = lignes.length ? lignes[lignes.length - 1].periode : veilleIso();
+          lignes = [];
+          for (let d = todayIso(); d >= plusAncien && lignes.length < detailLimite; d = decalerIso(d, -1)) {
+            if (parDate[d]) lignes.push(parDate[d]);
+            else if (d < todayIso()) lignes.push({ periode: d, manquant: true });
+          }
+        }
+        if (!lignes.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="muted">Aucune saisie pour le moment.</td></tr>';
+          $('detail-plus').style.display = 'none';
           return;
         }
-        const cliquable = gran === 'jour';
-        tbody.innerHTML = res.lignes.map(l => `
-          <tr style="text-transform:capitalize" ${cliquable ? `class="row-jour" data-date="${l.periode}"` : ''}>
-            <td>${fmtPeriode(l, gran)}</td>
-            ${l.ferme ? '<td colspan="6" class="ferme">🔒 Boutique fermée</td>' : `
-            <td class="num"><strong>${fmtEur(l.total_ttc)}</strong></td>
-            <td class="num">${fmtEur(l.total_ttc_matin)}</td>
-            <td class="num">${fmtEur(l.total_ttc_soir)}</td>
-            <td class="num">${l.total_tickets || '—'}</td>
-            <td class="num">${fmtEur(l.panier_moyen)}<br><span class="mini">${l.evolution_panier && l.evolution_panier.pct != null ? evoCourt(l.evolution_panier) : ''}</span></td>
-            <td class="num">${l.evolution.pct == null ? '—' : evoSpan(l.evolution)}${
-              l.evolution.pct != null && l.evolution_label === 'vs même nb de jours'
-                ? '<br><span class="mini">en cours : à nb de jours égal</span>' : ''}</td>`}
-          </tr>`).join('');
-        // En mode jour, cliquer une ligne ouvre le profil et surligne le jour-type
-        if (cliquable) {
-          tbody.querySelectorAll('.row-jour').forEach(tr => {
-            tr.style.cursor = 'pointer';
-            tr.addEventListener('click', () => focusProfilJour(tr.dataset.date));
-          });
-        }
-      } catch (e) {
-        // Ne pas laisser l'ancien tableau sous un nouvel en-tête (Jour ≠ Semaine)
-        console.error(e);
-        tbody.innerHTML = '<tr><td colspan="7" class="feedback err">Impossible de charger ce tableau. Réessayer plus tard.</td></tr>';
-      }
-    }
-
-    // Ouvre le bloc Profil, surligne le jour de semaine correspondant à une date, scrolle
-    function focusProfilJour(iso) {
-      const [y, m, d] = iso.split('-').map(Number);
-      const dow = new Date(y, m - 1, d).getDay();      // 0=dim … 6=sam
-      const carte = $('profil-body').closest('.card');
-      carte.classList.remove('collapsed');             // déplie le profil
-      $('profil-body').querySelectorAll('tr').forEach(tr => {
-        tr.classList.toggle('row-highlight', Number(tr.dataset.dow) === dow);
-      });
-      carte.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    // ─── Sections repliables ───────────────────────────────────
-    function initRepliable() {
-      document.querySelectorAll('.card[data-section] > h2.collapsible').forEach(h2 => {
-        h2.addEventListener('click', () => h2.parentElement.classList.toggle('collapsed'));
-      });
-    }
-
-    // ─── Zoom de la courbe ─────────────────────────────────────
-    function initZoom() {
-      document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(btn => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('#zoom-tabs .zoom-tab').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          zoomJours = parseInt(btn.dataset.jours, 10);
-          majCourbe();
-        });
-      });
-    }
-
-    // ─── Comparaison ───────────────────────────────────────────
-    const evoSpan = (evo) => {
-      if (evo.pct == null) {
-        return `<span class="evo-flat">${evo.delta >= 0 ? '+' : ''}${fmtEur(evo.delta)}</span>`;
-      }
-      const cls = evo.pct > 0 ? 'evo-up' : (evo.pct < 0 ? 'evo-down' : 'evo-flat');
-      const fleche = evo.pct > 0 ? '▲' : (evo.pct < 0 ? '▼' : '=');
-      const signe = evo.delta >= 0 ? '+' : '';
-      return `<span class="${cls}">${fleche} ${signe}${fmtEur(evo.delta)} (${signe}${evo.pct}%)</span>`;
-    };
-
-    function rendreComparatif(elId, titreA, titreB, vals, evo) {
-      // vals : { total:{a,b}, matin:{a,b}, soir:{a,b} }
-      $(elId).innerHTML = `
-        <div class="cmp-grid">
-          <div class="head"></div><div class="head num">${titreA}</div><div class="head num">${titreB}</div><div class="head num">Évolution</div>
-          <div class="lbl">CA total</div><div class="num">${fmtEur(vals.total.a)}</div><div class="num">${fmtEur(vals.total.b)}</div><div class="num">${evoSpan(evo.total_ttc)}</div>
-          <div class="lbl">🌅 Matin</div><div class="num">${fmtEur(vals.matin.a)}</div><div class="num">${fmtEur(vals.matin.b)}</div><div class="num">${evoSpan(evo.total_ttc_matin)}</div>
-          <div class="lbl">🌇 Après-midi</div><div class="num">${fmtEur(vals.soir.a)}</div><div class="num">${fmtEur(vals.soir.b)}</div><div class="num">${evoSpan(evo.total_ttc_soir)}</div>
-        </div>`;
-    }
-
-    async function lancerComparatifPeriode() {
-      const debut = $('cmp-debut').value, fin = $('cmp-fin').value;
-      if (!debut || !fin) return;
-      const preset = $('cmp-unite').value;
-      const n = Math.max(1, parseInt($('cmp-n').value, 10) || 1);
-      try {
-        const url = `${API}/stats/comparatif?date_debut=${debut}&date_fin=${fin}&preset=${preset}&n=${n}`;
-        const r = await getJson(url);
-        const c = r.courant, ref = r.reference;
-        const fmtP = p => p.date_debut === p.date_fin ? fmtDateFr(p.date_debut) : `${fmtDateFr(p.date_debut)} → ${fmtDateFr(p.date_fin)}`;
-        const nbJ = p => `${p.nb_jours} jour${p.nb_jours > 1 ? 's' : ''} saisi${p.nb_jours > 1 ? 's' : ''}`;
-        // Avertissements : comparaison faussée si les deux côtés n'ont pas le même
-        // nombre de jours saisis, ou si la journée d'aujourd'hui (pas finie) est dedans
-        const alertes = [];
-        if (!c.nb_jours || !ref.nb_jours) {
-          alertes.push(`Aucun jour saisi sur la période ${!c.nb_jours ? 'courante' : 'de référence'} : pas de comparaison possible.`);
-        } else if (c.nb_jours !== ref.nb_jours) {
-          alertes.push(`Pas le même nombre de jours saisis (${c.nb_jours} contre ${ref.nb_jours}) : l'écart en € est faussé.`);
-        }
-        if (c.date_fin >= todayIso() && c.date_debut <= todayIso()) {
-          alertes.push('La période inclut aujourd\'hui : journée pas encore terminée.');
-        }
-        $('cmp-result-periode').innerHTML =
-          `<div class="cmp-periodes">Courante : <b>${fmtP(c)}</b> (${nbJ(c)}) &nbsp;·&nbsp; Référence : <b>${fmtP(ref)}</b> (${nbJ(ref)})</div>`
-          + alertes.map(a => `<div class="oublis" style="margin-bottom:8px">⚠️ ${a}</div>`).join('');
-        const tmp = document.createElement('div'); tmp.id = '_cmp_tmp';
-        $('cmp-result-periode').appendChild(tmp);
-        rendreComparatif('_cmp_tmp', 'Courante', 'Référence',
-          { total: { a: c.total_ttc, b: ref.total_ttc },
-            matin: { a: c.total_ttc_matin, b: ref.total_ttc_matin },
-            soir:  { a: c.total_ttc_soir,  b: ref.total_ttc_soir } },
-          r.evolution);
+        tbody.innerHTML = lignes.map(l => ligneDetail(l)).join('');
+        tbody.querySelectorAll('[data-ouvrir]').forEach(b => b.addEventListener('click', () => {
+          setDate(b.dataset.ouvrir);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }));
+        $('detail-plus').style.display = res.lignes.length >= detailLimite ? '' : 'none';
+        surlignerDetail();
       } catch (e) {
         console.error(e);
-        $('cmp-result-periode').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+        tbody.innerHTML = `<tr><td colspan="6">${erreurHtml}</td></tr>`;
       }
     }
 
-    async function lancerComparerDates() {
-      const da = $('cmp-date-a').value, db = $('cmp-date-b').value;
-      if (!da || !db) return;
-      try {
-        const r = await getJson(`${API}/stats/comparer-dates?date_a=${da}&date_b=${db}`);
-        const a = r.a, b = r.b;
-        // Un jour non saisi ou fermé n'est pas « 0 € » : on ne calcule pas d'évolution
-        const etat = j => !j.saisi ? 'non saisi' : (j.ferme ? 'fermé' : null);
-        if (etat(a) || etat(b)) {
-          $('cmp-result-dates').innerHTML = `<div class="mini">Comparaison impossible : `
-            + [[da, a], [db, b]].filter(([, j]) => etat(j))
-                .map(([d, j]) => `${fmtDateLongue(d)} = ${etat(j)}`).join(' · ')
-            + `.</div>`;
-          return;
-        }
-        rendreComparatif('cmp-result-dates', fmtDateFr(da), fmtDateFr(db),
-          { total: { a: a.montant_ttc, b: b.montant_ttc },
-            matin: { a: a.montant_ttc_matin, b: b.montant_ttc_matin },
-            soir:  { a: a.montant_ttc_soir,  b: b.montant_ttc_soir } },
-          r.evolution);
-      } catch (e) {
-        console.error(e);
-        $('cmp-result-dates').innerHTML = `<div class="feedback err">${MSG_ERREUR}</div>`;
+    function libellePeriode(l) {
+      if (detailGran === 'jour') return fmtJourCourt(l.periode);
+      if (detailGran === 'semaine') return `sem. du ${fmtDdMm(lundiDe(l.date_debut))}`;
+      const [y, m] = l.periode.split('-');
+      return maj1(new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+    }
+    const lundiDe = iso => decalerIso(iso, -((versDate(iso).getDay() + 6) % 7));
+
+    function ligneDetail(l) {
+      const action = detailGran === 'jour'
+        ? `<button type="button" class="lien" data-ouvrir="${l.periode}">${l.manquant ? 'Saisir' : 'Modifier'}</button>` : '';
+      const attr = detailGran === 'jour' ? ` data-date="${l.periode}"` : '';
+      if (l.manquant) {
+        return `<tr class="non-saisi"${attr}><td>${libellePeriode(l)}</td><td colspan="4" class="etat">Non saisi</td><td class="num">${action}</td></tr>`;
       }
+      if (l.ferme) {
+        return `<tr class="jour-ferme"${attr}><td>${libellePeriode(l)}</td><td colspan="4" class="etat">Boutique fermée</td><td class="num">${action}</td></tr>`;
+      }
+      const enCours = l.evolution_label === 'vs même nb de jours' && l.evolution.pct != null
+        ? '<br><span class="muted">en cours, à durée égale</span>' : '';
+      return `<tr${attr}>
+          <td>${libellePeriode(l)}</td>
+          <td class="num"><strong>${fmtEurRond(l.total_ttc)}</strong></td>
+          <td class="num">${evoPct(l.evolution)}${enCours}</td>
+          <td class="num">${fmtEur(l.panier_moyen)}</td>
+          <td class="num">${l.total_tickets || '—'}</td>
+          <td class="num">${action}</td>
+        </tr>`;
     }
 
-    function setChipActif(preset) {
-      document.querySelectorAll('#cmp-chips .chip').forEach(c =>
-        c.classList.toggle('active', c.dataset.preset === preset));
+    function surlignerDetail() {
+      document.querySelectorAll('#detail-body tr[data-date]').forEach(tr =>
+        tr.classList.toggle('selection', tr.dataset.date === jourAffiche));
     }
 
-    function initComparaison() {
-      // Onglets
-      document.querySelectorAll('.cmp-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          document.querySelectorAll('.cmp-tab').forEach(t => t.classList.remove('active'));
-          tab.classList.add('active');
-          const mode = tab.dataset.mode;
-          $('cmp-periode').style.display = mode === 'periode' ? '' : 'none';
-          $('cmp-dates').style.display   = mode === 'dates'   ? '' : 'none';
-        });
-      });
-      // Tags rapides : règlent l'unité + n, puis relancent
-      document.querySelectorAll('#cmp-chips .chip').forEach(chip => {
-        chip.addEventListener('click', () => {
-          $('cmp-unite').value = chip.dataset.preset;
-          $('cmp-n').value = chip.dataset.n;
-          setChipActif(chip.dataset.preset);
-          lancerComparatifPeriode();
-        });
-      });
-      // Période courante par défaut : la veille (un seul jour)
-      const v = veilleIso();
-      $('cmp-debut').value = v;
-      $('cmp-fin').value = v;
-      $('cmp-go').addEventListener('click', () => { setChipActif(null); lancerComparatifPeriode(); });
-      // Régler manuellement l'unité/le nombre désélectionne les tags rapides
-      $('cmp-unite').addEventListener('change', () => setChipActif(null));
-      $('cmp-n').addEventListener('input', () => setChipActif(null));
-
-      // Mode 2 dates : hier vs avant-hier par défaut
-      const ah = new Date(); ah.setDate(ah.getDate() - 2);
-      $('cmp-date-a').value = v;
-      $('cmp-date-b').value = ah.toLocaleDateString('sv-SE');
-      $('cmp-dates-go').addEventListener('click', lancerComparerDates);
-
-      // Premier rendu : J-1 vs J-2
-      setChipActif('j-1');
-      lancerComparatifPeriode();
+    // Boutons segmentés (Semaine/Mois/Année, 30 j/90 j/1 an, Jours/Semaines/Mois)
+    function initSeg(id, surChoix) {
+      const boutons = document.querySelectorAll(`#${id} button`);
+      boutons.forEach(b => b.addEventListener('click', () => {
+        boutons.forEach(x => x.classList.toggle('on', x === b));
+        surChoix(b.dataset.val);
+      }));
     }
 
-    // Init
-    ['montant-matin','tickets-matin','montant-soir','tickets-soir'].forEach(id =>
-      $(id).addEventListener('input', majPaniers));
-    // Toute modification marque la saisie « non enregistrée »
-    [...CHAMPS_SAISIE, 'personnel'].forEach(id =>
-      $(id).addEventListener('input', () => { modifie = true; }));
+    // ─── Démarrage ──────────────────────────────────────────────────────
+    ['montant-matin', 'tickets-matin', 'montant-soir', 'tickets-soir'].forEach(id =>
+      $(id).addEventListener('input', majTotal));
+    [...CHAMPS_SAISIE, 'personnel'].forEach(id => $(id).addEventListener('input', () => { modifie = true; }));
     $('personnel').addEventListener('change', () => { modifie = true; });
-    $('btn-save').addEventListener('click', enregistrer);
-    document.querySelectorAll('.meteo-btn').forEach(b =>
-      b.addEventListener('click', () => { setMeteo(b.dataset.meteo); modifie = true; }));
+    document.querySelectorAll('.meteo-btn').forEach(b => b.addEventListener('click', () => {
+      appliquerMeteo(meteoSel === b.dataset.meteo ? null : b.dataset.meteo);   // re-toucher = désélectionner
+      modifie = true;
+    }));
     $('btn-ferme').addEventListener('click', () => { appliquerFerme(!fermeSel); modifie = true; });
-    // Quitter la page avec une saisie non enregistrée → alerte du navigateur
-    window.addEventListener('beforeunload', ev => {
-      if (modifie) { ev.preventDefault(); ev.returnValue = ''; }
-    });
+    $('btn-save').addEventListener('click', enregistrer);
+    window.addEventListener('beforeunload', ev => { if (modifie) { ev.preventDefault(); ev.returnValue = ''; } });
 
-    // Navigation jour : flèches préc/suivant + libellé cliquable (sélecteur natif)
     $('jour-prec').addEventListener('click', () => setDate(decalerIso(jourAffiche, -1)));
     $('jour-suiv').addEventListener('click', () => setDate(decalerIso(jourAffiche, +1)));
     $('date-label').addEventListener('click', () => {
       const inp = $('date-ca');
       if (inp.showPicker) inp.showPicker(); else inp.focus();
     });
-    // Le sélecteur natif change sa valeur AVANT setDate : on remet le jour
-    // affiché (setDate compare à l'ancien jour et le garde si l'utilisateur annule).
+    // Le sélecteur natif change sa valeur avant setDate : on remet le jour
+    // affiché (setDate le garde si l'utilisateur annule).
     $('date-ca').addEventListener('change', () => {
       const choisi = $('date-ca').value;
       $('date-ca').value = jourAffiche;
       if (choisi) setDate(choisi);
     });
 
-    // Encart analyse : navigation propre (détache automatiquement le suivi)
-    $('an-prec').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, -1)); });
-    $('an-suiv').addEventListener('click', () => { $('an-suivre').checked = false; analyseSuit = false; setAnalyse(decalerIso(analyseDate, +1)); });
-    // Sélecteur propre à l'encart : choisir un jour à analyser ne touche pas à la saisie
-    $('an-label').addEventListener('click', () => {
-      const inp = $('an-date');
-      inp.value = analyseDate || '';
-      inp.max = todayIso();
-      if (inp.showPicker) inp.showPicker(); else inp.focus();
-    });
-    $('an-date').addEventListener('change', () => {
-      if (!$('an-date').value) return;
-      $('an-suivre').checked = false; analyseSuit = false;
-      setAnalyse($('an-date').value);
-    });
-    $('an-suivre').addEventListener('change', (e) => {
-      analyseSuit = e.target.checked;
-      if (analyseSuit) setAnalyse($('date-ca').value);   // resynchronise sur la saisie
-    });
+    initSeg('seg-tendance', v => { tendance = v; chargerTendance(); });
+    initSeg('seg-courbe', v => { courbeJours = parseInt(v, 10); majCourbe(); });
+    initSeg('seg-detail', v => { detailGran = v; detailLimite = v === 'jour' ? 21 : 12; chargerDetail(); });
+    $('detail-plus').addEventListener('click', () => { detailLimite += detailGran === 'jour' ? 21 : 12; chargerDetail(); });
 
-    // Onglets du tableau par période
-    document.querySelectorAll('.periode-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.periode-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        chargerPeriode(tab.dataset.gran);
-      });
-    });
-
-    initRepliable();
-    initZoom();
-
-    // Jour par défaut : le plus ancien jour oublié des 14 derniers jours, sinon
-    // aujourd'hui. Un seul chargement (pas de « veille » affichée puis remplacée).
-    $('btn-save').disabled = true;
-    $('date-label').textContent = 'Chargement…';
+    // Jour par défaut : le plus ancien oubli des 14 derniers jours, sinon aujourd'hui
     Promise.all([chargerPersonnel(), chargerOublis(true)])
       .then(([, jour]) => setDate(jour || veilleIso()));
-    chargerStats();
-    chargerHistorique();
-    // L'encart analyse est rafraîchi par setDate (il suit la saisie au démarrage)
-    chargerPeriode('jour');
-    initComparaison();
+    chargerTendance();
+    chargerHisto();
+    chargerJourType();
+    chargerDetail();
   })();
   </script>
 </body>
