@@ -44,3 +44,34 @@ async def test_marge_sur_achats_4_semaines(app_client, db):
     assert m["precedent"]["exploitable"] is False
     assert m["evolution_taux_points"] is None
     assert len(m["historique"]) == 3 and m["historique"][-1]["date_fin"] == hier.isoformat()
+
+
+@pytest.mark.anyio
+async def test_marge_sur_achats_par_periode_et_depliage(app_client, db):
+    fid = await _fournisseur(app_client)
+    cat = await _article(app_client, fid, prix_achat_ht=10.0, format_prix="kg")
+    # Août : 2 000 € HT vendus, 800 € HT achetés (60 %) ; septembre : 1 000 / 300 (70 %)
+    for iso, ttc in (("2026-08-12", 2110), ("2026-09-10", 1055)):
+        r = await app_client.post(API, json={"date_ca": iso, "montant_ttc_matin": ttc})
+        assert r.status_code == 201, r.text
+    await _reception_cloturee(db, fid, cat, "2026-08-20", 80.0)
+    await _reception_cloturee(db, fid, cat, "2026-09-15", 30.0)
+
+    url = f"{API}/marge-achats/periodes"
+    mois = {l["periode"]: l for l in (await app_client.get(url, params={"granularite": "mois"})).json()["lignes"]}
+    sept, aout = mois["2026-09"], mois["2026-08"]
+    assert (sept["ca_ht"], sept["achats_ht"], sept["taux_marge_pct"]) == (1000.0, 300.0, 70.0)
+    assert aout["taux_marge_pct"] == 60.0
+    assert sept["evolution_taux_points"] == 10.0 and sept["en_cours"] is False
+
+    # Dépliage de septembre : ses semaines (CA et achats tombent dans des semaines différentes)
+    sem = (await app_client.get(url, params={"granularite": "semaine",
+                                             "date_debut": "2026-09-01", "date_fin": "2026-09-30"})).json()["lignes"]
+    assert [l["periode"] for l in sem] == ["2026-S38", "2026-S37"]
+    assert sem[0]["ca_ht"] == 0 and sem[0]["taux_marge_pct"] is None      # achats seuls
+    assert sem[1]["exploitable"] is False                                 # CA seul
+
+    annee = (await app_client.get(url, params={"granularite": "annee"})).json()["lignes"][0]
+    assert annee["periode"] == "2026"
+    assert (annee["ca_ht"], annee["achats_ht"]) == (3000.0, 1100.0)
+    assert (await app_client.get(url, params={"granularite": "jour"})).status_code == 400

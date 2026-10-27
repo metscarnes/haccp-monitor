@@ -138,13 +138,7 @@
     .obj-legende { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #6E5844; }
     .obj-legende i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
-    /* Marge sur achats : taux des 8 dernières semaines (fenêtres de 4 semaines) */
-    .marge-histo { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end; height: 110px; }
-    .mh-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
-    .mh-barre { width: 100%; background: #D9C1A3; border-radius: 5px 5px 0 0; min-height: 2px; }
-    .mh-col.dernier .mh-barre { background: var(--color-accent); }
-    .mh-val { font-size: 12px; white-space: nowrap; }
-    .mh-date { font-size: 11px; color: #6E5844; }
+    /* Marge sur achats */
     .note { font-size: 13px; color: #6E5844; margin: 0; line-height: 1.5; }
 
     /* Dépliage mois → semaines → jours */
@@ -306,11 +300,41 @@
 
     <!-- ④ MARGE SUR ACHATS -->
     <section class="card" aria-labelledby="t-marge">
-      <div>
-        <p class="eyebrow">4 · Marge sur achats</p>
-        <h2 class="h2" id="t-marge">Les 4 dernières semaines</h2>
+      <div class="card-tete">
+        <div>
+          <p class="eyebrow">4 · Marge sur achats</p>
+          <h2 class="h2" id="t-marge">—</h2>
+        </div>
+        <div class="seg" role="group" aria-label="Période" id="seg-marge" style="min-width:280px">
+          <button type="button" data-val="semaine">Semaine</button>
+          <button type="button" data-val="mois" class="on">Mois</button>
+          <button type="button" data-val="annee">Année</button>
+        </div>
       </div>
-      <div id="marge-contenu"><p class="muted">Chargement…</p></div>
+      <div id="marge-resume"><p class="muted">Chargement…</p></div>
+      <div class="alerte" id="marge-glissant" style="display:none"></div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="card-tete" style="align-items:center">
+          <div style="font-weight:600">Détail</div>
+          <div class="seg" role="group" aria-label="Détail par" id="seg-marge-detail" style="min-width:300px">
+            <button type="button" data-val="semaine">Semaines</button>
+            <button type="button" data-val="mois" class="on">Mois</button>
+            <button type="button" data-val="annee">Années</button>
+          </div>
+        </div>
+        <div class="table-box">
+          <table>
+            <thead>
+              <tr><th id="marge-col-periode">Mois</th><th class="num">CA HT</th><th class="num">Achats HT</th>
+                  <th class="num">Marge</th><th class="num">Taux</th><th class="num">vs avant</th></tr>
+            </thead>
+            <tbody id="marge-body"><tr><td colspan="6" class="muted">Chargement…</td></tr></tbody>
+          </table>
+        </div>
+        <button type="button" class="lien" id="marge-plus" style="align-self:center">Voir plus</button>
+      </div>
+      <p class="note" id="marge-note"></p>
     </section>
 
     <!-- ⑤ TENDANCES -->
@@ -858,69 +882,150 @@
     }
 
     // ═══ ④ MARGE SUR ACHATS ═════════════════════════════════════════════
-    // Sans inventaire : CA HT − achats HT sur 4 semaines glissantes. Le stock
-    // tourne en quelques jours, donc l'approximation tient sur 4 semaines.
+    // Sans inventaire : CA HT − achats HT, par semaine / mois / année, jusqu'à
+    // la dernière journée terminée (période en cours comparée à durée égale).
     const fmtPct1 = v => v == null ? '—' : `${String(v).replace('.', ',')} %`;
+    const evoPts = pts => pts == null ? '<span class="flat">—</span>'
+      : `<span class="${pts > 0 ? 'up' : (pts < 0 ? 'down' : 'flat')}">${pts > 0 ? '▲ +' : (pts < 0 ? '▼ ' : '= ')}${String(pts).replace('.', ',')} pt</span>`;
+    let margeVue = 'mois';
+    let margeDetail = 'mois';
+    let margeLimite = 12;
+    const URL_MARGE = `${API}/marge-achats/periodes`;
 
     async function chargerMarge() {
-      const el = $('marge-contenu');
+      await Promise.all([chargerMargeResume(), chargerMargeGlissant(), chargerMargeDetail()]);
+    }
+
+    // Chiffres de la période en cours (semaine / mois / année)
+    async function chargerMargeResume() {
+      const el = $('marge-resume');
       try {
-        const m = await getJson(`${API}/marge-achats`);
-        const c = m.courant, p = m.precedent;
-        $('t-marge').textContent = `Du ${fmtDdMm(c.date_debut)} au ${fmtDdMm(c.date_fin)} (4 semaines)`;
-        if (!c.exploitable) {
-          el.innerHTML = `<p class="muted">Pas assez de données sur les 4 dernières semaines
-            (il faut au moins 14 jours de CA saisis et des réceptions clôturées).</p>`;
+        const res = await getJson(`${URL_MARGE}?granularite=${margeVue}&limit=1`);
+        const l = res.lignes[0];
+        $('marge-note').innerHTML = `Calcul sans inventaire : on suppose que le stock ne bouge pas. Fiable sur un mois,
+          à prendre avec prudence sur une seule semaine (un gros achat la fausse). CA converti en HT avec une TVA de
+          ${String(res.tva_pct).replace('.', ',')} % (réglable dans la page Marge). Achats datés au jour de la réception.`;
+        if (!l) {
+          $('t-marge').textContent = 'Pas encore de données';
+          el.innerHTML = '';
           return;
         }
-        const evo = m.evolution_taux_points;
-        const evoTxt = evo == null ? '<span class="muted">pas de comparaison</span>'
-          : `<span class="${evo > 0 ? 'up' : (evo < 0 ? 'down' : 'flat')}">${evo > 0 ? '▲ +' : (evo < 0 ? '▼ ' : '= ')}${String(evo).replace('.', ',')} pt</span> <span class="muted">vs les 4 semaines d'avant (${fmtPct1(p.taux_marge_pct)})</span>`;
-        // Barres calées sur la plage observée (et non depuis 0 %) : en marge,
-        // 1 ou 2 points d'écart comptent et doivent se voir.
-        const pts = m.historique.filter(h => h.exploitable && h.taux_marge_pct != null).map(h => h.taux_marge_pct);
-        const haut = Math.max(...pts, 1), bas = Math.max(0, Math.min(...pts, haut) - 5);
-        const histo = m.historique.map((h, i) => {
-          const ok = h.exploitable && h.taux_marge_pct != null;
-          const ht = ok ? Math.round(10 + 70 * (h.taux_marge_pct - bas) / Math.max(1, haut - bas)) : 2;
-          return `<div class="mh-col${i === m.historique.length - 1 ? ' dernier' : ''}" title="4 semaines jusqu'au ${fmtDdMm(h.date_fin)}">
-              <span class="mh-val">${ok ? Math.round(h.taux_marge_pct) + ' %' : '—'}</span>
-              <div class="mh-barre" style="height:${ht}px"></div>
-              <span class="mh-date">${fmtDdMm(h.date_fin)}</span>
-            </div>`;
-        }).join('');
-        const sources = [
-          c.nb_source_facture && `${c.nb_source_facture} au prix facture`,
-          c.nb_source_bl && `${c.nb_source_bl} au prix du bon de livraison`,
-          c.nb_source_catalogue && `${c.nb_source_catalogue} au prix catalogue`,
-        ].filter(Boolean).join(', ');
+        const finTxt = l.en_cours ? (l.date_fin === todayIso() ? 'jusqu\'à aujourd\'hui' : 'jusqu\'à hier') : 'terminé';
+        $('t-marge').textContent = `${titreTendance(margeVue, { debut: l.date_debut })}, ${finTxt}`;
+        if (!l.exploitable) {
+          el.innerHTML = `<p class="muted">Pas encore assez de données sur cette période (il faut du CA et des réceptions clôturées).</p>`;
+          return;
+        }
+        const ref = l.reference;
+        const refTxt = ref ? `vs ${l.en_cours ? 'même durée' : 'période'} d'avant (${fmtPct1(ref.taux_marge_pct)})` : '';
         el.innerHTML = `
-          <div style="display:flex;flex-direction:column;gap:16px">
-            <p class="phrase">Tu as vendu <strong>${fmtEurRond(c.ca_ht)} HT</strong> pour <strong>${fmtEurRond(c.achats_ht)} HT</strong> d'achats :
-              il te reste <strong>${fmtEurRond(c.marge_ht)}</strong>, soit <strong>${fmtPct1(c.taux_marge_pct)}</strong> du CA.</p>
-            <div class="tuiles">
-              <div class="tuile"><span class="tuile-lbl">Taux de marge sur achats</span>
-                <span class="tuile-val">${fmtPct1(c.taux_marge_pct)}</span>
-                <span class="tuile-sous">${evoTxt}</span></div>
-              <div class="tuile"><span class="tuile-lbl">Coefficient</span>
-                <span class="tuile-val">${String(c.coefficient).replace('.', ',')}</span>
-                <span class="tuile-sous muted">1 € acheté → ${fmtEur(c.coefficient)} vendus HT</span></div>
-              <div class="tuile"><span class="tuile-lbl">Achats / CA</span>
-                <span class="tuile-val">${fmtPct1(Math.round(1000 * c.achats_ht / c.ca_ht) / 10)}</span>
-                <span class="tuile-sous muted">part du CA dépensée en marchandise</span></div>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              <div style="font-weight:600">Taux de marge, semaine après semaine <span class="muted" style="font-weight:400">(à chaque fois sur 4 semaines)</span></div>
-              <div class="marge-histo">${histo}</div>
-            </div>
-            <p class="note">Calcul sans inventaire : on suppose que le stock ne bouge pas, c'est fiable sur 4 semaines mais pas sur une seule.
-              CA converti en HT avec une TVA de ${String(m.tva_pct).replace('.', ',')} % (réglable dans la page Marge).
-              Achats : ${c.nb_receptions} réception${c.nb_receptions > 1 ? 's' : ''} (${sources}).
-              ${c.nb_sans_facture ? `<br><span class="down">${c.nb_sans_facture} réception(s) sans facture : à vérifier dans Factures.</span>` : ''}</p>
+          <div class="tuiles">
+            <div class="tuile"><span class="tuile-lbl">Taux de marge</span>
+              <span class="tuile-val">${fmtPct1(l.taux_marge_pct)}</span>
+              <span class="tuile-sous">${evoPts(l.evolution_taux_points)} <span class="muted">${refTxt}</span></span></div>
+            <div class="tuile"><span class="tuile-lbl">Marge</span>
+              <span class="tuile-val">${fmtEurRond(l.marge_ht)}</span>
+              <span class="tuile-sous muted">CA HT − achats HT</span></div>
+            <div class="tuile"><span class="tuile-lbl">CA HT / achats HT</span>
+              <span class="tuile-val">${fmtEurRond(l.ca_ht)}</span>
+              <span class="tuile-sous muted">pour ${fmtEurRond(l.achats_ht)} d'achats</span></div>
+            <div class="tuile"><span class="tuile-lbl">Coefficient</span>
+              <span class="tuile-val">${String(l.coefficient).replace('.', ',')}</span>
+              <span class="tuile-sous muted">1 € acheté → ${fmtEur(l.coefficient)} vendus HT</span></div>
           </div>`;
       } catch (e) {
         console.error(e);
         el.innerHTML = erreurHtml;
+      }
+    }
+
+    // Repère stable : 4 semaines glissantes (lisse les livraisons ponctuelles)
+    async function chargerMargeGlissant() {
+      const el = $('marge-glissant');
+      try {
+        const m = await getJson(`${API}/marge-achats?semaines=1`);
+        if (!m.courant.exploitable) { el.style.display = 'none'; return; }
+        el.style.display = '';
+        el.innerHTML = `Repère le plus fiable — <strong>4 dernières semaines glissantes</strong> (${fmtDdMm(m.courant.date_debut)} → ${fmtDdMm(m.courant.date_fin)}) :
+          <strong>${fmtPct1(m.courant.taux_marge_pct)}</strong> de marge ${evoPts(m.evolution_taux_points)}
+          <span class="muted">vs les 4 semaines d'avant</span>`;
+      } catch (e) {
+        console.error(e);
+        el.style.display = 'none';
+      }
+    }
+
+    function libelleMarge(l, gran) {
+      if (gran === 'semaine') return `<strong>Semaine ${parseInt(l.periode.split('-S')[1], 10)}</strong> <span class="muted">· ${fmtDdMm(l.date_debut)} → ${fmtDdMm(decalerIso(l.date_debut, 6))}</span>`;
+      if (gran === 'mois') return `<strong>${maj1(versDate(l.date_debut).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))}</strong>`;
+      return `<strong>${l.periode}</strong>`;
+    }
+
+    function ligneMarge(l, gran, niveau, parents) {
+      const id = 'M' + (++idLigne);
+      const enfant = { annee: 'mois', mois: 'semaine' }[gran];
+      const finCal = gran === 'semaine' ? decalerIso(l.date_debut, 6)
+        : gran === 'mois' ? finDuMois(l.date_debut) : l.date_debut.slice(0, 4) + '-12-31';
+      const attrs = ` data-id="${id}" data-parents="${parents}"`
+        + (enfant ? ` data-deplier="${enfant}" data-debut="${l.date_debut}" data-fin="${finCal}" data-niveau="${niveau}" aria-expanded="false" tabindex="0"` : '');
+      const classes = `niv-${niveau}${enfant ? ' depliable' : ''}`;
+      const chevron = enfant ? '<span class="chevron" aria-hidden="true">›</span>' : '';
+      let taux, evo;
+      if (l.exploitable) {
+        taux = `<strong>${fmtPct1(l.taux_marge_pct)}</strong>`;
+        evo = evoPts(l.evolution_taux_points) + (l.en_cours && l.evolution_taux_points != null ? '<br><span class="muted">en cours, à durée égale</span>' : '');
+      } else {
+        taux = `<span class="muted">${!l.ca_ht ? 'pas de CA' : 'pas d\'achat'}</span>`;
+        evo = '<span class="flat">—</span>';
+      }
+      return `<tr class="${classes}"${attrs}>
+          <td>${chevron}${libelleMarge(l, gran)}</td>
+          <td class="num">${fmtEurRond(l.ca_ht)}</td>
+          <td class="num">${fmtEurRond(l.achats_ht)}</td>
+          <td class="num">${l.exploitable ? fmtEurRond(l.marge_ht) : '—'}</td>
+          <td class="num">${taux}</td>
+          <td class="num">${evo}</td>
+        </tr>`;
+    }
+
+    async function chargerMargeDetail() {
+      const tbody = $('marge-body');
+      $('marge-col-periode').textContent = { semaine: 'Semaine', mois: 'Mois', annee: 'Année' }[margeDetail];
+      try {
+        const res = await getJson(`${URL_MARGE}?granularite=${margeDetail}&limit=${margeLimite}`);
+        tbody.innerHTML = res.lignes.length
+          ? res.lignes.map(l => ligneMarge(l, margeDetail, 0, '')).join('')
+          : '<tr><td colspan="6" class="muted">Aucune donnée pour le moment.</td></tr>';
+        $('marge-plus').style.display = res.lignes.length >= margeLimite ? '' : 'none';
+      } catch (e) {
+        console.error(e);
+        tbody.innerHTML = `<tr><td colspan="6">${erreurHtml}</td></tr>`;
+      }
+    }
+
+    // Déplie / replie : Année → ses mois, Mois → ses semaines
+    async function basculerMarge(tr) {
+      const id = tr.dataset.id;
+      if (tr.classList.contains('ouvert')) {
+        $('marge-body').querySelectorAll('tr').forEach(x => {
+          if ((x.dataset.parents || '').split(' ').includes(id)) x.remove();
+        });
+        tr.classList.remove('ouvert');
+        tr.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      tr.classList.add('ouvert');
+      tr.setAttribute('aria-expanded', 'true');
+      const gran = tr.dataset.deplier, niveau = Number(tr.dataset.niveau) + 1;
+      const parents = ((tr.dataset.parents || '') + ' ' + id).trim();
+      try {
+        const res = await getJson(`${URL_MARGE}?granularite=${gran}&limit=12&date_debut=${tr.dataset.debut}&date_fin=${tr.dataset.fin}`);
+        tr.insertAdjacentHTML('afterend', res.lignes.length
+          ? res.lignes.map(l => ligneMarge(l, gran, niveau, parents)).join('')
+          : `<tr class="niv-${niveau}" data-parents="${parents}"><td colspan="6" class="muted">Aucune donnée.</td></tr>`);
+      } catch (e) {
+        console.error(e);
+        tr.insertAdjacentHTML('afterend', `<tr data-parents="${parents}"><td colspan="6">${erreurHtml}</td></tr>`);
       }
     }
 
@@ -1172,6 +1277,18 @@
       const v = parseFloat($('obj-montant').value);
       if (!(v > 0)) { alert('Saisir un objectif en euros (ex. 35000).'); return; }
       enregistrerObjectif(v);
+    });
+
+    initSeg('seg-marge', v => { margeVue = v; chargerMargeResume(); });
+    initSeg('seg-marge-detail', v => { margeDetail = v; margeLimite = 12; chargerMargeDetail(); });
+    $('marge-plus').addEventListener('click', () => { margeLimite += 12; chargerMargeDetail(); });
+    $('marge-body').addEventListener('click', ev => {
+      const tr = ev.target.closest('tr.depliable');
+      if (tr) basculerMarge(tr);
+    });
+    $('marge-body').addEventListener('keydown', ev => {
+      const tr = ev.target.closest('tr.depliable');
+      if (tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); basculerMarge(tr); }
     });
 
     initSeg('seg-rapide', v => { rapide = v; chargerRapide(); });

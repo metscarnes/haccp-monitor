@@ -54,6 +54,7 @@ GET    /api/achats/pilotage/ca/stats/derniere-journee       → dernière journ�
 GET    /api/achats/pilotage/ca/objectif                     → objectif du mois + réalisé + projection fin de mois
 PUT    /api/achats/pilotage/ca/objectif                     → fixer / supprimer l'objectif d'un mois
 GET    /api/achats/pilotage/ca/marge-achats                 → marge apparente sur achats, 4 semaines glissantes
+GET    /api/achats/pilotage/ca/marge-achats/periodes        → marge sur achats par semaine / mois / année (dépliable)
 """
 
 import asyncio
@@ -6435,13 +6436,16 @@ _GRANULARITES = ("jour", "semaine", "mois")
 
 def _bornes_periode(d: date, gran: str) -> tuple[str, date, date]:
     """Clé et bornes CALENDAIRES de la période qui contient `d`
-    (jour : d ; semaine ISO : lundi→dimanche ; mois : 1er→dernier jour)."""
+    (jour : d ; semaine ISO : lundi→dimanche ; mois : 1er→dernier jour ;
+    année : 1er janvier→31 décembre)."""
     if gran == "jour":
         return d.isoformat(), d, d
     if gran == "semaine":
         annee, num, _ = d.isocalendar()
         lundi = d - timedelta(days=d.weekday())
         return f"{annee}-S{num:02d}", lundi, lundi + timedelta(days=6)
+    if gran == "annee":
+        return str(d.year), date(d.year, 1, 1), date(d.year, 12, 31)
     import calendar
     debut = d.replace(day=1)
     fin = d.replace(day=calendar.monthrange(d.year, d.month)[1])
@@ -6962,6 +6966,101 @@ async def get_ca_marge_achats(semaines: int = Query(8, ge=1, le=26, description=
         "historique": [{k: h[k] for k in ("date_fin", "taux_marge_pct", "coefficient", "exploitable")}
                        for h in reversed(historique)],
     }
+
+
+def _marge(ca_ht: float, achats_ht: float) -> dict:
+    """Agrégat marge sur achats d'un CA HT et d'achats HT."""
+    marge = round(ca_ht - achats_ht, 2)
+    return {
+        "ca_ht": round(ca_ht, 2), "achats_ht": round(achats_ht, 2), "marge_ht": marge,
+        "taux_marge_pct": round(100 * marge / ca_ht, 1) if ca_ht else None,
+        "coefficient": round(ca_ht / achats_ht, 2) if achats_ht else None,
+        "exploitable": bool(ca_ht and achats_ht),
+    }
+
+
+@router.get("/pilotage/ca/marge-achats/periodes")
+async def get_ca_marge_achats_periodes(
+    granularite: str = Query("mois", description="semaine | mois | annee"),
+    limit:       int = Query(12, ge=1, le=200),
+    date_debut:  Optional[str] = Query(None, description="Ne garder que les périodes qui touchent [date_debut, date_fin]"),
+    date_fin:    Optional[str] = Query(None, description="(dépliage : mois d'une année, semaines d'un mois)"),
+):
+    """Marge sur achats par semaine / mois / année, plus récente d'abord.
+
+    Mêmes règles que les Tendances : jusqu'à la dernière journée terminée ; une
+    période EN COURS est comparée au même nombre de premiers jours de la
+    période d'avant. Évolution = écart du taux de marge en POINTS.
+    CA HT = (CA saisi + ajustements caisse/banque) / (1 + TVA) ; achats = par
+    réception (facture > BL > catalogue), datés à la réception. Sans inventaire :
+    une semaine seule peut être faussée par un gros achat ponctuel.
+    """
+    from src.api.routes_inventaire import _achats_reels_par_reception, _get_tva_pct
+
+    gran = granularite.lower().strip()
+    if gran not in ("semaine", "mois", "annee"):
+        raise HTTPException(400, "granularite doit valoir semaine, mois ou annee")
+
+    async with get_db() as db:
+        fin_complete = await _derniere_journee_terminee(db)
+        tva = await _get_tva_pct(db)
+        fc = fin_complete.isoformat()
+        cur = await db.execute(
+            "SELECT date_ca, montant_ttc FROM ca_journalier WHERE boutique_id = 1 AND date_ca <= ? "
+            "UNION ALL SELECT date_ca, montant_ttc FROM ca_ajustements WHERE boutique_id = 1 AND date_ca <= ?",
+            (fc, fc),
+        )
+        ventes = [(r["date_ca"], float(r["montant_ttc"] or 0)) for r in await cur.fetchall()]
+        achats = (await _achats_reels_par_reception(db, "0000-01-01", fc))["par_reception"]
+
+    # Montants par jour (CA HT, achats HT), puis regroupés par période calendaire
+    par_jour: dict[str, list] = {}
+    for d, ttc in ventes:
+        par_jour.setdefault(d, [0.0, 0.0])[0] += ttc / (1 + tva / 100)
+    for a in achats:
+        par_jour.setdefault(a["date_reception"], [0.0, 0.0])[1] += a["montant_ht"]
+
+    groupes: dict[str, dict] = {}
+    for d, (ca, ach) in par_jour.items():
+        cle, debut_cal, fin_cal = _bornes_periode(date.fromisoformat(d), gran)
+        g = groupes.setdefault(cle, {"debut_cal": debut_cal, "fin_cal": fin_cal, "jours": {}})
+        g["jours"][d] = (ca, ach)
+
+    def somme(g: Optional[dict], jusqu_au: Optional[str] = None) -> Optional[dict]:
+        if not g:
+            return None
+        jours = [v for d, v in g["jours"].items() if jusqu_au is None or d <= jusqu_au]
+        return _marge(sum(v[0] for v in jours), sum(v[1] for v in jours))
+
+    cles = sorted(groupes, reverse=True)
+    if date_debut or date_fin:
+        lo, hi = date_debut or "0000-01-01", date_fin or "9999-12-31"
+        cles = [c for c in cles
+                if groupes[c]["debut_cal"].isoformat() <= hi and groupes[c]["fin_cal"].isoformat() >= lo]
+
+    lignes = []
+    for cle in cles[:limit]:
+        g = groupes[cle]
+        cle_prec, debut_prec, fin_prec = _bornes_periode(g["debut_cal"] - timedelta(days=1), gran)
+        en_cours = g["fin_cal"] > fin_complete
+        courant = somme(g)
+        if en_cours:
+            n = (fin_complete - g["debut_cal"]).days
+            ref = somme(groupes.get(cle_prec), min(debut_prec + timedelta(days=n), fin_prec).isoformat())
+        else:
+            ref = somme(groupes.get(cle_prec))
+        evo = (round(courant["taux_marge_pct"] - ref["taux_marge_pct"], 1)
+               if courant["exploitable"] and ref and ref["exploitable"] else None)
+        lignes.append({
+            "periode": cle,
+            "date_debut": g["debut_cal"].isoformat(),
+            "date_fin": min(g["fin_cal"], fin_complete).isoformat(),
+            "en_cours": en_cours,
+            **courant,
+            "reference": ref,
+            "evolution_taux_points": evo,
+        })
+    return {"granularite": gran, "tva_pct": tva, "derniere_journee": fc, "lignes": lignes}
 
 
 @router.put("/pilotage/ca/objectif")

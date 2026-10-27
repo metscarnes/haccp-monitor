@@ -1008,6 +1008,7 @@ async def _achats_reels_par_reception(db, debut, fin):
     total = 0.0
     nb_facture = nb_bl = nb_catalogue = 0
     anomalies: list = []
+    detail: list = []        # montant retenu par réception (regroupements par période)
 
     for rid, r in par_reception.items():
         montant = None
@@ -1069,6 +1070,8 @@ async def _achats_reels_par_reception(db, debut, fin):
                 })
 
         total += montant
+        detail.append({"reception_id": rid, "date_reception": r["date_reception"],
+                       "montant_ht": round(montant, 2), "source": source_ligne})
         if source_ligne == "facture":
             nb_facture += 1
         elif source_ligne == "bl":
@@ -1083,6 +1086,7 @@ async def _achats_reels_par_reception(db, debut, fin):
         "nb_source_bl": nb_bl,
         "nb_source_catalogue": nb_catalogue,
         "anomalies_sans_facture": anomalies,
+        "par_reception": detail,
     }
 
 
