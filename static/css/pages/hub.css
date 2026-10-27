@@ -656,7 +656,10 @@
   opacity: 0.6;
 }
 
-#hub-retour[hidden] { display: none; }
+#hub-retour[hidden],
+#hub-accueil[hidden] { display: none; }
+.hub-nav { display: inline-flex; gap: 0.4rem; flex-shrink: 0; }
+.hub-nav:not(:has(> :not([hidden]))) { display: none; }   /* accueil : rien à afficher */
 
 /* Choix de l'icône d'un dossier */
 .hub-dossier-label-icone { margin-top: 1rem; }

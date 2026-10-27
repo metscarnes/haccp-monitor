@@ -6,8 +6,14 @@
   <title>Tâches HACCP — Au Comptoir des Lilas</title>
   <!-- Ancienne page intermédiaire : son contenu est désormais le dossier
        « Tâches HACCP » du Hub, rangeable depuis ✏️. Gardée pour les liens « ← Tâches HACCP ». -->
-  <meta http-equiv="refresh" content="0; url=/hub.html#dossier-taches">
-  <script>location.replace('/hub.html#dossier-taches');</script>
+  <noscript><meta http-equiv="refresh" content="0; url=/hub.html#dossier-taches"></noscript>
+  <script>
+    // Retour au dossier d'où l'on était parti (la tuile a pu être rangée ailleurs) ;
+    // à défaut, le dossier d'origine.
+    var quitte = null;
+    try { quitte = sessionStorage.getItem('hub_dossier_quitte'); } catch (e) {}
+    location.replace('/hub.html' + (quitte !== null ? quitte : '#dossier-taches'));
+  </script>
 </head>
 <body></body>
 </html>

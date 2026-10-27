@@ -500,6 +500,7 @@ const ICONES_DOSSIER = ['📁', '✅', '🏭', '🛒', '📊', '🥩', '🔪', '
 // ── État ──────────────────────────────────────────────────────
 const elGrille         = document.getElementById('hub-grille');
 const elRetour         = document.getElementById('hub-retour');
+const elAccueil        = document.getElementById('hub-accueil');
 const elTitre          = document.getElementById('hub-titre');
 const elBtnPerso       = document.getElementById('hub-btn-perso');
 const elBarre          = document.getElementById('hub-edition-barre');
@@ -669,6 +670,8 @@ function rendre() {
     elGrille.appendChild(el);
   }
   elRetour.hidden = !vue;
+  // 🏠 en plus du « ← » dès qu'on est dans un sous-dossier (sinon « ← Accueil » suffit)
+  elAccueil.hidden = !vue || !parentDe(vue);
   if (vue) {
     const p = parentDe(vue);
     elRetour.href = p ? '#' + p : '#';
@@ -686,6 +689,15 @@ function vueDepuisAdresse() {
 }
 
 window.addEventListener('hashchange', () => { vue = vueDepuisAdresse(); rendre(); });
+
+// Dossier quitté en ouvrant une page : ses liens « ← Production », « ← Achats »…
+// (anciennes pages, devenues des redirections) y ramènent, même si la tuile a été
+// rangée ailleurs que dans le dossier d'origine.
+document.addEventListener('click', (e) => {
+  const lien = e.target.closest('a[href]');
+  if (!lien || enEdition || lien.getAttribute('href').startsWith('#')) return;
+  try { sessionStorage.setItem('hub_dossier_quitte', vue ? '#' + vue : ''); } catch { /* stockage indisponible */ }
+});
 
 async function chargerDisposition() {
   try {
