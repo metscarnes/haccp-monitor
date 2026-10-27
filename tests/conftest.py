@@ -92,6 +92,7 @@ async def db():
             "inventaires",                         # → boutiques, personnel
             "ca_journalier",                       # → boutiques, personnel (pilotage CA)
             "ca_ajustements",                      # ajustements caisse/banque (marge)
+            "ca_objectifs",                        # objectifs de CA mensuels
             "achats_reels_periode",                # → boutiques, personnel (marge)
             # Module Achat — Factures & Commandes (FK vers receptions/reception_lignes/fournisseurs)
             "historique_prix_achat",               # → catalogue_fournisseur, receptions, reception_lignes

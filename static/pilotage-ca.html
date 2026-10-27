@@ -129,6 +129,24 @@
     .rapide-val { font-size: 20px; font-weight: 700; white-space: nowrap; }
     .rapide-evo { font-size: 15px; }
 
+    /* Objectif du mois */
+    .obj-edit { display: flex; gap: 12px; flex-wrap: wrap; background: #FBF6EC; border-radius: 10px; padding: 14px; }
+    .obj-barre { position: relative; height: 30px; background: #F1E6D2; border-radius: 8px; overflow: visible; }
+    .obj-realise { height: 100%; background: var(--color-accent); border-radius: 8px 0 0 8px; max-width: 100%; }
+    .obj-projection { position: absolute; top: 0; height: 100%; background: repeating-linear-gradient(45deg, #C9A27E 0 6px, #E4CFB4 6px 12px); opacity: .9; }
+    .obj-cible { position: absolute; top: -6px; bottom: -6px; width: 3px; background: #3D2008; border-radius: 2px; }
+    .obj-legende { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #6E5844; }
+    .obj-legende i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+    /* Marge sur achats : taux des 8 dernières semaines (fenêtres de 4 semaines) */
+    .marge-histo { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; align-items: end; height: 110px; }
+    .mh-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
+    .mh-barre { width: 100%; background: #D9C1A3; border-radius: 5px 5px 0 0; min-height: 2px; }
+    .mh-col.dernier .mh-barre { background: var(--color-accent); }
+    .mh-val { font-size: 12px; white-space: nowrap; }
+    .mh-date { font-size: 11px; color: #6E5844; }
+    .note { font-size: 13px; color: #6E5844; margin: 0; line-height: 1.5; }
+
     /* Dépliage mois → semaines → jours */
     tr.depliable { cursor: pointer; }
     tr.depliable:hover { background: #FBF6EC; }
@@ -263,11 +281,43 @@
       <div id="jour-contenu"><p class="muted">Chargement…</p></div>
     </section>
 
-    <!-- ③ TENDANCES -->
+    <!-- ③ OBJECTIF DU MOIS -->
+    <section class="card" aria-labelledby="t-obj">
+      <div class="card-tete">
+        <div>
+          <p class="eyebrow">3 · Objectif du mois</p>
+          <h2 class="h2" id="t-obj">—</h2>
+        </div>
+        <button type="button" class="btn-ghost" id="obj-modifier">Fixer l'objectif</button>
+      </div>
+      <div class="obj-edit masque" id="obj-edit">
+        <div class="champ" style="flex:1 1 220px">
+          <label for="obj-montant">Objectif de CA TTC du mois (€)</label>
+          <input type="number" id="obj-montant" class="inp big" inputmode="decimal" step="100" min="0" placeholder="Ex. 35000">
+        </div>
+        <div class="options" style="flex:1 1 260px;align-self:flex-end">
+          <button type="button" class="btn-ghost on" id="obj-ok">Enregistrer</button>
+          <button type="button" class="btn-ghost" id="obj-annuler">Annuler</button>
+          <button type="button" class="btn-ghost" id="obj-supprimer">Supprimer</button>
+        </div>
+      </div>
+      <div id="obj-contenu"><p class="muted">Chargement…</p></div>
+    </section>
+
+    <!-- ④ MARGE SUR ACHATS -->
+    <section class="card" aria-labelledby="t-marge">
+      <div>
+        <p class="eyebrow">4 · Marge sur achats</p>
+        <h2 class="h2" id="t-marge">Les 4 dernières semaines</h2>
+      </div>
+      <div id="marge-contenu"><p class="muted">Chargement…</p></div>
+    </section>
+
+    <!-- ⑤ TENDANCES -->
     <section class="card" aria-labelledby="t-tend">
       <div class="card-tete">
         <div>
-          <p class="eyebrow">3 · Tendances</p>
+          <p class="eyebrow">5 · Tendances</p>
           <h2 class="h2" id="t-tend">—</h2>
         </div>
         <div class="seg" role="group" aria-label="Période" id="seg-tendance" style="min-width:280px">
@@ -569,7 +619,7 @@
         modifie = false;
         fb.className = 'feedback ok';
         fb.textContent = `Enregistré ✓ — ${fmtDateLongue(body.date_ca)}${fermeSel ? ' (fermé)' : ''}`;
-        await Promise.all([chargerOublis(false), chargerTendance(), chargerJourType(), chargerDetail()]);
+        await Promise.all([chargerOublis(false), chargerObjectif(), chargerMarge(), chargerTendance(), chargerJourType(), chargerDetail()]);
         await chargerJour(jourAffiche);
       } catch (e) {
         fb.className = 'feedback err';
@@ -698,7 +748,183 @@
       }
     }
 
-    // ═══ ③ TENDANCES ════════════════════════════════════════════════════
+    // ═══ ③ OBJECTIF DU MOIS ══════════════════════════════════════════════
+    // Réalisé (journées terminées) vs objectif, et projection de fin de mois
+    // (le reste du mois à la moyenne récente de chaque jour de semaine).
+    let objectif = null;
+
+    async function chargerObjectif() {
+      try {
+        objectif = await getJson(`${API}/objectif`);
+        rendreObjectif();
+      } catch (e) {
+        console.error(e);
+        $('obj-contenu').innerHTML = erreurHtml;
+      }
+    }
+
+    function rendreObjectif() {
+      const o = objectif;
+      const nomMois = maj1(versDate(o.mois + '-01').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+      $('t-obj').textContent = o.objectif_ttc ? `${nomMois} : ${fmtEurRond(o.objectif_ttc)}` : nomMois;
+      $('obj-modifier').textContent = o.objectif_ttc ? 'Modifier' : 'Fixer l\'objectif';
+      const auTxt = o.realise_jusqu_au ? `au ${fmtDdMm(o.realise_jusqu_au)}` : 'aucun jour terminé';
+
+      if (!o.objectif_ttc) {
+        $('obj-contenu').innerHTML = `
+          <div class="tuiles">
+            <div class="tuile"><span class="tuile-lbl">Réalisé ${auTxt}</span>
+              <span class="tuile-val">${fmtEurRond(o.realise_ttc)}</span></div>
+            <div class="tuile"><span class="tuile-lbl">Projection fin de mois</span>
+              <span class="tuile-val">${fmtEurRond(o.projection_ttc)}</span>
+              <span class="tuile-sous muted">au rythme des 8 dernières semaines</span></div>
+          </div>
+          <p class="muted" style="margin:0">Fixe un objectif pour savoir si tu es en avance ou en retard.</p>`;
+        return;
+      }
+
+      const cible = o.objectif_ttc;
+      const echelle = Math.max(cible, o.projection_ttc) * 1.05;
+      const pRealise = Math.min(100, 100 * o.realise_ttc / echelle);
+      const pProj = Math.max(0, Math.min(100, 100 * o.projection_ttc / echelle) - pRealise);
+      const pCible = 100 * cible / echelle;
+      const atteint = o.ecart_projection >= 0;
+      const verdict = o.jours_ouverts_restants === 0
+        ? (o.realise_ttc >= cible
+            ? `<span class="up">Objectif atteint</span> (${evoEur(o.realise_ttc - cible, fmtEurRond)}).`
+            : `<span class="down">Objectif manqué</span> de ${fmtEurRond(cible - o.realise_ttc)}.`)
+        : atteint
+          ? `Au rythme actuel, <span class="up">l'objectif sera atteint</span> avec ${fmtEurRond(o.ecart_projection)} d'avance.`
+          : `Au rythme actuel, <span class="down">il manquera ${fmtEurRond(-o.ecart_projection)}</span>. `
+            + `Il faut faire <strong>${fmtEurRond(o.besoin_par_jour)} par jour ouvert</strong> sur les ${o.jours_ouverts_restants} restants, `
+            + `au lieu de ${fmtEurRond(o.moyenne_jour_attendue)} en moyenne.`;
+
+      $('obj-contenu').innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <p class="phrase">${verdict}</p>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="obj-barre" role="img" aria-label="Réalisé ${fmtEurRond(o.realise_ttc)}, projection ${fmtEurRond(o.projection_ttc)}, objectif ${fmtEurRond(cible)}">
+              <div class="obj-realise" style="width:${pRealise}%"></div>
+              <div class="obj-projection" style="left:${pRealise}%;width:${pProj}%"></div>
+              <div class="obj-cible" style="left:calc(${pCible}% - 1px)"></div>
+            </div>
+            <div class="obj-legende">
+              <span><i style="background:var(--color-accent)"></i>Réalisé</span>
+              <span><i style="background:#C9A27E"></i>Projection</span>
+              <span><i style="background:#3D2008;width:3px"></i>Objectif</span>
+            </div>
+          </div>
+          <div class="tuiles">
+            <div class="tuile"><span class="tuile-lbl">Réalisé ${auTxt}</span>
+              <span class="tuile-val">${fmtEurRond(o.realise_ttc)}</span>
+              <span class="tuile-sous muted">${String(o.taux_atteinte_pct).replace('.', ',')} % de l'objectif</span></div>
+            <div class="tuile"><span class="tuile-lbl">Projection fin de mois</span>
+              <span class="tuile-val">${fmtEurRond(o.projection_ttc)}</span>
+              <span class="tuile-sous">${evoEur(o.ecart_projection, fmtEurRond)} · ${evoPct({ pct: o.ecart_projection_pct })} <span class="muted">vs objectif</span></span></div>
+            <div class="tuile"><span class="tuile-lbl">Reste à faire</span>
+              <span class="tuile-val">${fmtEurRond(o.reste_a_faire)}</span>
+              <span class="tuile-sous muted">${o.jours_ouverts_restants} jour${o.jours_ouverts_restants > 1 ? 's' : ''} ouvert${o.jours_ouverts_restants > 1 ? 's' : ''} restant${o.jours_ouverts_restants > 1 ? 's' : ''}</span></div>
+          </div>
+        </div>`;
+    }
+
+    function ouvrirEditionObjectif(ouvrir) {
+      $('obj-edit').classList.toggle('masque', !ouvrir);
+      $('obj-modifier').classList.toggle('masque', ouvrir);
+      if (ouvrir) {
+        $('obj-montant').value = objectif && objectif.objectif_ttc ? objectif.objectif_ttc : '';
+        $('obj-supprimer').classList.toggle('masque', !(objectif && objectif.objectif_ttc));
+        $('obj-montant').focus();
+      }
+    }
+
+    async function enregistrerObjectif(montant) {
+      try {
+        const r = await fetch(`${API}/objectif`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mois: objectif.mois, objectif_ttc: montant }),
+        });
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          throw new Error(err.detail || 'Erreur enregistrement');
+        }
+        objectif = await r.json();
+        ouvrirEditionObjectif(false);
+        rendreObjectif();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    // ═══ ④ MARGE SUR ACHATS ═════════════════════════════════════════════
+    // Sans inventaire : CA HT − achats HT sur 4 semaines glissantes. Le stock
+    // tourne en quelques jours, donc l'approximation tient sur 4 semaines.
+    const fmtPct1 = v => v == null ? '—' : `${String(v).replace('.', ',')} %`;
+
+    async function chargerMarge() {
+      const el = $('marge-contenu');
+      try {
+        const m = await getJson(`${API}/marge-achats`);
+        const c = m.courant, p = m.precedent;
+        $('t-marge').textContent = `Du ${fmtDdMm(c.date_debut)} au ${fmtDdMm(c.date_fin)} (4 semaines)`;
+        if (!c.exploitable) {
+          el.innerHTML = `<p class="muted">Pas assez de données sur les 4 dernières semaines
+            (il faut au moins 14 jours de CA saisis et des réceptions clôturées).</p>`;
+          return;
+        }
+        const evo = m.evolution_taux_points;
+        const evoTxt = evo == null ? '<span class="muted">pas de comparaison</span>'
+          : `<span class="${evo > 0 ? 'up' : (evo < 0 ? 'down' : 'flat')}">${evo > 0 ? '▲ +' : (evo < 0 ? '▼ ' : '= ')}${String(evo).replace('.', ',')} pt</span> <span class="muted">vs les 4 semaines d'avant (${fmtPct1(p.taux_marge_pct)})</span>`;
+        // Barres calées sur la plage observée (et non depuis 0 %) : en marge,
+        // 1 ou 2 points d'écart comptent et doivent se voir.
+        const pts = m.historique.filter(h => h.exploitable && h.taux_marge_pct != null).map(h => h.taux_marge_pct);
+        const haut = Math.max(...pts, 1), bas = Math.max(0, Math.min(...pts, haut) - 5);
+        const histo = m.historique.map((h, i) => {
+          const ok = h.exploitable && h.taux_marge_pct != null;
+          const ht = ok ? Math.round(10 + 70 * (h.taux_marge_pct - bas) / Math.max(1, haut - bas)) : 2;
+          return `<div class="mh-col${i === m.historique.length - 1 ? ' dernier' : ''}" title="4 semaines jusqu'au ${fmtDdMm(h.date_fin)}">
+              <span class="mh-val">${ok ? Math.round(h.taux_marge_pct) + ' %' : '—'}</span>
+              <div class="mh-barre" style="height:${ht}px"></div>
+              <span class="mh-date">${fmtDdMm(h.date_fin)}</span>
+            </div>`;
+        }).join('');
+        const sources = [
+          c.nb_source_facture && `${c.nb_source_facture} au prix facture`,
+          c.nb_source_bl && `${c.nb_source_bl} au prix du bon de livraison`,
+          c.nb_source_catalogue && `${c.nb_source_catalogue} au prix catalogue`,
+        ].filter(Boolean).join(', ');
+        el.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <p class="phrase">Tu as vendu <strong>${fmtEurRond(c.ca_ht)} HT</strong> pour <strong>${fmtEurRond(c.achats_ht)} HT</strong> d'achats :
+              il te reste <strong>${fmtEurRond(c.marge_ht)}</strong>, soit <strong>${fmtPct1(c.taux_marge_pct)}</strong> du CA.</p>
+            <div class="tuiles">
+              <div class="tuile"><span class="tuile-lbl">Taux de marge sur achats</span>
+                <span class="tuile-val">${fmtPct1(c.taux_marge_pct)}</span>
+                <span class="tuile-sous">${evoTxt}</span></div>
+              <div class="tuile"><span class="tuile-lbl">Coefficient</span>
+                <span class="tuile-val">${String(c.coefficient).replace('.', ',')}</span>
+                <span class="tuile-sous muted">1 € acheté → ${fmtEur(c.coefficient)} vendus HT</span></div>
+              <div class="tuile"><span class="tuile-lbl">Achats / CA</span>
+                <span class="tuile-val">${fmtPct1(Math.round(1000 * c.achats_ht / c.ca_ht) / 10)}</span>
+                <span class="tuile-sous muted">part du CA dépensée en marchandise</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="font-weight:600">Taux de marge, semaine après semaine <span class="muted" style="font-weight:400">(à chaque fois sur 4 semaines)</span></div>
+              <div class="marge-histo">${histo}</div>
+            </div>
+            <p class="note">Calcul sans inventaire : on suppose que le stock ne bouge pas, c'est fiable sur 4 semaines mais pas sur une seule.
+              CA converti en HT avec une TVA de ${String(m.tva_pct).replace('.', ',')} % (réglable dans la page Marge).
+              Achats : ${c.nb_receptions} réception${c.nb_receptions > 1 ? 's' : ''} (${sources}).
+              ${c.nb_sans_facture ? `<br><span class="down">${c.nb_sans_facture} réception(s) sans facture : à vérifier dans Factures.</span>` : ''}</p>
+          </div>`;
+      } catch (e) {
+        console.error(e);
+        el.innerHTML = erreurHtml;
+      }
+    }
+
+    // ═══ ⑤ TENDANCES ════════════════════════════════════════════════════
     // Période en cours jusqu'à la DERNIÈRE JOURNÉE TERMINÉE (aujourd'hui si la
     // saisie du jour est complète, sinon hier), comparée à la même durée de la
     // période d'avant (préréglages s-1 / m-1 / a-1 du serveur).
@@ -937,6 +1163,17 @@
       if (choisi) setDate(choisi);
     });
 
+    $('obj-modifier').addEventListener('click', () => ouvrirEditionObjectif(true));
+    $('obj-annuler').addEventListener('click', () => ouvrirEditionObjectif(false));
+    $('obj-supprimer').addEventListener('click', () => {
+      if (confirm('Supprimer l\'objectif de ce mois ?')) enregistrerObjectif(null);
+    });
+    $('obj-ok').addEventListener('click', () => {
+      const v = parseFloat($('obj-montant').value);
+      if (!(v > 0)) { alert('Saisir un objectif en euros (ex. 35000).'); return; }
+      enregistrerObjectif(v);
+    });
+
     initSeg('seg-rapide', v => { rapide = v; chargerRapide(); });
     initSeg('seg-tendance', v => { tendance = v; chargerTendance(); });
     initSeg('seg-detail', v => { detailGran = v; detailLimite = v === 'jour' ? 21 : 12; chargerDetail(); });
@@ -961,6 +1198,8 @@
     // Jour par défaut : le plus ancien oubli des 14 derniers jours, sinon aujourd'hui
     Promise.all([chargerPersonnel(), chargerOublis(true)])
       .then(([, jour]) => setDate(jour || veilleIso()));
+    chargerObjectif();
+    chargerMarge();
     chargerTendance();
     chargerJourType();
     chargerDetail();

@@ -51,6 +51,9 @@ GET    /api/achats/pilotage/ca/stats/par-periode           → CA agrégé jour/
 GET    /api/achats/pilotage/ca/stats/profil-semaine        → moyenne par jour de semaine + glissantes 7/30j
 GET    /api/achats/pilotage/ca/stats/prochain-a-saisir      → jour à saisir par défaut (dernier non saisi)
 GET    /api/achats/pilotage/ca/stats/derniere-journee       → dernière journée complète (borne des tendances)
+GET    /api/achats/pilotage/ca/objectif                     → objectif du mois + réalisé + projection fin de mois
+PUT    /api/achats/pilotage/ca/objectif                     → fixer / supprimer l'objectif d'un mois
+GET    /api/achats/pilotage/ca/marge-achats                 → marge apparente sur achats, 4 semaines glissantes
 """
 
 import asyncio
@@ -298,6 +301,12 @@ class CaJournalierUpsert(BaseModel):
     commentaire:       Optional[str] = None
     ferme:             bool = False            # boutique fermée ce jour (CA = 0, hors moyennes)
     personnel_id:      Optional[int] = None
+
+
+class CaObjectifBody(BaseModel):
+    """Objectif de CA d'un mois (TTC). objectif_ttc = None supprime l'objectif."""
+    mois:         str                      # 'AAAA-MM'
+    objectif_ttc: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -6790,6 +6799,189 @@ async def get_ca_derniere_journee():
     sinon hier (cf. _derniere_journee_terminee)."""
     async with get_db() as db:
         return {"date": (await _derniere_journee_terminee(db)).isoformat()}
+
+
+_PROJECTION_FENETRE_JOURS = 56   # 8 semaines : le niveau ACTUEL de chaque jour de semaine
+
+
+def _bornes_mois(mois: str) -> tuple[date, date]:
+    """'AAAA-MM' → (1er jour, dernier jour). HTTPException 400 si invalide."""
+    import calendar
+    try:
+        annee, num = (int(x) for x in mois.split("-"))
+        debut = date(annee, num, 1)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "mois invalide (format attendu AAAA-MM)")
+    return debut, debut.replace(day=calendar.monthrange(annee, num)[1])
+
+
+async def _ca_attendu_par_jour_semaine(db, fin_complete: date) -> dict[int, float]:
+    """CA attendu par jour de semaine (0 = lundi … 6 = dimanche) : moyenne des
+    journées terminées et ouvertes des 8 dernières semaines (repli : tout
+    l'historique). Un jour de semaine le plus souvent FERMÉ vaut 0 €."""
+    async def _profil(depuis: Optional[str]):
+        cur = await db.execute(
+            "SELECT date_ca, montant_ttc, ferme FROM ca_journalier "
+            "WHERE boutique_id = 1 AND date_ca <= ?" + (" AND date_ca > ?" if depuis else ""),
+            (fin_complete.isoformat(), depuis) if depuis else (fin_complete.isoformat(),),
+        )
+        ouverts: dict[int, list] = {}
+        fermes: dict[int, int] = {}
+        for r in await cur.fetchall():
+            dow = date.fromisoformat(r["date_ca"]).weekday()
+            if r["ferme"]:
+                fermes[dow] = fermes.get(dow, 0) + 1
+            else:
+                ouverts.setdefault(dow, []).append(r["montant_ttc"] or 0)
+        return {dow: (0.0 if fermes.get(dow, 0) > len(ouverts.get(dow, []))
+                      else (sum(ouverts[dow]) / len(ouverts[dow]) if ouverts.get(dow) else None))
+                for dow in range(7)}
+
+    recent = await _profil((fin_complete - timedelta(days=_PROJECTION_FENETRE_JOURS)).isoformat())
+    tout = await _profil(None)
+    # Jour de semaine sans donnée récente : on prend tout l'historique, sinon 0
+    return {dow: (recent[dow] if recent[dow] is not None else (tout[dow] or 0.0)) for dow in range(7)}
+
+
+@router.get("/pilotage/ca/objectif")
+async def get_ca_objectif(mois: Optional[str] = Query(None, description="AAAA-MM (défaut : mois en cours)")):
+    """Objectif du mois, réalisé, et PROJECTION de fin de mois.
+
+    Projection = CA des journées terminées du mois + pour chaque jour restant,
+    le CA moyen de son jour de semaine sur les 8 dernières semaines (0 € pour
+    un jour habituellement fermé). La journée en cours, pas finie, est comptée
+    à sa moyenne (pas à son matin seul).
+    """
+    async with get_db() as db:
+        fin_complete = await _derniere_journee_terminee(db)
+        mois = mois or _aujourdhui_paris().strftime("%Y-%m")
+        debut, fin = _bornes_mois(mois)
+
+        cur = await db.execute(
+            "SELECT objectif_ttc FROM ca_objectifs WHERE boutique_id = 1 AND mois = ?", (mois,))
+        row = await cur.fetchone()
+        objectif = float(row["objectif_ttc"]) if row else None
+
+        borne_realise = min(fin, fin_complete)
+        cur = await db.execute(
+            "SELECT COALESCE(SUM(montant_ttc), 0) AS ttc, COALESCE(SUM(ferme = 0), 0) AS nb "
+            "FROM ca_journalier WHERE boutique_id = 1 AND date_ca >= ? AND date_ca <= ?",
+            (debut.isoformat(), borne_realise.isoformat()),
+        )
+        r = await cur.fetchone()
+        realise, nb_jours_realises = round(float(r["ttc"]), 2), r["nb"]
+
+        attendu = await _ca_attendu_par_jour_semaine(db, fin_complete)
+
+    # Jours restants du mois après la dernière journée terminée
+    reste_attendu, jours_ouverts_restants = 0.0, 0
+    d = max(debut, fin_complete + timedelta(days=1))
+    while d <= fin:
+        a = attendu[d.weekday()]
+        reste_attendu += a
+        jours_ouverts_restants += a > 0
+        d += timedelta(days=1)
+
+    projection = round(realise + reste_attendu, 2)
+    res = {
+        "mois": mois,
+        "objectif_ttc": objectif,
+        "realise_ttc": realise,
+        "realise_jusqu_au": borne_realise.isoformat() if borne_realise >= debut else None,
+        "nb_jours_realises": nb_jours_realises,
+        "projection_ttc": projection,
+        "jours_ouverts_restants": jours_ouverts_restants,
+        "moyenne_jour_attendue": round(reste_attendu / jours_ouverts_restants, 2) if jours_ouverts_restants else None,
+        "ecart_projection": None, "ecart_projection_pct": None,
+        "reste_a_faire": None, "besoin_par_jour": None, "taux_atteinte_pct": None,
+    }
+    if objectif:
+        reste = round(objectif - realise, 2)
+        res.update(
+            ecart_projection=round(projection - objectif, 2),
+            ecart_projection_pct=round(100 * (projection - objectif) / objectif, 1),
+            reste_a_faire=max(reste, 0.0),
+            besoin_par_jour=round(reste / jours_ouverts_restants, 2) if (reste > 0 and jours_ouverts_restants) else None,
+            taux_atteinte_pct=round(100 * realise / objectif, 1),
+        )
+    return res
+
+
+_MARGE_FENETRE_JOURS = 28   # 4 semaines : lisse les gros achats ponctuels (stock non inventorié)
+
+
+@router.get("/pilotage/ca/marge-achats")
+async def get_ca_marge_achats(semaines: int = Query(8, ge=1, le=26, description="Points de l'historique hebdo")):
+    """Marge APPARENTE sur achats, sans inventaire : CA HT − achats HT sur
+    4 semaines glissantes (jusqu'à la dernière journée terminée).
+
+    Sans inventaire on suppose le stock stable : l'erreur = variation de stock,
+    faible sur 4 semaines pour une boucherie (stock de quelques jours). Mêmes
+    briques que le module Marge : CA HT = (CA saisi + ajustements) / (1 + TVA),
+    achats = par réception (facture validée > prix BL > catalogue).
+    `historique` : la même mesure, fenêtre reculée d'une semaine à chaque point.
+    """
+    from src.api.routes_inventaire import _achats_reels_par_reception, _ca_periode_ht, _get_tva_pct
+
+    async with get_db() as db:
+        fin = await _derniere_journee_terminee(db)
+        tva = await _get_tva_pct(db)
+
+        async def fenetre(f: date) -> dict:
+            d = f - timedelta(days=_MARGE_FENETRE_JOURS - 1)
+            ca = await _ca_periode_ht(db, d.isoformat(), f.isoformat(), tva)
+            achats = await _achats_reels_par_reception(db, d.isoformat(), f.isoformat())
+            ca_ht, achats_ht = ca["ht"], achats["ht"]
+            marge = round(ca_ht - achats_ht, 2)
+            return {
+                "date_debut": d.isoformat(), "date_fin": f.isoformat(),
+                "ca_ht": ca_ht, "ca_ttc": ca["ttc"], "nb_jours_ca": ca["nb_jours"],
+                "achats_ht": achats_ht, "marge_ht": marge,
+                "taux_marge_pct": round(100 * marge / ca_ht, 1) if ca_ht else None,
+                "coefficient": round(ca_ht / achats_ht, 2) if achats_ht else None,
+                "nb_receptions": achats["nb_receptions"],
+                "nb_source_facture": achats["nb_source_facture"],
+                "nb_source_bl": achats["nb_source_bl"],
+                "nb_source_catalogue": achats["nb_source_catalogue"],
+                "nb_sans_facture": len(achats["anomalies_sans_facture"]),
+                # Mesure exploitable seulement avec du CA ET des achats sur la fenêtre
+                "exploitable": bool(ca_ht and achats_ht and ca["nb_jours"] >= 14),
+            }
+
+        courant = await fenetre(fin)
+        precedent = await fenetre(fin - timedelta(days=_MARGE_FENETRE_JOURS))
+        historique = [courant] + [await fenetre(fin - timedelta(days=7 * k)) for k in range(1, semaines)]
+
+    evo_pts = (round(courant["taux_marge_pct"] - precedent["taux_marge_pct"], 1)
+               if courant["exploitable"] and precedent["exploitable"] else None)
+    return {
+        "tva_pct": tva,
+        "courant": courant,
+        "precedent": precedent,
+        "evolution_taux_points": evo_pts,
+        "historique": [{k: h[k] for k in ("date_fin", "taux_marge_pct", "coefficient", "exploitable")}
+                       for h in reversed(historique)],
+    }
+
+
+@router.put("/pilotage/ca/objectif")
+async def set_ca_objectif(body: CaObjectifBody):
+    """Enregistre (ou supprime si objectif_ttc vide) l'objectif de CA d'un mois."""
+    _bornes_mois(body.mois)                     # valide le format
+    async with get_db() as db:
+        if body.objectif_ttc is None:
+            await db.execute("DELETE FROM ca_objectifs WHERE boutique_id = 1 AND mois = ?", (body.mois,))
+        else:
+            if body.objectif_ttc <= 0:
+                raise HTTPException(400, "L'objectif doit être supérieur à 0 €")
+            await db.execute(
+                """INSERT INTO ca_objectifs (boutique_id, mois, objectif_ttc) VALUES (1, ?, ?)
+                   ON CONFLICT(boutique_id, mois) DO UPDATE SET
+                       objectif_ttc = excluded.objectif_ttc, updated_at = CURRENT_TIMESTAMP""",
+                (body.mois, round(body.objectif_ttc, 2)),
+            )
+        await db.commit()
+    return await get_ca_objectif(body.mois)
 
 
 @router.get("/pilotage/ca/{date_ca}")

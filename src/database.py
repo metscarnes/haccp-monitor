@@ -1069,6 +1069,17 @@ CREATE TABLE IF NOT EXISTS ca_ajustements (
     UNIQUE (boutique_id, date_ca)
 );
 
+-- v8.6 — Objectif de CA mensuel (TTC, comme la saisie du CA) : base du
+-- « réel vs objectif » et de la projection de fin de mois (Pilotage CA).
+CREATE TABLE IF NOT EXISTS ca_objectifs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id  INTEGER NOT NULL DEFAULT 1,
+    mois         TEXT    NOT NULL,              -- 'AAAA-MM'
+    objectif_ttc REAL    NOT NULL,
+    updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (boutique_id, mois)
+);
+
 -- Inventaire VALORISÉ (stock comptable en €) — voir migration v7.0 pour le détail.
 CREATE TABLE IF NOT EXISTS inventaires (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2187,6 +2198,15 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                WHERE commentaire = 'Ajustement caisse/banque' AND ferme = 0
                  AND COALESCE(montant_ttc_matin, 0) = 0 AND COALESCE(montant_ttc_soir, 0) = 0
                  AND date_ca IN (SELECT date_ca FROM ca_ajustements)""",
+            # v8.6 — Objectif de CA mensuel (cf. SCHEMA_SQL).
+            """CREATE TABLE IF NOT EXISTS ca_objectifs (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                boutique_id  INTEGER NOT NULL DEFAULT 1,
+                mois         TEXT    NOT NULL,
+                objectif_ttc REAL    NOT NULL,
+                updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (boutique_id, mois)
+            )""",
         ]
         for sql in migrations:
             try:
