@@ -50,6 +50,7 @@ GET    /api/achats/pilotage/ca/stats/comparer-dates        → comparaison de de
 GET    /api/achats/pilotage/ca/stats/par-periode           → CA agrégé jour/semaine/mois + évolution
 GET    /api/achats/pilotage/ca/stats/profil-semaine        → moyenne par jour de semaine + glissantes 7/30j
 GET    /api/achats/pilotage/ca/stats/prochain-a-saisir      → jour à saisir par défaut (dernier non saisi)
+GET    /api/achats/pilotage/ca/stats/derniere-journee       → dernière journée complète (borne des tendances)
 """
 
 import asyncio
@@ -6147,6 +6148,22 @@ def _aujourdhui_paris() -> date:
     return _maintenant_paris().date()
 
 
+async def _derniere_journee_terminee(db) -> date:
+    """Dernier jour dont le CA est COMPLET : aujourd'hui si sa saisie est finie
+    (après-midi saisi, dimanche matin saisi — l'après-midi est fermé —, ou
+    boutique fermée), sinon hier. Sert de borne aux moyennes et tendances :
+    une journée à moitié saisie ne doit pas les faire baisser."""
+    today = _aujourdhui_paris()
+    cur = await db.execute(
+        "SELECT ferme, montant_ttc_matin, montant_ttc_soir FROM ca_journalier "
+        "WHERE boutique_id = 1 AND date_ca = ?", (today.isoformat(),))
+    r = await cur.fetchone()
+    if r and (r["ferme"] or (r["montant_ttc_soir"] or 0) > 0
+              or (today.weekday() == 6 and (r["montant_ttc_matin"] or 0) > 0)):
+        return today
+    return today - timedelta(days=1)
+
+
 def _panier(ttc, nb):
     """Panier moyen = CA / tickets, ou None si tickets manquant/nul."""
     if nb and ttc is not None:
@@ -6193,16 +6210,16 @@ async def _agg_periode(db, debut: str, fin: str) -> dict:
     """Agrège le CA d'une période [debut, fin] (dates ISO incluses).
 
     Renvoie totaux, moyennes, paniers (global/matin/soir) et répartition %.
-    Le CA moyen / jour ne compte que les journées TERMINÉES (avant aujourd'hui)
-    et ouvertes : la journée en cours (matin seul) ferait baisser la moyenne.
+    Le CA moyen / jour ne compte que les journées TERMINÉES et ouvertes : la
+    journée en cours (matin seul) ferait baisser la moyenne.
     """
-    today = _aujourdhui_paris().isoformat()
+    fin_complete = (await _derniere_journee_terminee(db)).isoformat()
     cur = await db.execute(
         f"""SELECT
                -- jours fermés : CA 0, ne comptent pas comme jours de vente
                COALESCE(SUM(ferme = 0), 0)                          AS nb_jours,
-               COALESCE(SUM(ferme = 0 AND date_ca < :today), 0)     AS nb_jours_complets,
-               COALESCE(SUM(CASE WHEN date_ca < :today THEN montant_ttc END), 0) AS total_ttc_complets,
+               COALESCE(SUM(ferme = 0 AND date_ca <= :fc), 0)       AS nb_jours_complets,
+               COALESCE(SUM(CASE WHEN date_ca <= :fc THEN montant_ttc END), 0) AS total_ttc_complets,
                COALESCE(SUM(montant_ttc), 0)        AS total_ttc,
                COALESCE(SUM(nb_tickets), 0)         AS total_tickets,
                COALESCE(SUM(montant_ttc_matin), 0)  AS total_ttc_matin,
@@ -6217,7 +6234,7 @@ async def _agg_periode(db, debut: str, fin: str) -> dict:
                SUM({_SQL_TICKETS_SOIR})             AS tickets_soir_tk
            FROM ca_journalier
            WHERE boutique_id = 1 AND date_ca >= :debut AND date_ca <= :fin""",
-        {"debut": debut, "fin": fin, "today": today},
+        {"debut": debut, "fin": fin, "fc": fin_complete},
     )
     r = dict(await cur.fetchone())
     nbc = r.pop("nb_jours_complets") or 0
@@ -6455,6 +6472,8 @@ def _evolutions(courant: dict, ref: Optional[dict]) -> tuple[dict, dict]:
 async def get_ca_par_periode(
     granularite: str = Query("jour", description="jour | semaine | mois"),
     limit:       int = Query(60, ge=1, le=1000),
+    date_debut:  Optional[str] = Query(None, description="Ne garder que les périodes qui touchent [date_debut, date_fin]"),
+    date_fin:    Optional[str] = Query(None, description="(dépliage : semaines d'un mois, jours d'une semaine)"),
 ):
     """CA agrégé par période, du plus récent au plus ancien, avec évolution :
     - jour : vs le même jour la semaine précédente (S-1) ;
@@ -6462,12 +6481,16 @@ async def get_ca_par_periode(
       EN COURS, on compare à durée égale (mêmes N premiers jours, journées
       terminées seulement) : sinon 25 jours d'octobre seraient comparés aux
       30 jours de septembre (fausse baisse).
-    Les jours fermés ne sont jamais une base de comparaison."""
+    Les jours fermés ne sont jamais une base de comparaison.
+    `date_debut` / `date_fin` filtrent les périodes affichées (une semaine à
+    cheval sur deux mois apparaît sous les deux), les évolutions restent
+    calculées sur tout l'historique."""
     gran = granularite.lower().strip()
     if gran not in _GRANULARITES:
         raise HTTPException(400, "granularite doit valoir jour, semaine ou mois")
 
     async with get_db() as db:
+        fin_complete = await _derniere_journee_terminee(db)
         cur = await db.execute(
             """SELECT date_ca, montant_ttc, nb_tickets, montant_ttc_matin, nb_tickets_matin,
                       montant_ttc_soir, nb_tickets_soir, ferme
@@ -6484,9 +6507,14 @@ async def get_ca_par_periode(
         g = groupes.setdefault(cle, {"debut_cal": debut_cal, "fin_cal": fin_cal, "jours": []})
         g["jours"].append(j)
 
-    hier = _aujourdhui_paris() - timedelta(days=1)
+    cles = sorted(groupes, reverse=True)
+    if date_debut or date_fin:
+        lo, hi = date_debut or "0000-01-01", date_fin or "9999-12-31"
+        cles = [c for c in cles
+                if groupes[c]["debut_cal"].isoformat() <= hi and groupes[c]["fin_cal"].isoformat() >= lo]
+
     lignes = []
-    for cle in sorted(groupes, reverse=True)[:limit]:
+    for cle in cles[:limit]:
         g = groupes[cle]
         ligne = {"periode": cle,
                  "date_debut": g["jours"][0]["date_ca"], "date_fin": g["jours"][-1]["date_ca"],
@@ -6501,11 +6529,11 @@ async def get_ca_par_periode(
             # Période précédente : la veille du 1er jour de celle-ci
             cle_prec, debut_prec, fin_prec = _bornes_periode(g["debut_cal"] - timedelta(days=1), gran)
             prec_g = groupes.get(cle_prec)
-            if g["fin_cal"] > hier:
-                # En cours : journées terminées de la période (jusqu'à hier) vs
-                # le même nombre de premiers jours de la période précédente.
-                n = (hier - g["debut_cal"]).days
-                courant = _agreger_jours([j for j in g["jours"] if j["date_ca"] <= hier.isoformat()])
+            if g["fin_cal"] > fin_complete:
+                # En cours : journées terminées de la période vs le même
+                # nombre de premiers jours de la période précédente.
+                n = (fin_complete - g["debut_cal"]).days
+                courant = _agreger_jours([j for j in g["jours"] if j["date_ca"] <= fin_complete.isoformat()])
                 borne = min(debut_prec + timedelta(days=n), fin_prec).isoformat() if n >= 0 else ""
                 ref = (_agreger_jours([j for j in prec_g["jours"] if j["date_ca"] <= borne])
                        if prec_g and n >= 0 else None)
@@ -6528,11 +6556,11 @@ async def get_ca_profil_semaine(
     """Profil par jour de semaine (moyenne CA lundi→dimanche) + moyennes
     glissantes 7 / 30 derniers jours, et analyse d'un jour (le dernier saisi
     par défaut, ou `jour` si fourni)."""
-    today = _aujourdhui_paris()
     async with get_db() as db:
+        fin_complete = await _derniere_journee_terminee(db)
         # Moyenne par jour de semaine. strftime('%w') : 0=dimanche … 6=samedi
-        # Journées terminées seulement (avant aujourd'hui) : la journée en cours
-        # (matin seul) ferait baisser la moyenne de son jour de semaine.
+        # Journées terminées seulement : la journée en cours (matin seul)
+        # ferait baisser la moyenne de son jour de semaine.
         cur = await db.execute(
             f"""SELECT
                    CAST(strftime('%w', date_ca) AS INTEGER) AS dow,
@@ -6553,9 +6581,9 @@ async def get_ca_profil_semaine(
                    SUM({_SQL_TTC_MATIN_TK}) AS somme_ttc_matin,
                    SUM({_SQL_TICKETS_MATIN}) AS somme_tickets_matin
                FROM ca_journalier
-               WHERE boutique_id = 1 AND ferme = 0 AND date_ca < ?
+               WHERE boutique_id = 1 AND ferme = 0 AND date_ca <= ?
                GROUP BY dow""",
-            (today.isoformat(),),
+            (fin_complete.isoformat(),),
         )
         par_dow = {r["dow"]: dict(r) for r in await cur.fetchall()}
 
@@ -6602,13 +6630,13 @@ async def get_ca_profil_semaine(
             row = await cur.fetchone()
             semaine_prec = dict(row) if row else None
 
-        # Moyennes glissantes : 7 et 30 derniers jours TERMINÉS (hier inclus,
-        # aujourd'hui exclu), jours ouverts seulement
+        # Moyennes glissantes : 7 et 30 derniers jours TERMINÉS (jusqu'à la
+        # dernière journée complète), jours ouverts seulement
         async def _moy(jours: int):
             cur = await db.execute(
                 "SELECT AVG(montant_ttc) AS m FROM ca_journalier "
-                "WHERE boutique_id = 1 AND ferme = 0 AND date_ca >= ? AND date_ca < ?",
-                ((today - timedelta(days=jours)).isoformat(), today.isoformat()),
+                "WHERE boutique_id = 1 AND ferme = 0 AND date_ca > ? AND date_ca <= ?",
+                ((fin_complete - timedelta(days=jours)).isoformat(), fin_complete.isoformat()),
             )
             row = await cur.fetchone()
             return round(row["m"], 2) if row and row["m"] is not None else None
@@ -6754,6 +6782,14 @@ async def get_ca_prochain_a_saisir():
         d += timedelta(days=1)
     return {"date": manquants[0] if manquants else today.isoformat(),
             "oublis": len(manquants)}
+
+
+@router.get("/pilotage/ca/stats/derniere-journee")
+async def get_ca_derniere_journee():
+    """Borne de fin des tendances : aujourd'hui si sa saisie est complète,
+    sinon hier (cf. _derniere_journee_terminee)."""
+    async with get_db() as db:
+        return {"date": (await _derniere_journee_terminee(db)).isoformat()}
 
 
 @router.get("/pilotage/ca/{date_ca}")

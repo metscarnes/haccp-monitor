@@ -121,7 +121,22 @@
     .lien { background: none; border: none; color: var(--color-accent); text-decoration: underline; font: inherit;
             font-size: 15px; cursor: pointer; padding: 8px 4px; min-height: 44px; }
     .alerte { background: #FEF3C7; border-radius: 8px; padding: 8px 12px; font-size: 14px; }
-    canvas { max-width: 100%; }
+
+    /* Évolution rapide (sous le total du jour) */
+    .rapide { background: #FBF6EC; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .rapide-ligne { display: grid; grid-template-columns: minmax(110px, auto) auto 1fr; gap: 6px 14px; align-items: baseline; }
+    .rapide-lbl { font-size: 14px; color: #6E5844; }
+    .rapide-val { font-size: 20px; font-weight: 700; white-space: nowrap; }
+    .rapide-evo { font-size: 15px; }
+
+    /* Dépliage mois → semaines → jours */
+    tr.depliable { cursor: pointer; }
+    tr.depliable:hover { background: #FBF6EC; }
+    .chevron { display: inline-block; width: 1.2em; color: var(--color-accent); transition: transform .15s; }
+    tr.ouvert .chevron { transform: rotate(90deg); }
+    tr.niv-1 td:first-child { padding-left: 28px; }
+    tr.niv-2 td:first-child { padding-left: 52px; }
+    tr.niv-1, tr.niv-2 { background: #FFFCF6; }
 
     @media (max-width: 600px) {
       .sections, .duo { grid-template-columns: minmax(0, 1fr); }
@@ -222,6 +237,19 @@
         <button type="button" class="btn-save" id="btn-save" disabled>Enregistrer</button>
       </div>
       <div class="feedback" id="feedback" role="status"></div>
+
+      <!-- Évolution rapide du jour / de la semaine / du mois jusqu'au jour choisi -->
+      <div class="rapide" id="rapide" style="display:none">
+        <div class="card-tete" style="align-items:center">
+          <div style="font-weight:600" id="rapide-titre">Évolution</div>
+          <div class="seg" role="group" aria-label="Évolution sur" id="seg-rapide" style="min-width:260px">
+            <button type="button" data-val="jour" class="on">Jour</button>
+            <button type="button" data-val="semaine">Semaine</button>
+            <button type="button" data-val="mois">Mois</button>
+          </div>
+        </div>
+        <div id="rapide-contenu"></div>
+      </div>
     </section>
 
     <!-- ② CE JOUR-LÀ -->
@@ -248,19 +276,6 @@
       </div>
       <div class="tuiles" id="tend-tuiles"></div>
       <div id="tend-alerte"></div>
-
-      <figure style="margin:0;display:flex;flex-direction:column;gap:8px">
-        <div class="card-tete" style="align-items:center">
-          <figcaption style="font-weight:600">CA total par jour</figcaption>
-          <div class="seg" role="group" aria-label="Durée de la courbe" id="seg-courbe" style="min-width:240px">
-            <button type="button" data-val="30">30 j</button>
-            <button type="button" data-val="90" class="on">90 j</button>
-            <button type="button" data-val="365">1 an</button>
-          </div>
-        </div>
-        <canvas id="chart-ca" height="220" role="img" aria-label="Courbe du chiffre d'affaires total par jour"></canvas>
-        <div class="muted">Trait plein : CA du jour · pointillés : moyenne des 30 jours précédents · jours fermés non tracés</div>
-      </figure>
 
       <div style="display:flex;flex-direction:column;gap:8px">
         <div style="font-weight:600">Un jour de semaine type <span class="muted" style="font-weight:400">(CA moyen des journées terminées)</span></div>
@@ -291,7 +306,6 @@
 
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>
   (function () {
     const API = '/api/achats/pilotage/ca';
@@ -314,6 +328,16 @@
     const NOMS_JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
     const nomJour = iso => NOMS_JOURS[versDate(iso).getDay()];
     const maj1 = s => s.charAt(0).toUpperCase() + s.slice(1);
+    const lundiDe = iso => decalerIso(iso, -((versDate(iso).getDay() + 6) % 7));
+    const finDuMois = iso => { const d = versDate(iso); return new Date(d.getFullYear(), d.getMonth() + 1, 0).toLocaleDateString('sv-SE'); };
+    // N° de semaine ISO (lundi → dimanche, semaine 1 = celle du 4 janvier)
+    const numSemaine = iso => {
+      const d = versDate(iso);
+      d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);          // jeudi de la semaine
+      const j4 = new Date(d.getFullYear(), 0, 4);
+      return 1 + Math.round(((d - j4) / 86400000 - 3 + (j4.getDay() + 6) % 7) / 7);
+    };
+    const pctDe = (c, r) => (c == null || !r) ? null : Math.round(1000 * (c - r) / r) / 10;
     const num = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
     const intOrNull = v => { v = (v ?? '').toString().trim(); return v === '' ? null : parseInt(v, 10); };
     const getJson = async url => {
@@ -346,12 +370,12 @@
     let jourPret = false;   // jour chargé (sinon pas d'enregistrement)
     let jeuJour = 0;        // n° de demande (ignore les réponses en retard)
     let jeuAnalyse = 0;
+    let jourCharge = null;  // ligne enregistrée du jour affiché (null = non saisi)
+    let rapide = 'jour';    // évolution rapide : jour | semaine | mois
+    let jeuRapide = 0;
     let tendance = 'mois';
-    let courbeJours = 90;
     let detailGran = 'jour';
     let detailLimite = 21;
-    let histo = [];         // journées saisies (ouvertes), plus récente d'abord
-    let chart = null;
 
     // ═══ ① SAISIR ═══════════════════════════════════════════════════════
     const CHAMPS_SAISIE = ['montant-matin', 'tickets-matin', 'montant-soir', 'tickets-soir', 'commentaire'];
@@ -443,8 +467,10 @@
         majStatut(j);
         modifie = false;
         jourPret = true;
+        jourCharge = j;
         $('btn-save').disabled = false;
         rendreCeJour(iso, j);
+        chargerRapide();
       } catch (e) {
         if (jeu !== jeuJour) return;
         console.error(e);
@@ -462,6 +488,8 @@
       }
       modifie = false;
       jourAffiche = iso;
+      jourCharge = null;
+      $('rapide').style.display = 'none';
       $('feedback').className = 'feedback'; $('feedback').textContent = '';
       $('date-ca').value = iso;
       $('date-ca').max = todayIso();
@@ -539,13 +567,58 @@
         modifie = false;
         fb.className = 'feedback ok';
         fb.textContent = `Enregistré ✓ — ${fmtDateLongue(body.date_ca)}${fermeSel ? ' (fermé)' : ''}`;
-        await Promise.all([chargerOublis(false), chargerHisto(), chargerTendance(), chargerDetail()]);
+        await Promise.all([chargerOublis(false), chargerTendance(), chargerJourType(), chargerDetail()]);
         await chargerJour(jourAffiche);
       } catch (e) {
         fb.className = 'feedback err';
         fb.textContent = e.message;
       } finally {
         $('btn-save').disabled = !jourPret;
+      }
+    }
+
+    // ─── Évolution rapide (sous le total) ───────────────────────────────
+    // Jour : vs le même jour la semaine d'avant. Semaine / Mois : du lundi
+    // (ou du 1er) jusqu'au jour choisi, vs la même durée de la période d'avant.
+    async function chargerRapide() {
+      const el = $('rapide');
+      if (!jourAffiche || !jourCharge || jourCharge.ferme) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      const jeu = ++jeuRapide;
+      const fin = jourAffiche;
+      let debut, preset;
+      if (rapide === 'jour') {
+        debut = fin; preset = 's-1';
+        $('rapide-titre').textContent = `Évolution du ${fmtJourCourt(fin)}`;
+      } else if (rapide === 'semaine') {
+        debut = lundiDe(fin); preset = 's-1';
+        $('rapide-titre').textContent = `Semaine ${numSemaine(fin)}, du ${fmtDdMm(debut)} au ${fmtDdMm(fin)}`;
+      } else {
+        debut = fin.slice(0, 8) + '01'; preset = 'm-1';
+        $('rapide-titre').textContent = `${maj1(versDate(fin).toLocaleDateString('fr-FR', { month: 'long' }))}, du 1er au ${fmtDdMm(fin)}`;
+      }
+      try {
+        const r = await getJson(`${API}/stats/comparatif?date_debut=${debut}&date_fin=${fin}&preset=${preset}&n=1`);
+        if (jeu !== jeuRapide) return;
+        const c = r.courant, ref = r.reference;
+        const refTxt = rapide === 'jour' ? fmtJourCourt(ref.date_debut) : `${fmtDdMm(ref.date_debut)} → ${fmtDdMm(ref.date_fin)}`;
+        const ligne = (lbl, val, delta, pct) => `
+          <div class="rapide-ligne">
+            <span class="rapide-lbl">${lbl}</span>
+            <span class="rapide-val">${val}</span>
+            <span class="rapide-evo">${!ref.nb_jours || delta == null
+              ? `<span class="muted">pas de comparaison (${refTxt} non saisi)</span>`
+              : `${evoEur(delta)} · ${evoPct({ pct })} <span class="muted">vs ${refTxt}</span>`}</span>
+          </div>`;
+        const panierDelta = (c.panier_moyen != null && ref.panier_moyen != null)
+          ? Math.round(100 * (c.panier_moyen - ref.panier_moyen)) / 100 : null;
+        $('rapide-contenu').innerHTML =
+          ligne('Chiffre d\'affaires', fmtEur(c.total_ttc), r.evolution.total_ttc.delta, r.evolution.total_ttc.pct)
+          + ligne('Panier moyen', fmtEur(c.panier_moyen), panierDelta, pctDe(c.panier_moyen, ref.panier_moyen));
+      } catch (e) {
+        if (jeu !== jeuRapide) return;
+        console.error(e);
+        $('rapide-contenu').innerHTML = erreurHtml;
       }
     }
 
@@ -569,12 +642,12 @@
         const dv = p.dernier_vs_jour_type;
         const matin = dv.perimetre === 'matin';
         const jn = nomJour(iso);
-        const ref = matin ? `le matin du ${jn} précédent` : `le ${jn} précédent`;
+        const ref = matin ? `au matin du ${jn} précédent` : `au ${jn} précédent`;
         const moy = matin ? `un matin de ${jn} moyen` : `un ${jn} moyen`;
         $('t-jour').textContent = `${maj1(fmtJourMois(iso))} : ${fmtEurRond(dv.ca.valeur)}${matin ? ' (matin)' : ''}`;
 
         const morceaux = [];
-        if (dv.ca.s1 != null) morceaux.push(`${evoPct(dv.ca.evo_s1)} par rapport à ${ref} (${fmtEurRond(dv.ca.s1)})`);
+        if (dv.ca.s1 != null) morceaux.push(`${evoPct(dv.ca.evo_s1)} par rapport ${ref} (${fmtEurRond(dv.ca.s1)})`);
         if (dv.ca.moyenne_jour_type != null) morceaux.push(`${evoPct(dv.ca.evo_moyenne)} par rapport à ${moy} (${fmtEurRond(dv.ca.moyenne_jour_type)})`);
         let phrase = morceaux.length
           ? morceaux.join(' et ') + '.'
@@ -624,28 +697,28 @@
     }
 
     // ═══ ③ TENDANCES ════════════════════════════════════════════════════
-    // Période en cours jusqu'à HIER (journées terminées), comparée à la même
-    // durée de la période d'avant (préréglages s-1 / m-1 / a-1 du serveur).
-    function bornesTendance(type) {
-      const fin = veilleIso();
-      const d = versDate(fin);
+    // Période en cours jusqu'à la DERNIÈRE JOURNÉE TERMINÉE (aujourd'hui si la
+    // saisie du jour est complète, sinon hier), comparée à la même durée de la
+    // période d'avant (préréglages s-1 / m-1 / a-1 du serveur).
+    function bornesTendance(type, fin) {
       let debut;
-      if (type === 'semaine') debut = decalerIso(fin, -((d.getDay() + 6) % 7));   // lundi
+      if (type === 'semaine') debut = lundiDe(fin);
       else if (type === 'mois') debut = fin.slice(0, 8) + '01';
       else debut = fin.slice(0, 5) + '01-01';
       return { debut, fin };
     }
     function titreTendance(type, b) {
-      if (type === 'semaine') return `Semaine du ${fmtJourMois(b.debut)}`;
+      if (type === 'semaine') return `Semaine ${numSemaine(b.debut)} (du ${fmtDdMm(b.debut)})`;
       if (type === 'mois') return maj1(versDate(b.debut).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
       return `Année ${b.debut.slice(0, 4)}`;
     }
 
     async function chargerTendance() {
-      const b = bornesTendance(tendance);
       const preset = { semaine: 's-1', mois: 'm-1', annee: 'a-1' }[tendance];
-      $('t-tend').textContent = `${titreTendance(tendance, b)}, jusqu'à hier`;
       try {
+        const fin = (await getJson(`${API}/stats/derniere-journee`)).date;
+        const b = bornesTendance(tendance, fin);
+        $('t-tend').textContent = `${titreTendance(tendance, b)}, ${fin === todayIso() ? 'jusqu\'à aujourd\'hui' : 'jusqu\'à hier'}`;
         const r = await getJson(`${API}/stats/comparatif?date_debut=${b.debut}&date_fin=${b.fin}&preset=${preset}&n=1`);
         const c = r.courant, ref = r.reference;
         const refTxt = `vs ${fmtDdMm(ref.date_debut)} → ${fmtDdMm(ref.date_fin)}`;
@@ -653,13 +726,16 @@
         $('tend-tuiles').innerHTML = `
           <div class="tuile"><span class="tuile-lbl">CA de la période</span>
             <span class="tuile-val">${fmtEurRond(c.total_ttc)}</span>
-            <span class="tuile-sous">${ref.nb_jours ? `${evoPct(r.evolution.total_ttc)} <span class="muted">${refTxt}</span>` : '<span class="muted">rien à comparer</span>'}</span></div>
+            <span class="tuile-sous">${ref.nb_jours
+              ? `${evoEur(r.evolution.total_ttc.delta, fmtEurRond)} · ${evoPct(r.evolution.total_ttc)} <span class="muted">${refTxt}</span>`
+              : '<span class="muted">rien à comparer</span>'}</span></div>
           <div class="tuile"><span class="tuile-lbl">CA moyen / jour ouvert</span>
             <span class="tuile-val">${fmtEurRond(c.ca_moyen_jour)}</span>
             <span class="tuile-sous muted">${c.nb_jours} jour${c.nb_jours > 1 ? 's' : ''} ouvert${c.nb_jours > 1 ? 's' : ''}</span></div>
           <div class="tuile"><span class="tuile-lbl">Panier moyen</span>
             <span class="tuile-val">${fmtEur(c.panier_moyen)}</span>
-            <span class="tuile-sous">${panierDelta == null ? '<span class="muted">—</span>' : `${evoEur(panierDelta)} <span class="muted">vs avant</span>`}</span></div>
+            <span class="tuile-sous">${panierDelta == null ? '<span class="muted">—</span>'
+              : `${evoEur(panierDelta)} · ${evoPct({ pct: pctDe(c.panier_moyen, ref.panier_moyen) })} <span class="muted">vs avant</span>`}</span></div>
           <div class="tuile"><span class="tuile-lbl">Matin / après-midi</span>
             <span class="tuile-val">${c.part_matin == null ? '—' : `${Math.round(c.part_matin)} / ${Math.round(c.part_soir)} %`}</span>
             <span class="tuile-sous muted">part du CA</span></div>`;
@@ -671,51 +747,6 @@
         $('tend-tuiles').innerHTML = erreurHtml;
         $('tend-alerte').innerHTML = '';
       }
-    }
-
-    // Courbe : CA total par jour + moyenne des 30 jours précédents
-    async function chargerHisto() {
-      try {
-        const rows = await getJson(`${API}?limit=1000`);
-        histo = rows.filter(r => !r.ferme);
-        majCourbe();
-      } catch (e) { console.error(e); }
-    }
-
-    function majCourbe() {
-      const limite = decalerIso(todayIso(), -courbeJours);
-      const asc = [...histo].reverse();                       // chronologique
-      const data = asc.filter(r => r.date_ca >= limite);
-      const moy = data.map(r => {
-        const debut = decalerIso(r.date_ca, -30);
-        const fen = asc.filter(x => x.date_ca >= debut && x.date_ca < r.date_ca);
-        return fen.length ? Math.round(fen.reduce((s, x) => s + x.montant_ttc, 0) / fen.length) : null;
-      });
-      if (chart) chart.destroy();
-      chart = new Chart($('chart-ca'), {
-        type: 'line',
-        data: {
-          labels: data.map(r => fmtJourCourt(r.date_ca)),
-          datasets: [
-            { label: 'CA du jour', data: data.map(r => r.montant_ttc), borderColor: '#6B3A1F',
-              backgroundColor: 'rgba(107,58,31,.08)', fill: true, tension: .25, pointRadius: 2, borderWidth: 2.5 },
-            { label: 'Moyenne 30 jours', data: moy, borderColor: '#C9A27E', borderDash: [6, 5],
-              fill: false, tension: .3, pointRadius: 0, borderWidth: 2 },
-          ],
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: c => `${c.dataset.label} : ${fmtEurRond(c.parsed.y)}` } },
-          },
-          scales: {
-            y: { beginAtZero: true, ticks: { callback: v => fmtEurRond(v) } },
-            x: { ticks: { maxTicksLimit: 8, autoSkip: true } },
-          },
-        },
-      });
     }
 
     // Jour de semaine type (lun → dim), le jour de la page mis en avant
@@ -744,64 +775,68 @@
       }).join('');
     }
 
-    // Détail Jours / Semaines / Mois ; en Jours, les jours manquants sont listés
-    // « Non saisi » (avec un bouton pour les saisir).
-    async function chargerDetail() {
-      const tbody = $('detail-body');
-      $('det-col-periode').textContent = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' }[detailGran];
-      $('det-col-evol').textContent = detailGran === 'jour' ? 'vs semaine d\'avant' : 'vs période d\'avant';
-      try {
-        const res = await getJson(`${API}/stats/par-periode?granularite=${detailGran}&limit=${detailLimite}`);
-        let lignes = res.lignes;
-        if (detailGran === 'jour') {
-          const parDate = Object.fromEntries(lignes.map(l => [l.periode, l]));
-          const plusAncien = lignes.length ? lignes[lignes.length - 1].periode : veilleIso();
-          lignes = [];
-          for (let d = todayIso(); d >= plusAncien && lignes.length < detailLimite; d = decalerIso(d, -1)) {
-            if (parDate[d]) lignes.push(parDate[d]);
-            else if (d < todayIso()) lignes.push({ periode: d, manquant: true });
-          }
-        }
-        if (!lignes.length) {
-          tbody.innerHTML = '<tr><td colspan="6" class="muted">Aucune saisie pour le moment.</td></tr>';
-          $('detail-plus').style.display = 'none';
-          return;
-        }
-        tbody.innerHTML = lignes.map(l => ligneDetail(l)).join('');
-        tbody.querySelectorAll('[data-ouvrir]').forEach(b => b.addEventListener('click', () => {
-          setDate(b.dataset.ouvrir);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }));
-        $('detail-plus').style.display = res.lignes.length >= detailLimite ? '' : 'none';
-        surlignerDetail();
-      } catch (e) {
-        console.error(e);
-        tbody.innerHTML = `<tr><td colspan="6">${erreurHtml}</td></tr>`;
+    // ─── Détail Jours / Semaines / Mois, avec dépliage ─────────────────
+    // Mois → ses semaines → leurs jours ; Semaine → ses jours. Les jours non
+    // saisis d'une plage sont listés « Non saisi » avec un bouton « Saisir ».
+    let idLigne = 0;
+
+    // Jours d'une plage, du plus récent au plus ancien, trous compris (jamais futurs)
+    function avecJoursManquants(lignes, debut, fin, limite) {
+      const parDate = Object.fromEntries(lignes.map(l => [l.periode, l]));
+      const res = [];
+      for (let d = fin > todayIso() ? todayIso() : fin; d >= debut && res.length < limite; d = decalerIso(d, -1)) {
+        if (parDate[d]) res.push(parDate[d]);
+        else if (d < todayIso()) res.push({ periode: d, manquant: true });
       }
+      return res;
     }
 
-    function libellePeriode(l) {
-      if (detailGran === 'jour') return fmtJourCourt(l.periode);
-      if (detailGran === 'semaine') return `sem. du ${fmtDdMm(lundiDe(l.date_debut))}`;
+    async function lignesPeriodes(gran, debut, fin, limite) {
+      const q = `granularite=${gran}&limit=${limite}` + (debut ? `&date_debut=${debut}&date_fin=${fin}` : '');
+      const res = await getJson(`${API}/stats/par-periode?${q}`);
+      if (gran !== 'jour') return { lignes: res.lignes, brut: res.lignes.length };
+      const plusAncien = debut || (res.lignes.length ? res.lignes[res.lignes.length - 1].periode : veilleIso());
+      return { lignes: avecJoursManquants(res.lignes, plusAncien, fin || todayIso(), limite), brut: res.lignes.length };
+    }
+
+    function libellePeriode(l, gran) {
+      if (gran === 'jour') return fmtJourCourt(l.periode);
+      if (gran === 'semaine') {
+        const lundi = lundiDe(l.date_debut);
+        return `<strong>Semaine ${parseInt(l.periode.split('-S')[1], 10)}</strong> <span class="muted">· ${fmtDdMm(lundi)} → ${fmtDdMm(decalerIso(lundi, 6))}</span>`;
+      }
       const [y, m] = l.periode.split('-');
-      return maj1(new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+      return `<strong>${maj1(new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))}</strong>`;
     }
-    const lundiDe = iso => decalerIso(iso, -((versDate(iso).getDay() + 6) % 7));
 
-    function ligneDetail(l) {
-      const action = detailGran === 'jour'
-        ? `<button type="button" class="lien" data-ouvrir="${l.periode}">${l.manquant ? 'Saisir' : 'Modifier'}</button>` : '';
-      const attr = detailGran === 'jour' ? ` data-date="${l.periode}"` : '';
+    function ligneDetail(l, gran, niveau, parents) {
+      const id = 'L' + (++idLigne);
+      const classes = [`niv-${niveau}`];
+      let attrs = ` data-id="${id}" data-parents="${parents}"`;
+      let action = '';
+      if (gran === 'jour') {
+        attrs += ` data-date="${l.periode}"`;
+        action = `<button type="button" class="lien" data-ouvrir="${l.periode}">${l.manquant ? 'Saisir' : 'Modifier'}</button>`;
+      } else {
+        // Semaine : ses jours (lundi → dimanche) ; Mois : ses semaines
+        const debut = gran === 'semaine' ? lundiDe(l.date_debut) : l.periode + '-01';
+        const fin = gran === 'semaine' ? decalerIso(debut, 6) : finDuMois(debut);
+        classes.push('depliable');
+        attrs += ` data-deplier="${gran === 'semaine' ? 'jour' : 'semaine'}" data-debut="${debut}" data-fin="${fin}" data-niveau="${niveau}"`
+               + ` aria-expanded="false" tabindex="0"`;
+      }
+      const chevron = gran === 'jour' ? '' : '<span class="chevron" aria-hidden="true">›</span>';
+      const titre = `<td>${chevron}${libellePeriode(l, gran)}</td>`;
       if (l.manquant) {
-        return `<tr class="non-saisi"${attr}><td>${libellePeriode(l)}</td><td colspan="4" class="etat">Non saisi</td><td class="num">${action}</td></tr>`;
+        return `<tr class="${classes.join(' ')} non-saisi"${attrs}>${titre}<td colspan="4" class="etat">Non saisi</td><td class="num">${action}</td></tr>`;
       }
       if (l.ferme) {
-        return `<tr class="jour-ferme"${attr}><td>${libellePeriode(l)}</td><td colspan="4" class="etat">Boutique fermée</td><td class="num">${action}</td></tr>`;
+        return `<tr class="${classes.join(' ')} jour-ferme"${attrs}>${titre}<td colspan="4" class="etat">Boutique fermée</td><td class="num">${action}</td></tr>`;
       }
       const enCours = l.evolution_label === 'vs même nb de jours' && l.evolution.pct != null
         ? '<br><span class="muted">en cours, à durée égale</span>' : '';
-      return `<tr${attr}>
-          <td>${libellePeriode(l)}</td>
+      return `<tr class="${classes.join(' ')}"${attrs}>
+          ${titre}
           <td class="num"><strong>${fmtEurRond(l.total_ttc)}</strong></td>
           <td class="num">${evoPct(l.evolution)}${enCours}</td>
           <td class="num">${fmtEur(l.panier_moyen)}</td>
@@ -810,12 +845,61 @@
         </tr>`;
     }
 
+    async function chargerDetail() {
+      const tbody = $('detail-body');
+      $('det-col-periode').textContent = { jour: 'Jour', semaine: 'Semaine', mois: 'Mois' }[detailGran];
+      $('det-col-evol').textContent = detailGran === 'jour' ? 'vs semaine d\'avant' : 'vs période d\'avant';
+      try {
+        const { lignes, brut } = await lignesPeriodes(detailGran, null, null, detailLimite);
+        if (!lignes.length) {
+          tbody.innerHTML = '<tr><td colspan="6" class="muted">Aucune saisie pour le moment.</td></tr>';
+          $('detail-plus').style.display = 'none';
+          return;
+        }
+        tbody.innerHTML = lignes.map(l => ligneDetail(l, detailGran, 0, '')).join('');
+        $('detail-plus').style.display = brut >= detailLimite ? '' : 'none';
+        surlignerDetail();
+      } catch (e) {
+        console.error(e);
+        tbody.innerHTML = `<tr><td colspan="6">${erreurHtml}</td></tr>`;
+      }
+    }
+
+    // Déplie / replie une ligne Mois ou Semaine
+    async function basculer(tr) {
+      const id = tr.dataset.id;
+      const tbody = $('detail-body');
+      if (tr.classList.contains('ouvert')) {
+        tbody.querySelectorAll('tr').forEach(x => {
+          if ((x.dataset.parents || '').split(' ').includes(id)) x.remove();
+        });
+        tr.classList.remove('ouvert');
+        tr.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      tr.classList.add('ouvert');
+      tr.setAttribute('aria-expanded', 'true');
+      const gran = tr.dataset.deplier, niveau = Number(tr.dataset.niveau) + 1;
+      const parents = ((tr.dataset.parents || '') + ' ' + id).trim();
+      try {
+        const { lignes } = await lignesPeriodes(gran, tr.dataset.debut, tr.dataset.fin, gran === 'jour' ? 7 : 6);
+        const html = lignes.length
+          ? lignes.map(l => ligneDetail(l, gran, niveau, parents)).join('')
+          : `<tr class="niv-${niveau}" data-parents="${parents}"><td colspan="6" class="muted">Aucune saisie.</td></tr>`;
+        tr.insertAdjacentHTML('afterend', html);
+        surlignerDetail();
+      } catch (e) {
+        console.error(e);
+        tr.insertAdjacentHTML('afterend', `<tr data-parents="${parents}"><td colspan="6">${erreurHtml}</td></tr>`);
+      }
+    }
+
     function surlignerDetail() {
       document.querySelectorAll('#detail-body tr[data-date]').forEach(tr =>
         tr.classList.toggle('selection', tr.dataset.date === jourAffiche));
     }
 
-    // Boutons segmentés (Semaine/Mois/Année, 30 j/90 j/1 an, Jours/Semaines/Mois)
+    // Boutons segmentés (Semaine/Mois/Année, Jour/Semaine/Mois, Jours/Semaines/Mois)
     function initSeg(id, surChoix) {
       const boutons = document.querySelectorAll(`#${id} button`);
       boutons.forEach(b => b.addEventListener('click', () => {
@@ -851,16 +935,31 @@
       if (choisi) setDate(choisi);
     });
 
+    initSeg('seg-rapide', v => { rapide = v; chargerRapide(); });
     initSeg('seg-tendance', v => { tendance = v; chargerTendance(); });
-    initSeg('seg-courbe', v => { courbeJours = parseInt(v, 10); majCourbe(); });
     initSeg('seg-detail', v => { detailGran = v; detailLimite = v === 'jour' ? 21 : 12; chargerDetail(); });
     $('detail-plus').addEventListener('click', () => { detailLimite += detailGran === 'jour' ? 21 : 12; chargerDetail(); });
+
+    // Tableau détail : un seul écouteur pour toutes les lignes (y compris dépliées)
+    $('detail-body').addEventListener('click', ev => {
+      const ouvrir = ev.target.closest('[data-ouvrir]');
+      if (ouvrir) {
+        setDate(ouvrir.dataset.ouvrir);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const tr = ev.target.closest('tr.depliable');
+      if (tr) basculer(tr);
+    });
+    $('detail-body').addEventListener('keydown', ev => {
+      const tr = ev.target.closest('tr.depliable');
+      if (tr && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); basculer(tr); }
+    });
 
     // Jour par défaut : le plus ancien oubli des 14 derniers jours, sinon aujourd'hui
     Promise.all([chargerPersonnel(), chargerOublis(true)])
       .then(([, jour]) => setDate(jour || veilleIso()));
     chargerTendance();
-    chargerHisto();
     chargerJourType();
     chargerDetail();
   })();

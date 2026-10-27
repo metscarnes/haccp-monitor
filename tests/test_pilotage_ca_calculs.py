@@ -61,6 +61,8 @@ async def test_ce_jour_la_tickets_vs_semaine_precedente(app_client, db):
 @pytest.mark.anyio
 async def test_journee_en_cours_hors_moyennes(app_client, db):
     today = _aujourdhui_paris()
+    if today.weekday() == 6:
+        pytest.skip("le dimanche, le matin seul est une journée complète")
     hier = (today - timedelta(days=1)).isoformat()
     await _saisir(app_client, hier, matin=600, tm=30, soir=400, ts=20)   # journée complète
     await _saisir(app_client, today.isoformat(), matin=200, tm=10)       # matin seul
@@ -74,6 +76,47 @@ async def test_journee_en_cours_hors_moyennes(app_client, db):
     assert p["moyenne_glissante_7j"] == pytest.approx(1000)
     jour_type = next(j for j in p["jours"] if j["dow"] == (today.isoweekday() % 7))
     assert jour_type["nb"] == 0                        # aujourd'hui pas encore dans son jour-type
+
+
+@pytest.mark.anyio
+async def test_journee_complete_du_jour_comptee(app_client, db):
+    """Après-midi saisi (ou dimanche matin, ou fermé) → la journée d'aujourd'hui
+    est terminée : elle entre dans les moyennes et la tendance va jusqu'à elle."""
+    today = _aujourdhui_paris()
+    hier = (today - timedelta(days=1)).isoformat()
+    await _saisir(app_client, hier, matin=600, tm=30, soir=400, ts=20)
+    await _saisir(app_client, today.isoformat(), matin=200, tm=10)
+    if today.weekday() != 6:                                # matin seul : pas terminée
+        assert (await app_client.get(f"{API}/stats/derniere-journee")).json()["date"] == hier
+
+    if today.weekday() == 6:
+        ca_today = 200                                      # dimanche : le matin suffit
+    else:
+        await _saisir(app_client, today.isoformat(), matin=800, tm=40, soir=600, ts=30)
+        ca_today = 1400
+    assert (await app_client.get(f"{API}/stats/derniere-journee")).json()["date"] == today.isoformat()
+    r = (await app_client.get(f"{API}/stats/resume")).json()["trente_jours"]
+    assert r["ca_moyen_jour"] == pytest.approx((1000 + ca_today) / 2)
+
+
+@pytest.mark.anyio
+async def test_par_periode_depliage_mois_semaines_jours(app_client, db):
+    # Semaine 40 (28/09 → 04/10) à cheval sur septembre et octobre
+    for iso in ("2026-09-28", "2026-10-02", "2026-10-06"):
+        await _saisir(app_client, iso, matin=500, tm=20)
+
+    sem = (await app_client.get(f"{API}/stats/par-periode", params={
+        "granularite": "semaine", "date_debut": "2026-10-01", "date_fin": "2026-10-31"})).json()["lignes"]
+    assert [l["periode"] for l in sem] == ["2026-S41", "2026-S40"]
+    assert sem[1]["total_ttc"] == pytest.approx(1000)       # la semaine entière, 28/09 compris
+
+    sept = (await app_client.get(f"{API}/stats/par-periode", params={
+        "granularite": "semaine", "date_debut": "2026-09-01", "date_fin": "2026-09-30"})).json()["lignes"]
+    assert [l["periode"] for l in sept] == ["2026-S40"]
+
+    jours = (await app_client.get(f"{API}/stats/par-periode", params={
+        "granularite": "jour", "date_debut": "2026-09-28", "date_fin": "2026-10-04"})).json()["lignes"]
+    assert [l["periode"] for l in jours] == ["2026-10-02", "2026-09-28"]
 
 
 @pytest.mark.anyio
