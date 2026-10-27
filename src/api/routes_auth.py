@@ -277,6 +277,36 @@ def verifier_mot_de_passe_admin(request: Request, password: Optional[str]) -> No
         )
 
 
+# ---------------------------------------------------------------------------
+# Verrous « mot de passe administrateur » sur des données sensibles
+# ---------------------------------------------------------------------------
+# Le CA, la marge et la valeur du stock ne s'affichent qu'après le mot de passe
+# ADMINISTRATEUR, même depuis la session « équipe » de la tablette (et même
+# depuis une session admin restée ouverte). /api/auth/deverrouiller remet une
+# autorisation signée, valable quelques minutes, que les pages présentent dans
+# l'en-tête X-Jeton-Admin ; le middleware (main.py) refuse ces API sans elle.
+EN_TETE_VERROU = "X-Jeton-Admin"
+VERROU_DUREE_S = 15 * 60
+VERROUS_API = {                       # préfixe d'API → verrou
+    "/api/achats/pilotage/": "pilotage",
+    "/api/inventaire/": "pilotage",
+}
+
+
+def verrou_de(path: str) -> Optional[str]:
+    for prefixe, verrou in VERROUS_API.items():
+        if path.startswith(prefixe):
+            return verrou
+    return None
+
+
+def jeton_verrou_valide(jeton: Optional[str], verrou: str) -> bool:
+    try:
+        return jwt.decode(jeton or "", _JWT_SECRET, algorithms=[_JWT_ALGO]).get("sub") == f"verrou:{verrou}"
+    except JWTError:
+        return False
+
+
 def require_admin(payload: dict = Depends(verify_token)):
     """Dépendance : exige un token de rôle "admin" (refuse "equipe")."""
     if payload.get("role", "admin") != "admin":
@@ -349,6 +379,22 @@ async def logout(response: Response):
 @router.get("/verify")
 async def verify(payload: dict = Depends(verify_token)):
     return {"ok": True, "role": payload.get("role", "admin")}
+
+
+class DeverrouillerBody(BaseModel):
+    password: Optional[str] = None
+    verrou: str
+
+
+@router.post("/deverrouiller")
+async def deverrouiller(body: DeverrouillerBody, request: Request):
+    """Mot de passe administrateur → autorisation temporaire pour un verrou."""
+    if body.verrou not in set(VERROUS_API.values()):
+        raise HTTPException(status_code=404, detail="Verrou inconnu")
+    verifier_mot_de_passe_admin(request, body.password)
+    jeton = jwt.encode({"sub": f"verrou:{body.verrou}", "exp": int(time.time()) + VERROU_DUREE_S},
+                       _JWT_SECRET, algorithm=_JWT_ALGO)
+    return {"jeton": jeton, "expire_dans": VERROU_DUREE_S}
 
 
 @router.post("/change-password")

@@ -149,7 +149,10 @@ if _cors_origins:
 
 from src.api.routes_auth import (  # noqa: E402  (après création app)
     ADMIN_ONLY_PAGES,
+    EN_TETE_VERROU,
+    jeton_verrou_valide,
     role_du_token,
+    verrou_de,
 )
 
 # Routes API publiques (exactes) — accessibles sans authentification.
@@ -215,6 +218,15 @@ async def controle_acces(request: Request, call_next):
     # (admin.html, catalogue.html) restent interdites — comme avant.
     if role != "admin" and path in ADMIN_ONLY_PAGES:
         return RedirectResponse(url="/login.html?admin=1", status_code=302)
+
+    # CA, marge, valeur du stock : mot de passe administrateur redemandé
+    # (autorisation temporaire, cf. routes_auth.VERROUS_API), quel que soit le rôle.
+    verrou = verrou_de(path)
+    if verrou and not jeton_verrou_valide(request.headers.get(EN_TETE_VERROU), verrou):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Mot de passe administrateur requis", "verrou": verrou},
+        )
 
     return await call_next(request)
 

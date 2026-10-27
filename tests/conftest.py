@@ -58,6 +58,12 @@ async def app_client():
             json={"password": os.environ["ADMIN_PASSWORD"]},
         )
         assert resp.status_code == 200, f"login test échoué: {resp.status_code} {resp.text}"
+        # CA / marge / stock valorisé : autorisation « mot de passe admin » présentée
+        # d'office (le verrou lui-même est testé dans test_verrou_admin.py).
+        resp = await client.post("/api/auth/deverrouiller",
+                                 json={"password": os.environ["ADMIN_PASSWORD"], "verrou": "pilotage"})
+        assert resp.status_code == 200, resp.text
+        client.headers["X-Jeton-Admin"] = resp.json()["jeton"]
         yield client
 
 

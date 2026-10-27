@@ -1,6 +1,6 @@
 // À incrémenter à chaque déploiement : l'activation purge les caches des
 // versions précédentes (cf. listener `activate`).
-const CACHE_VERSION = 'haccp-v19';
+const CACHE_VERSION = 'haccp-v20';
 const STATIC_ASSETS = [
   '/',
   '/hub.html',

@@ -318,11 +318,6 @@ function formatDate(iso) {
   return `${d}/${m}/${y}`;
 }
 
-function fmtEur(v) {
-  if (v == null) return '—';
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(v);
-}
-
 async function chargerNettoyage() {
   try {
     const data = await apiFetch('/api/nettoyage/status');
@@ -408,30 +403,9 @@ async function chargerAchats() {
   }
 }
 
-async function chargerPilotage() {
-  const [rCa, rInv] = await Promise.allSettled([
-    apiFetch('/api/achats/pilotage/ca/stats/resume'),
-    apiFetch('/api/inventaire/sessions?limit=1'),
-  ]);
-  if (rCa.status === 'fulfilled') {
-    const mc = rCa.value.mois_courant || {};
-    setStatut('tuile-pilotage-ca', mc.nb_jours > 0 ? `Mois en cours : ${fmtEur(mc.total_ttc)}` : 'Aucune saisie ce mois-ci');
-  }
-  if (rInv.status === 'fulfilled') {
-    const ses = (rInv.value.sessions || [])[0];
-    if (!ses) {
-      setStatut('tuile-inventaire-valorise', 'Aucun inventaire');
-    } else {
-      const date = new Date(ses.date_inventaire).toLocaleDateString('fr-FR');
-      setStatut('tuile-inventaire-valorise', ses.statut === 'cloture'
-        ? `${date} : ${fmtEur(ses.valeur_totale_ht)}` : `${date} : en cours…`);
-    }
-  }
-}
-
 async function chargerSousModules() {
   await Promise.allSettled([
-    chargerNettoyage(), chargerEtalonnage(), chargerTemperatures(), chargerAchats(), chargerPilotage(),
+    chargerNettoyage(), chargerEtalonnage(), chargerTemperatures(), chargerAchats(),
   ]);
 }
 
@@ -464,9 +438,10 @@ const TUILES = [
   { id: 'factures',            href: '/factures-achats.html',      icone: '🧾', titre: 'FACTURES',            statut: 'Rapprocher les écarts' },
   { id: 'comparatif',          href: '/comparatif-achats.html',    icone: '⚖️', titre: 'COMPARATEUR',         statut: 'Prix au kg par fournisseur' },
   // Pilotage
-  { id: 'pilotage-ca',         href: '/pilotage-ca.html',          icone: '💶', titre: "CHIFFRE D'AFFAIRES",  statut: 'Chargement…' },
-  { id: 'inventaire-valorise', href: '/inventaire-valorise.html',  icone: '💰', titre: 'INVENTAIRE VALORISÉ', statut: 'Chargement…' },
-  { id: 'marge',               href: '/marge.html',                icone: '📈', titre: 'MARGE',               statut: 'CA − coût marchandises' },
+  // Chiffres réservés au mot de passe administrateur (verrou-admin.js) : rien sur la tuile.
+  { id: 'pilotage-ca',         href: '/pilotage-ca.html',          icone: '💶', titre: "CHIFFRE D'AFFAIRES",  statut: '🔒 Saisie & comparatif' },
+  { id: 'inventaire-valorise', href: '/inventaire-valorise.html',  icone: '💰', titre: 'INVENTAIRE VALORISÉ', statut: '🔒 Valeur du stock' },
+  { id: 'marge',               href: '/marge.html',                icone: '📈', titre: 'MARGE',               statut: '🔒 CA − coût marchandises' },
   // Autres pages (pas sur l'accueil d'origine, à ajouter au besoin)
   { id: 'production-a-cuire',  href: '/production-a-cuire.html',   icone: '🍗', titre: 'À CUIRE',             statut: 'Produits à cuire' },
   { id: 'produits-attente',    href: '/produits-attente.html',     icone: '⏳', titre: 'PRODUITS EN ATTENTE', statut: 'Lot / DLC à compléter' },
