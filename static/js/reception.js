@@ -5670,7 +5670,7 @@ function afficherBandeauFacture(factureAuto) {
   zone.hidden = false;
   zone.innerHTML = `
     <div class="rec-facture-titre">🧾 Facture brouillon créée</div>
-    <a class="rec-facture-lien" href="/factures-achats.html?facture_id=${factureAuto.facture_id}">
+    <a class="rec-facture-lien" href="/factures-achats.html?facture_id=${factureAuto.facture_id}&depuis=reception">
       Traiter la facture →
     </a>`;
 }

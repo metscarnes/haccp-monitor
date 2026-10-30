@@ -4764,13 +4764,26 @@ async def _generer_facture_depuis_reception(
                 return cl
         return None
 
-    # Création de l'entête
-    date_fac = date.today().isoformat()
+    # Création de l'entête — reprend ce qui a déjà été saisi à la réception pour
+    # éviter de le retaper : date = date de réception (pas « aujourd'hui », la
+    # réception peut être saisie après coup) ; n° = n° du BL (chez la plupart des
+    # fournisseurs le BL fait facture). Le n° reste modifiable, et n'est pas repris
+    # s'il est déjà pris par une autre facture du fournisseur (index d'unicité).
+    date_fac = (reception["date_reception"] or "")[:10] or date.today().isoformat()
+    numero_fac = (reception["numero_bon_livraison"] or "").strip() or None
+    if numero_fac:
+        cur_num = await db.execute(
+            """SELECT 1 FROM factures
+               WHERE fournisseur_id = ? AND TRIM(COALESCE(numero_facture, '')) = ?""",
+            (fournisseur_id, numero_fac),
+        )
+        if await cur_num.fetchone():
+            numero_fac = None
     cur_ins = await db.execute(
         """INSERT INTO factures (boutique_id, fournisseur_id, reception_id, commande_id,
-                                 date_facture, statut, personnel_id)
-           VALUES (1, ?, ?, ?, ?, 'brouillon', ?)""",
-        (fournisseur_id, reception_id, commande_id, date_fac, personnel_id),
+                                 numero_facture, date_facture, statut, personnel_id)
+           VALUES (1, ?, ?, ?, ?, ?, 'brouillon', ?)""",
+        (fournisseur_id, reception_id, commande_id, numero_fac, date_fac, personnel_id),
     )
     facture_id = cur_ins.lastrowid
 
@@ -5399,7 +5412,20 @@ FACTURE_DOCS_DIR = _Path(__file__).parent.parent.parent / "data" / "documents_fa
 FACTURE_DOCS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _analyser_document_facture(raw: bytes, filename: Optional[str]) -> dict:
+async def _nom_fournisseur_facture(db, facture_id: int) -> Optional[str]:
+    """Nom du fournisseur de la facture : l'OCR s'en sert pour appliquer la
+    consigne de mise en page du fournisseur (ex. Saveurs d'Antoine)."""
+    cur = await db.execute(
+        """SELECT fo.nom FROM factures f JOIN fournisseurs fo ON fo.id = f.fournisseur_id
+           WHERE f.id = ?""",
+        (facture_id,),
+    )
+    row = await cur.fetchone()
+    return row["nom"] if row else None
+
+
+def _analyser_document_facture(raw: bytes, filename: Optional[str],
+                               fournisseur: Optional[str] = None) -> dict:
     """Analyse un document de facture : Factur-X d'abord, OCR ensuite.
 
     Renvoie {source, ...données facture...} + 'has_facturx'. Un PDF Factur-X est
@@ -5431,7 +5457,7 @@ def _analyser_document_facture(raw: bytes, filename: Optional[str]) -> dict:
     except ValueError as e:
         raise HTTPException(400, f"Document illisible : {e}")
     try:
-        data = extraire_facture(images)
+        data = extraire_facture(images, fournisseur)
     except OCRFactureError as e:
         raise HTTPException(502, str(e))
     data["has_facturx"] = False
@@ -5481,7 +5507,9 @@ async def importer_document_facture(
         # Conversion PDF/image + appel OCR (CPU + réseau) déportés sur un thread :
         # sinon ils gèlent tout le serveur (un seul worker Uvicorn sur le Pi)
         # pendant toute leur durée.
-        data = await asyncio.to_thread(_analyser_document_facture, raw, fichier.filename)
+        fournisseur = await _nom_fournisseur_facture(db, facture_id)
+        data = await asyncio.to_thread(_analyser_document_facture, raw, fichier.filename,
+                                       fournisseur)
         await _enregistrer_document(
             db, facture_id, raw, fichier.filename,
             origine="facture", has_facturx=data.get("has_facturx", False),
@@ -5559,7 +5587,8 @@ async def importer_depuis_bl_reception(facture_id: int):
         try:
             # Déporté sur un thread : appel réseau à Claude (10-30 s), sinon il
             # gèle tout le serveur (un seul worker Uvicorn) pendant sa durée.
-            data = await asyncio.to_thread(extraire_facture, images)
+            fournisseur = await _nom_fournisseur_facture(db, facture_id)
+            data = await asyncio.to_thread(extraire_facture, images, fournisseur)
         except OCRFactureError as e:
             raise HTTPException(502, str(e))
         data["has_facturx"] = False

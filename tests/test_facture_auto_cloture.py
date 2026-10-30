@@ -104,6 +104,43 @@ async def test_cloture_genere_facture_brouillon_prix_bl(app_client, db):
 
 
 @pytest.mark.anyio
+async def test_cloture_reprend_numero_bl_et_date_reception(app_client, db):
+    # Le n° de BL et la date de réception saisis à la réception sont repris
+    # dans la facture brouillon (pas de re-saisie, pas de « date du jour »).
+    ids = await _setup(app_client, db)
+    await db.execute(
+        "UPDATE receptions SET numero_bon_livraison = ' BL-778 ', date_reception = '2026-10-27' WHERE id = ?",
+        (ids["reception_id"],),
+    )
+    await db.commit()
+    r = await app_client.put(f"/api/receptions/{ids['reception_id']}/cloturer", json={})
+    fac_id = r.json()["facture_auto"]["facture_id"]
+    fac = (await app_client.get(f"/api/achats/factures/{fac_id}")).json()
+    assert fac["numero_facture"] == "BL-778"
+    assert fac["date_facture"] == "2026-10-27"
+
+
+@pytest.mark.anyio
+async def test_cloture_numero_bl_deja_pris_laisse_numero_vide(app_client, db):
+    # N° déjà utilisé par une autre facture du fournisseur → pas repris (unicité),
+    # la clôture et la facture brouillon passent quand même.
+    ids = await _setup(app_client, db)
+    await db.execute(
+        """INSERT INTO factures (boutique_id, fournisseur_id, numero_facture, date_facture, statut)
+           VALUES (1, ?, 'BL-778', '2026-10-01', 'validee')""",
+        (ids["fournisseur_id"],),
+    )
+    await db.execute(
+        "UPDATE receptions SET numero_bon_livraison = 'BL-778' WHERE id = ?", (ids["reception_id"],)
+    )
+    await db.commit()
+    r = await app_client.put(f"/api/receptions/{ids['reception_id']}/cloturer", json={})
+    assert r.json()["facture_auto"]["creee"] is True
+    fac = (await app_client.get(f"/api/achats/factures/{r.json()['facture_auto']['facture_id']}")).json()
+    assert fac["numero_facture"] is None
+
+
+@pytest.mark.anyio
 async def test_cloture_ecart_prix_met_en_litige(app_client, db):
     # Commande 12 €/kg, BL 15 €/kg → +25 % > 2 % → litige
     ids = await _setup(app_client, db, prix_cmd=12.0, prix_bl=15.0)

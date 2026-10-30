@@ -291,6 +291,10 @@
   padding: 0 var(--space-1);
 }
 
+/* Contrôle OCR quantité × prix = montant : ligne corrigée (info) ou à vérifier (alerte) */
+.fac-import-info { color: #6b7280; }
+.fac-import-alerte { color: #b45309; font-weight: 600; }
+
 /* ── Synthèse totaux HT/TTC (global + par fournisseur) ───────────────────── */
 .fac-totaux {
   margin: 0 var(--space-4) var(--space-3);

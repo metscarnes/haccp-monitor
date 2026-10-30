@@ -397,6 +397,24 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/factures-achats.js?v=4"></script>
+  <!-- ── Modal « et maintenant ? » après enregistrement d'une facture ouverte
+       depuis la clôture d'une réception : enchaîner sur la livraison suivante. ── -->
+  <div class="ach-modal" id="modal-suite-reception" hidden>
+    <div class="ach-modal-card">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">✓ Facture enregistrée</h2>
+      </header>
+      <div style="padding:var(--space-3) var(--space-4);">
+        <p style="margin:0;">Une autre livraison à réceptionner ?</p>
+      </div>
+      <div class="ach-modal-footer">
+        <button type="button" class="ach-btn" id="btn-suite-rester">Rester sur les factures</button>
+        <button type="button" class="ach-btn" id="btn-suite-hub">🏠 Accueil</button>
+        <button type="button" class="ach-btn ach-btn--primary" id="btn-suite-reception">📦 Nouvelle réception</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/achats/factures-achats.js?v=5"></script>
 </body>
 </html>

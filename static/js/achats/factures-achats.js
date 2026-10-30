@@ -11,6 +11,7 @@ let factures     = [];
 let fournisseurs = [];
 let receptions   = [];     // pour la modale "nouvelle facture"
 let facCourante  = null;   // facture en cours d'édition (détail)
+let factureDepuisReception = null;  // id de la facture ouverte depuis la clôture de réception
 
 const STATUT_LABELS = {
   brouillon: 'Brouillon', rapprochee: 'Rapprochée', validee: 'Validée', litige: 'En litige',
@@ -26,9 +27,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindEvents();
   // Arrivée depuis la clôture de réception (bandeau « Traiter la facture ») :
   // ?facture_id=123 ouvre directement la modale de cette facture.
-  const idParam = new URLSearchParams(window.location.search).get('facture_id');
+  const params = new URLSearchParams(window.location.search);
+  const idParam = params.get('facture_id');
   if (idParam) {
     const id = Number(idParam);
+    // &depuis=reception : après « Enregistrer », proposer d'enchaîner sur une
+    // nouvelle réception plutôt que de refaire tout le chemin à la main.
+    if (params.get('depuis') === 'reception' && Number.isFinite(id)) factureDepuisReception = id;
     if (Number.isFinite(id)) await ouvrirFacture(id);
     // Nettoie l'URL pour qu'un rechargement ne rouvre pas la modale.
     window.history.replaceState({}, '', window.location.pathname);
@@ -58,6 +63,17 @@ function bindEvents() {
   document.getElementById('btn-fermer-fac').addEventListener('click', fermerModalFacture);
   document.getElementById('btn-sauver-fac').addEventListener('click', () => sauverFacture(false));
   document.getElementById('btn-valider-fac').addEventListener('click', () => sauverFacture(true));
+
+  // Modale « nouvelle réception ? » (arrivée depuis la clôture de réception)
+  document.getElementById('btn-suite-reception').addEventListener('click', () => {
+    window.location.href = '/reception.html';
+  });
+  document.getElementById('btn-suite-hub').addEventListener('click', () => {
+    window.location.href = '/hub.html';
+  });
+  document.getElementById('btn-suite-rester').addEventListener('click', () => {
+    document.getElementById('modal-suite-reception').hidden = true;
+  });
   document.getElementById('btn-supprimer-fac').addEventListener('click', supprimerFacture);
   document.getElementById('btn-doublon-fac').addEventListener('click', ouvrirModalDoublon);
   document.getElementById('btn-export-pdf').addEventListener('click', exporterPdf);
@@ -536,12 +552,16 @@ function rendreExtraction(data) {
   // avant le clic « Appliquer » (rien n'est écrit en base à ce stade).
   const champNumero = document.getElementById('fac-numero');
   const champDate = document.getElementById('fac-date');
-  if (data.numero_facture && !champNumero.value) champNumero.value = data.numero_facture;
-  if (data.date_facture && !champDate.value) champDate.value = data.date_facture;
+  // Le document lu fait foi : il remplace le n° (pré-rempli avec le n° de BL) et
+  // la date (pré-remplie avec la date de réception) — « Appliquer » les écrit aussi.
+  if (data.numero_facture) champNumero.value = data.numero_facture;
+  if (data.date_facture) champDate.value = data.date_facture;
   const ligneHtml = (l, i, type) => `
     <tr>
       <td><input type="checkbox" class="imp-check" data-type="${type}" data-i="${i}" checked></td>
-      <td>${escHtml(l.designation)}</td>
+      <td>${escHtml(l.designation)}${l.alerte_prix
+        ? `<br><small class="${l.prix_suspect ? 'fac-import-alerte' : 'fac-import-info'}">${l.prix_suspect ? '⚠' : 'ℹ'} ${escHtml(l.alerte_prix)}</small>`
+        : ''}</td>
       <td class="ach-col-num">${l.quantite != null ? l.quantite : (l.poids_facture_kg ?? '—')}</td>
       <td class="ach-col-num">${l.prix_unitaire != null ? fmtPrix(l.prix_unitaire) : '—'}</td>
       <td>${escHtml(l.unite_prix || (type === 'annexe' ? l.type_ligne : ''))}</td>
@@ -1032,8 +1052,13 @@ async function sauverFacture(valider) {
     zone.hidden = false;
     return;
   }
+  const idSauvee = facCourante.id;
   fermerModalFacture();
   await chargerFactures();
+  if (factureDepuisReception && idSauvee === factureDepuisReception) {
+    factureDepuisReception = null;  // une seule fois
+    document.getElementById('modal-suite-reception').hidden = false;
+  }
 }
 
 async function supprimerFacture() {
