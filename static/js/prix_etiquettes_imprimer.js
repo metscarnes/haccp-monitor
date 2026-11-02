@@ -530,11 +530,11 @@
       if (estLibre(l)) {
         unitaires.push({ url: '/api/prix-etiquettes/imprimer', quantite: l.quantite,
                          corps: { type: 'libre', lignes: textesDe(l).map(texte => ({ texte })),
-                                  fait_maison: !!l.fait_maison } });
+                                  fait_maison: !!l.fait_maison, mentions: l.mentions || [] } });
       } else if (estHorsCatalogue(l)) {
         unitaires.push({ url: '/api/prix-etiquettes/imprimer-hors-catalogue', quantite: l.quantite,
                          corps: { nom: l.libelle, prix_vente_ttc: l.prix_ttc, unite_vente: l.unite_vente || 'kg',
-                                  fait_maison: !!l.fait_maison } });
+                                  fait_maison: !!l.fait_maison, mentions: l.mentions || [] } });
       } else {
         qte.set(l.catalogue_vente_id, (qte.get(l.catalogue_vente_id) || 0) + l.quantite);
       }

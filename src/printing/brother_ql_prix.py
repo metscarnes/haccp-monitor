@@ -92,6 +92,81 @@ def geometrie_fait_maison(w: int, h: int, marge_h: int) -> dict:
             "lw": lw, "lh": lh, "x0": col + round(marge_h / 2), "x1": w - marge_h}
 
 
+# Mentions (AOP, IGP, Label Rouge, Artisanal…) : bandeau en bas de la zone du texte,
+# 2 au maximum (scripts/generer_logos_mentions.py → static/img/mentions/<clé>.png).
+# Chaque fichier est dessiné à MENTION_REFERENCE px × son facteur de hauteur : sa taille
+# à l'étiquette = taille du fichier × (hauteur du bandeau / MENTION_REFERENCE).
+# Géométrie en fraction de la HAUTEUR de l'étiquette — miroir de prix_etiquettes.js.
+MENTIONS_DIR       = Path(__file__).parent.parent.parent / "static" / "img" / "mentions"
+MENTIONS_ORDRE     = ("aop", "igp", "label_rouge", "artisanal", "sans_nitrite", "local", "race_viande")
+MENTIONS_MAX       = 2
+MENTION_REFERENCE  = 300
+MENTION_BANDEAU    = 0.20     # hauteur d'une mention ordinaire
+MENTION_ESPACE     = 0.25     # espace entre deux mentions, en fraction du bandeau
+MENTION_ECART      = 0.04     # espace entre le texte et le bandeau
+_mentions_cache: dict = {}
+
+
+def normaliser_mentions(mentions) -> list[str]:
+    """Clés connues, sans doublon, dans l'ordre d'affichage, 2 au maximum."""
+    choisies = set(mentions or [])
+    return [m for m in MENTIONS_ORDRE if m in choisies][:MENTIONS_MAX]
+
+
+def mentions_json(mentions) -> Optional[str]:
+    """Liste de mentions → texte JSON pour la base (None si aucune)."""
+    import json
+    liste = normaliser_mentions(mentions)
+    return json.dumps(liste) if liste else None
+
+
+def lire_mentions(valeur) -> list[str]:
+    """Colonne `mentions` (JSON, liste ou NULL) → liste normalisée ; illisible = aucune."""
+    import json
+    if isinstance(valeur, (list, tuple)):
+        return normaliser_mentions(valeur)
+    try:
+        return normaliser_mentions(json.loads(valeur)) if valeur else []
+    except (TypeError, ValueError):
+        return []
+
+
+def _mention(cle: str):
+    """Forme (canal alpha) d'une mention à sa taille de fichier, ou None si absente."""
+    from PIL import Image
+    if cle not in _mentions_cache:
+        try:
+            _mentions_cache[cle] = Image.open(MENTIONS_DIR / f"{cle}.png").convert("RGBA").getchannel("A")
+        except OSError as e:
+            logger.error("Mention « %s » introuvable : %s", cle, e)
+            _mentions_cache[cle] = None
+    return _mentions_cache[cle]
+
+
+def geometrie_mentions(tailles: list, x0: int, x1: int, h: int, marge_v: int) -> dict:
+    """Place les mentions (tailles de fichier [(w, h)]) en bas de la zone [x0, x1].
+    Renvoie {placements: [(x, y, w, h)], haut_texte_max: bas de la zone du texte}.
+    Miroir de geometrieMentions (JS) : entiers par troncature des deux côtés."""
+    bandeau = int(h * MENTION_BANDEAU)
+    dims = [(int(w * bandeau / MENTION_REFERENCE), int(hh * bandeau / MENTION_REFERENCE))
+            for w, hh in tailles]
+    esp = int(bandeau * MENTION_ESPACE)
+    total = sum(w for w, _ in dims) + esp * (len(dims) - 1)
+    place = max(1, x1 - x0)
+    if total > place:                             # trop large : tout est réduit
+        dims = [(int(w * place / total), int(hh * place / total)) for w, hh in dims]
+        esp = int(esp * place / total)
+        total = sum(w for w, _ in dims) + esp * (len(dims) - 1)
+    hmax = max(hh for _, hh in dims)
+    bas = h - marge_v
+    x = x0 + (place - total) // 2
+    placements = []
+    for w, hh in dims:
+        placements.append((x, bas - hmax + (hmax - hh) // 2, w, hh))
+        x += w + esp
+    return {"placements": placements, "bas_texte": bas - hmax - int(h * MENTION_ECART)}
+
+
 def cm_to_px(cm: float) -> int:
     return max(1, round(cm * PX_PAR_CM))
 
@@ -179,6 +254,7 @@ def generer_image_prix(data: dict):
       hauteur_cm  float   — hauteur de l'étiquette (ex: 7.5)
       fond_noir   bool    — True = fond noir, texte blanc
       fait_maison bool    — logo « Fait maison » à gauche (le texte se range à droite)
+      mentions    list    — clés de MENTIONS_ORDRE (2 max), en bandeau sous le texte
       lignes      list    — liste de dicts décrivant chaque ligne :
         {
           "texte"      : str,
@@ -214,6 +290,12 @@ def generer_image_prix(data: dict):
     x0, x1   = (fm["x0"], fm["x1"]) if fm else (marge_h, w - marge_h)
     zone_w   = max(1, x1 - x0)
     zone_h   = max(1, h - 2 * marge_v)
+    # Mentions : bandeau en bas, le texte se range au-dessus.
+    mentions = [(c, _mention(c)) for c in normaliser_mentions(data.get("mentions"))]
+    mentions = [(c, m) for c, m in mentions if m is not None]
+    gm = geometrie_mentions([m.size for _, m in mentions], x0, x1, h, marge_v) if mentions else None
+    if gm:
+        zone_h = max(1, gm["bas_texte"] - marge_v)
     n_lignes = len(lignes_brutes)
     inter    = round(h * 0.025)  # espace vertical entre lignes
 
@@ -288,6 +370,8 @@ def generer_image_prix(data: dict):
     # ── Centrage vertical du bloc ──
     bloc_h  = sum(l["line_h"] for l in lignes_rendues) + inter * (n_lignes - 1)
     y_start = max(marge_v, (h - bloc_h) // 2)
+    if gm:                                        # centré dans la zone au-dessus du bandeau
+        y_start = marge_v + max(0, (zone_h - bloc_h) // 2)
 
     # ── Dessin ──
     img  = Image.new("RGB", (w, h), color=couleur_fond)
@@ -297,6 +381,10 @@ def generer_image_prix(data: dict):
         masque = _masque_fait_maison(fm["lw"], fm["lh"])
         if masque is not None:
             img.paste(couleur_texte, (fm["x_logo"], fm["y_logo"]), masque)
+    if gm:
+        for (_, m), (mx, my, mw, mh) in zip(mentions, gm["placements"]):
+            if mw > 0 and mh > 0:
+                img.paste(couleur_texte, (mx, my), m.resize((mw, mh), Image.LANCZOS))
 
     for l in lignes_rendues:
         if l["alignement"] == "right":
@@ -411,6 +499,8 @@ def appliquer_variables(config: dict, produit: dict) -> dict:
     # Logo « Fait maison » : suit le produit (case de sa fiche au catalogue de vente).
     if "fait_maison" in produit:
         nouvelle["fait_maison"] = bool(produit.get("fait_maison"))
+    if "mentions" in produit:                     # AOP, Label Rouge… de la fiche produit
+        nouvelle["mentions"] = normaliser_mentions(produit.get("mentions"))
     nouvelle["lignes"] = [
         {**ligne, "texte": substituer(ligne.get("texte", ""))}
         for ligne in config.get("lignes", [])
@@ -486,7 +576,8 @@ def normaliser_style(config: dict) -> tuple[dict, bool]:
 MAX_LIGNES_LIBRES = 5
 
 
-def config_libre(style: dict, textes: list[str], fait_maison: bool = False) -> dict:
+def config_libre(style: dict, textes: list[str], fait_maison: bool = False,
+                 mentions: Optional[list] = None) -> dict:
     """Étiquette LIBRE (« Arrivage du jour »…) : seul le texte est libre ; format, fond
     et police sont ceux du style normal de la boutique — aucune taille, police ni mise
     en page choisie à la main (une seule apparence pour toutes les étiquettes).
@@ -499,6 +590,7 @@ def config_libre(style: dict, textes: list[str], fait_maison: bool = False) -> d
         "largeur_cm": style.get("largeur_cm", 10), "hauteur_cm": style.get("hauteur_cm", 6),
         "fond_noir": bool(style.get("fond_noir")), "type": "libre",
         "fait_maison": bool(fait_maison),
+        "mentions": normaliser_mentions(mentions),
         "lignes": [{"texte": t, "poids": 1, "taille_px": 0, "gras": False,
                     "police": zone_nom.get("police"), "alignement": "center"} for t in textes],
     }

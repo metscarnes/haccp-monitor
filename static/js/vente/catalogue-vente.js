@@ -39,8 +39,48 @@ const LIAISON_ICONES = {
   reference_inactive:    { icone: '🔗', classe: 'ach-btn--liaison-partielle', titre: "L'achat de référence a été désactivé ou supprimé — choisissez-en un autre dans le comparateur" },
 };
 
+// ── Mentions des étiquettes prix (miroir de brother_ql_prix.MENTIONS_ORDRE) ──
+const MENTIONS = [
+  { cle: 'aop',          libelle: 'AOP' },
+  { cle: 'igp',          libelle: 'IGP' },
+  { cle: 'label_rouge',  libelle: 'Label Rouge' },
+  { cle: 'artisanal',    libelle: 'Artisanal' },
+  { cle: 'sans_nitrite', libelle: 'Sans nitrite ajouté' },
+  { cle: 'local',        libelle: 'Local' },
+  { cle: 'race_viande',  libelle: 'Race à viande' },
+];
+const MENTIONS_MAX = 2;
+
+function construireMentions() {
+  const zone = document.getElementById('v-mentions');
+  zone.innerHTML = MENTIONS.map(m => `
+    <label style="display:flex;align-items:center;gap:6px;margin:0;font-weight:400;">
+      <input type="checkbox" class="v-mention" value="${m.cle}"
+             style="width:18px;height:18px;accent-color:var(--color-accent);"> ${m.libelle}
+    </label>`).join('');
+  zone.addEventListener('change', majMentions);
+}
+
+// 2 mentions au maximum : les autres cases se grisent dès que 2 sont cochées.
+function majMentions() {
+  const cases = [...document.querySelectorAll('.v-mention')];
+  const pleines = cases.filter(c => c.checked).length >= MENTIONS_MAX;
+  cases.forEach(c => { c.disabled = pleines && !c.checked; });
+}
+
+function lireMentions() {
+  return [...document.querySelectorAll('.v-mention:checked')].map(c => c.value);
+}
+
+function ecrireMentions(liste) {
+  const choisies = new Set(Array.isArray(liste) ? liste : []);
+  document.querySelectorAll('.v-mention').forEach(c => { c.checked = choisies.has(c.value); });
+  majMentions();
+}
+
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  construireMentions();
   peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), '');
   bindEvents();
   charger();
@@ -541,6 +581,7 @@ function creerDepuisDemande(id) {
   document.getElementById('v-prix').value = d.prix_vente_ttc ?? '';
   document.getElementById('v-unite').value = d.unite_vente === 'piece' ? 'piece' : 'kg';
   document.getElementById('v-fait-maison').checked = !!d.fait_maison;
+  ecrireMentions(d.mentions);
   majAffichagePoids();
 }
 
@@ -628,6 +669,7 @@ function ouvrirEdition(id) {
   document.getElementById('v-code').value = p.code_vente || '';
   document.getElementById('v-suivi-cuisson-auto').checked = !!p.suivi_cuisson_auto;
   document.getElementById('v-fait-maison').checked = !!p.fait_maison;
+  ecrireMentions(p.mentions);
   document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('btn-relier-achat').hidden = false;
   document.getElementById('form-erreur').hidden = true;
@@ -652,6 +694,7 @@ function viderForm() {
   document.getElementById('v-code').value = '';
   document.getElementById('v-suivi-cuisson-auto').checked = false;
   document.getElementById('v-fait-maison').checked = false;
+  ecrireMentions([]);
   document.getElementById('form-erreur').hidden = true;
 }
 
@@ -676,6 +719,7 @@ async function sauver(e) {
     code_vente:               document.getElementById('v-code').value.trim() || null,
     suivi_cuisson_auto:       document.getElementById('v-suivi-cuisson-auto').checked,
     fait_maison:              document.getElementById('v-fait-maison').checked,
+    mentions:                 lireMentions(),
   };
 
   try {

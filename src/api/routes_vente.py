@@ -31,7 +31,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from src.printing.brother_ql_prix import mentions_json
 
 from src.api.routes_auth import require_admin
 from src.api.routes_achats import _calc_marge, _prix_kg_article, _prix_piece_article
@@ -50,6 +52,27 @@ router = APIRouter(prefix="/api/vente", tags=["vente"])
 # Schémas Pydantic
 # ---------------------------------------------------------------------------
 
+def _valider_mentions(v):
+    """Mentions des étiquettes : clés connues, 2 au maximum (422 sinon)."""
+    from src.printing.brother_ql_prix import MENTIONS_MAX, MENTIONS_ORDRE, normaliser_mentions
+    if v is None:
+        return v
+    inconnues = [m for m in v if m not in MENTIONS_ORDRE]
+    if inconnues:
+        raise ValueError(f"Mention inconnue : {', '.join(inconnues)}")
+    if len(set(v)) > MENTIONS_MAX:
+        raise ValueError(f"{MENTIONS_MAX} mentions au maximum par étiquette.")
+    return normaliser_mentions(v)
+
+
+def _produit_lu(row) -> dict:
+    """Ligne catalogue_vente → dict, mentions en liste."""
+    from src.printing.brother_ql_prix import lire_mentions
+    p = dict(row)
+    p["mentions"] = lire_mentions(p.get("mentions"))
+    return p
+
+
 class ProduitVenteCreate(BaseModel):
     nom: str
     code_vente: Optional[str] = None
@@ -67,6 +90,13 @@ class ProduitVenteCreate(BaseModel):
     suivi_cuisson_auto: Optional[bool] = False
     # v8.3 : logo « Fait maison » sur les étiquettes prix du produit.
     fait_maison: Optional[bool] = False
+    # v8.8 : mentions des étiquettes prix (AOP, Label Rouge…), 2 au maximum.
+    mentions: Optional[list[str]] = None
+
+    @field_validator("mentions")
+    @classmethod
+    def _mentions(cls, v):
+        return _valider_mentions(v)
 
 
 class ProduitVenteUpdate(BaseModel):
@@ -84,6 +114,12 @@ class ProduitVenteUpdate(BaseModel):
     actif: Optional[bool] = None
     suivi_cuisson_auto: Optional[bool] = None
     fait_maison: Optional[bool] = None
+    mentions: Optional[list[str]] = None
+
+    @field_validator("mentions")
+    @classmethod
+    def _mentions(cls, v):
+        return _valider_mentions(v)
 
 
 class DecisionPrix(BaseModel):
@@ -127,7 +163,7 @@ async def liste_catalogue_vente(
             params.append(f"%{q}%")
         sql += " ORDER BY famille, sous_famille, nom"
         cur = await db.execute(sql, params)
-        produits = [dict(r) for r in await cur.fetchall()]
+        produits = [_produit_lu(r) for r in await cur.fetchall()]
 
         # État de liaison + marge (réutilise le calcul du comparateur achats) :
         #   'non_relie'            — aucun groupe comparatif, bouton 🔗 vide
@@ -639,19 +675,20 @@ async def creer_produit_vente(body: ProduitVenteCreate, auth=Depends(require_adm
             """INSERT INTO catalogue_vente
                    (boutique_id, nom, code_vente, prix_vente_ttc, unite_vente, poids_piece_kg,
                     tva_percent, dlc_jours, temperature_conservation, format_etiquette,
-                    famille, sous_famille, suivi_cuisson_auto, fait_maison)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    famille, sous_famille, suivi_cuisson_auto, fait_maison, mentions)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.nom, body.code_vente, body.prix_vente_ttc, unite, poids,
              body.tva_percent, body.dlc_jours, body.temperature_conservation,
              body.format_etiquette, body.famille, body.sous_famille,
-             1 if body.suivi_cuisson_auto else 0, 1 if body.fait_maison else 0),
+             1 if body.suivi_cuisson_auto else 0, 1 if body.fait_maison else 0,
+             mentions_json(body.mentions)),
         )
         await tracer_changement_prix_vente(
             db, cur.lastrowid, None, body.prix_vente_ttc, motif="creation", role=_role(auth),
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (cur.lastrowid,))
-        return dict(await cur2.fetchone())
+        return _produit_lu(await cur2.fetchone())
 
 
 @router.put("/catalogue/{produit_id}")
@@ -671,6 +708,8 @@ async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, auth
             del fields["actif"]
         if not fields:
             raise HTTPException(400, "Aucun champ à modifier")
+        if "mentions" in fields:                  # liste → JSON en base
+            fields["mentions"] = mentions_json(fields["mentions"])
 
         # Le prix passe par la porte unique (historique + clôture d'une proposition en
         # attente), APRÈS les autres champs : la marge tracée tient compte d'un changement
@@ -686,7 +725,7 @@ async def modifier_produit_vente(produit_id: int, body: ProduitVenteUpdate, auth
         await db.commit()
 
         cur2 = await db.execute("SELECT * FROM catalogue_vente WHERE id = ?", (produit_id,))
-        return dict(await cur2.fetchone())
+        return _produit_lu(await cur2.fetchone())
 
 
 @router.delete("/catalogue/{produit_id}", status_code=200)

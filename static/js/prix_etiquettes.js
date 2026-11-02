@@ -130,18 +130,78 @@ function geometrieFaitMaison(w, h, margeH) {
            lw, lh, x0: col + Math.round(margeH / 2), x1: w - margeH };
 }
 
-// Logo peint de la couleur du texte (le fichier n'est qu'une forme blanche).
-function dessinerLogoFaitMaison(ctx, g, encre) {
-  if (!logoFaitMaison.complete || !logoFaitMaison.naturalWidth) return;
+// Forme (fichier blanc + transparence) peinte de la couleur du texte.
+function peindreForme(ctx, image, x, y, w, h, encre) {
+  if (!image.complete || !image.naturalWidth || w <= 0 || h <= 0) return;
   const tampon = document.createElement('canvas');
-  tampon.width = g.lw;
-  tampon.height = g.lh;
+  tampon.width = w;
+  tampon.height = h;
   const t = tampon.getContext('2d');
-  t.drawImage(logoFaitMaison, 0, 0, g.lw, g.lh);
+  t.drawImage(image, 0, 0, w, h);
   t.globalCompositeOperation = 'source-in';
   t.fillStyle = encre;
-  t.fillRect(0, 0, g.lw, g.lh);
-  ctx.drawImage(tampon, g.xLogo, g.yLogo);
+  t.fillRect(0, 0, w, h);
+  ctx.drawImage(tampon, x, y);
+}
+
+function dessinerLogoFaitMaison(ctx, g, encre) {
+  peindreForme(ctx, logoFaitMaison, g.xLogo, g.yLogo, g.lw, g.lh, encre);
+}
+
+// Mentions (AOP, IGP, Label Rouge, Artisanal…) : bandeau en bas de la zone du texte,
+// 2 au maximum — miroir de brother_ql_prix (MENTIONS_*, geometrie_mentions).
+const MENTIONS = [
+  { cle: 'aop',          libelle: 'AOP' },
+  { cle: 'igp',          libelle: 'IGP' },
+  { cle: 'label_rouge',  libelle: 'Label Rouge' },
+  { cle: 'artisanal',    libelle: 'Artisanal' },
+  { cle: 'sans_nitrite', libelle: 'Sans nitrite ajouté' },
+  { cle: 'local',        libelle: 'Local' },
+  { cle: 'race_viande',  libelle: 'Race à viande' },
+];
+const MENTIONS_MAX = 2;
+const MENTION_REFERENCE = 300;
+const MENTION_BANDEAU = 0.20;
+const MENTION_ESPACE = 0.25;
+const MENTION_ECART = 0.04;
+const imagesMentions = new Map();   // clé → Image
+
+function chargerMentions() {
+  return Promise.all(MENTIONS.map(({ cle }) => new Promise(ok => {
+    const im = new Image();
+    im.onload = im.onerror = ok;
+    im.src = `/static/img/mentions/${cle}.png`;
+    imagesMentions.set(cle, im);
+  })));
+}
+
+// Clés connues, sans doublon, dans l'ordre d'affichage, 2 au maximum.
+function normaliserMentions(liste) {
+  const choisies = new Set(Array.isArray(liste) ? liste : []);
+  return MENTIONS.map(m => m.cle).filter(c => choisies.has(c)).slice(0, MENTIONS_MAX);
+}
+
+function geometrieMentions(tailles, x0, x1, h, margeV) {
+  const bandeau = Math.trunc(h * MENTION_BANDEAU);
+  let dims = tailles.map(([w, hh]) => [Math.trunc(w * bandeau / MENTION_REFERENCE),
+                                       Math.trunc(hh * bandeau / MENTION_REFERENCE)]);
+  let esp = Math.trunc(bandeau * MENTION_ESPACE);
+  let total = dims.reduce((s, [w]) => s + w, 0) + esp * (dims.length - 1);
+  const place = Math.max(1, x1 - x0);
+  if (total > place) {
+    dims = dims.map(([w, hh]) => [Math.trunc(w * place / total), Math.trunc(hh * place / total)]);
+    esp = Math.trunc(esp * place / total);
+    total = dims.reduce((s, [w]) => s + w, 0) + esp * (dims.length - 1);
+  }
+  const hmax = Math.max(...dims.map(([, hh]) => hh));
+  const bas = h - margeV;
+  let x = x0 + Math.floor((place - total) / 2);
+  const placements = dims.map(([w, hh]) => {
+    const p = [x, bas - hmax + Math.floor((hmax - hh) / 2), w, hh];
+    x += w + esp;
+    return p;
+  });
+  return { placements, basTexte: bas - hmax - Math.trunc(h * MENTION_ECART) };
 }
 
 // ── Éléments DOM ─────────────────────────────────────────────
@@ -214,7 +274,7 @@ function mesurer(ctx, ligne, sizePx) {
 // Dessine une étiquette sur un canvas, miroir de brother_ql_prix.generer_image_prix.
 //   cible   : { canvas, cadre (élément aux proportions réelles), info (texte des dimensions),
 //               maxW, maxH (taille max du cadre à l'écran) }
-//   config  : { largeur_cm, hauteur_cm, fond_noir, lignes, fait_maison }
+//   config  : { largeur_cm, hauteur_cm, fond_noir, lignes, fait_maison, mentions }
 //   produit : produit du catalogue de vente (+ promo) qui remplit les variables, ou null
 //             (son fait_maison l'emporte sur celui de la config, comme à l'impression)
 function dessinerEtiquette(cible, config, produit) {
@@ -280,7 +340,14 @@ function dessinerEtiquette(cible, config, produit) {
   const x0 = fm ? fm.x0 : margeH;
   const x1 = fm ? fm.x1 : w - margeH;
   const zoneW  = Math.max(1, x1 - x0);
-  const zoneH  = Math.max(1, h - 2 * margeV);
+  let zoneH    = Math.max(1, h - 2 * margeV);
+  // Mentions : bandeau en bas, le texte se range au-dessus.
+  const listeMentions = produit && 'mentions' in produit ? produit.mentions : config.mentions;
+  const mentions = normaliserMentions(listeMentions)
+    .map(c => imagesMentions.get(c)).filter(im => im && im.complete && im.naturalWidth);
+  const gm = mentions.length
+    ? geometrieMentions(mentions.map(im => [im.naturalWidth, im.naturalHeight]), x0, x1, h, margeV) : null;
+  if (gm) zoneH = Math.max(1, gm.basTexte - margeV);
   const inter  = Math.round(h * 0.025);
   const n = lignes.length;
 
@@ -317,8 +384,10 @@ function dessinerEtiquette(cible, config, produit) {
 
   const blocH = rendues.reduce((s, l) => s + l.h, 0) + inter * (n - 1);
   let y = Math.max(margeV, Math.floor((h - blocH) / 2));
+  if (gm) y = margeV + Math.max(0, Math.floor((zoneH - blocH) / 2));   // au-dessus du bandeau
 
   if (fm) dessinerLogoFaitMaison(ctx, fm, encre);
+  if (gm) mentions.forEach((im, i) => peindreForme(ctx, im, ...gm.placements[i], encre));
   ctx.fillStyle = encre;
   ctx.textBaseline = 'alphabetic';
   for (const l of rendues) {
@@ -545,7 +614,8 @@ const elBtnImprimer  = $('btn-imprimer');
 const elBtnImprimerNav = $('btn-imprimer-navigateur');
 const SANS_STYLE = 'Aucun style d\'étiquette : l\'administrateur doit le créer dans l\'onglet « Style ».';
 
-const libre = { sorte: 'texte', unite: 'kg', faitMaison: false, catalogue: null };
+const libre = { sorte: 'texte', unite: 'kg', faitMaison: false, mentions: [], catalogue: null };
+const CLE_MENTIONS_LIBRE = 'pe_libre_mentions';
 const CLE_FM_LIBRE = 'pe_libre_fait_maison';
 
 function afficherStatut(msg, type) {
@@ -562,12 +632,13 @@ function textesLibres() {
 
 // Miroir de brother_ql_prix.config_libre : format, fond et police du style normal,
 // lignes de même taille, centrées (+ logo « Fait maison » si demandé).
-function configLibre(style, textes, faitMaison = false) {
+function configLibre(style, textes, faitMaison = false, mentions = []) {
   const lignes = style.lignes || [];
   const zoneNom = lignes.find(l => l.zone === 'nom') || lignes[0] || {};
   return {
     largeur_cm: style.largeur_cm, hauteur_cm: style.hauteur_cm, fond_noir: !!style.fond_noir,
     fait_maison: !!faitMaison,
+    mentions: normaliserMentions(mentions),
     lignes: textes.map(t => t.trim()).filter(Boolean).slice(0, MAX_LIGNES_LIBRES).map(texte => ({
       texte, poids: 1, taille_px: 0, gras: false, police: zoneNom.police || null, alignement: 'center',
     })),
@@ -584,7 +655,7 @@ function lirePrix(texte) {
 function articleSaisi() {
   return { nom: elLibreNom.value.replace(/\s+/g, ' ').trim(),
            prix_vente_ttc: lirePrix(elLibrePrix.value), unite_vente: libre.unite,
-           fait_maison: libre.faitMaison };
+           fait_maison: libre.faitMaison, mentions: libre.mentions };
 }
 
 // Nom sans accents ni majuscules (miroir de produits_a_creer.normaliser_nom).
@@ -617,6 +688,7 @@ function sauverSaisie() {
     localStorage.setItem(CLE_ARTICLE_LIBRE, JSON.stringify(
       { nom: elLibreNom.value, prix: elLibrePrix.value, unite: libre.unite }));
     localStorage.setItem(CLE_FM_LIBRE, libre.faitMaison ? '1' : '');
+    localStorage.setItem(CLE_MENTIONS_LIBRE, JSON.stringify(libre.mentions));
   } catch (e) { /* ignore */ }
 }
 
@@ -632,7 +704,7 @@ function rendreLibre() {
     // Mise en page officielle : le style normal, rempli avec l'article tapé.
     dessinerEtiquette(cible, state.styleNormal, articleSaisi());
   } else {
-    dessinerEtiquette(cible, configLibre(state.styleNormal, textesLibres(), libre.faitMaison), null);
+    dessinerEtiquette(cible, configLibre(state.styleNormal, textesLibres(), libre.faitMaison, libre.mentions), null);
   }
 }
 
@@ -668,6 +740,30 @@ function choisirFaitMaison(oui) {
 document.querySelectorAll('.pe-libre-choix [data-sorte]').forEach(b =>
   b.addEventListener('click', () => choisirSorte(b.dataset.sorte)));
 $('libre-fait-maison').addEventListener('click', () => choisirFaitMaison(!libre.faitMaison));
+
+// Mentions (AOP, Label Rouge…) : boutons à bascule, 2 au maximum.
+$('libre-mentions').innerHTML = MENTIONS.map(m =>
+  `<button class="pe-imp-famille" data-mention="${m.cle}" aria-pressed="false">${escHtml(m.libelle)}</button>`).join('');
+
+function choisirMentions(liste) {
+  libre.mentions = normaliserMentions(liste);
+  const pleines = libre.mentions.length >= MENTIONS_MAX;
+  document.querySelectorAll('#libre-mentions [data-mention]').forEach(b => {
+    const actif = libre.mentions.includes(b.dataset.mention);
+    b.classList.toggle('active', actif);
+    b.setAttribute('aria-pressed', String(actif));
+    b.disabled = pleines && !actif;
+  });
+  rendreLibre();
+}
+
+$('libre-mentions').addEventListener('click', e => {
+  const b = e.target.closest('[data-mention]');
+  if (!b || b.disabled) return;
+  const cle = b.dataset.mention;
+  choisirMentions(libre.mentions.includes(cle) ? libre.mentions.filter(m => m !== cle)
+                                               : [...libre.mentions, cle]);
+});
 document.querySelectorAll('.pe-libre-unites [data-unite]').forEach(b =>
   b.addEventListener('click', () => choisirUnite(b.dataset.unite)));
 let minuterieExistants = null;
@@ -758,7 +854,7 @@ elBtnImprimer.addEventListener('click', async () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'libre', lignes: textesLibres().map(texte => ({ texte })),
-                               fait_maison: libre.faitMaison }),
+                               fait_maison: libre.faitMaison, mentions: libre.mentions }),
       });
       afficherStatut('✓ Étiquette imprimée avec succès.', 'ok');
     }
@@ -780,7 +876,7 @@ elBtnImprimerNav.addEventListener('click', async () => {
   if (libre.sorte === 'prix') {
     noterImpressionNavigateur({ type: 'hors_catalogue', article: articleSaisi() });
   } else {
-    noterImpressionNavigateur({ type: 'libre', fait_maison: libre.faitMaison,
+    noterImpressionNavigateur({ type: 'libre', fait_maison: libre.faitMaison, mentions: libre.mentions,
       libelle: configLibre(style, textesLibres()).lignes.map(l => l.texte).join('\n') });
   }
 });
@@ -795,11 +891,12 @@ peVues.libre = {
 
 // Saisie précédente (confort sur la tablette) : sorte, textes, article.
 function restaurerLibre(textes, sorteImposee) {
-  let article = {}, sorte = sorteImposee, fm = false;
+  let article = {}, sorte = sorteImposee, fm = false, mentions = [];
   try {
     article = JSON.parse(localStorage.getItem(CLE_ARTICLE_LIBRE) || '{}') || {};
     sorte = sorte || localStorage.getItem(CLE_SORTE_LIBRE);
     fm = !!localStorage.getItem(CLE_FM_LIBRE);
+    mentions = JSON.parse(localStorage.getItem(CLE_MENTIONS_LIBRE) || '[]');
   } catch (e) { /* ignore */ }
   elLibreNom.value = article.nom || '';
   elLibrePrix.value = article.prix || '';
@@ -809,13 +906,14 @@ function restaurerLibre(textes, sorteImposee) {
   remplirLignesLibres(Array.isArray(textes) ? textes : []);
   choisirSorte(sorte || 'texte');
   choisirFaitMaison(fm);
+  choisirMentions(mentions);
 }
 
 // ── Init ──────────────────────────────────────────────────────
 
 async function init() {
   await Promise.all([chargerFontDefaut(),       // DejaVu embarquée pour l'aperçu Canvas
-                     chargerLogoFaitMaison()]);
+                     chargerLogoFaitMaison(), chargerMentions()]);
   await Promise.all([chargerFonts(), chargerFile(), chargerStyleNormal()]);
 
   // Textes de la dernière étiquette libre (confort sur la tablette).

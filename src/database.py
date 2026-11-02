@@ -2175,6 +2175,12 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE catalogue_vente ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE impressions_etiquettes ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE produits_a_creer ADD COLUMN fait_maison INTEGER NOT NULL DEFAULT 0",
+            # v8.8 — Mentions des étiquettes prix (AOP, IGP, Label Rouge, Artisanal, Sans
+            # nitrite ajouté, Local, Race à viande ; 2 au maximum) : liste JSON des clés
+            # (brother_ql_prix.MENTIONS_ORDRE). Même trio que « Fait maison » (v8.3).
+            "ALTER TABLE catalogue_vente ADD COLUMN mentions TEXT",
+            "ALTER TABLE impressions_etiquettes ADD COLUMN mentions TEXT",
+            "ALTER TABLE produits_a_creer ADD COLUMN mentions TEXT",
             # v8.4 — Pilotage CA : jour de fermeture enregistrable (CA 0, éteint le
             # rappel du Hub) et exclu des moyennes / paniers / profils.
             "ALTER TABLE ca_journalier ADD COLUMN ferme INTEGER NOT NULL DEFAULT 0",
