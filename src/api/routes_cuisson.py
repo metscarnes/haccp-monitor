@@ -885,7 +885,30 @@ async def produits_disponibles_pour_cuisson():
             "source_id":          src_id,
             "reception_ligne_id": src_id if src_type == "reception_ligne" else None,
             "fabrication_id":     src_id if src_type == "fabrication"     else None,
+            "derniere_cuisson":   None,   # date de la dernière cuisson de ce produit
+            "rang_utilisation":   0,      # id de cette cuisson : plus grand = plus récent
         }
+
+    # Dernière cuisson de chaque produit : le choix du produit propose d'abord ceux
+    # qu'on cuit le plus souvent ces temps-ci (même clé que ci-dessus).
+    async with get_db() as db:
+        cur = await db.execute(
+            """
+            SELECT CASE WHEN c.produit_id IS NOT NULL THEN 'produit'
+                        WHEN c.fabrication_id IS NOT NULL THEN 'vente'
+                        ELSE 'achat' END AS cle_type,
+                   CASE WHEN c.produit_id IS NOT NULL THEN c.produit_id
+                        WHEN c.fabrication_id IS NOT NULL THEN c.catalogue_vente_id
+                        ELSE c.catalogue_fournisseur_id END AS cle_id,
+                   MAX(c.id) AS rang, MAX(c.date_cuisson) AS derniere
+            FROM   cuissons c
+            GROUP BY 1, 2
+            """
+        )
+        for r in await cur.fetchall():
+            p = par_produit.get((r["cle_type"], r["cle_id"]))
+            if p:
+                p["derniere_cuisson"], p["rang_utilisation"] = r["derniere"], r["rang"]
 
     return sorted(par_produit.values(), key=lambda p: (p["nom"] or "").lower())
 

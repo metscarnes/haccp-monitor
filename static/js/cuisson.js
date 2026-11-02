@@ -465,12 +465,15 @@ function afficherSuggestions() {
   const needle = elProduitSearch.value.trim().toUpperCase();
   const liste = state.produits
     .filter(p => !needle || (p.nom ?? '').toUpperCase().includes(needle))
-    .sort((a, b) => (a.dlc ?? '9999').localeCompare(b.dlc ?? '9999'))
+    // Les produits cuits le plus récemment d'abord, puis les autres par DLC (FIFO).
+    .sort((a, b) => (b.rang_utilisation ?? 0) - (a.rang_utilisation ?? 0)
+                 || (a.dlc ?? '9999').localeCompare(b.dlc ?? '9999'))
     .slice(0, 40);
   elProduitSuggest.innerHTML = liste.length
     ? liste.map(p => `
         <button type="button" class="cu-suggest-item" data-cle-type="${escHtml(p.cle_type)}" data-cle-id="${p.cle_id}">
           <span class="cu-suggest-nom">${escHtml(p.nom)}</span>
+          ${p.derniere_cuisson ? `<span class="cu-suggest-recent">🕘 cuit ${formatJour(p.derniere_cuisson)}</span>` : ''}
           ${p.dlc ? `<span class="cu-suggest-dlc">DLC ${formatDate(p.dlc)}</span>` : ''}
         </button>`).join('')
     : '<div class="cu-suggest-vide">Aucun produit en stock ne correspond.</div>';

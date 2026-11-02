@@ -271,6 +271,13 @@
   border-radius: 20px;
   white-space: nowrap;
 }
+.cu-suggest-recent {
+  flex-shrink: 0;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #2D7D46;
+  white-space: nowrap;
+}
 .cu-suggest-vide { padding: .85rem; color: #888; font-style: italic; text-align: center; }
 
 .cu-produit-resume {

@@ -400,3 +400,22 @@ async def test_corriger_refuse_les_incoherences(app_client, db):
     # Rien n'a changé.
     f = (await app_client.get(f"/api/cuisson/fiches/{fiche['id']}")).json()
     assert (f["heure_fin"], f["refroid_fin"]) == ("10:00", "11:30")
+
+
+@pytest.mark.anyio
+async def test_produits_disponibles_signalent_la_derniere_cuisson(app_client, db):
+    achat_a, rl_a, pers = await _lot_boeuf(app_client, db, "FC21")
+    achat_b, rl_b, _ = await _lot_boeuf(app_client, db, "FC22")
+    # Un lot reçu sans DLC est « en attente », hors stock : on la complète.
+    dlc = (date.today() + timedelta(days=5)).isoformat()
+    await db.execute("UPDATE reception_lignes SET dlc = ?, statut = 'complet' WHERE id IN (?, ?)",
+                     (dlc, rl_a, rl_b))
+    await db.commit()
+    r = await app_client.post("/api/cuisson/fiches", json=_fiche(achat_b, rl_b, pers, lot_epuise=False))
+    assert r.status_code == 201, r.text
+    prods = {p["catalogue_fournisseur_id"]: p
+             for p in (await app_client.get("/api/cuisson/produits-disponibles")).json()}
+    assert prods[achat_b]["derniere_cuisson"] == JOUR
+    assert prods[achat_b]["rang_utilisation"] == r.json()["id"]
+    assert prods[achat_a]["derniere_cuisson"] is None
+    assert prods[achat_a]["rang_utilisation"] == 0
