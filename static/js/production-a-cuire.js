@@ -182,6 +182,8 @@ function envoyerEnCuisson(lot) {
     catalogue_fournisseur_id: lot.catalogue_fournisseur_id,
     catalogue_vente_id:       lot.catalogue_vente_id ?? null,
     produit_id:       lot.produit_id ?? null,
+    // Le lot précis choisi dans la liste : la fiche cuisson le présélectionne.
+    reception_ligne_id: lot.reception_ligne_id ?? null,
     produit_nom:      lot.produit_nom,
   }));
   window.location.href = '/cuisson.html';

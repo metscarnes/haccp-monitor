@@ -1,30 +1,34 @@
 'use strict';
 /* ============================================================
-   cuisson.js — Module Cuisson (wizard 3 étapes)
+   cuisson.js — Cuisson & refroidissement (fiche unique, v8.7)
    Au Comptoir des Lilas — Mets Carnés Holding
 
-   Flux :
-     Étape 1 — sélection opérateur (grille de tuiles)
-     Étape 2 — sélection produit (grille de tuiles, FIFO ⭐)
-              + sélecteur de lot si ≥ 2 réceptions
-     Étape 3 — quantité / heures / température + conformité HACCP
+   Pensé pour la saisie après coup (rattrapage du soir) :
+     • Accueil : fiches « À compléter » + terminées des 7 derniers jours.
+     • Fiche   : produit + lot → cuisson → ensuite (refroidi / vendu chaud /
+                 plus tard) → refroidissement. Une fiche peut être ouverte dans
+                 la journée (produit + lot) et complétée le soir.
+   Aucune heure n'est remplie d'avance : seule la mise au froid reprend la fin
+   de cuisson. Les boutons rapides calculent la fin depuis le début (ou le
+   début depuis la fin). Le serveur refuse les heures incohérentes ou futures.
    ============================================================ */
 
-const TEMP_CIBLE = 75.0;
-const ACTION_DEFAUT = 'Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu\'à l\'atteinte de la température de 75 °C à cœur';
-
-// Exception "viande rouge en pièce entière" (affiche interne 28/08/2026) : Bœuf/Agneau
-// non haché/non injecté peut être cuit sous 75 °C selon le degré visé. Le sélecteur de
-// degré n'apparaît que pour ces espèces — les autres restent sur la règle générale.
-const ESPECES_DEGRE_CUISSON = ['Bœuf', 'Boeuf', 'Agneau'];
-const DEGRES_CUISSON = {
-  saignant:  { temp: 55, label: 'Saignant 55°C' },
-  a_point:   { temp: 63, label: 'À point 63°C' },
-  bien_cuit: { temp: 75, label: 'Bien cuit 75°C' },
-  generale:  { temp: 75, label: 'Règle générale 75°C' },
+const TEMP_CIBLE_REFROID = 10;
+const DUREE_MAX_REFROID  = 120;
+const ECART_MAX_MISE_AU_FROID = 30;   // min entre sortie de cuisson et mise au froid
+const ESPECES_DEGRE = ['Bœuf', 'Boeuf', 'Agneau'];
+const TYPES_CUISSON = { four: 'Four', rotissoire: 'Rôtissoire', marmite: 'Marmite / plaque', autre: 'Autre' };
+const CLE_TYPE_DEFAUT = 'cuisson_type_defaut';   // dernier type utilisé sur cette tablette
+const DEGRES = {
+  saignant:  55,
+  a_point:   63,
+  bien_cuit: 75,
+  generale:  75,
 };
 
 // ── Helpers ────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
 function escHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -38,1058 +42,736 @@ async function apiFetch(url, options = {}) {
     let msg = txt;
     try {
       const j = JSON.parse(txt);
-      if (j && j.detail) msg = j.detail;
+      if (j && j.detail) msg = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail);
     } catch { /* noop */ }
     throw new Error(msg || `HTTP ${res.status}`);
   }
   return res.json();
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '—';
-  try {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-    });
-  } catch { return String(dateStr); }
-}
+const pad = n => String(n).padStart(2, '0');
 
-function formatTemp(v) {
-  if (v === null || v === undefined || v === '') return '—';
-  return `${parseFloat(v).toFixed(1)} °C`;
-}
-
-function todayISO() {
+function aujourdhuiISO() {
   const d = new Date();
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function nowHHMM() {
-  const d = new Date();
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+/** 'YYYY-MM-DD' → Date locale (sans le décalage UTC de new Date(iso)). */
+function dateLocale(iso) {
+  const [y, m, d] = (iso || '').split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
 }
 
-function initialePrenom(prenom) {
-  const p = (prenom ?? '').trim();
-  if (!p) return '?';
-  return p.charAt(0).toUpperCase();
+function formatDate(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
 }
 
-// ── Références DOM ─────────────────────────────────────────
-const $ = id => document.getElementById(id);
+function formatJour(iso) {
+  if (!iso) return '—';
+  if (iso === aujourdhuiISO()) return "aujourd'hui";
+  const j = dateLocale(iso).toLocaleDateString('fr-FR', { weekday: 'short' });
+  const [, m, d] = iso.split('-');
+  return `${j} ${d}/${m}`;
+}
 
-const elHorloge      = $('cu-horloge');
-const elSteps        = [null, $('cu-step-1'), $('cu-step-2'), $('cu-step-3')];
-const elDots         = document.querySelectorAll('.cu-dot');
-const elLines        = document.querySelectorAll('.cu-dot-line');
-const elBandeau      = $('cu-bandeau');
-const elBandeauOp    = $('cu-bandeau-op');
-const elBandeauProd  = $('cu-bandeau-prod');
+function minutes(hhmm) {
+  const [h, m] = (hhmm || '').split(':').map(Number);
+  return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
+}
 
-const elOperateursGrid = $('cu-operateurs-grid');
+function hhmm(total) {
+  if (total == null || total < 0 || total >= 24 * 60) return null;
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
 
-const elProdSearch   = $('cu-produit-search');
-const elProduitsGrid = $('cu-produits-grid');
-const elEspeceFiltres = $('cu-espece-filtres');
-const elLotWrap      = $('cu-lot-wrap');
-const elLotSelect    = $('cu-lot-select');
-const elLotCompteur  = $('cu-lot-compteur');
-const elProdLot      = $('cu-produit-lot');
-const elProdDlc      = $('cu-produit-dlc');
-const elBtnHisto     = $('cu-btn-historique');
-const elBtnStep2Next = $('cu-btn-step2-next');
+function formatDuree(min) {
+  if (min == null) return '';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h} h${m ? ' ' + pad(m) : ''}` : `${m} min`;
+}
 
+function nombre(el) {
+  const v = parseFloat(String(el.value).replace(',', '.'));
+  return isNaN(v) ? null : v;
+}
+
+// ── DOM ─────────────────────────────────────────────────────
+const elVueAccueil   = $('cu-vue-accueil');
+const elVueFiche     = $('cu-vue-fiche');
+const elListeAC      = $('cu-liste-a-completer');
+const elListeTerm    = $('cu-liste-terminees');
+const elNbAC         = $('cu-nb-a-completer');
+const elNbTerm       = $('cu-nb-terminees');
+
+const elForm         = $('cu-form');
+const elOperateurs   = $('cu-operateurs');
 const elDate         = $('cu-date');
 const elQuantite     = $('cu-quantite');
 const elUnite        = $('cu-unite');
+const elProduitChoix = $('cu-produit-choix');
+const elProduitSearch = $('cu-produit-search');
+const elProduitSuggest = $('cu-produit-suggest');
+const elProduitResume = $('cu-produit-resume');
+const elLotWrap      = $('cu-lot-wrap');
+const elLot          = $('cu-lot');
+const elLotEpuise    = $('cu-lot-epuise');
+const elTypeChoix    = $('cu-type-choix');
+const elDevientWrap  = $('cu-devient-wrap');
+const elDevientChoix = $('cu-devient-choix');
+const elDevientSearch = $('cu-devient-search');
+
+const elCuissonResume = $('cu-cuisson-resume');
+const elCuissonSaisie = $('cu-cuisson-saisie');
 const elHeureDebut   = $('cu-heure-debut');
 const elHeureFin     = $('cu-heure-fin');
+const elQuickCuisson = $('cu-quick-cuisson');
+const elDureeCuisson = $('cu-duree-cuisson');
 const elDegreWrap    = $('cu-degre-wrap');
 const elDegreChoix   = $('cu-degre-choix');
-const elCibleTexte   = $('cu-cible-texte');
-const elActionHint   = $('cu-action-hint');
 const elTemperature  = $('cu-temperature');
-const elQuickTemp    = $('cu-quick-temp');
-const elDureeH       = $('cu-duree-h');
-const elDureeM       = $('cu-duree-m');
-const elDureeAppliquer = $('cu-duree-appliquer');
+const elCible        = $('cu-cible-texte');
 const elConformite   = $('cu-conformite');
-const elConfTxt      = $('cu-conformite-texte');
 const elActionWrap   = $('cu-action-wrap');
 const elAction       = $('cu-action');
+
+const elBlocSuite    = $('cu-bloc-suite');
+const elSuiteAide    = $('cu-suite-aide');
+const elBlocRefroid  = $('cu-bloc-refroid');
+const elRefroidDebut = $('cu-refroid-debut');
+const elRefroidDebutAide = $('cu-refroid-debut-aide');
+const elRefroidFin   = $('cu-refroid-fin');
+const elQuickRefroid = $('cu-quick-refroid');
+const elDureeRefroid = $('cu-duree-refroid');
+const elRefroidTemp  = $('cu-refroid-temp');
+const elRefroidConf  = $('cu-refroid-conformite');
+const elRefroidActionWrap = $('cu-refroid-action-wrap');
+const elRefroidAction = $('cu-refroid-action');
+const elJeterWrap    = $('cu-jeter-wrap');
+const elJeter        = $('cu-jeter');
+
 const elErreur       = $('cu-erreur');
-const elForm         = $('cu-form');
 const elBtnSave      = $('cu-btn-save');
-const elHisto        = $('cu-histo');
+const elBtnSaveEtiq  = $('cu-btn-save-etiquette');
 const elToast        = $('cu-toast');
-const elModal        = $('cu-modal-histo');
+const elModal        = $('cu-modal-receptions');
 const elModalTitre   = $('cu-modal-titre');
 const elModalCorps   = $('cu-modal-corps');
-const elModalClose   = $('cu-modal-close');
 
-const elModalChoix    = $('cu-modal-choix');
-const elChoixTitre    = $('cu-choix-titre');
-const elChoixContext  = $('cu-choix-context');
-const elChoixEtiquette = $('cu-choix-etiquette');
-const elChoixNouvelle = $('cu-choix-nouvelle');
-const elChoixHub      = $('cu-choix-hub');
-const elChoixRefroid  = $('cu-choix-refroid');
+// ── État ───────────────────────────────────────────────────
+const state = {
+  personnel: [],
+  produits:  [],          // stock cuisinable (GET /produits-disponibles)
+  fiches:    { a_completer: [], terminees: [] },
+  fiche:     null,        // fiche existante en cours de complément (null = nouvelle)
+  operateurId: null,
+  produit:   null,        // produit choisi (nouvelle fiche)
+  lots:      [],
+  devient:   null,        // { id, nom } — produit du catalogue vente
+  degre:     'generale',
+  typeCuisson: 'four',
+  suite:     '',          // '' (plus tard) | 'refroidi' | 'vendu_chaud'
+  refroidDebutManuel: false,
+  envoiEnCours: false,
+};
 
-const elModalPF     = $('cu-modal-produit-fini');
-const elPFSource    = $('cu-pf-source');
-const elPFSearch    = $('cu-pf-search');
-const elPFGrid      = $('cu-pf-grid');
-const elPFConfirmer = $('cu-pf-confirmer');
-
-// ── Horloge ────────────────────────────────────────────────
+// ── Horloge & inactivité ───────────────────────────────────
 (function majHorloge() {
-  elHorloge.textContent = new Date().toLocaleTimeString('fr-FR', {
-    hour: '2-digit', minute: '2-digit',
-  });
+  $('cu-horloge').textContent = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   setTimeout(majHorloge, 1000);
 })();
 
-// ── Inactivité (5 min → hub) ───────────────────────────────
+// Retour au hub après 5 min sans activité — jamais pendant une saisie : une fiche
+// de rattrapage se remplit lentement, la perdre ferait tout recommencer.
 let timerInactivite;
 function resetInactivite() {
   clearTimeout(timerInactivite);
   timerInactivite = setTimeout(() => {
-    window.location.href = '/hub.html';
+    if (elVueFiche.hidden) window.location.href = '/hub.html';
   }, 5 * 60 * 1000);
 }
 ['click', 'touchstart', 'input', 'keydown'].forEach(ev =>
-  document.addEventListener(ev, resetInactivite, { capture: true, passive: true })
-);
+  document.addEventListener(ev, resetInactivite, { capture: true, passive: true }));
 resetInactivite();
 
-// ── État ───────────────────────────────────────────────────
-const state = {
-  step:              1,
-  personnel:         [],
-  produits:          [],
-  operateurChoisi:   null,   // { id, prenom }
-  produitChoisi:     null,   // { id, nom, numero_lot, dlc, source_type, source_id, reception_ligne_id, fabrication_id }
-  lotsProduit:       [],
-  fifoLotKey:        null,   // clé composite "source_type:source_id" du lot FIFO
-  especeFiltre:      null,   // null = toutes
-  degreChoisi:       'generale',  // exception viande rouge — 'generale' = 75 °C comme avant
-  derniereSauvegarde: null,  // { operateur, produit } — conservé pour le choix post-save
-  produitPreselectionne: null,  // { prod, catalogue_vente_id } — pré-rempli sans opérateur (production-a-cuire.js)
-  selectionOperateurEnCours: false,  // anti-double-clic : cf. bug 03/09/2026 (flow cassé)
-};
-
-const ESPECES_ICONES = {
-  'Bœuf':     '🐂',
-  'Boeuf':    '🐂',
-  'Veau':     '🐄',
-  'Agneau':   '🐑',
-  'Porc':     '🐖',
-  'Gibier':   '🦌',
-  'Volaille': '🐔',
-  'Cheval':   '🐎',
-  'Exotique': '🦬',
-};
-
-// ── Navigation wizard ──────────────────────────────────────
-function goStep(n) {
-  state.step = n;
-  for (let i = 1; i <= 3; i++) {
-    elSteps[i].hidden = (i !== n);
-    elSteps[i].classList.toggle('cu-step--active', i === n);
-  }
-  elDots.forEach(d => {
-    const s = Number(d.dataset.step);
-    d.classList.toggle('cu-dot--active', s === n);
-    d.classList.toggle('cu-dot--done', s < n);
-  });
-  elLines.forEach(l => {
-    const s = Number(l.dataset.line);
-    l.dataset.done = s < n ? '1' : '0';
-  });
-  majBandeau();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function majBandeau() {
-  const parts = [];
-  if (state.operateurChoisi) parts.push(`👤 ${state.operateurChoisi.prenom}`);
-  if (state.produitChoisi)   parts.push(`📦 ${state.produitChoisi.nom}`);
-  elBandeauOp.textContent   = parts[0] ?? '';
-  elBandeauProd.textContent = parts[1] ?? '';
-  elBandeau.hidden = parts.length === 0;
-}
-
-// ── Init : personnel, catalogue, historique ───────────────
-async function init() {
-  elDate.value = todayISO();
-  elHeureDebut.value = nowHHMM();
-
-  await Promise.all([
-    chargerPersonnel(),
-    chargerProduits(),
-    chargerHistorique(),
-  ]);
-
-  afficherOperateurs();
-  afficherFiltresEspece();
-  afficherProduits();
-
-  const prefillRaw = sessionStorage.getItem('cuisson_prefill');
-  if (prefillRaw) {
-    sessionStorage.removeItem('cuisson_prefill');
-    try { appliquerPrefill(JSON.parse(prefillRaw)); } catch { /* noop */ }
-  }
-}
-
-function appliquerPrefill(data) {
-  if (data.operateur_id) {
-    const op = state.personnel.find(p => p.id === Number(data.operateur_id));
-    if (op) {
-      state.operateurChoisi = { id: op.id, prenom: op.prenom };
-      elOperateursGrid.querySelectorAll('.cu-tuile[data-op-id]').forEach(t =>
-        t.classList.toggle('cu-tuile--selected', Number(t.dataset.opId) === op.id));
-    }
-  }
-
-  // Pré-remplissage des champs de l'étape 3
-  if (data.quantite != null && !isNaN(parseFloat(data.quantite))) {
-    elQuantite.value = parseFloat(data.quantite);
-  }
-  if (data.unite) {
-    elUnite.value = data.unite;
-  }
-
-  if (data.produit_id != null || data.catalogue_fournisseur_id != null || data.catalogue_vente_id != null) {
-    // Le pré-remplissage peut viser l'un ou l'autre référentiel selon le module
-    // d'origine (fabrication → vente, réception → achat, historique → produits).
-    // Ne pas exiger produit_id seul : la quasi-totalité du stock réel n'a que
-    // catalogue_fournisseur_id/catalogue_vente_id (produit_id vaut null depuis
-    // la v6.0) — cf. bug production-a-cuire.js du 28/08/2026 (étape 2 redemandée
-    // au lieu de sauter directement à l'étape 3).
-    const prod = state.produits.find(p =>
-         (data.catalogue_fournisseur_id != null
-            && Number(p.catalogue_fournisseur_id) === Number(data.catalogue_fournisseur_id))
-      || (data.catalogue_vente_id != null
-            && Number(p.catalogue_vente_id) === Number(data.catalogue_vente_id))
-      || (data.produit_id != null && p.id != null
-            && Number(p.id) === Number(data.produit_id)));
-    if (prod && state.operateurChoisi) {
-      // Réutilise tout le pipeline (chargement des lots, FIFO, navigation step 3).
-      // Une tuile catalogue ACHATS n'a jamais catalogue_vente_id renseigné
-      // (get_stock_unifie ne le déduit pas pour une réception brute) — si le
-      // module d'origine (ex. production-a-cuire.js, via le groupe comparatif)
-      // le connaît déjà, on le transmet ici. Sinon avancerVersEtape3() (appelée
-      // en interne par selectionnerProduit, de façon asynchrone) rouvrirait à
-      // tort la modale "ça devient quel produit ?" avec une réponse qui existait
-      // déjà, provoquant une boucle sans fin (28/08/2026).
-      selectionnerProduit(prod, { catalogue_vente_id: data.catalogue_vente_id });
-    } else if (prod) {
-      // Produit connu mais PAS d'opérateur (ex. production-a-cuire.js, qui ne le
-      // connaît pas à l'avance) : on garde le produit en mémoire pour le
-      // ré-appliquer une fois l'opérateur choisi, plutôt que de sauter à
-      // l'étape 3 sans opérateur (le formulaire recale à la soumission → boucle).
-      state.produitPreselectionne = { prod, catalogue_vente_id: data.catalogue_vente_id };
-      goStep(1);
-    } else {
-      // Produit non en stock — on garde au moins l'opérateur pré-sélectionné
-      majBandeau();
-      if (state.operateurChoisi) goStep(2);
-    }
-    return;
-  }
-
-  majBandeau();
-  if (state.operateurChoisi) goStep(2);
-}
-
-function afficherFiltresEspece() {
-  const presentes = new Set();
-  state.produits.forEach(p => {
-    if (p.espece) presentes.add(p.espece);
-  });
-  const especes = Array.from(presentes).sort((a, b) => a.localeCompare(b, 'fr'));
-
-  const btns = [
-    `<button type="button" class="cu-espece-btn cu-espece-btn--actif" data-espece="">Toutes</button>`,
-    ...especes.map(e => {
-      const icone = ESPECES_ICONES[e] ?? '•';
-      return `<button type="button" class="cu-espece-btn" data-espece="${escHtml(e)}">${icone} ${escHtml(e)}</button>`;
-    }),
-  ];
-  elEspeceFiltres.innerHTML = btns.join('');
-}
-
-elEspeceFiltres.addEventListener('click', e => {
-  const btn = e.target.closest('.cu-espece-btn[data-espece]');
-  if (!btn) return;
-  const val = btn.dataset.espece || null;
-  state.especeFiltre = val;
-  elEspeceFiltres.querySelectorAll('.cu-espece-btn').forEach(b =>
-    b.classList.toggle('cu-espece-btn--actif', b === btn));
-  afficherProduits();
-});
-
+// ═══ Chargements ════════════════════════════════════════════
 async function chargerPersonnel() {
   try {
-    const personnel = await apiFetch('/api/admin/personnel');
-    state.personnel = (personnel ?? [])
+    const rows = await apiFetch('/api/admin/personnel');
+    state.personnel = (rows ?? [])
       .filter(p => p.actif !== 0 && p.actif !== false)
       .sort((a, b) => (a.prenom ?? '').localeCompare(b.prenom ?? '', 'fr'));
   } catch (err) {
-    state.personnel = [];
     console.warn('[cuisson] Personnel KO :', err);
   }
 }
 
 async function chargerProduits() {
   try {
-    // Source unique : get_stock_unifie() côté serveur, restreint aux réceptions.
-    // Si l'inventaire est vide, cette liste l'est aussi.
-    const enStock = await apiFetch('/api/cuisson/produits-disponibles');
-    state.produits = enStock ?? [];
+    state.produits = await apiFetch('/api/cuisson/produits-disponibles') ?? [];
   } catch (err) {
     state.produits = [];
     console.warn('[cuisson] Produits KO :', err);
   }
 }
 
-// ═══ Étape 1 : Opérateurs ═══════════════════════════════
+async function chargerFiches() {
+  try {
+    state.fiches = await apiFetch('/api/cuisson/fiches');
+  } catch (err) {
+    elListeAC.innerHTML = `<div class="cu-erreur">Erreur : ${escHtml(err.message)}</div>`;
+    return;
+  }
+  afficherAccueil();
+}
+
+// ═══ Accueil ════════════════════════════════════════════════
+function ligneCuisson(f) {
+  if (f.heure_fin == null) return '';
+  const ok = f.conforme === 1;
+  const type = TYPES_CUISSON[f.type_cuisson] ? `${TYPES_CUISSON[f.type_cuisson]} · ` : '';
+  return `<span class="${ok ? 'cu-ok' : 'cu-ko'}">🔥 ${type}${escHtml(f.heure_debut)}→${escHtml(f.heure_fin)} · ${Number(f.temperature_sortie).toFixed(1)} °C${ok ? '' : ' ⚠'}</span>`;
+}
+
+function ligneRefroid(f) {
+  if (f.refroid_id) {
+    const ok = f.refroid_conforme === 1;
+    const jete = f.refroid_jeter === 1 ? ' ⛔ jeté' : '';
+    return `<span class="${ok ? 'cu-ok' : 'cu-ko'}">❄ ${escHtml(f.refroid_debut)}→${escHtml(f.refroid_fin)} (${formatDuree(f.refroid_duree)}) · ${Number(f.refroid_temperature).toFixed(1)} °C${jete}</span>`;
+  }
+  if (f.suite === 'vendu_chaud') return '<span>🔥 Vendu chaud</span>';
+  if (f.devenir_statut) return '<span>Sorti du stock</span>';
+  return '';
+}
+
+const ETATS = {
+  cuisson_a_saisir:         '🔥 Cuisson à saisir',
+  suite_a_choisir:          '❓ Refroidi ou vendu chaud ?',
+  refroidissement_a_saisir: '❄ Refroidissement à saisir',
+};
+
+function carteFiche(f, terminee) {
+  const veille = !terminee && f.date_cuisson < aujourdhuiISO()
+    ? ' <span class="cu-badge-veille">⚠ pas d\'aujourd\'hui</span>' : '';
+  const meta = [
+    f.numero_lot ? `Lot ${escHtml(f.numero_lot)}` : null,
+    formatJour(f.date_cuisson),
+    f.personnel_nom ? `par ${escHtml(f.personnel_nom)}` : null,
+  ].filter(Boolean).join(' · ');
+  const lignes = [ligneCuisson(f), ligneRefroid(f)].filter(Boolean).join('<br>');
+  const action = terminee
+    ? (f.refroid_jeter === 1 || f.heure_fin == null ? ''
+       : `<button type="button" class="cu-btn-secondaire" data-etiquette="${f.id}">🖨 Étiquette</button>`)
+    : `<button type="button" class="cu-btn-primaire cu-btn-petit" data-completer="${f.id}">Compléter →</button>`;
+  return `
+    <div class="cu-fiche-carte${terminee ? ' cu-fiche-carte--terminee' : ''}">
+      <div class="cu-fiche-info">
+        <div class="cu-fiche-nom">${escHtml(f.produit_nom ?? '—')}${veille}</div>
+        <div class="cu-fiche-meta">${meta}</div>
+        ${lignes ? `<div class="cu-fiche-lignes">${lignes}</div>` : ''}
+        ${terminee ? '' : `<div class="cu-fiche-etat">${ETATS[f.etat] ?? ''}</div>`}
+      </div>
+      <div class="cu-fiche-action">${action}</div>
+    </div>`;
+}
+
+function afficherAccueil() {
+  const { a_completer: ac = [], terminees: te = [] } = state.fiches;
+  elNbAC.textContent   = ac.length ? `(${ac.length})` : '';
+  elNbTerm.textContent = te.length ? `(${te.length})` : '';
+  elListeAC.innerHTML = ac.length
+    ? ac.map(f => carteFiche(f, false)).join('')
+    : '<div class="cu-vide">Rien à compléter. 👍</div>';
+  elListeTerm.innerHTML = te.length
+    ? te.map(f => carteFiche(f, true)).join('')
+    : '<div class="cu-vide">Aucune fiche terminée ces 7 derniers jours.</div>';
+}
+
+elListeAC.addEventListener('click', e => {
+  const btn = e.target.closest('[data-completer]');
+  if (!btn) return;
+  const f = state.fiches.a_completer.find(x => x.id === Number(btn.dataset.completer));
+  if (f) ouvrirFiche(f);
+});
+
+elListeTerm.addEventListener('click', async e => {
+  const btn = e.target.closest('[data-etiquette]');
+  if (!btn) return;
+  const f = state.fiches.terminees.find(x => x.id === Number(btn.dataset.etiquette));
+  if (!f) return;
+  btn.disabled = true;
+  try { await imprimer(f, f.personnel_id); } finally { btn.disabled = false; }
+});
+
+$('cu-btn-nouvelle').addEventListener('click', () => ouvrirFiche(null));
+
+function montrerAccueil() {
+  elVueFiche.hidden = true;
+  elVueAccueil.hidden = false;
+  window.scrollTo({ top: 0 });
+}
+
+// ═══ Fiche ═════════════════════════════════════════════════
+function cuissonDejaTerminee() {
+  return !!(state.fiche && state.fiche.heure_fin != null);
+}
+
+function ouvrirFiche(fiche, prefill = null) {
+  state.fiche = fiche;
+  state.produit = null;
+  state.lots = [];
+  state.devient = null;
+  state.suite = fiche?.suite ?? '';
+  state.degre = fiche?.degre_cuisson ?? 'generale';
+  state.typeCuisson = fiche?.type_cuisson
+    ?? localStorage.getItem(CLE_TYPE_DEFAUT) ?? 'four';
+  majType();
+  state.refroidDebutManuel = false;
+  state.operateurId = null;
+
+  elForm.reset();
+  elErreur.hidden = true;
+  elProduitSuggest.hidden = true;
+  elDevientWrap.hidden = true;
+  elLotWrap.hidden = true;
+  elJeter.checked = false;
+  elQuickCuisson.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.remove('cu-quick-btn--actif'));
+  elQuickRefroid.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.remove('cu-quick-btn--actif'));
+
+  afficherOperateurs();
+
+  if (fiche) {
+    // Fiche existante : le produit et le lot sont déjà tracés.
+    elProduitChoix.hidden = true;
+    elProduitResume.hidden = false;
+    elProduitResume.innerHTML = `
+      <div class="cu-produit-resume-nom">${escHtml(fiche.produit_nom ?? '—')}</div>
+      <div class="cu-produit-resume-meta">
+        ${fiche.article_nom && fiche.article_nom !== fiche.produit_nom ? `Matière : ${escHtml(fiche.article_nom)} · ` : ''}
+        Lot ${escHtml(fiche.numero_lot ?? '—')}${fiche.dlc_lot ? ` · DLC lot ${formatDate(fiche.dlc_lot)}` : ''}
+        ${fiche.personnel_nom ? ` · ouverte par ${escHtml(fiche.personnel_nom)}` : ''}
+      </div>`;
+    elDate.value = fiche.date_cuisson;
+    if (fiche.quantite != null) elQuantite.value = fiche.quantite;
+    if (fiche.unite) elUnite.value = fiche.unite;
+    elDegreWrap.hidden = !ESPECES_DEGRE.includes(fiche.espece);
+  } else {
+    elProduitChoix.hidden = false;
+    elProduitResume.hidden = true;
+    elDate.value = aujourdhuiISO();
+    elDegreWrap.hidden = true;
+  }
+
+  const figee = cuissonDejaTerminee();
+  elDate.disabled = figee;
+  elQuantite.disabled = figee;
+  elUnite.disabled = figee;
+  elCuissonSaisie.hidden = figee;
+  elCuissonResume.hidden = !figee;
+  if (figee) {
+    elCuissonResume.innerHTML = `${ligneCuisson(fiche)}
+      <span class="cu-aide">Cuisson enregistrée — elle n'est plus modifiable.</span>`;
+  } else if (fiche) {
+    if (fiche.heure_debut) elHeureDebut.value = fiche.heure_debut;
+  }
+
+  majDegre();
+  majSuite();
+  majCuisson();
+
+  elVueAccueil.hidden = true;
+  elVueFiche.hidden = false;
+  window.scrollTo({ top: 0 });
+
+  if (prefill) appliquerPrefill(prefill);
+}
+
+$('cu-btn-annuler').addEventListener('click', montrerAccueil);
+
+// ── Opérateur ──────────────────────────────────────────────
 function afficherOperateurs() {
   if (!state.personnel.length) {
-    elOperateursGrid.innerHTML = `<div class="cu-tuiles-vide">Aucun opérateur actif.</div>`;
+    elOperateurs.innerHTML = '<span class="cu-aide">Aucun opérateur actif.</span>';
     return;
   }
-  elOperateursGrid.innerHTML = state.personnel.map(p => {
-    const nomComplet = [p.prenom, p.nom].filter(Boolean).join(' ');
-    return `
-    <button type="button" class="cu-tuile" role="listitem"
-            data-op-id="${p.id}" data-op-prenom="${escHtml(nomComplet)}">
-      <div class="cu-tuile-icone">${escHtml(initialePrenom(p.prenom))}</div>
-      <div class="cu-tuile-nom">${escHtml(nomComplet)}</div>
-    </button>`;
-  }).join('');
+  elOperateurs.innerHTML = state.personnel.map(p => `
+    <button type="button" class="cu-pastille${state.operateurId === p.id ? ' cu-pastille--actif' : ''}"
+            data-op-id="${p.id}">${escHtml([p.prenom, p.nom].filter(Boolean).join(' '))}</button>`).join('');
 }
 
-elOperateursGrid.addEventListener('click', e => {
-  // Anti-double-clic : le traitement d'un choix opérateur avec produit
-  // préselectionné est asynchrone (fetch /api/cuisson/lots, pas d'indicateur
-  // visuel pendant l'attente réseau). Un second clic pendant ce laps de temps
-  // — même nom en double-clic, ou changement de cuisinier — retombait dans la
-  // branche "pas de produit préselectionné" car celle-ci avait déjà été
-  // consommée (mise à null) par le premier clic, ce qui forçait goStep(2) en
-  // pleine résolution du premier appel et rouvrait à tort la modale "ça
-  // devient quel produit ?" (flow cassé, ex. Parmentier de canard 03/09/2026).
-  if (state.selectionOperateurEnCours) return;
-
-  const tuile = e.target.closest('.cu-tuile[data-op-id]');
-  if (!tuile) return;
-  state.operateurChoisi = {
-    id:     Number(tuile.dataset.opId),
-    prenom: tuile.dataset.opPrenom,
-  };
-  elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
-    t.classList.toggle('cu-tuile--selected', t === tuile));
-
-  // Produit déjà connu via un pré-remplissage sans opérateur (ex.
-  // production-a-cuire.js) : on l'applique maintenant plutôt que de
-  // redemander le produit à l'étape 2.
-  if (state.produitPreselectionne) {
-    const { prod, catalogue_vente_id } = state.produitPreselectionne;
-    state.produitPreselectionne = null;
-    state.selectionOperateurEnCours = true;
-    elOperateursGrid.classList.add('cu-tuiles-grid--busy');
-    setTimeout(() => {
-      selectionnerProduit(prod, { catalogue_vente_id })
-        .finally(() => {
-          state.selectionOperateurEnCours = false;
-          elOperateursGrid.classList.remove('cu-tuiles-grid--busy');
-        });
-    }, 150);
-    return;
-  }
-
-  setTimeout(() => goStep(2), 150);
+elOperateurs.addEventListener('click', e => {
+  const b = e.target.closest('[data-op-id]');
+  if (!b) return;
+  state.operateurId = Number(b.dataset.opId);
+  elOperateurs.querySelectorAll('.cu-pastille').forEach(x => x.classList.toggle('cu-pastille--actif', x === b));
 });
 
-// ═══ Étape 2 : Produits ═════════════════════════════════
-function produitsFiltres() {
-  const needle = (elProdSearch.value || '').trim().toUpperCase();
-  let liste = state.produits.filter(p => {
-    if (state.especeFiltre && p.espece !== state.especeFiltre) return false;
-    return true;
-  });
-  if (needle) {
-    liste = liste.filter(p => (p.nom ?? '').toUpperCase().includes(needle));
-  }
-  liste.sort((a, b) => {
-    if (a.en_stock !== b.en_stock) return a.en_stock ? -1 : 1;
-    if (a.en_stock && b.en_stock) {
-      const da = a.dlc ? new Date(a.dlc).getTime() : Infinity;
-      const db = b.dlc ? new Date(b.dlc).getTime() : Infinity;
-      if (da !== db) return da - db;
-    }
-    return (a.nom ?? '').localeCompare(b.nom ?? '', 'fr');
-  });
-  return liste;
+function nomOperateur(id) {
+  const p = state.personnel.find(x => x.id === id);
+  return p ? [p.prenom, p.nom].filter(Boolean).join(' ') : '';
 }
 
-function afficherProduits() {
-  const liste = produitsFiltres();
-  if (!liste.length) {
-    elProduitsGrid.innerHTML = `<div class="cu-tuiles-vide">Aucun produit trouvé.</div>`;
-    return;
-  }
-  elProduitsGrid.innerHTML = liste.map(p => {
-    const classes = ['cu-tuile'];
-    if (p.en_stock) classes.push('cu-tuile--stock');
-    // Comparaison sur la clé composite : `id` vaut null pour tout le stock issu du
-    // catalogue, et null === null aurait sélectionné toutes ces tuiles à la fois.
-    if (state.produitChoisi
-        && state.produitChoisi.cle_type === (p.cle_type ?? 'produit')
-        && Number(state.produitChoisi.cle_id) === Number(p.cle_id ?? p.id)) {
-      classes.push('cu-tuile--selected');
-    }
-    const badge = p.en_stock ? `<div class="cu-tuile-badge">⭐ EN STOCK</div>` : '';
-    const dlc   = p.en_stock && p.dlc
-      ? `<div class="cu-tuile-dlc">DLC ${formatDate(p.dlc)}</div>` : '';
-    const codeOrigine = (p.en_stock && p.origine && typeof origineCode === 'function')
-      ? origineCode(p.origine) : '';
-    const lot   = p.en_stock && p.numero_lot
-      ? `<div class="cu-tuile-lot">Lot ${escHtml(p.numero_lot)}${codeOrigine ? ` <span class="cu-tuile-origine">· ${escHtml(codeOrigine)}</span>` : ''}</div>` : '';
-    const icone = ESPECES_ICONES[p.espece] ?? '🥩';
-    return `
-      <button type="button" class="${classes.join(' ')}" role="listitem"
-              data-cle-type="${p.cle_type ?? 'produit'}" data-cle-id="${p.cle_id ?? p.id}"
-              data-prod-nom="${escHtml(p.nom)}">
-        ${badge}
-        <div class="cu-tuile-icone">${icone}</div>
-        <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
-        ${dlc}
-        ${lot}
-      </button>
-    `;
-  }).join('');
+// ── Produit (nouvelle fiche) ───────────────────────────────
+function afficherSuggestions() {
+  const needle = elProduitSearch.value.trim().toUpperCase();
+  const liste = state.produits
+    .filter(p => !needle || (p.nom ?? '').toUpperCase().includes(needle))
+    .sort((a, b) => (a.dlc ?? '9999').localeCompare(b.dlc ?? '9999'))
+    .slice(0, 40);
+  elProduitSuggest.innerHTML = liste.length
+    ? liste.map(p => `
+        <button type="button" class="cu-suggest-item" data-cle-type="${escHtml(p.cle_type)}" data-cle-id="${p.cle_id}">
+          <span class="cu-suggest-nom">${escHtml(p.nom)}</span>
+          ${p.dlc ? `<span class="cu-suggest-dlc">DLC ${formatDate(p.dlc)}</span>` : ''}
+        </button>`).join('')
+    : '<div class="cu-suggest-vide">Aucun produit en stock ne correspond.</div>';
+  elProduitSuggest.hidden = false;
 }
 
-elProdSearch.addEventListener('input', afficherProduits);
-
-elProduitsGrid.addEventListener('click', e => {
-  const tuile = e.target.closest('.cu-tuile[data-cle-id]');
-  if (!tuile) return;
-  // Un produit s'identifie par (cle_type, cle_id) : depuis la v6, `id` (table
-  // produits) est null pour la quasi-totalité du stock, qui vient du catalogue.
-  const prod = trouverProduit(tuile.dataset.cleType, Number(tuile.dataset.cleId));
-  if (prod) selectionnerProduit(prod);
+elProduitSearch.addEventListener('input', afficherSuggestions);
+elProduitSearch.addEventListener('focus', afficherSuggestions);
+document.addEventListener('click', e => {
+  if (!e.target.closest('.cu-recherche')) elProduitSuggest.hidden = true;
 });
 
-function trouverProduit(cleType, cleId) {
-  return state.produits.find(p =>
-    (p.cle_type ?? 'produit') === cleType && Number(p.cle_id ?? p.id) === cleId) ?? null;
-}
+elProduitSuggest.addEventListener('click', e => {
+  const b = e.target.closest('[data-cle-id]');
+  if (!b) return;
+  const prod = state.produits.find(p => p.cle_type === b.dataset.cleType && p.cle_id === Number(b.dataset.cleId));
+  if (prod) choisirProduit(prod);
+});
 
-function lotKey(lot) {
-  if (!lot) return null;
-  // Préfère source_type/source_id (nouveau contrat) ; fallback reception_ligne_id (legacy).
-  const t = lot.source_type ?? (lot.reception_ligne_id ? 'reception_ligne' : null);
-  const i = lot.source_id   ?? lot.reception_ligne_id ?? null;
-  return (t && i != null) ? `${t}:${i}` : null;
-}
+async function choisirProduit(prod, opts = {}) {
+  state.produit = prod;
+  state.devient = null;
+  elProduitSearch.value = prod.nom;
+  elProduitSuggest.hidden = true;
+  elDegreWrap.hidden = !ESPECES_DEGRE.includes(prod.espece);
+  state.degre = 'generale';
+  majDegre();
 
-async function selectionnerProduit(prod, prefill = {}) {
-  const cleType = prod.cle_type ?? 'produit';
-  const cleId   = Number(prod.cle_id ?? prod.id);
-  state.produitChoisi = {
-    id:   prod.id ?? null,
-    nom:  prod.nom,
-    cle_type: cleType,
-    cle_id:   cleId,
-    catalogue_fournisseur_id: prod.catalogue_fournisseur_id ?? null,
-    // Complété par le prefill si connu (ex. production-a-cuire.js, via le
-    // groupe comparatif) : la tuile catalogue achats elle-même ne l'a jamais.
-    catalogue_vente_id:       prod.catalogue_vente_id ?? prefill.catalogue_vente_id ?? null,
-    numero_lot:         null,
-    dlc:                null,
-    source_type:        null,
-    source_id:          null,
-    reception_ligne_id: null,
-    fabrication_id:     null,
-  };
-  state.lotsProduit = [];
-  state.fifoLotKey  = null;
-
-  // Exception viande rouge : sélecteur de degré visible uniquement pour Bœuf/Agneau,
-  // réinitialisé à 'generale' (75 °C) à chaque nouveau produit choisi.
-  state.degreChoisi = 'generale';
-  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.toggle('cu-quick-btn--actif', b.dataset.degre === 'generale'));
-  elDegreWrap.hidden = !ESPECES_DEGRE_CUISSON.includes(prod.espece);
-  majCibleAffichee();
-
-  // MAJ visuelle des tuiles
-  elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t => {
-    t.classList.toggle('cu-tuile--selected',
-      t.dataset.cleType === cleType && Number(t.dataset.cleId) === cleId);
-  });
-
-  // Reset panneau lot
-  elLotWrap.hidden = true;
-  elLotSelect.innerHTML = '';
-  elProdLot.innerHTML = '';
-  elProdDlc.textContent = '';
-
+  // Lots disponibles, FIFO en tête (le serveur trie par DLC croissante).
+  const champ = prod.cle_type === 'achat' ? 'catalogue_fournisseur_id'
+              : prod.cle_type === 'vente' ? 'catalogue_vente_id' : 'produit_id';
+  elLotWrap.hidden = false;
+  elLot.innerHTML = '<option>Chargement…</option>';
   try {
-    // Un seul identifiant est transmis, celui du référentiel dont vient le produit.
-    const champ = cleType === 'achat' ? 'catalogue_fournisseur_id'
-                : cleType === 'vente' ? 'catalogue_vente_id'
-                : 'produit_id';
-    const receptions = await apiFetch(`/api/cuisson/lots?${champ}=${cleId}&limit=50`);
-    state.lotsProduit = receptions ?? [];
-
-    if (state.lotsProduit.length === 0) {
-      // Pas de réception enregistrée — on avance quand même
-      majBandeau();
-      setTimeout(() => avancerVersEtape3(), 120);
-      return;
-    }
-
-    // FIFO : DLC la plus courte, puis date d'origine la plus ancienne
-    const lotsAvecIdx = state.lotsProduit.map((lot, idx) => ({ lot, idx }));
-    lotsAvecIdx.sort((a, b) => {
-      const da = a.lot.dlc ? new Date(a.lot.dlc).getTime() : Infinity;
-      const db = b.lot.dlc ? new Date(b.lot.dlc).getTime() : Infinity;
-      if (da !== db) return da - db;
-      const ra = a.lot.date_reception ? new Date(a.lot.date_reception).getTime() : Infinity;
-      const rb = b.lot.date_reception ? new Date(b.lot.date_reception).getTime() : Infinity;
-      return ra - rb;
-    });
-    state.fifoLotKey = lotKey(lotsAvecIdx[0].lot);
-
-    if (state.lotsProduit.length === 1) {
-      appliquerLotChoisi(state.lotsProduit[0]);
-      majBandeau();
-      setTimeout(() => avancerVersEtape3(), 120);
-    } else {
-      // Plusieurs lots → on affiche le sélecteur, l'utilisateur clique "Suivant"
-      elLotWrap.hidden = false;
-      elLotCompteur.textContent = `(${state.lotsProduit.length} lots)`;
-      elLotSelect.innerHTML = lotsAvecIdx.map(({ lot }) => {
-        const key = lotKey(lot);
-        const estFifo = key === state.fifoLotKey;
-        const origineVerbe = lot.source_type === 'fabrication' ? 'fabriqué' : 'reçu';
-        const codeOri = (lot.origine && typeof origineCode === 'function') ? origineCode(lot.origine) : '';
-        const label = [
-          estFifo ? '⭐ FIFO —' : '',
-          `Lot ${lot.numero_lot ?? '—'}`,
-          codeOri ? `· Origine ${codeOri}` : '',
-          `· DLC ${formatDate(lot.dlc)}`,
-          `· ${origineVerbe} ${formatDate(lot.date_reception)}`,
-          lot.fournisseur_nom ? `· ${lot.fournisseur_nom}` : '',
-        ].filter(Boolean).join(' ');
-        return `<option value="${escHtml(key)}"${estFifo ? ' selected' : ''}>${escHtml(label)}</option>`;
-      }).join('');
-      const lotFifo = state.lotsProduit.find(l => lotKey(l) === state.fifoLotKey);
-      appliquerLotChoisi(lotFifo);
-      majBandeau();
-      elLotWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    state.lots = await apiFetch(`/api/cuisson/lots?${champ}=${prod.cle_id}&limit=100`) ?? [];
   } catch (err) {
-    // Un échec ici laisse state.produitChoisi sans lot source : la cuisson serait
-    // enregistrée sans lien de traçabilité et avec une DLC non plafonnée par la
-    // DLC d'origine. On ne bloque pas la production, mais l'opérateur DOIT le voir
-    // — un registre HACCP incomplet sans signal visible est le pire des cas.
-    console.warn('[cuisson] Historique réceptions KO :', err);
-    majBandeau();
-    setTimeout(() => {
-      goStep(3);
-      afficherErreur(
-        "⚠ Lots indisponibles — impossible de charger les lots de ce produit. " +
-        "La cuisson sera enregistrée SANS N° de lot ni traçabilité amont, et sa DLC " +
-        "ne sera pas plafonnée par la DLC d'origine. Signalez-le au responsable."
-      );
-    }, 120);
+    state.lots = [];
+    afficherErreur(`Lots indisponibles : ${err.message}`);
+  }
+  elLot.innerHTML = state.lots.length
+    ? state.lots.map((l, i) => {
+        const cle = `${l.source_type}:${l.source_id}`;
+        const verbe = l.source_type === 'fabrication' ? 'fabriqué' : 'reçu';
+        const label = [
+          i === 0 && state.lots.length > 1 ? '⭐ FIFO —' : '',
+          `Lot ${l.numero_lot ?? '—'}`,
+          `· DLC ${formatDate(l.dlc)}`,
+          `· ${verbe} le ${formatDate(l.date_reception)}`,
+          l.fournisseur_nom ? `· ${l.fournisseur_nom}` : '',
+        ].filter(Boolean).join(' ');
+        return `<option value="${escHtml(cle)}">${escHtml(label)}</option>`;
+      }).join('')
+    : '<option value="">Aucun lot disponible</option>';
+  if (opts.reception_ligne_id) {
+    const cle = `reception_ligne:${opts.reception_ligne_id}`;
+    if (state.lots.some(l => `${l.source_type}:${l.source_id}` === cle)) elLot.value = cle;
+  }
+
+  // Matière brute du catalogue ACHATS : on demande ce qu'elle devient (catalogue VENTE).
+  const cvConnu = prod.catalogue_vente_id ?? opts.catalogue_vente_id ?? null;
+  if (prod.cle_type === 'achat' && !cvConnu) {
+    await chargerDevient(prod);
+  } else {
+    elDevientWrap.hidden = true;
+    if (cvConnu) state.devient = { id: Number(cvConnu), nom: prod.nom };
   }
 }
 
-function appliquerLotChoisi(lot) {
-  if (!lot) return;
-  const srcType = lot.source_type ?? (lot.reception_ligne_id ? 'reception_ligne' : null);
-  const srcId   = lot.source_id   ?? lot.reception_ligne_id ?? null;
-  state.produitChoisi.numero_lot         = lot.numero_lot ?? null;
-  state.produitChoisi.dlc                = lot.dlc ?? null;
-  state.produitChoisi.source_type        = srcType;
-  state.produitChoisi.source_id          = srcId;
-  state.produitChoisi.reception_ligne_id = srcType === 'reception_ligne' ? srcId : null;
-  state.produitChoisi.fabrication_id     = srcType === 'fabrication'     ? srcId : null;
-
-  const estFifo = lotKey(lot) === state.fifoLotKey;
-  const badgeFifo = estFifo && state.lotsProduit.length > 1
-    ? ' <span class="cu-fifo-badge">⭐ FIFO</span>'
-    : '';
-  const badgeFab = srcType === 'fabrication'
-    ? ' <span class="cu-fifo-badge">🔪 Fabrication</span>'
-    : '';
-  const codeOri = (lot.origine && typeof origineCode === 'function') ? origineCode(lot.origine) : '';
-  elProdLot.innerHTML = lot.numero_lot
-    ? `Lot : ${escHtml(lot.numero_lot)}${codeOri ? ` · Origine : ${escHtml(codeOri)}` : ''}${badgeFifo}${badgeFab}`
-    : '';
-  elProdDlc.textContent = lot.dlc ? `DLC : ${formatDate(lot.dlc)}` : '';
+function lotChoisi() {
+  return state.lots.find(l => `${l.source_type}:${l.source_id}` === elLot.value) ?? null;
 }
 
-elLotSelect.addEventListener('change', () => {
-  const key = elLotSelect.value;
-  const lot = state.lotsProduit.find(l => lotKey(l) === key);
-  if (lot) appliquerLotChoisi(lot);
+$('cu-btn-receptions').addEventListener('click', () => {
+  if (!state.produit) return;
+  elModalTitre.textContent = `Réceptions — ${state.produit.nom}`;
+  elModalCorps.innerHTML = state.lots.length
+    ? state.lots.map(l => `
+        <div class="cu-histo-ligne">
+          <div class="cu-histo-date">${formatDate(l.date_reception)}</div>
+          <div class="cu-histo-info">
+            <strong>Lot :</strong> ${escHtml(l.numero_lot ?? '—')}
+            · <strong>DLC :</strong> ${formatDate(l.dlc)}
+            ${l.poids_kg ? ` · ${l.poids_kg} kg` : ''}
+            ${l.fournisseur_nom ? `<br><small>${escHtml(l.fournisseur_nom)}</small>` : ''}
+            ${l.reception_id ? `<br><a href="/reception-detail.html?id=${l.reception_id}" class="cu-lien">→ Fiche réception</a>` : ''}
+          </div>
+        </div>`).join('')
+    : '<div class="cu-vide">Aucun lot disponible pour ce produit.</div>';
+  elModal.hidden = false;
 });
+$('cu-modal-close').addEventListener('click', () => { elModal.hidden = true; });
+elModal.addEventListener('click', e => { if (e.target === elModal) elModal.hidden = true; });
 
-// ── Modale "ça devient quel produit ?" ──────────────────────
-// Un article du catalogue ACHATS (matière brute reçue, ex. ART8) ne dit pas
-// quel produit du catalogue VENTE il devient une fois cuit (ex. "Rosbeef
-// cuit") — rien ne les distingue côté schéma achats. On le demande donc
-// systématiquement avant l'étape 3, avec suggestions (dernier choix pour cet
-// article + produits du même groupe comparatif) et recherche libre.
-let pfChoixCourant = null;
-
-async function avancerVersEtape3() {
-  const p = state.produitChoisi;
-  const doitDemander = p && p.cle_type === 'achat' && !p.catalogue_vente_id;
-  if (!doitDemander) {
-    goStep(3);
-    return;
-  }
-  await ouvrirModalProduitFini(p);
-}
-
-async function ouvrirModalProduitFini(produitBrut) {
-  pfChoixCourant = null;
-  elPFConfirmer.disabled = true;
-  elPFSource.textContent = `Matière reçue : ${produitBrut.nom}`;
-  elPFSearch.value = '';
-  elPFGrid.innerHTML = `<div class="cu-tuiles-vide">Chargement…</div>`;
-  elModalPF.hidden = false;
-
+// ── « Devient » : matière brute → produit du catalogue vente ─
+async function chargerDevient(prod) {
+  elDevientWrap.hidden = false;
+  elDevientSearch.value = '';
+  elDevientChoix.innerHTML = '<span class="cu-aide">Chargement…</span>';
+  let suggestions = [];
   try {
-    const res = await apiFetch(
-      `/api/cuisson/produits-vente-suggeres?catalogue_fournisseur_id=${produitBrut.cle_id}`
-    );
-    const suggestions = [];
+    const res = await apiFetch(`/api/cuisson/produits-vente-suggeres?catalogue_fournisseur_id=${prod.cle_id}`);
     if (res.dernier_choix) suggestions.push({ ...res.dernier_choix, dernier: true });
-    (res.groupe ?? []).forEach(g => {
-      if (!suggestions.some(s => s.id === g.id)) suggestions.push(g);
-    });
-    afficherPFGrid(suggestions);
+    (res.groupe ?? []).forEach(g => { if (!suggestions.some(s => s.id === g.id)) suggestions.push(g); });
+    // Présélection : le dernier choix pour cet article, ou l'unique produit du groupe.
+    const auto = res.dernier_choix ?? (res.groupe?.length === 1 ? res.groupe[0] : null);
+    if (auto) state.devient = { id: auto.id, nom: auto.nom };
   } catch (err) {
     console.warn('[cuisson] Suggestions produit fini KO :', err);
-    afficherPFGrid([]);
   }
+  afficherDevient(suggestions);
 }
 
-function afficherPFGrid(liste) {
-  if (!liste.length) {
-    elPFGrid.innerHTML = `<div class="cu-tuiles-vide">Aucune suggestion — cherchez le produit ci-dessus.</div>`;
-    return;
-  }
-  elPFGrid.innerHTML = liste.map(p => `
-    <button type="button" class="cu-tuile${pfChoixCourant?.id === p.id ? ' cu-tuile--selected' : ''}"
-            role="listitem" data-pf-id="${p.id}" data-pf-nom="${escHtml(p.nom)}">
-      ${p.dernier ? '<div class="cu-tuile-badge">⭐ Dernier choix</div>' : ''}
-      <div class="cu-tuile-icone">🍽</div>
-      <div class="cu-tuile-nom">${escHtml(p.nom)}</div>
-    </button>
-  `).join('');
+function afficherDevient(liste) {
+  elDevientChoix.innerHTML = liste.length
+    ? liste.map(p => `
+        <button type="button" class="cu-pastille${state.devient?.id === p.id ? ' cu-pastille--actif' : ''}"
+                data-pf-id="${p.id}" data-pf-nom="${escHtml(p.nom)}">${p.dernier ? '⭐ ' : ''}${escHtml(p.nom)}</button>`).join('')
+    : '<span class="cu-aide">Aucune suggestion — cherchez le produit ci-dessous.</span>';
 }
 
-elPFGrid.addEventListener('click', e => {
-  const tuile = e.target.closest('.cu-tuile[data-pf-id]');
-  if (!tuile) return;
-  pfChoixCourant = { id: Number(tuile.dataset.pfId), nom: tuile.dataset.pfNom };
-  elPFGrid.querySelectorAll('.cu-tuile').forEach(t => t.classList.toggle('cu-tuile--selected', t === tuile));
-  elPFConfirmer.disabled = false;
+elDevientChoix.addEventListener('click', e => {
+  const b = e.target.closest('[data-pf-id]');
+  if (!b) return;
+  state.devient = { id: Number(b.dataset.pfId), nom: b.dataset.pfNom };
+  elDevientChoix.querySelectorAll('.cu-pastille').forEach(x => x.classList.toggle('cu-pastille--actif', x === b));
 });
 
-let pfSearchTimer = null;
-elPFSearch.addEventListener('input', () => {
-  clearTimeout(pfSearchTimer);
-  const terme = elPFSearch.value;
-  pfSearchTimer = setTimeout(async () => {
+let devientTimer = null;
+elDevientSearch.addEventListener('input', () => {
+  clearTimeout(devientTimer);
+  const terme = elDevientSearch.value;
+  devientTimer = setTimeout(async () => {
     try {
-      const rows = await apiFetch(`/api/cuisson/produits-vente-recherche?q=${encodeURIComponent(terme)}`);
-      afficherPFGrid(rows);
+      afficherDevient(await apiFetch(`/api/cuisson/produits-vente-recherche?q=${encodeURIComponent(terme)}`));
     } catch (err) {
       console.warn('[cuisson] Recherche produit fini KO :', err);
     }
   }, 250);
 });
 
-elPFConfirmer.addEventListener('click', () => {
-  if (!pfChoixCourant) return;
-  state.produitChoisi.catalogue_vente_id = pfChoixCourant.id;
-  // Le nom de la tuile affiché en bandeau reste celui de la matière brute reçue
-  // (ex. "ART8") : c'est le lot réellement tracé. Le produit fini choisi n'apparaît
-  // qu'au moment de l'étiquette / de l'historique.
-  elModalPF.hidden = true;
-  goStep(3);
-});
-
-elBtnStep2Next.addEventListener('click', () => avancerVersEtape3());
-
-// Historique réception produit — modale
-elBtnHisto.addEventListener('click', async () => {
-  if (!state.produitChoisi) return;
-  const { id, nom } = state.produitChoisi;
-  elModalTitre.textContent = `Historique — ${nom}`;
-  elModalCorps.innerHTML = `<div class="cu-histo-vide">Chargement…</div>`;
-  elModal.hidden = false;
-
-  try {
-    const receptions = await apiFetch(`/api/cuisson/produits/${id}/receptions?limit=20`);
-    if (!receptions.length) {
-      elModalCorps.innerHTML = `<div class="cu-histo-vide">Aucune réception enregistrée pour ce produit.</div>`;
-      return;
-    }
-    elModalCorps.innerHTML = receptions.map(r => `
-      <div class="cu-histo-ligne">
-        <div class="cu-histo-date">${formatDate(r.date_reception)}</div>
-        <div class="cu-histo-info">
-          <strong>Lot :</strong> ${escHtml(r.numero_lot ?? '—')}${
-            (r.origine && typeof origineCode === 'function' && origineCode(r.origine))
-              ? ` &nbsp;·&nbsp; <strong>Origine :</strong> ${escHtml(origineCode(r.origine))}`
-              : ''
-          }
-          &nbsp;·&nbsp; <strong>DLC :</strong> ${formatDate(r.dlc)}
-          ${r.fournisseur_nom ? `<br><small>${escHtml(r.fournisseur_nom)}</small>` : ''}
-          ${r.poids_kg ? `&nbsp;·&nbsp;${r.poids_kg} kg` : ''}
-          ${r.reception_id ? `<br><a href="/reception-detail.html?id=${r.reception_id}" style="color:#6B3A1F;font-weight:700">→ Fiche réception</a>` : ''}
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    elModalCorps.innerHTML = `<div class="cu-erreur">Erreur : ${escHtml(err.message)}</div>`;
-  }
-});
-
-elModalClose.addEventListener('click', () => { elModal.hidden = true; });
-elModal.addEventListener('click', e => {
-  if (e.target === elModal) elModal.hidden = true;
-});
-
-// ── Modal choix post-enregistrement ─────────────────────
-function afficherModalChoix(conforme) {
-  const { operateur, produit } = state.derniereSauvegarde;
-  elChoixTitre.textContent  = conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme';
-  elChoixContext.textContent = `${operateur.prenom} · ${produit.nom}`;
-  elModalChoix.hidden = false;
+// ── Cuisson ────────────────────────────────────────────────
+function majType() {
+  elTypeChoix.querySelectorAll('[data-type]').forEach(b =>
+    b.classList.toggle('cu-pastille--actif', b.dataset.type === state.typeCuisson));
 }
 
-function remplirGabaritEtiquette(data) {
-  // Format jj/mm/aa (année sur 2 chiffres) — ex: "2026-05-03" → "03/05/26"
-  const fmtDate = iso => {
-    if (!iso) return '--/--/--';
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${(y || '').slice(-2)}`;
-  };
-  const dlcFmt   = fmtDate(data.dlc);
-  const dateFmt  = fmtDate(data.date_action);
-  const heureFmt = (data.heure_action || '').replace(':', 'h');
-  const ligneAction = heureFmt
-    ? `${data.action_verbe} le ${dateFmt} à ${heureFmt}`
-    : `${data.action_verbe} le ${dateFmt}`;
+elTypeChoix.addEventListener('click', e => {
+  const b = e.target.closest('[data-type]');
+  if (!b) return;
+  state.typeCuisson = b.dataset.type;
+  majType();
+});
 
-  const quantiteTxt = (data.quantite != null && data.quantite !== '')
-    ? `Quantité : ${data.quantite} ${data.unite || 'kg'}`
-    : 'Quantité : —';
-  const tempTxt = (data.temperature != null && data.temperature !== '')
-    ? `${data.temp_label || 'T°'} : ${parseFloat(data.temperature).toFixed(1)} °C`
-    : `${data.temp_label || 'T°'} : —`;
-
-  document.getElementById('pt-tag').textContent       = `[${data.tag}]`;
-  document.getElementById('pt-nom').textContent       = data.produit_nom || '—';
-  document.getElementById('pt-quantite').textContent  = quantiteTxt;
-  document.getElementById('pt-dlc').textContent       = dlcFmt;
-  document.getElementById('pt-lot').textContent       = `Lot : ${data.numero_lot || '—'}`;
-  document.getElementById('pt-temperature').textContent = tempTxt;
-  document.getElementById('pt-action').textContent    = ligneAction;
-  document.getElementById('pt-meta').textContent      = `Par : ${data.operateur || '—'}`;
+function cibleCuisson() {
+  return DEGRES[state.degre] ?? 75;
 }
 
-elChoixEtiquette.addEventListener('click', async () => {
-  const { operateur, cuisson_id } = state.derniereSauvegarde;
-  if (!cuisson_id || !operateur) return;
-  elChoixEtiquette.disabled = true;
-  const labelEl = elChoixEtiquette.querySelector('.cu-choix-label');
-  const labelOriginal = labelEl.textContent;
-  labelEl.textContent = 'Impression…';
-  try {
-    const res = await apiFetch('/api/etiquettes/transformes', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        source_type:  'cuisson',
-        source_id:    cuisson_id,
-        personnel_id: Number(operateur.id),
-      }),
-    });
-    remplirGabaritEtiquette(res);
-    afficherToast(`✓ Étiquette envoyée à l'imprimante (Lot ${res.numero_lot})`, true);
-    imprimerEtiquette(document.getElementById('print-label-transforme'));
-  } catch (err) {
-    afficherToast(`Erreur impression : ${err.message}`, false);
-  } finally {
-    elChoixEtiquette.disabled = false;
-    labelEl.textContent = labelOriginal;
-  }
-});
-
-elChoixNouvelle.addEventListener('click', () => {
-  elModalChoix.hidden = true;
-  resetWizard();
-});
-
-elChoixHub.addEventListener('click', () => {
-  window.location.href = '/taches-hub.html';
-});
-
-elChoixRefroid.addEventListener('click', () => {
-  const { operateur, produit, cuisson_id, temperature_sortie, quantite, unite } = state.derniereSauvegarde;
-  sessionStorage.setItem('refroidissement_prefill', JSON.stringify({
-    operateur_id:       operateur.id,
-    operateur_prenom:   operateur.prenom,
-    // Clé composite : `id` (table produits) est null pour le stock issu du catalogue —
-    // le refroidissement doit recevoir cle_type/cle_id pour retrouver la bonne tuile.
-    produit_id:         produit.id,
-    cle_type:           produit.cle_type ?? 'produit',
-    cle_id:             produit.cle_id ?? produit.id,
-    catalogue_fournisseur_id: produit.catalogue_fournisseur_id ?? null,
-    catalogue_vente_id:       produit.catalogue_vente_id ?? null,
-    produit_nom:        produit.nom,
-    cuisson_id:         cuisson_id ?? null,
-    temperature_sortie: temperature_sortie ?? null,
-    quantite:           quantite ?? null,
-    unite:              unite ?? null,
-  }));
-  window.location.href = '/refroidissement.html';
-});
-
-// ═══ Boutons "← Retour" ═════════════════════════════════
-document.querySelectorAll('[data-back]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const n = Number(btn.dataset.back);
-    if (n >= 1 && n <= 3) goStep(n);
-  });
-});
-
-// ═══ Étape 3 : formulaire ═══════════════════════════════
-// ── Heure fin — boutons rapides ─────────────────────────
-const elQuickFin = $('cu-quick-fin');
-
-function ajouterMinutes(hhmm, minutes) {
-  const [h, m] = (hhmm || '').split(':').map(Number);
-  if (isNaN(h) || isNaN(m)) return null;
-  const total = h * 60 + m + minutes;
-  const hh = Math.floor((total % (24 * 60)) / 60);
-  const mm = total % 60;
-  const p = n => String(n).padStart(2, '0');
-  return `${p(hh)}:${p(mm)}`;
-}
-
-elQuickFin.addEventListener('click', e => {
-  const btn = e.target.closest('.cu-quick-btn[data-minutes]');
-  if (!btn) return;
-  if (!elHeureDebut.value) {
-    afficherErreur('Renseignez d\u2019abord l\u2019heure de d\u00e9but.');
-    return;
-  }
-  const minutes = Number(btn.dataset.minutes);
-  const fin = ajouterMinutes(elHeureDebut.value, minutes);
-  if (fin) {
-    elHeureFin.value = fin;
-    elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
-      b.classList.toggle('cu-quick-btn--actif', b === btn));
-    elErreur.hidden = true;
-  }
-});
-
-elHeureFin.addEventListener('input', () => {
-  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.remove('cu-quick-btn--actif'));
-});
-elHeureDebut.addEventListener('input', () => {
-  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.remove('cu-quick-btn--actif'));
-});
-
-elDureeAppliquer.addEventListener('click', () => {
-  const h = Math.max(0, parseInt(elDureeH.value, 10) || 0);
-  const m = Math.max(0, parseInt(elDureeM.value, 10) || 0);
-  const total = h * 60 + m;
-  if (!total) return;
-  if (!elHeureDebut.value) {
-    afficherErreur("Renseignez d’abord l’heure de début.");
-    return;
-  }
-  const fin = ajouterMinutes(elHeureDebut.value, total);
-  if (fin) {
-    elHeureFin.value = fin;
-    elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
-      b.classList.remove('cu-quick-btn--actif'));
-    elErreur.hidden = true;
-  }
-});
-
-// ── Conformité température — live ────────────────────────
-function cibleActuelle() {
-  return DEGRES_CUISSON[state.degreChoisi]?.temp ?? TEMP_CIBLE;
-}
-
-function majConformite() {
-  const cible = cibleActuelle();
-  const v = parseFloat(elTemperature.value);
-  if (isNaN(v)) {
-    elConformite.hidden = true;
-    elActionWrap.hidden = true;
-    return;
-  }
-  const ok = v >= cible;
-  elConformite.hidden = false;
-  elConformite.classList.toggle('cu-conformite--ok', ok);
-  elConformite.classList.toggle('cu-conformite--ko', !ok);
-  elConfTxt.textContent = ok
-    ? `✓ Conforme — ${v.toFixed(1)} °C ≥ ${cible} °C`
-    : `⚠ Non conforme — ${v.toFixed(1)} °C < ${cible} °C — action corrective requise`;
-  elActionWrap.hidden = ok;
-  elActionHint.textContent = `(T° < ${cible} °C)`;
-  const actionDefaut = cible === TEMP_CIBLE
-    ? ACTION_DEFAUT
-    : `Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu'à l'atteinte de la température de ${cible} °C à cœur`;
-  if (!ok && !elAction.value.trim()) {
-    elAction.value = actionDefaut;
-  } else if (ok && elAction.value.startsWith('Remettre le produit en cuisson')) {
-    elAction.value = '';
-  }
-}
-
-function majCibleAffichee() {
-  const cible = cibleActuelle();
-  elCibleTexte.textContent = `🎯 Cible ${state.degreChoisi === 'generale' ? 'réglementaire' : 'choisie'} : ≥ ${cible} °C`;
+function majDegre() {
+  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
+    b.classList.toggle('cu-quick-btn--actif', b.dataset.degre === state.degre));
+  elCible.textContent = `Cible : ≥ ${cibleCuisson()} °C`;
 }
 
 elDegreChoix.addEventListener('click', e => {
-  const btn = e.target.closest('.cu-quick-btn[data-degre]');
-  if (!btn) return;
-  state.degreChoisi = btn.dataset.degre;
-  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.toggle('cu-quick-btn--actif', b === btn));
-  majCibleAffichee();
-  majConformite();
-});
-elTemperature.addEventListener('input', () => {
-  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.remove('cu-quick-btn--actif'));
-  majConformite();
+  const b = e.target.closest('[data-degre]');
+  if (!b) return;
+  state.degre = b.dataset.degre;
+  majDegre();
+  majCuisson();
 });
 
-elQuickTemp.addEventListener('click', e => {
-  const btn = e.target.closest('.cu-quick-btn[data-temp]');
-  if (!btn) return;
-  elTemperature.value = btn.dataset.temp;
-  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.toggle('cu-quick-btn--actif', b === btn));
-  majConformite();
-});
-
-// ── Soumission ───────────────────────────────────────────
-elForm.addEventListener('submit', async e => {
-  e.preventDefault();
+/** Boutons de durée : fin = début + durée ; si seul la fin est connue, début = fin − durée. */
+function appliquerDuree(elDebut, elFin, quick, btn, quoi) {
+  const duree = Number(btn.dataset.minutes);
+  const d = minutes(elDebut.value), f = minutes(elFin.value);
+  if (d != null) {
+    const fin = hhmm(d + duree);
+    if (!fin) return afficherErreur(`${quoi} : la fin tomberait après minuit.`);
+    elFin.value = fin;
+  } else if (f != null) {
+    const debut = hhmm(f - duree);
+    if (!debut) return afficherErreur(`${quoi} : le début tomberait la veille.`);
+    elDebut.value = debut;
+  } else {
+    return afficherErreur(`${quoi} : saisissez d'abord l'heure de début ou de fin.`);
+  }
   elErreur.hidden = true;
+  quick.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.toggle('cu-quick-btn--actif', b === btn));
+}
 
-  if (!state.operateurChoisi) {
-    goStep(1);
-    return afficherErreur('Veuillez sélectionner un opérateur.');
-  }
-  if (!state.produitChoisi) {
-    goStep(2);
-    return afficherErreur('Veuillez sélectionner un produit.');
-  }
-  const qte = parseFloat(elQuantite.value);
-  if (isNaN(qte) || qte <= 0) {
-    return afficherErreur('Quantité requise (> 0).');
-  }
-  if (!elHeureDebut.value || !elHeureFin.value) {
-    return afficherErreur('Heures de début et fin requises.');
-  }
-  const temp = parseFloat(elTemperature.value);
-  if (isNaN(temp)) {
-    return afficherErreur('Température de sortie requise.');
-  }
-  const cible = cibleActuelle();
-  if (temp < cible && !elAction.value.trim()) {
-    return afficherErreur(`Action corrective obligatoire si T° < ${cible} °C.`);
-  }
-
-  const payload = {
-    type_cuisson:       'rotissoire',
-    date_cuisson:       elDate.value,
-    personnel_id:       Number(state.operateurChoisi.id),
-    produit_id:         state.produitChoisi.id != null
-                         ? Number(state.produitChoisi.id) : null,
-    catalogue_fournisseur_id: state.produitChoisi.catalogue_fournisseur_id != null
-                         ? Number(state.produitChoisi.catalogue_fournisseur_id) : null,
-    catalogue_vente_id: state.produitChoisi.catalogue_vente_id != null
-                         ? Number(state.produitChoisi.catalogue_vente_id) : null,
-    reception_ligne_id: state.produitChoisi.reception_ligne_id
-                         ? Number(state.produitChoisi.reception_ligne_id) : null,
-    fabrication_id:     state.produitChoisi.fabrication_id
-                         ? Number(state.produitChoisi.fabrication_id) : null,
-    quantite:           qte,
-    unite:              elUnite.value || 'kg',
-    heure_debut:        elHeureDebut.value,
-    heure_fin:          elHeureFin.value,
-    temperature_sortie: temp,
-    degre_cuisson:      state.degreChoisi,
-    action_corrective:  elAction.value.trim() || null,
-  };
-
-  elBtnSave.disabled    = true;
-  elBtnSave.textContent = '⏳ Enregistrement…';
-
-  try {
-    const res = await apiFetch('/api/cuisson/enregistrements', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
-    });
-    const conforme = !!res.conforme;
-    afficherToast(conforme ? '✓ Cuisson enregistrée' : '⚠ Cuisson enregistrée — non conforme', conforme);
-
-    // Afficher un popup si la DLC a été ajustée à la DLC d'origine
-    if (res.dlc_ajustee && res.dlc_origine) {
-      afficherPopupAjustementDLC('Cuisson', formatDate(res.dlc_origine));
-    }
-
-    state.derniereSauvegarde = {
-      operateur:          { ...state.operateurChoisi },
-      produit:            { ...state.produitChoisi },
-      cuisson_id:         res && res.id ? Number(res.id) : null,
-      temperature_sortie: temp,
-      quantite:           qte,
-      unite:              elUnite.value || 'kg',
-      conforme,
-    };
-    afficherModalChoix(conforme);
-    await chargerHistorique();
-  } catch (err) {
-    afficherErreur(err.message);
-  } finally {
-    elBtnSave.disabled    = false;
-    elBtnSave.textContent = '✓ Enregistrer la cuisson';
-  }
+elQuickCuisson.addEventListener('click', e => {
+  const b = e.target.closest('[data-minutes]');
+  if (!b) return;
+  appliquerDuree(elHeureDebut, elHeureFin, elQuickCuisson, b, 'Cuisson');
+  majCuisson();
 });
 
+[elHeureDebut, elHeureFin].forEach(el => el.addEventListener('input', () => {
+  elQuickCuisson.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.remove('cu-quick-btn--actif'));
+  majCuisson();
+}));
+elTemperature.addEventListener('input', majCuisson);
+
+/** Fin de cuisson connue (enregistrée ou saisie) : point de départ du refroidissement. */
+function finCuisson() {
+  return cuissonDejaTerminee() ? state.fiche.heure_fin : (elHeureFin.value || null);
+}
+
+function cuissonComplete() {
+  return cuissonDejaTerminee() || (!!elHeureFin.value && nombre(elTemperature) != null);
+}
+
+function majCuisson() {
+  if (!cuissonDejaTerminee()) {
+    const d = minutes(elHeureDebut.value), f = minutes(elHeureFin.value);
+    if (d != null && f != null) {
+      elDureeCuisson.textContent = f > d ? `→ a cuit ${formatDuree(f - d)}` : '⚠ La fin est avant le début.';
+      elDureeCuisson.classList.toggle('cu-duree--ko', f <= d);
+    } else {
+      elDureeCuisson.textContent = '';
+    }
+    const t = nombre(elTemperature);
+    const cible = cibleCuisson();
+    if (t == null) {
+      elConformite.hidden = true;
+      elActionWrap.hidden = true;
+    } else {
+      const ok = t >= cible;
+      elConformite.hidden = false;
+      elConformite.className = `cu-conformite ${ok ? 'cu-conformite--ok' : 'cu-conformite--ko'}`;
+      elConformite.textContent = ok
+        ? `✓ Conforme — ${t.toFixed(1)} °C ≥ ${cible} °C`
+        : `⚠ Non conforme — ${t.toFixed(1)} °C < ${cible} °C — action corrective requise`;
+      elActionWrap.hidden = ok;
+      if (!ok && !elAction.value.trim()) {
+        elAction.value = `Remise en cuisson jusqu'à ${cible} °C à cœur`;
+      }
+    }
+  }
+
+  // Mise au froid = fin de cuisson, tant que l'opérateur ne l'a pas changée.
+  const fin = finCuisson();
+  if (!state.refroidDebutManuel) elRefroidDebut.value = fin ?? '';
+  majSuite();
+  majRefroid();
+}
+
+// ── Ensuite ────────────────────────────────────────────────
+function majSuite() {
+  const complete = cuissonComplete();
+  const verrouillee = !!(state.fiche && state.fiche.suite);   // suite déjà enregistrée
+  elBlocSuite.querySelectorAll('.cu-suite-btn').forEach(b => {
+    b.classList.toggle('cu-suite-btn--actif', b.dataset.suite === state.suite);
+    b.disabled = verrouillee || (!complete && b.dataset.suite !== '');
+  });
+  if (!complete && state.suite) state.suite = '';
+  elSuiteAide.textContent = verrouillee
+    ? 'Suite déjà enregistrée.'
+    : complete ? '« Plus tard » garde la fiche dans « À compléter ».'
+               : 'Terminez la cuisson (heure de fin + T°) pour choisir la suite.';
+  elBlocRefroid.hidden = state.suite !== 'refroidi';
+}
+
+elBlocSuite.addEventListener('click', e => {
+  const b = e.target.closest('.cu-suite-btn');
+  if (!b || b.disabled) return;
+  state.suite = b.dataset.suite;
+  majSuite();
+  majRefroid();
+});
+
+// ── Refroidissement ────────────────────────────────────────
+elQuickRefroid.addEventListener('click', e => {
+  const b = e.target.closest('[data-minutes]');
+  if (!b) return;
+  appliquerDuree(elRefroidDebut, elRefroidFin, elQuickRefroid, b, 'Refroidissement');
+  majRefroid();
+});
+
+elRefroidDebut.addEventListener('input', () => {
+  state.refroidDebutManuel = true;
+  elQuickRefroid.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.remove('cu-quick-btn--actif'));
+  majRefroid();
+});
+elRefroidFin.addEventListener('input', () => {
+  elQuickRefroid.querySelectorAll('.cu-quick-btn').forEach(b => b.classList.remove('cu-quick-btn--actif'));
+  majRefroid();
+});
+elRefroidTemp.addEventListener('input', majRefroid);
+
+function etatRefroid() {
+  const d = minutes(elRefroidDebut.value), f = minutes(elRefroidFin.value);
+  const duree = (d != null && f != null && f > d) ? f - d : null;
+  const t = nombre(elRefroidTemp);
+  const tempOk = t == null ? null : t <= TEMP_CIBLE_REFROID;
+  const dureeOk = duree == null ? null : duree <= DUREE_MAX_REFROID;
+  return { d, f, duree, t, tempOk, dureeOk, jeter: tempOk === false && dureeOk === false };
+}
+
+function majRefroid() {
+  const r = etatRefroid();
+  const fc = minutes(finCuisson());
+
+  // Écart sortie de cuisson → mise au froid
+  if (r.d != null && fc != null && r.d < fc) {
+    elRefroidDebutAide.textContent = '⚠ Avant la fin de la cuisson.';
+    elRefroidDebutAide.className = 'cu-aide cu-aide--ko';
+  } else if (r.d != null && fc != null && r.d - fc > ECART_MAX_MISE_AU_FROID) {
+    elRefroidDebutAide.textContent = `⚠ ${formatDuree(r.d - fc)} après la sortie de cuisson : à mettre au froid sans attendre.`;
+    elRefroidDebutAide.className = 'cu-aide cu-aide--alerte';
+  } else {
+    elRefroidDebutAide.textContent = fc != null && !state.refroidDebutManuel ? '= fin de cuisson' : '';
+    elRefroidDebutAide.className = 'cu-aide';
+  }
+
+  if (r.d != null && r.f != null) {
+    elDureeRefroid.textContent = r.f > r.d ? `→ a refroidi ${formatDuree(r.f - r.d)}` : '⚠ La fin est avant la mise au froid.';
+    elDureeRefroid.classList.toggle('cu-duree--ko', r.f <= r.d || r.dureeOk === false);
+  } else {
+    elDureeRefroid.textContent = '';
+  }
+
+  if (r.t == null || r.duree == null) {
+    elRefroidConf.hidden = true;
+    elRefroidActionWrap.hidden = true;
+    elJeterWrap.hidden = true;
+    return;
+  }
+  const ok = r.tempOk && r.dureeOk;
+  elRefroidConf.hidden = false;
+  elRefroidConf.className = `cu-conformite ${ok ? 'cu-conformite--ok' : 'cu-conformite--ko'}`;
+  const ko = [];
+  if (!r.tempOk) ko.push(`${r.t.toFixed(1)} °C > ${TEMP_CIBLE_REFROID} °C`);
+  if (!r.dureeOk) ko.push(`${formatDuree(r.duree)} > 2 h`);
+  elRefroidConf.textContent = ok
+    ? `✓ Conforme — ${r.t.toFixed(1)} °C en ${formatDuree(r.duree)}`
+    : r.jeter ? `⛔ ${ko.join(' et ')} : le produit doit être JETÉ`
+              : `⚠ Non conforme — ${ko.join(' · ')} — action corrective requise`;
+  elJeterWrap.hidden = !r.jeter;
+  if (!r.jeter) elJeter.checked = false;
+  elRefroidActionWrap.hidden = ok || r.jeter;
+}
+
+// ═══ Enregistrement ════════════════════════════════════════
 function afficherErreur(msg) {
   elErreur.textContent = msg;
   elErreur.hidden = false;
   elErreur.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return null;
 }
 
 function afficherToast(message, ok = true) {
@@ -1103,92 +785,205 @@ function afficherToast(message, ok = true) {
   }, 3500);
 }
 
-function resetWizard() {
-  state.operateurChoisi = null;
-  state.produitChoisi   = null;
-  state.lotsProduit     = [];
-  state.fifoLotKey      = null;
-  state.degreChoisi     = 'generale';
-  state.produitPreselectionne = null;
-  state.selectionOperateurEnCours = false;
+/** Contrôles avant envoi (le serveur refait les mêmes) → payload, ou null. */
+function construirePayload() {
+  if (!state.operateurId) return afficherErreur('Indiquez qui saisit la fiche.');
+  const fiche = state.fiche;
+  const payload = { personnel_id: state.operateurId };
+  const figee = cuissonDejaTerminee();
 
-  elOperateursGrid.querySelectorAll('.cu-tuile').forEach(t =>
-    t.classList.remove('cu-tuile--selected'));
-  elProduitsGrid.querySelectorAll('.cu-tuile').forEach(t =>
-    t.classList.remove('cu-tuile--selected'));
-  elProdSearch.value = '';
-  afficherProduits();
+  if (!figee) {
+    const date = elDate.value;
+    if (!date) return afficherErreur('Date de la cuisson requise.');
+    if (date > aujourdhuiISO()) return afficherErreur('La date de cuisson est dans le futur.');
+    payload.date_cuisson = date;
+    const q = nombre(elQuantite);
+    if (q != null) payload.quantite = q;
+    payload.unite = elUnite.value || 'kg';
+  }
 
-  elLotWrap.hidden = true;
-  elLotSelect.innerHTML = '';
-  elProdLot.innerHTML = '';
-  elProdDlc.textContent = '';
+  if (!fiche) {
+    const p = state.produit;
+    if (!p) return afficherErreur('Choisissez le produit cuit.');
+    const lot = lotChoisi();
+    if (state.lots.length && !lot) return afficherErreur('Choisissez le lot utilisé.');
+    if (!elDevientWrap.hidden && !state.devient) return afficherErreur('Indiquez ce que devient le produit (catalogue vente).');
+    Object.assign(payload, {
+      produit_id:               p.id ?? null,
+      catalogue_fournisseur_id: p.catalogue_fournisseur_id ?? null,
+      catalogue_vente_id:       state.devient?.id ?? p.catalogue_vente_id ?? null,
+      reception_ligne_id:       lot?.source_type === 'reception_ligne' ? lot.source_id : null,
+      fabrication_id:           lot?.source_type === 'fabrication' ? lot.source_id : null,
+      lot_epuise:               !!lot && elLotEpuise.checked,
+    });
+  }
 
-  elQuantite.value    = '';
-  elHeureDebut.value  = nowHHMM();
-  elHeureFin.value    = '';
-  elTemperature.value = '';
-  elAction.value      = '';
-  elConformite.hidden = true;
-  elActionWrap.hidden = true;
-  elDate.value        = todayISO();
-  elDureeH.value      = '';
-  elDureeM.value      = '';
-  elQuickFin.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.remove('cu-quick-btn--actif'));
-  elQuickTemp.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.remove('cu-quick-btn--actif'));
-  elDegreWrap.hidden = true;
-  elDegreChoix.querySelectorAll('.cu-quick-btn').forEach(b =>
-    b.classList.toggle('cu-quick-btn--actif', b.dataset.degre === 'generale'));
-  majCibleAffichee();
+  // Cuisson
+  if (!figee) {
+    const debut = elHeureDebut.value || null;
+    const fin = elHeureFin.value || null;
+    const t = nombre(elTemperature);
+    if ((fin || t != null) && !(debut && fin && t != null)) {
+      return afficherErreur('Pour terminer la cuisson : début, fin ET T° à cœur. Sinon laissez fin et T° vides.');
+    }
+    if (debut && fin && minutes(fin) <= minutes(debut)) return afficherErreur('Cuisson : la fin est avant le début.');
+    if (payload.date_cuisson === aujourdhuiISO()) {
+      const maintenant = new Date().getHours() * 60 + new Date().getMinutes();
+      if ([debut, fin].some(h => h && minutes(h) > maintenant + 5)) {
+        return afficherErreur("Cuisson : heure dans le futur. Saisissez l'heure réelle.");
+      }
+    }
+    if (t != null && t < cibleCuisson() && !elAction.value.trim()) {
+      return afficherErreur(`Action corrective obligatoire (T° < ${cibleCuisson()} °C).`);
+    }
+    Object.assign(payload, {
+      type_cuisson:       state.typeCuisson,
+      heure_debut:        debut,
+      heure_fin:          fin,
+      temperature_sortie: t,
+      degre_cuisson:      state.degre,
+      action_corrective:  t != null && t < cibleCuisson() ? elAction.value.trim() : null,
+    });
+  }
 
-  goStep(1);
+  // Suite
+  if (state.suite && !(fiche && fiche.suite)) payload.suite = state.suite;
+
+  // Refroidissement : envoyé dès que fin ou T° est saisie (sinon reste « à saisir »).
+  if (state.suite === 'refroidi') {
+    const r = etatRefroid();
+    const saisi = elRefroidFin.value || r.t != null;
+    if (saisi) {
+      if (!(elRefroidDebut.value && elRefroidFin.value && r.t != null)) {
+        return afficherErreur('Refroidissement : mise au froid, fin ET T° à cœur. Sinon laissez fin et T° vides.');
+      }
+      if (r.f <= r.d) return afficherErreur('Refroidissement : la fin est avant la mise au froid.');
+      const fc = minutes(finCuisson());
+      if (fc != null && r.d < fc) return afficherErreur('Refroidissement : la mise au froid est avant la fin de la cuisson.');
+      const dateRef = payload.date_cuisson ?? fiche?.date_cuisson;
+      if (dateRef === aujourdhuiISO()) {
+        const maintenant = new Date().getHours() * 60 + new Date().getMinutes();
+        if (r.f > maintenant + 5) return afficherErreur("Refroidissement : heure de fin dans le futur. Saisissez l'heure réelle.");
+      }
+      const ok = r.tempOk && r.dureeOk;
+      if (r.jeter && !elJeter.checked) return afficherErreur('Plus de 2 h et plus de 10 °C : cochez la confirmation « produit jeté ».');
+      if (!ok && !r.jeter && !elRefroidAction.value.trim()) return afficherErreur('Refroidissement non conforme : action corrective obligatoire.');
+      payload.refroidissement = {
+        heure_debut:        elRefroidDebut.value,
+        heure_fin:          elRefroidFin.value,
+        temperature_finale: r.t,
+        jeter_action:       r.jeter,
+        action_corrective:  r.jeter
+          ? ['Produit jeté', elRefroidAction.value.trim()].filter(Boolean).join(' — ')
+          : (ok ? null : elRefroidAction.value.trim()),
+      };
+    }
+  }
+  return payload;
 }
 
-// ── Historique récent ────────────────────────────────────
-async function chargerHistorique() {
-  elHisto.innerHTML = `<div class="cu-histo-vide">Chargement…</div>`;
+async function enregistrer(avecEtiquette) {
+  if (state.envoiEnCours) return;
+  elErreur.hidden = true;
+  const payload = construirePayload();
+  if (!payload) return;
+
+  state.envoiEnCours = true;
+  [elBtnSave, elBtnSaveEtiq].forEach(b => { b.disabled = true; });
   try {
-    const rows = await apiFetch('/api/cuisson/enregistrements?type=rotissoire&limit=20');
-    if (!rows.length) {
-      elHisto.innerHTML = `<div class="cu-histo-vide">Aucune cuisson enregistrée pour l'instant.</div>`;
-      return;
-    }
-    elHisto.innerHTML = rows.map(r => {
-      const ok = !!r.conforme;
-      const qte = r.quantite != null ? `${r.quantite} ${escHtml(r.unite ?? '')}` : '';
-      return `
-        <div class="cu-histo-ligne ${ok ? '' : 'cu-histo-ligne--ko'}">
-          <div class="cu-histo-date">
-            ${formatDate(r.date_cuisson)}<br>
-            <small>${escHtml(r.heure_debut ?? '')}→${escHtml(r.heure_fin ?? '')}</small>
-          </div>
-          <div class="cu-histo-info">
-            <strong>${escHtml(r.produit_nom ?? '—')}</strong>
-            ${qte ? ` · ${qte}` : ''}
-            <br>
-            <small>
-              Opérateur : ${escHtml(r.personnel_prenom ?? '—')}
-              ${r.action_corrective ? `· Action : ${escHtml(r.action_corrective)}` : ''}
-            </small>
-          </div>
-          <div class="cu-histo-temp ${ok ? 'cu-histo-temp--ok' : 'cu-histo-temp--ko'}">
-            ${formatTemp(r.temperature_sortie)}
-          </div>
-        </div>
-      `;
-    }).join('');
+    if (payload.type_cuisson) localStorage.setItem(CLE_TYPE_DEFAUT, payload.type_cuisson);
+    const fiche = state.fiche
+      ? await apiFetch(`/api/cuisson/fiches/${state.fiche.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      : await apiFetch('/api/cuisson/fiches', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+    const nonConforme = fiche.conforme === 0 || fiche.refroid_conforme === 0;
+    const message = fiche.refroid_jeter === 1 ? '⛔ Enregistré — produit à jeter'
+      : fiche.etat === 'terminee' ? `✓ Fiche terminée${nonConforme ? ' — non conforme' : ''}`
+      : `✓ Enregistré — reste : ${(ETATS[fiche.etat] ?? '').replace(/^\S+\s/, '').toLowerCase()}`;
+    afficherToast(message, !nonConforme && fiche.refroid_jeter !== 1);
+
+    if (avecEtiquette) await imprimer(fiche, state.operateurId);
+    await Promise.all([chargerFiches(), chargerProduits()]);
+    montrerAccueil();
   } catch (err) {
-    elHisto.innerHTML = `<div class="cu-erreur">Erreur : ${escHtml(err.message)}</div>`;
+    afficherErreur(err.message);
+  } finally {
+    state.envoiEnCours = false;
+    [elBtnSave, elBtnSaveEtiq].forEach(b => { b.disabled = false; });
   }
 }
 
-// ── Popup ajustement DLC ────────────────────────────────
-function afficherPopupAjustementDLC(module, dlcOrigine) {
-  const msg = `⚠ DLC ajustée\n\nLe module ${module} a ajusté la DLC calculée à la DLC d'origine du produit :\n\n${dlcOrigine}`;
-  alert(msg);
+elForm.addEventListener('submit', e => { e.preventDefault(); enregistrer(false); });
+elBtnSaveEtiq.addEventListener('click', () => enregistrer(true));
+
+// ── Étiquette ──────────────────────────────────────────────
+function remplirGabaritEtiquette(data) {
+  const fmt = iso => {
+    if (!iso) return '--/--/--';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${(y || '').slice(-2)}`;
+  };
+  const heure = (data.heure_action || '').replace(':', 'h');
+  $('pt-tag').textContent = `[${data.tag}]`;
+  $('pt-nom').textContent = data.produit_nom || '—';
+  $('pt-quantite').textContent = (data.quantite != null && data.quantite !== '')
+    ? `Quantité : ${data.quantite} ${data.unite || 'kg'}` : 'Quantité : —';
+  $('pt-dlc').textContent = fmt(data.dlc);
+  $('pt-lot').textContent = `Lot : ${data.numero_lot || '—'}`;
+  $('pt-temperature').textContent = (data.temperature != null && data.temperature !== '')
+    ? `${data.temp_label || 'T°'} : ${parseFloat(data.temperature).toFixed(1)} °C`
+    : `${data.temp_label || 'T°'} : —`;
+  $('pt-action').textContent = `${data.action_verbe} le ${fmt(data.date_action)}${heure ? ` à ${heure}` : ''}`;
+  $('pt-meta').textContent = `Par : ${data.operateur || '—'}`;
 }
 
-// ── Go ──────────────────────────────────────────────────
+/** Étiquette du dernier maillon : REFROIDI s'il existe, sinon CUIT. */
+async function imprimer(fiche, personnelId) {
+  if (fiche.refroid_jeter === 1) return afficherToast('Produit jeté : pas d\'étiquette.', false);
+  const source = fiche.refroid_id
+    ? { source_type: 'refroidissement', source_id: fiche.refroid_id }
+    : fiche.heure_fin != null ? { source_type: 'cuisson', source_id: fiche.id } : null;
+  if (!source) return afficherToast("Pas d'étiquette tant que la cuisson n'est pas terminée.", false);
+  try {
+    const res = await apiFetch('/api/etiquettes/transformes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...source, personnel_id: Number(personnelId) }),
+    });
+    remplirGabaritEtiquette(res);
+    afficherToast(`✓ Étiquette envoyée (Lot ${res.numero_lot})`, true);
+    imprimerEtiquette($('print-label-transforme'));
+  } catch (err) {
+    afficherToast(`Erreur impression : ${err.message}`, false);
+  }
+}
+
+// ── Pré-remplissage (Production > À cuire) ─────────────────
+function appliquerPrefill(data) {
+  const prod = state.produits.find(p =>
+       (data.catalogue_fournisseur_id != null && Number(p.catalogue_fournisseur_id) === Number(data.catalogue_fournisseur_id))
+    || (data.catalogue_vente_id != null && Number(p.catalogue_vente_id) === Number(data.catalogue_vente_id))
+    || (data.produit_id != null && p.id != null && Number(p.id) === Number(data.produit_id)));
+  if (prod) {
+    choisirProduit(prod, {
+      catalogue_vente_id: data.catalogue_vente_id ?? null,
+      reception_ligne_id: data.reception_ligne_id ?? null,
+    });
+  } else if (data.produit_nom) {
+    afficherErreur(`« ${data.produit_nom} » n'est plus en stock (lot périmé ou sorti).`);
+  }
+}
+
+// ── Go ──────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([chargerPersonnel(), chargerProduits(), chargerFiches()]);
+  const prefillRaw = sessionStorage.getItem('cuisson_prefill');
+  if (prefillRaw) {
+    sessionStorage.removeItem('cuisson_prefill');
+    try { ouvrirFiche(null, JSON.parse(prefillRaw)); } catch { /* noop */ }
+  }
+}
+
 init();

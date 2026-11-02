@@ -1,225 +1,181 @@
-# Module 9 — Cuisson HACCP (≥ 75°C)
+# Module 9 — Cuisson & refroidissement
 
 ---
 
 ## 1. Objectif
 
-Ce module enregistre chaque opération de cuisson avec traçabilité complète : produit, lot source, opérateur, heures de début et de fin, et surtout la **température à la sortie** par rapport à la cible réglementaire HACCP de **75°C à cœur**. Si la température est atteinte, une DLC J+3 est calculée automatiquement et une étiquette thermique peut être imprimée. Après cuisson, le module propose directement de lancer le suivi de refroidissement.
+Ce module tient le registre HACCP de chaque cuisson et de ce qu'elle devient : **refroidie** (≤ 10 °C à cœur en ≤ 2 h) ou **vendue chaude**. Une seule **fiche** regroupe produit, lot, cuisson et refroidissement.
+
+L'écran est pensé pour la **saisie après coup** : on peut ouvrir une fiche dans la journée avec seulement le produit et le lot, puis la compléter le soir. Aucune heure n'est remplie à la place de l'opérateur.
 
 ---
 
 ## 2. Chemin d'accès
 
-Hub principal → **Production** → tuile **🔥 CUISSON**.
+Hub principal → **Production** → tuile **🔥 CUISSON** (la tuile **❄️ REFROIDISSEMENT** ouvre le même écran).
 
-URL directe : `/cuisson.html`
+URL directe : `/cuisson.html` (l'ancienne adresse `/refroidissement.html` y renvoie).
 
----
-
-## 3. Structure générale : wizard 3 étapes
-
-Wizard guidé avec barre de progression numérotée 1-2-3. Un bandeau `👤 [Opérateur] · 📦 [Produit]` reste visible dès que les deux premiers choix sont faits.
-
-| Étape | Titre |
-|---|---|
-| 1 | Qui cuisine ? |
-| 2 | Quel produit ? |
-| 3 | Paramètres de cuisson |
-
-Navigation arrière disponible à toutes les étapes. Inactivité 5 minutes → redirection vers `/hub.html`.
+Un rappel **« Cuisson / refroidissement à compléter »** apparaît dans les tâches du jour du Hub tant qu'une fiche n'est pas terminée.
 
 ---
 
-## 4. Étape 1 — Sélection de l'opérateur
-
-Grille de tuiles avec l'initiale et le prénom de chaque membre du personnel actif, triés alphabétiquement. Un clic sur une tuile la sélectionne (mise en évidence) et fait avancer automatiquement vers l'étape 2 après 150 ms.
-
----
-
-## 5. Étape 2 — Sélection du produit
-
-### 5.1 Filtres
-
-- **Filtres espèces** : boutons `Toutes` + un bouton par espèce présente en stock (🐂 Bœuf, 🐄 Veau, 🐑 Agneau, 🐖 Porc, 🦌 Gibier, 🐔 Volaille, 🐎 Cheval, 🦬 Exotique). Générés dynamiquement selon le stock disponible.
-- **Champ de recherche** : filtre les tuiles par nom (insensible à la casse).
-
-### 5.2 Grille de produits
-
-Seuls les produits **en stock** (réceptions non expirées, non traitées DLC) sont affichés. Ordre de tri :
-1. En stock en premier
-2. Par DLC croissante (FIFO)
-3. Alphabétique
-
-Chaque tuile affiche :
-- Badge `⭐ EN STOCK`
-- Icône espèce
-- Nom du produit
-- DLC du lot FIFO (ex. : `DLC 17/05/2026`)
-- N° de lot FIFO
-
-**Sources** : le module accepte deux origines de stock — **réceptions de matières premières** et **fabrications maison** (produits finis crus). Un lot de fabrication est identifié par le badge `🔪 Fabrication` dans le sélecteur de lot.
-
-### 5.3 Sélecteur de lot (visible si ≥ 2 lots disponibles)
-
-Après sélection d'un produit ayant plusieurs lots, un sélecteur apparaît :
-- Le **lot FIFO** (DLC la plus courte) est pré-sélectionné et marqué `⭐ FIFO`
-- Format de chaque option : `⭐ FIFO — Lot XXX · DLC JJ/MM/AAAA · reçu JJ/MM/AAAA · Fournisseur`
-- Les lots issus de fabrication indiquent `· fabriqué` et `· Fabrication maison`
-
-Sous le sélecteur :
-- **`📋 Historique de réception`** : ouvre une modale avec la liste de tous les lots, DLC, poids, fournisseur et un lien vers la fiche de réception
-- **`Suivant →`** : confirme le lot choisi et passe à l'étape 3
-
-Si le produit n'a qu'un seul lot, l'étape 3 s'ouvre automatiquement.
-
----
-
-## 6. Étape 3 — Paramètres de cuisson
-
-### 6.1 Formulaire
-
-| Champ | Obligatoire | Notes |
-|---|---|---|
-| **Date** | Oui ✱ | Pré-remplie avec la date du jour |
-| **Quantité** | Oui ✱ | Décimale (> 0) |
-| **Unité** | Oui | Menu : `kg` (défaut) · `g` · `pièces` |
-| **Heure début cuisson** | Oui ✱ | Pré-remplie avec l'heure courante |
-| **Heure fin cuisson** | Oui ✱ | Saisie directe ou via raccourcis (voir 6.2) |
-| **Température produit — sortie rôtissoire** | Oui ✱ | 0–120°C, décimale. Bouton rapide `75°C`. |
-| **Action corrective** | Oui ✱ si T° < 75°C | Textarea, pré-remplie automatiquement si NC (voir 6.3) |
-
-### 6.2 Raccourcis heure de fin
-
-Deux méthodes de saisie rapide pour l'heure de fin :
-
-**Boutons durée prédéfinis** (calculés depuis l'heure de début) :
-`+1h` · `+1h30` · `+2h` · `+2h30` · `+3h`
-
-**Saisie manuelle durée** : champs `h` + `min` + bouton `→` pour calculer et appliquer l'heure de fin.
-
-> Si l'heure de début n'est pas renseignée au moment du clic, un message d'erreur s'affiche.
-
-### 6.3 Badge de conformité et action corrective
-
-Mis à jour en temps réel à chaque frappe dans le champ Température :
-
-| Température | Badge affiché | Action corrective |
-|---|---|---|
-| Non saisie | *(masqué)* | *(masquée)* |
-| ≥ 75°C | `✓ Conforme — X,X °C ≥ 75 °C` (vert) | Champ masqué et vidé |
-| < 75°C | `⚠ Non conforme — X,X °C < 75 °C — action corrective requise` (rouge) | Champ visible, pré-rempli automatiquement |
-
-**Texte pré-rempli automatiquement si T° < 75°C :**
-> *"Remettre le produit en cuisson (four, rôtissoire, marmite) et prolonger le temps de cuisson jusqu'à l'atteinte de la température de 75 °C à cœur"*
-
-Ce texte est **modifiable**. Si l'opérateur efface le texte et que la T° repasse au-dessus de 75°C, le champ action corrective est automatiquement masqué et vidé.
-
-### 6.4 Historique récent
-
-Sous le formulaire, un tableau affiche les **20 dernières cuissons de type rôtissoire**, avec : date, plage horaire, produit, quantité, opérateur, température (vert si ≥ 75°C, rouge sinon).
-
----
-
-## 7. Après l'enregistrement — Modal de choix
-
-Après une sauvegarde réussie, une modale **"Cuisson enregistrée"** (ou **"⚠ Cuisson enregistrée — non conforme"** si T° < 75°C) affiche 4 boutons :
-
-| Bouton | Action |
-|---|---|
-| **🖨 Imprimer étiquette** | Génère et imprime l'étiquette thermique Brother 62 mm (voir section 9) |
-| **🍗 Nouvelle cuisson** | Réinitialise entièrement le wizard (retour à l'étape 1) |
-| **🏠 Retour au hub** | Redirige vers `/taches-hub.html` |
-| **❄ Refroidissement du produit** | Sauvegarde les données en `sessionStorage` et redirige vers `/refroidissement.html` avec pré-remplissage |
-
----
-
-## 8. Règles de conformité invisibles
-
-### 8.1 Cible réglementaire : 75°C
-
-La constante `TEMPERATURE_CIBLE = 75.0` est définie dans le backend. Une T° de sortie **strictement inférieure** à 75°C déclenche :
-1. Le marquage `conforme = 0` en base de données
-2. L'obligation d'une action corrective (rejet HTTP 422 si absente)
-
-### 8.2 DLC automatique J+3, capée par la source
-
-La DLC est calculée **exclusivement côté serveur** :
-```
-dlc_calculee = date_cuisson + DLC_JOURS_TRANSFORMATION (= 3 jours)
-```
-
-**Règle de plafonnement :** si la DLC du lot source (réception ou fabrication) est antérieure à `dlc_calculee`, alors :
-```
-dlc_finale = dlc_source  (et non dlc_calculee)
-```
-
-Dans ce cas, `dlc_ajustee = True` est retourné et une **alerte popup** s'affiche côté frontend :  
-*"⚠ DLC ajustée — Le module Cuisson a ajusté la DLC calculée à la DLC d'origine du produit : JJ/MM/AAAA"*
-
-### 8.3 Unicité de la source amont
-
-Une cuisson ne peut être liée **qu'à une seule source** : soit un lot de réception (`reception_ligne_id`), soit un lot de fabrication (`fabrication_id`), jamais les deux simultanément. Le backend rejette une telle requête avec HTTP 422.
-
-### 8.4 FIFO dans la sélection de lots
-
-Lorsque le produit a plusieurs lots, le **lot FIFO** est identifié par le tri :
-1. DLC ascendante (lot expirant le plus tôt en premier)
-2. Date de réception/fabrication ascendante (à DLC égale, le plus ancien)
-
-Le lot FIFO est pré-sélectionné automatiquement. L'opérateur peut le changer manuellement via le sélecteur.
-
-### 8.5 Pré-remplissage depuis d'autres modules
-
-Si la clé `cuisson_prefill` est présente en `sessionStorage` à l'ouverture de la page, le wizard pré-remplit automatiquement l'opérateur, le produit, la quantité et l'unité. Cette clé est supprimée immédiatement après lecture (usage unique).
-
-### 8.6 Lien vers le refroidissement
-
-Le bouton **"❄ Refroidissement du produit"** injecte les données suivantes dans `sessionStorage` (`refroidissement_prefill`) pour la page de refroidissement :
-- `operateur_id`, `operateur_prenom`
-- `produit_id`, `produit_nom`
-- `cuisson_id` (pour lier les deux opérations)
-- `temperature_sortie` (T° de fin de cuisson → T° initiale du refroidissement)
-- `quantite`, `unite`
-
----
-
-## 9. Ticket thermique imprimé (format 62 mm)
-
-Déclenché par le bouton "🖨 Imprimer étiquette" via `POST /api/etiquettes/transformes` + `window.print()`.
+## 3. L'accueil
 
 | Zone | Contenu |
 |---|---|
-| **Tag** | `[CUIT]` encadré |
-| **Nom produit** | Majuscules |
-| **Quantité** | `Quantité : X kg` |
-| **DLC** | Date en rouge format `JJ/MM/AA` — encadrée |
-| **Lot** | `Lot : [numéro lot origine]` — pointillés |
-| **Température** | `T° fin cuisson : X,X °C` |
-| **Ligne action** | `Cuit le JJ/MM/AA à HHhMM` |
-| **Pied** | `Par : [Prénom opérateur]` |
+| **+ Nouvelle cuisson** | Ouvre une fiche vide |
+| **À compléter** | Fiches non terminées des 30 derniers jours, avec ce qui manque. Badge `⚠ pas d'aujourd'hui` pour une fiche d'un autre jour. Bouton **Compléter →** |
+| **Terminées ces 7 derniers jours** | Repliée par défaut. Résumé cuisson / refroidissement (vert = conforme, rouge = non conforme). Bouton **🖨 Étiquette** |
 
----
+États d'une fiche :
 
-## 10. Cas d'erreurs et alertes
-
-| Situation | Ce qui se passe |
+| État affiché | Ce qui manque |
 |---|---|
-| Soumission sans opérateur | Retour étape 1 + erreur : *"Veuillez sélectionner un opérateur."* |
-| Soumission sans produit | Retour étape 2 + erreur : *"Veuillez sélectionner un produit."* |
-| Quantité ≤ 0 ou vide | Erreur : *"Quantité requise (> 0)."* |
-| Heures manquantes | Erreur : *"Heures de début et fin requises."* |
-| Température vide | Erreur : *"Température de sortie requise."* |
-| T° < 75°C sans action corrective | Erreur : *"Action corrective obligatoire si T° < 75 °C."* |
-| T° < 75°C + action vide (backend) | HTTP 422 : *"Action corrective obligatoire si température < 75 °C"* |
-| Deux sources liées (backend) | HTTP 422 : *"Une cuisson ne peut pas être liée simultanément à une réception et à une fabrication."* |
-| DLC ajustée à la DLC source | Popup alert : *"⚠ DLC ajustée — [date origine]"* |
-| Heure de fin calculée sans heure de début | Erreur : *"Renseignez d'abord l'heure de début."* |
-| Durée manuelle (champ h+min) sans heure de début | Erreur : *"Renseignez d'abord l'heure de début."* |
-| Erreur API lors de l'impression étiquette | Toast : *"Erreur impression : [détail]"* |
-| Erreur API sauvegarde | Erreur rouge sous le formulaire, bouton réactivé |
-| Aucun produit en stock | Grille vide : *"Aucun produit trouvé."* |
-| Aucun opérateur actif | Grille vide : *"Aucun opérateur actif."* |
+| 🔥 Cuisson à saisir | Heure de fin + T° de la cuisson |
+| ❓ Refroidi ou vendu chaud ? | Choisir la suite |
+| ❄ Refroidissement à saisir | Heure de fin + T° du refroidissement |
+
+Une fiche est **terminée** quand elle est refroidie, vendue chaude, ou que son produit est sorti du stock (ex. lot jeté depuis le calendrier DLC).
 
 ---
 
-[Passer au module suivant : Refroidissement rapide (≤ 10°C en ≤ 2h)](10_refroidissement.md)
+## 4. La fiche
+
+### 4.1 Produit (nouvelle fiche)
+
+| Champ | Notes |
+|---|---|
+| **Qui ?** ✱ | La personne qui saisit. Pour une fiche ouverte dans la journée, le cuisinier reste celui qui l'a ouverte |
+| **Date de la cuisson** ✱ | Aujourd'hui par défaut, modifiable (rattrapage de la veille). Jamais dans le futur |
+| **Quantité** | Facultative, en kg, g ou pièces |
+| **Produit cuit** ✱ | Recherche parmi le stock disponible, les DLC les plus courtes en premier |
+| **Lot utilisé** ✱ | Lot FIFO (DLC la plus courte) présélectionné, marqué ⭐. Lien **📋 Voir les réceptions** vers les fiches de réception |
+| **Lot entièrement utilisé** | Cochée par défaut : le lot cru sort du stock (statut « consommé »). **Décochez s'il en reste** : le lot reste disponible pour une autre cuisson |
+| **Devient** ✱ | Uniquement pour une matière brute du catalogue achats : le produit du catalogue vente obtenu (ex. Tende de tranche → Rosbeef cuit). Le dernier choix fait pour cet article est présélectionné |
+
+Sur une fiche existante, produit et lot sont rappelés en tête et ne se changent plus.
+
+### 4.2 Cuisson
+
+| Champ | Notes |
+|---|---|
+| **Cuit au** | Four · Rôtissoire · Marmite / plaque · Autre. Le dernier type utilisé sur la tablette est proposé |
+| **Début / Fin** | Vides au départ. Boutons **A cuit : 30 min · 45 min · 1 h · 1 h 30 · 2 h · 3 h** : si le début est saisi, ils calculent la fin ; si seule la fin est saisie, ils calculent le début. La durée s'affiche (`→ a cuit 1 h 15`) |
+| **Degré de cuisson** | Bœuf / agneau en pièce entière uniquement : Saignant 55 °C · À point 63 °C · Bien cuit 75 °C · Règle générale 75 °C |
+| **T° à cœur en fin de cuisson** | Vide au départ : c'est une mesure. Bandeau vert ou rouge selon la cible |
+| **Action corrective** ✱ si T° < cible | Proposée : *« Remise en cuisson jusqu'à X °C à cœur »*, modifiable |
+
+Heure de fin et T° vont ensemble : on les saisit toutes les deux pour terminer la cuisson, ou on les laisse vides pour compléter plus tard.
+
+Une fois enregistrée comme terminée, **la cuisson n'est plus modifiable** (registre HACCP).
+
+### 4.3 Ensuite
+
+Trois choix, disponibles une fois la cuisson terminée :
+
+| Choix | Effet |
+|---|---|
+| **❄ Refroidi** | Ouvre la partie refroidissement |
+| **🔥 Vendu chaud** | Termine la fiche ; le produit cuit sort du stock (statut « vendu ») |
+| **Plus tard** | La fiche reste dans « À compléter » |
+
+### 4.4 Refroidissement
+
+| Champ | Notes |
+|---|---|
+| **Mise au froid** | Reprend automatiquement l'heure de fin de cuisson (`= fin de cuisson`), modifiable |
+| **Fin** | Vide au départ. Boutons **A refroidi : 1 h · 1 h 30 · 2 h** |
+| **T° à cœur après refroidissement** | Mesure, cible ≤ 10 °C |
+
+Alertes affichées :
+- `⚠ Avant la fin de la cuisson` — la mise au froid est antérieure à la sortie de cuisson (refusé à l'enregistrement).
+- `⚠ X après la sortie de cuisson : à mettre au froid sans attendre` — plus de 30 min d'écart (accepté, mais visible).
+
+Conformité :
+
+| Situation | Résultat |
+|---|---|
+| ≤ 10 °C en ≤ 2 h | ✓ Conforme |
+| Une seule des deux limites dépassée | ⚠ Non conforme — action corrective obligatoire |
+| > 10 °C **et** > 2 h | ⛔ Produit à **jeter** — cocher la confirmation « produit jeté » pour enregistrer. Le produit sort du stock |
+
+### 4.5 Enregistrer
+
+- **Enregistrer** : enregistre ce qui est rempli, la fiche reste « À compléter » s'il manque quelque chose.
+- **Enregistrer + étiquette** : idem, puis imprime l'étiquette du dernier maillon : `[REFROIDI]` si le refroidissement est saisi, sinon `[CUIT]`. Pas d'étiquette pour un produit jeté ou une cuisson non terminée.
+
+L'enregistrement est **tout ou rien** : si le refroidissement est refusé, la cuisson saisie dans le même envoi ne l'est pas non plus (pas de doublon en renvoyant la fiche).
+
+L'écran ne revient pas tout seul au Hub pendant qu'une fiche est ouverte (seulement après 5 min d'inactivité sur l'accueil).
+
+---
+
+## 5. Règles enregistrées par le serveur
+
+### 5.1 Chronologie
+
+Refusé :
+- fin de cuisson avant ou égale au début ;
+- fin de refroidissement avant ou égale à la mise au froid (plus de « passage minuit » implicite) ;
+- mise au froid avant la fin de la cuisson ;
+- toute heure ou date dans le futur (heure de Paris, 5 min de tolérance).
+
+Le refroidissement prend la **date de la cuisson**.
+
+### 5.2 DLC
+
+- **Produit cuit** : date de cuisson + 3 jours, jamais au-delà de la DLC du lot d'origine.
+- **Produits « suivi cuisson auto »** (lasagnes, gratins, parmentiers reçus prêts) : la DLC fournisseur, telle quelle.
+- **Produit refroidi** : **la DLC du produit cuit** (le refroidissement ne la rallonge jamais).
+
+### 5.3 Températures
+
+- T° de sortie de cuisson : 0 à 120 °C ; cible selon le degré choisi (75 °C par défaut).
+- Le refroidissement ne rejuge pas la cuisson : une cuisson à 55 °C « saignant » conforme n'est pas déclarée à jeter.
+
+### 5.4 Stock
+
+- Une fiche dont la cuisson n'est pas terminée n'apparaît ni en stock ni au calendrier DLC.
+- Le produit cuit apparaît en stock (🔥) jusqu'à son refroidissement (❄️), sa vente chaude ou sa sortie.
+
+---
+
+## 6. Depuis « Production à cuire »
+
+Le bouton de cuisson d'un lot (lasagnes, gratins…) ouvre une nouvelle fiche avec le produit, le produit fini et **le lot exact** présélectionnés.
+
+---
+
+## 7. Ticket thermique (62 mm)
+
+| Zone | Contenu |
+|---|---|
+| **Tag** | `[CUIT]` ou `[REFROIDI]` |
+| **Nom produit** | Majuscules |
+| **Quantité** | Quantité de la cuisson |
+| **DLC** | Rouge, `JJ/MM/AA`, encadrée |
+| **Lot** | N° de lot d'origine |
+| **Température** | `T° fin cuisson` ou `T° fin refroidissement` |
+| **Ligne action** | `Cuit le …` / `Refroidi le … à HHhMM` |
+| **Pied** | `Par : [opérateur]` |
+
+---
+
+## 8. Messages d'erreur
+
+| Situation | Message |
+|---|---|
+| Personne non choisie | *« Indiquez qui saisit la fiche. »* |
+| Produit / lot / « Devient » manquant | *« Choisissez le produit cuit. »* · *« Choisissez le lot utilisé. »* · *« Indiquez ce que devient le produit… »* |
+| Fin ou T° saisie seule | *« Pour terminer la cuisson : début, fin ET T° à cœur… »* |
+| Fin avant début | *« Cuisson : la fin est avant le début. »* |
+| Heure future | *« … heure dans le futur. Saisissez l'heure réelle. »* |
+| T° sous la cible sans action | *« Action corrective obligatoire (T° < X °C). »* |
+| Refroidissement incomplet | *« Refroidissement : mise au froid, fin ET T° à cœur… »* |
+| Jet non confirmé | *« Plus de 2 h et plus de 10 °C : cochez la confirmation « produit jeté ». »* |
+| Bouton de durée sans heure | *« … saisissez d'abord l'heure de début ou de fin. »* |
+
+---
+
+[Passer au module suivant : Refroidissement](10_refroidissement.md)

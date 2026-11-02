@@ -560,13 +560,17 @@ CREATE TABLE IF NOT EXISTS cuissons (
     fabrication_id      INTEGER,                     -- source = lot de fabrication (produit fini cru)
     quantite            REAL,
     unite               TEXT    DEFAULT 'kg',
-    heure_debut         TEXT    NOT NULL,
-    heure_fin           TEXT    NOT NULL,
-    temperature_sortie  REAL    NOT NULL,
+    -- v8.7 — heures, T° et conformité nullables : une fiche peut être ouverte dans la
+    -- journée (produit + lot) et complétée le soir. Cuisson terminée = les trois remplis.
+    heure_debut         TEXT,
+    heure_fin           TEXT,
+    temperature_sortie  REAL,
     temperature_cible   REAL    NOT NULL DEFAULT 75.0,
-    conforme            INTEGER NOT NULL,
+    degre_cuisson       TEXT,                        -- v7.5 : 'saignant'|'a_point'|'bien_cuit'|'generale'
+    conforme            INTEGER,
     action_corrective   TEXT,
     dlc_finale          DATE,                        -- date_cuisson + DLC_JOURS_TRANSFORMATION
+    suite               TEXT,                        -- v8.7 : 'refroidi'|'vendu_chaud'|NULL (à décider)
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
     FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
@@ -2213,6 +2217,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
                 updated_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE (boutique_id, mois)
             )""",
+            # v8.7 — Fiche cuisson unique (cuisson + refroidissement, saisie après coup) :
+            # ce que devient le produit cuit. Le passage des heures/T° en nullable exige
+            # un rebuild de table → _migrer_cuissons_fiche_v87(), en fin de init_db().
+            "ALTER TABLE cuissons ADD COLUMN suite TEXT",
         ]
         for sql in migrations:
             try:
@@ -2917,6 +2925,100 @@ PRAGMA foreign_keys=ON;
     # Connexion DÉDIÉE post-init, pour la même raison que la v6.0.
     # ===================================================================
     await _migrer_cuisson_catalogues_v74()
+    await _migrer_cuissons_fiche_v87()
+
+
+async def _migrer_cuissons_fiche_v87() -> None:
+    """v8.7 — heure_debut / heure_fin / temperature_sortie / conforme deviennent
+    nullables dans `cuissons` : une fiche peut être ouverte dans la journée (produit +
+    lot) et complétée le soir, en rattrapage.
+
+    Rebuild de table (SQLite ne sait pas retirer un NOT NULL), sur connexion dédiée
+    comme la v7.4. La copie porte sur TOUTES les colonnes présentes (lues par PRAGMA),
+    pas sur une liste figée : la liste figée de la v7.4 ignorait degre_cuisson.
+    Les id sont conservés (dlc_devenir / refroidissements y sont rattachés).
+    Idempotent : ne fait rien si heure_debut est déjà nullable.
+    """
+    try:
+        async with get_db() as db:
+            async with db.execute("PRAGMA table_info(cuissons)") as cur_t:
+                cols = await cur_t.fetchall()
+            if any(r[1] == "heure_debut" and r[3] == 1 for r in cols):
+                logger.info("Migration v8.7 : heures/T° de cuisson → nullables")
+                noms_schema = {
+                    "id", "boutique_id", "type_cuisson", "date_cuisson", "personnel_id",
+                    "produit_id", "catalogue_fournisseur_id", "catalogue_vente_id",
+                    "reception_ligne_id", "fabrication_id", "quantite", "unite",
+                    "heure_debut", "heure_fin", "temperature_sortie", "temperature_cible",
+                    "degre_cuisson", "conforme", "action_corrective", "dlc_finale",
+                    "suite", "created_at",
+                }
+                communes = ", ".join(r[1] for r in cols if r[1] in noms_schema)
+                await db.executescript(
+                    "PRAGMA foreign_keys=OFF;\n"
+                    "DROP TABLE IF EXISTS cuissons_v87;\n"
+                    + _DDL_CUISSONS_V87 +
+                    f"INSERT INTO cuissons_v87 ({communes}) SELECT {communes} FROM cuissons;\n"
+                    "DROP TABLE cuissons;\n"
+                    "ALTER TABLE cuissons_v87 RENAME TO cuissons;\n"
+                    "PRAGMA foreign_keys=ON;\n"
+                )
+                await db.commit()
+                logger.info("Migration v8.7 : cuissons migrée")
+    except Exception as e:
+        logger.warning("Migration v8.7 cuissons : %s", e)
+
+    try:
+        async with get_db() as db:
+            for idx_sql in (
+                "CREATE INDEX IF NOT EXISTS idx_cuissons_type_date ON cuissons(type_cuisson, date_cuisson)",
+                "CREATE INDEX IF NOT EXISTS idx_cuissons_cat_fourn ON cuissons(catalogue_fournisseur_id)",
+            ):
+                await db.execute(idx_sql)
+            # Les cuissons déjà refroidies ont tranché leur suite : sans ça, tout
+            # l'historique remonterait dans « À compléter ».
+            await db.execute(
+                "UPDATE cuissons SET suite = 'refroidi' WHERE suite IS NULL "
+                "AND EXISTS (SELECT 1 FROM refroidissements r WHERE r.cuisson_id = cuissons.id)"
+            )
+            await db.commit()
+    except Exception as e:
+        logger.warning("Migration v8.7 index/suite cuissons : %s", e)
+
+
+_DDL_CUISSONS_V87 = """
+CREATE TABLE cuissons_v87 (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    boutique_id              INTEGER NOT NULL DEFAULT 1,
+    type_cuisson             TEXT    NOT NULL,
+    date_cuisson             DATE    NOT NULL,
+    personnel_id             INTEGER NOT NULL,
+    produit_id               INTEGER,
+    catalogue_fournisseur_id INTEGER,
+    catalogue_vente_id       INTEGER,
+    reception_ligne_id       INTEGER,
+    fabrication_id           INTEGER,
+    quantite                 REAL,
+    unite                    TEXT    DEFAULT 'kg',
+    heure_debut              TEXT,
+    heure_fin                TEXT,
+    temperature_sortie       REAL,
+    temperature_cible        REAL    NOT NULL DEFAULT 75.0,
+    degre_cuisson            TEXT,
+    conforme                 INTEGER,
+    action_corrective        TEXT,
+    dlc_finale               DATE,
+    suite                    TEXT,
+    created_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (boutique_id)              REFERENCES boutiques(id),
+    FOREIGN KEY (personnel_id)             REFERENCES personnel(id),
+    FOREIGN KEY (produit_id)               REFERENCES produits(id),
+    FOREIGN KEY (catalogue_fournisseur_id) REFERENCES catalogue_fournisseur(id),
+    FOREIGN KEY (catalogue_vente_id)       REFERENCES catalogue_vente(id),
+    FOREIGN KEY (reception_ligne_id)       REFERENCES reception_lignes(id),
+    FOREIGN KEY (fabrication_id)           REFERENCES fabrications(id)
+);
+"""
 
 
 _V74_TABLES = (
@@ -6649,8 +6751,11 @@ async def get_dlc_calendrier(
             fab["ingredients"] = [dict(r) for r in await cur2.fetchall()]
             items.append(fab)
 
+    # Cuissons / refroidissements : depuis la v7.4 le produit s'identifie surtout par
+    # les catalogues (produit_id NULL). L'ancien JOIN strict sur `produits` les
+    # faisait disparaître du calendrier (corrigé v8.7, comme dans get_stock_unifie).
     if source in (None, "cuisson"):
-        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_filter = "AND COALESCE(p.categorie, cv_c.famille, cf_c.famille) = ?" if categorie else ""
         cat_params = (categorie,) if categorie else ()
         cur = await db.execute(
             f"""
@@ -6663,8 +6768,8 @@ async def get_dlc_calendrier(
                 c.quantite           AS quantite,
                 COALESCE(c.unite, 'kg') AS unite,
                 p.id                 AS produit_id,
-                p.nom                AS produit_nom,
-                p.categorie          AS categorie,
+                COALESCE(p.nom, cv_c.nom, cf_c.designation, 'Produit cuit') AS produit_nom,
+                COALESCE(p.categorie, cv_c.famille, cf_c.famille) AS categorie,
                 NULL                 AS fournisseur_nom,
                 c.date_cuisson       AS date_origine,
                 c.heure_fin          AS heure_origine,
@@ -6676,7 +6781,9 @@ async def get_dlc_calendrier(
                 dd.created_at        AS devenir_at,
                 TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM cuissons c
-            JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN produits p ON p.id = c.produit_id
+            LEFT JOIN catalogue_vente cv_c ON cv_c.id = c.catalogue_vente_id
+            LEFT JOIN catalogue_fournisseur cf_c ON cf_c.id = c.catalogue_fournisseur_id
             LEFT JOIN reception_lignes rl ON rl.id = c.reception_ligne_id
             LEFT JOIN fabrications     fab ON fab.id = c.fabrication_id
             LEFT JOIN dlc_devenir dd
@@ -6685,6 +6792,9 @@ async def get_dlc_calendrier(
             WHERE c.dlc_finale IS NOT NULL
               AND c.dlc_finale BETWEEN ? AND ?
               AND c.boutique_id = ?
+              -- Fiche ouverte mais pas encore cuite (v8.7) : pas un produit cuit.
+              AND c.heure_fin IS NOT NULL
+              AND c.temperature_sortie IS NOT NULL
               -- Si la cuisson a été refroidie, on ne l'affiche plus (seul le refroidissement reste pertinent)
               AND NOT EXISTS (
                   SELECT 1 FROM refroidissements rf WHERE rf.cuisson_id = c.id
@@ -6697,7 +6807,7 @@ async def get_dlc_calendrier(
             items.append(dict(row))
 
     if source in (None, "refroidissement"):
-        cat_filter = "AND p.categorie = ?" if categorie else ""
+        cat_filter = "AND COALESCE(p.categorie, cv_r.famille, cf_r.famille) = ?" if categorie else ""
         cat_params = (categorie,) if categorie else ()
         cur = await db.execute(
             f"""
@@ -6710,8 +6820,8 @@ async def get_dlc_calendrier(
                 NULL                   AS quantite,
                 'kg'                   AS unite,
                 p.id                   AS produit_id,
-                p.nom                  AS produit_nom,
-                p.categorie            AS categorie,
+                COALESCE(p.nom, cv_r.nom, cf_r.designation, 'Produit refroidi') AS produit_nom,
+                COALESCE(p.categorie, cv_r.famille, cf_r.famille) AS categorie,
                 NULL                   AS fournisseur_nom,
                 rf.date_refroidissement AS date_origine,
                 rf.heure_fin           AS heure_origine,
@@ -6724,7 +6834,9 @@ async def get_dlc_calendrier(
                 dd.created_at          AS devenir_at,
                 TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS devenir_prenom
             FROM refroidissements rf
-            JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN produits p ON p.id = rf.produit_id
+            LEFT JOIN catalogue_vente cv_r ON cv_r.id = rf.catalogue_vente_id
+            LEFT JOIN catalogue_fournisseur cf_r ON cf_r.id = rf.catalogue_fournisseur_id
             LEFT JOIN cuissons c2 ON c2.id = rf.cuisson_id
             LEFT JOIN reception_lignes rl ON rl.id = c2.reception_ligne_id
             LEFT JOIN fabrications     fab ON fab.id = c2.fabrication_id
@@ -6743,7 +6855,7 @@ async def get_dlc_calendrier(
         for row in await cur.fetchall():
             items.append(dict(row))
 
-    items.sort(key=lambda x: (x["dlc"], x["produit_nom"]))
+    items.sort(key=lambda x: (x["dlc"], x["produit_nom"] or ""))
     return items
 
 
@@ -6936,6 +7048,9 @@ async def get_stock_unifie(
             LEFT JOIN fabrications fab ON fab.id = c.fabrication_id
             WHERE c.boutique_id = ?
               AND c.dlc_finale IS NOT NULL
+              -- v8.7 : une fiche ouverte mais pas encore terminée n'est pas un produit cuit.
+              AND c.heure_fin IS NOT NULL
+              AND c.temperature_sortie IS NOT NULL
               {extra_sql}
               AND NOT EXISTS (
                   SELECT 1 FROM refroidissements rf WHERE rf.cuisson_id = c.id

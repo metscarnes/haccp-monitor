@@ -11,6 +11,10 @@ GET  /api/cuisson/a-traiter/exclusions
 POST /api/cuisson/a-traiter/{reception_ligne_id}/exclure
 POST /api/cuisson/a-traiter/{reception_ligne_id}/reintegrer
 GET  /api/cuisson/produits-vente-suggeres
+GET  /api/cuisson/fiches                 (v8.7 — fiche unique cuisson + refroidissement)
+GET  /api/cuisson/fiches/{id}
+POST /api/cuisson/fiches
+PUT  /api/cuisson/fiches/{id}
 """
 
 import logging
@@ -20,7 +24,13 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from src.database import get_db, get_stock_unifie, DLC_JOURS_TRANSFORMATION
+from src.database import (
+    get_db, get_stock_unifie, create_dlc_devenir, _insert_dlc_devenir, DLC_JOURS_TRANSFORMATION,
+)
+from src.api.routes_refroidissement import (
+    RefroidissementCreate, enregistrer_refroidissement,
+    maintenant_local, minutes_hhmm, verifier_pas_dans_le_futur,
+)
 
 BOUTIQUE_ID = 1  # mono-boutique Phase 2
 
@@ -71,33 +81,120 @@ class CuissonCreate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# POST /api/cuisson/enregistrements
+# Contrôles communs (POST /enregistrements et fiche unique v8.7)
 # ---------------------------------------------------------------------------
 
-@router.post("/enregistrements", status_code=201)
-async def creer_cuisson(body: CuissonCreate):
-    degre = body.degre_cuisson or "generale"
+def _controler_cuisson(date_cuisson: str, heure_debut: Optional[str], heure_fin: Optional[str],
+                       temperature: Optional[float], degre: Optional[str],
+                       action_corrective: Optional[str]) -> tuple[float, Optional[int]]:
+    """Vérifie une cuisson (complète ou en cours) et renvoie (T° cible, conforme).
+
+    `conforme` vaut None tant que la T° de sortie n'est pas saisie. Une cuisson est
+    terminée quand heure de fin ET T° sont saisies — l'une ne va pas sans l'autre.
+    """
+    degre = degre or "generale"
     if degre not in DEGRES_CUISSON:
         raise HTTPException(
             status_code=422,
             detail=f"degre_cuisson invalide : {degre!r} (attendu : {', '.join(DEGRES_CUISSON)}).",
         )
-    temperature_cible = DEGRES_CUISSON[degre]
+    cible = DEGRES_CUISSON[degre]
 
-    conforme = 1 if body.temperature_sortie >= temperature_cible else 0
-    if not conforme and not (body.action_corrective and body.action_corrective.strip()):
+    verifier_pas_dans_le_futur(date_cuisson, None, "Date de cuisson")
+    if heure_debut:
+        verifier_pas_dans_le_futur(date_cuisson, heure_debut, "Début de cuisson")
+    if (heure_fin is None) != (temperature is None):
         raise HTTPException(
             status_code=422,
-            detail=f"Action corrective obligatoire si température < {temperature_cible:.0f} °C",
+            detail="Heure de fin et T° de sortie vont ensemble : saisissez les deux "
+                   "pour terminer la cuisson, ou aucune pour la compléter plus tard.",
         )
+    if heure_fin is not None:
+        if not heure_debut:
+            raise HTTPException(status_code=422, detail="Heure de début de cuisson requise.")
+        if minutes_hhmm(heure_fin, "Heure de fin de cuisson") <= minutes_hhmm(heure_debut, "Heure de début de cuisson"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Fin de cuisson ({heure_fin}) avant ou égale au début ({heure_debut}).",
+            )
+        verifier_pas_dans_le_futur(date_cuisson, heure_fin, "Fin de cuisson")
 
+    conforme = None
+    if temperature is not None:
+        if not (0 <= temperature <= 120):
+            raise HTTPException(status_code=422, detail="T° de sortie hors plage (0 à 120 °C).")
+        conforme = 1 if temperature >= cible else 0
+        if not conforme and not (action_corrective and action_corrective.strip()):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Action corrective obligatoire si température < {cible:.0f} °C",
+            )
+    return cible, conforme
+
+
+async def _dlc_cuisson(db, date_cuisson: str, reception_ligne_id: Optional[int],
+                       fabrication_id: Optional[int],
+                       catalogue_vente_id: Optional[int]) -> tuple[str, bool, Optional[str]]:
+    """DLC du produit cuit → (dlc_finale ISO, dlc_ajustee, dlc_origine ISO).
+
+    J+3 après la cuisson, jamais au-delà de la DLC du lot d'origine (réception OU
+    fabrication). Produit « suivi cuisson auto » (Lasagnes, Gratin, Parmentier…) :
+    reçu déjà fini, la cuisson n'est qu'un réchauffage → DLC fournisseur telle quelle
+    (28/08/2026). Ce n'est pas un « ajustement » à signaler à l'opérateur.
+    """
+    try:
+        dlc_calculee = (datetime.strptime(date_cuisson, "%Y-%m-%d").date()
+                        + timedelta(days=DLC_JOURS_TRANSFORMATION))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date_cuisson invalide (YYYY-MM-DD attendu).")
+
+    dlc_origine = None
+    if reception_ligne_id:
+        cur_rl = await db.execute(
+            "SELECT COALESCE(dlc, dluo) AS dlc FROM reception_lignes WHERE id = ?",
+            (reception_ligne_id,),
+        )
+        rl = await cur_rl.fetchone()
+        if rl and rl["dlc"]:
+            dlc_origine = datetime.strptime(rl["dlc"], "%Y-%m-%d").date()
+    elif fabrication_id:
+        cur_fab = await db.execute(
+            "SELECT dlc_finale FROM fabrications WHERE id = ?", (fabrication_id,),
+        )
+        fab = await cur_fab.fetchone()
+        if fab and fab["dlc_finale"]:
+            dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
+
+    reste_produit_fini = False
+    if dlc_origine and catalogue_vente_id:
+        cur_sca = await db.execute(
+            "SELECT suivi_cuisson_auto FROM catalogue_vente WHERE id = ?",
+            (catalogue_vente_id,),
+        )
+        cv = await cur_sca.fetchone()
+        reste_produit_fini = bool(cv and cv["suivi_cuisson_auto"])
+
+    dlc_finale, dlc_ajustee = dlc_calculee, False
+    if reste_produit_fini:
+        dlc_finale = dlc_origine
+    elif dlc_origine and dlc_calculee > dlc_origine:
+        dlc_finale, dlc_ajustee = dlc_origine, True
+    return (dlc_finale.isoformat(), dlc_ajustee,
+            dlc_origine.isoformat() if dlc_origine else None)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/cuisson/enregistrements  (cuisson complète en un appel — historique)
+# ---------------------------------------------------------------------------
+
+@router.post("/enregistrements", status_code=201)
+async def creer_cuisson(body: CuissonCreate):
     # Une cuisson ne peut pas avoir deux sources amont en même temps
     if body.reception_ligne_id and body.fabrication_id:
         raise HTTPException(
             status_code=422,
             detail="Une cuisson ne peut pas être liée simultanément à une réception et à une fabrication.",
         )
-
     # Le produit cuit doit être identifiable dans au moins un des trois référentiels,
     # sinon la cuisson serait intraçable (exigence HACCP).
     if not (body.produit_id or body.catalogue_fournisseur_id or body.catalogue_vente_id):
@@ -106,61 +203,17 @@ async def creer_cuisson(body: CuissonCreate):
             detail="Produit non identifié : renseignez produit_id, "
                    "catalogue_fournisseur_id ou catalogue_vente_id.",
         )
-
-    # DLC J+3 calculée côté serveur (règle HACCP transformation)
-    try:
-        dlc_calculee = (datetime.strptime(body.date_cuisson, "%Y-%m-%d").date()
-                        + timedelta(days=DLC_JOURS_TRANSFORMATION))
-    except ValueError:
-        raise HTTPException(status_code=422, detail="date_cuisson invalide (YYYY-MM-DD attendu).")
+    degre = body.degre_cuisson or "generale"
+    temperature_cible, conforme = _controler_cuisson(
+        body.date_cuisson, body.heure_debut, body.heure_fin,
+        body.temperature_sortie, degre, body.action_corrective,
+    )
 
     async with get_db() as db:
-        # Règle métier absolue : la DLC ne peut pas dépasser la DLC du lot d'origine
-        # (réception OU fabrication, selon la source amont sélectionnée).
-        dlc_finale = dlc_calculee
-        dlc_origine = None
-        dlc_ajustee = False
-
-        if body.reception_ligne_id:
-            cur_rl = await db.execute(
-                "SELECT dlc FROM reception_lignes WHERE id = ?",
-                (body.reception_ligne_id,),
-            )
-            rl = await cur_rl.fetchone()
-            if rl and rl["dlc"]:
-                dlc_origine = datetime.strptime(rl["dlc"], "%Y-%m-%d").date()
-        elif body.fabrication_id:
-            cur_fab = await db.execute(
-                "SELECT dlc_finale FROM fabrications WHERE id = ?",
-                (body.fabrication_id,),
-            )
-            fab = await cur_fab.fetchone()
-            if fab and fab["dlc_finale"]:
-                dlc_origine = datetime.strptime(fab["dlc_finale"], "%Y-%m-%d").date()
-
-        # Produit marqué "suivi cuisson auto" (ex. Lasagnes, Gratin dauphinois, Parmentier
-        # canard) : reçu déjà fini, la cuisson n'est qu'un RÉCHAUFFAGE avant vente, pas une
-        # transformation. La DLC fournisseur reste seule valable — on ne lui ajoute jamais
-        # J+3 (28/08/2026 : la règle J+3-cappée écourtait à tort la DLC d'origine dès qu'elle
-        # dépassait 3 jours après la date de cuisson).
-        reste_produit_fini = False
-        if dlc_origine and body.catalogue_vente_id:
-            cur_sca = await db.execute(
-                "SELECT suivi_cuisson_auto FROM catalogue_vente WHERE id = ?",
-                (body.catalogue_vente_id,),
-            )
-            cv = await cur_sca.fetchone()
-            reste_produit_fini = bool(cv and cv["suivi_cuisson_auto"])
-
-        if reste_produit_fini:
-            dlc_finale = dlc_origine
-            dlc_ajustee = dlc_calculee != dlc_origine
-        elif dlc_origine and dlc_calculee > dlc_origine:
-            dlc_finale = dlc_origine
-            dlc_ajustee = True
-
-        dlc_finale_iso = dlc_finale.isoformat()
-
+        dlc_finale_iso, dlc_ajustee, dlc_origine = await _dlc_cuisson(
+            db, body.date_cuisson, body.reception_ligne_id,
+            body.fabrication_id, body.catalogue_vente_id,
+        )
         cur = await db.execute(
             """
             INSERT INTO cuissons (
@@ -173,23 +226,13 @@ async def creer_cuisson(body: CuissonCreate):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                body.type_cuisson.lower(),
-                body.date_cuisson,
-                body.personnel_id,
-                body.produit_id,
-                body.catalogue_fournisseur_id,
-                body.catalogue_vente_id,
-                body.reception_ligne_id,
-                body.fabrication_id,
-                body.quantite,
-                body.unite or "kg",
-                body.heure_debut,
-                body.heure_fin,
-                body.temperature_sortie,
-                temperature_cible,
-                degre,
-                conforme,
-                (body.action_corrective or "").strip() or None,
+                body.type_cuisson.lower(), body.date_cuisson, body.personnel_id,
+                body.produit_id, body.catalogue_fournisseur_id, body.catalogue_vente_id,
+                body.reception_ligne_id, body.fabrication_id,
+                body.quantite, body.unite or "kg",
+                body.heure_debut, body.heure_fin,
+                body.temperature_sortie, temperature_cible, degre,
+                conforme, (body.action_corrective or "").strip() or None,
                 dlc_finale_iso,
             ),
         )
@@ -209,8 +252,319 @@ async def creer_cuisson(body: CuissonCreate):
         "temperature_cible": temperature_cible,
         "degre_cuisson": degre,
         "dlc_ajustee": dlc_ajustee,
-        "dlc_origine": dlc_origine.isoformat() if dlc_origine else None,
+        "dlc_origine": dlc_origine,
     }
+
+
+# ---------------------------------------------------------------------------
+# Fiche cuisson unique (v8.7) — cuisson + suite (refroidi / vendu chaud) +
+# refroidissement, pensée pour la saisie après coup (rattrapage du soir).
+#
+# GET  /api/cuisson/fiches            fiches récentes, avec leur état
+# GET  /api/cuisson/fiches/{id}
+# POST /api/cuisson/fiches            ouvre une fiche (complète ou non)
+# PUT  /api/cuisson/fiches/{id}       complète une fiche
+#
+# États : cuisson_a_saisir → suite_a_choisir → refroidissement_a_saisir → terminee
+# (« vendu chaud » ou une sortie de stock terminent aussi la fiche).
+# ---------------------------------------------------------------------------
+
+SUITES = ("refroidi", "vendu_chaud")
+TYPES_CUISSON = ("four", "rotissoire", "marmite", "autre")
+JOURS_A_COMPLETER = 30   # une fiche oubliée reste à compléter un mois
+JOURS_TERMINEES   = 7
+
+
+class RefroidissementFiche(BaseModel):
+    heure_debut:        str   = Field(..., description="HH:MM mise au froid")
+    heure_fin:          str   = Field(..., description="HH:MM fin de refroidissement")
+    temperature_finale: float
+    jeter_action:       bool  = False
+    action_corrective:  Optional[str] = None
+
+
+class FicheCuisson(BaseModel):
+    personnel_id:             int
+    date_cuisson:             Optional[str] = None   # requis à la création
+    type_cuisson:             Optional[str] = None
+    produit_id:               Optional[int] = None
+    catalogue_fournisseur_id: Optional[int] = None
+    catalogue_vente_id:       Optional[int] = None
+    reception_ligne_id:       Optional[int] = None
+    fabrication_id:           Optional[int] = None
+    quantite:                 Optional[float] = None
+    unite:                    Optional[str] = None
+    heure_debut:              Optional[str] = None
+    heure_fin:                Optional[str] = None
+    temperature_sortie:       Optional[float] = None
+    degre_cuisson:            Optional[str] = None
+    action_corrective:        Optional[str] = None
+    suite:                    Optional[str] = None
+    refroidissement:          Optional[RefroidissementFiche] = None
+    # Le lot cru est entièrement utilisé : il sort du stock cru (sinon il restait
+    # disponible à la cuisson et compté en stock après avoir été cuit). Décoché
+    # quand il en reste (cuisson d'une partie du lot). Pris en compte à la création.
+    lot_epuise:               bool = False
+
+
+_SQL_FICHES = """
+    SELECT c.*,
+           COALESCE(cv.nom, p.nom, cf.designation) AS produit_nom,
+           cf.designation                           AS article_nom,
+           COALESCE(rl.numero_lot, fab.lot_interne) AS numero_lot,
+           COALESCE(rl.dlc, rl.dluo, fab.dlc_finale) AS dlc_lot,
+           rl.origine                               AS origine,
+           r_rec.date_reception                     AS date_reception,
+           COALESCE(p.espece, CASE WHEN cf.famille = 'Viande' THEN cf.sous_famille END) AS espece,
+           TRIM(pers.prenom || ' ' || COALESCE(pers.nom, '')) AS personnel_nom,
+           rf.id                 AS refroid_id,
+           rf.heure_debut        AS refroid_debut,
+           rf.heure_fin          AS refroid_fin,
+           rf.duree_minutes      AS refroid_duree,
+           rf.temperature_finale AS refroid_temperature,
+           rf.conforme           AS refroid_conforme,
+           rf.jeter              AS refroid_jeter,
+           rf.action_corrective  AS refroid_action,
+           rf.dlc_finale         AS refroid_dlc,
+           TRIM(pers_rf.prenom || ' ' || COALESCE(pers_rf.nom, '')) AS refroid_personnel_nom,
+           dd.statut             AS devenir_statut
+    FROM   cuissons c
+    LEFT JOIN produits              p   ON p.id   = c.produit_id
+    LEFT JOIN catalogue_vente       cv  ON cv.id  = c.catalogue_vente_id
+    LEFT JOIN catalogue_fournisseur cf  ON cf.id  = c.catalogue_fournisseur_id
+    LEFT JOIN reception_lignes      rl  ON rl.id  = c.reception_ligne_id
+    LEFT JOIN receptions            r_rec ON r_rec.id = rl.reception_id
+    LEFT JOIN fabrications          fab ON fab.id = c.fabrication_id
+    LEFT JOIN personnel             pers ON pers.id = c.personnel_id
+    LEFT JOIN refroidissements      rf  ON rf.id = (
+              SELECT MAX(id) FROM refroidissements WHERE cuisson_id = c.id)
+    LEFT JOIN personnel             pers_rf ON pers_rf.id = rf.personnel_id
+    LEFT JOIN dlc_devenir           dd  ON dd.source_type = 'cuisson' AND dd.source_id = c.id
+"""
+
+
+def _etat_fiche(f: dict) -> str:
+    if f["heure_fin"] is None or f["temperature_sortie"] is None:
+        # Un lot sorti du stock (jeté en amont…) n'a plus de cuisson à saisir.
+        return "terminee" if f["devenir_statut"] else "cuisson_a_saisir"
+    if f["refroid_id"] or f["suite"] == "vendu_chaud" or f["devenir_statut"]:
+        return "terminee"
+    if f["suite"] == "refroidi":
+        return "refroidissement_a_saisir"
+    return "suite_a_choisir"
+
+
+def _fiche_dict(row) -> dict:
+    f = dict(row)
+    f["etat"] = _etat_fiche(f)
+    return f
+
+
+async def _lire_fiche(db, fiche_id: int) -> dict:
+    cur = await db.execute(_SQL_FICHES + " WHERE c.id = ?", (fiche_id,))
+    row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Fiche cuisson introuvable.")
+    return _fiche_dict(row)
+
+
+async def compter_fiches_a_completer(db) -> int:
+    """Nombre de fiches non terminées (même règle que _etat_fiche) — rappel Hub."""
+    debut = (maintenant_local().date() - timedelta(days=JOURS_A_COMPLETER)).isoformat()
+    cur = await db.execute(
+        """
+        SELECT COUNT(*) FROM cuissons c
+        WHERE  c.date_cuisson >= ?
+          AND  COALESCE(c.suite, '') <> 'vendu_chaud'
+          AND  NOT EXISTS (SELECT 1 FROM refroidissements r WHERE r.cuisson_id = c.id)
+          AND  NOT EXISTS (SELECT 1 FROM dlc_devenir d
+                           WHERE d.source_type = 'cuisson' AND d.source_id = c.id)
+        """,
+        (debut,),
+    )
+    return (await cur.fetchone())[0]
+
+
+@router.get("/fiches")
+async def lister_fiches():
+    """Fiches à compléter (≤ 30 jours) et terminées récemment (≤ 7 jours)."""
+    aujourdhui = maintenant_local().date()
+    debut = (aujourdhui - timedelta(days=JOURS_A_COMPLETER)).isoformat()
+    debut_terminees = (aujourdhui - timedelta(days=JOURS_TERMINEES)).isoformat()
+    async with get_db() as db:
+        cur = await db.execute(
+            _SQL_FICHES + """
+            WHERE c.date_cuisson >= ?
+            ORDER BY c.date_cuisson DESC,
+                     COALESCE(c.heure_fin, c.heure_debut, '99:99') DESC, c.id DESC
+            """,
+            (debut,),
+        )
+        fiches = [_fiche_dict(r) for r in await cur.fetchall()]
+    return {
+        "a_completer": [f for f in fiches if f["etat"] != "terminee"],
+        "terminees":   [f for f in fiches
+                        if f["etat"] == "terminee" and f["date_cuisson"] >= debut_terminees],
+    }
+
+
+@router.get("/fiches/{fiche_id}")
+async def lire_fiche(fiche_id: int):
+    async with get_db() as db:
+        return await _lire_fiche(db, fiche_id)
+
+
+@router.post("/fiches", status_code=201)
+async def creer_fiche(body: FicheCuisson):
+    if not body.date_cuisson:
+        raise HTTPException(status_code=422, detail="Date de cuisson requise.")
+    if body.reception_ligne_id and body.fabrication_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Une cuisson ne peut pas être liée simultanément à une réception et à une fabrication.",
+        )
+    if not (body.produit_id or body.catalogue_fournisseur_id or body.catalogue_vente_id):
+        raise HTTPException(status_code=422, detail="Choisissez le produit cuit.")
+    async with get_db() as db:
+        return await _enregistrer_fiche(db, None, body)
+
+
+@router.put("/fiches/{fiche_id}")
+async def completer_fiche(fiche_id: int, body: FicheCuisson):
+    async with get_db() as db:
+        existante = await _lire_fiche(db, fiche_id)
+        return await _enregistrer_fiche(db, existante, body)
+
+
+async def _enregistrer_fiche(db, existante: Optional[dict], body: FicheCuisson) -> dict:
+    """Crée ou complète une fiche. Tout ou rien : si le refroidissement est refusé,
+    la cuisson saisie dans le même envoi ne l'est pas non plus (sinon l'opérateur,
+    voyant l'erreur, renverrait la fiche et créerait un doublon)."""
+    try:
+        fiche_id, info_dlc = await _ecrire_partie_cuisson(db, existante, body)
+        fiche = await _lire_fiche(db, fiche_id)
+
+        if body.lot_epuise and not existante:
+            source = (("reception_ligne", fiche["reception_ligne_id"]) if fiche["reception_ligne_id"]
+                      else ("fabrication", fiche["fabrication_id"]) if fiche["fabrication_id"]
+                      else None)
+            if source:
+                # Sans cascade : create_dlc_devenir sortirait aussi en aval la cuisson
+                # qu'on vient de créer. replace=False garde un devenir déjà saisi.
+                await _insert_dlc_devenir(
+                    db, source[0], source[1], "consomme", body.personnel_id,
+                    f"Utilisé en cuisson (fiche #{fiche_id})", replace=False,
+                )
+
+        suite = body.suite or fiche["suite"]
+        nouvelle_suite = bool(body.suite) and body.suite != fiche["suite"]
+        if nouvelle_suite:
+            if body.suite not in SUITES:
+                raise HTTPException(status_code=422, detail=f"Suite invalide : {body.suite!r}.")
+            if fiche["heure_fin"] is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Terminez d'abord la cuisson (heure de fin et T°).",
+                )
+            if fiche["refroid_id"] or fiche["suite"] == "vendu_chaud":
+                raise HTTPException(status_code=422, detail="La suite de cette cuisson est déjà enregistrée.")
+            await db.execute("UPDATE cuissons SET suite = ? WHERE id = ?", (body.suite, fiche_id))
+
+        refroid = None
+        if body.refroidissement:
+            if suite != "refroidi":
+                raise HTTPException(status_code=422, detail="Indiquez « Refroidi » pour saisir le refroidissement.")
+            if fiche["refroid_id"]:
+                raise HTTPException(status_code=422, detail="Le refroidissement de cette cuisson est déjà enregistré.")
+            if fiche["heure_fin"] is None:
+                raise HTTPException(status_code=422, detail="Terminez d'abord la cuisson (heure de fin et T°).")
+            rb = body.refroidissement
+            refroid = await enregistrer_refroidissement(db, RefroidissementCreate(
+                date_refroidissement=fiche["date_cuisson"],
+                personnel_id=body.personnel_id,
+                cuisson_id=fiche_id,
+                heure_debut=rb.heure_debut,
+                heure_fin=rb.heure_fin,
+                temperature_finale=rb.temperature_finale,
+                jeter_action=rb.jeter_action,
+                action_corrective=rb.action_corrective,
+            ), juger_cuisson=False)   # commit inclus
+
+        if nouvelle_suite and suite == "vendu_chaud":
+            # Vendu chaud = sorti du stock, rien à refroidir (commit inclus).
+            await create_dlc_devenir(
+                db, source_type="cuisson", source_id=fiche_id, statut="vendu",
+                personnel_id=body.personnel_id, commentaire="Vendu chaud",
+            )
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    fiche = await _lire_fiche(db, fiche_id)
+    fiche.update(info_dlc)
+    fiche["refroidissement_resultat"] = refroid
+    logger.info("Fiche cuisson #%d enregistrée — état %s", fiche_id, fiche["etat"])
+    return fiche
+
+
+async def _ecrire_partie_cuisson(db, existante: Optional[dict], body: FicheCuisson) -> tuple[int, dict]:
+    """Insère ou met à jour la partie cuisson. Une cuisson terminée (fin + T°) est
+    figée : on n'en modifie plus les mesures, on ne fait qu'y ajouter la suite."""
+    if existante and existante["heure_fin"] is not None:
+        return existante["id"], {}
+
+    def val(champ):
+        v = getattr(body, champ)
+        return v if v is not None or not existante else existante[champ]
+
+    date_cuisson = val("date_cuisson")
+    heure_debut, heure_fin = val("heure_debut"), val("heure_fin")
+    temperature = val("temperature_sortie")
+    degre = val("degre_cuisson") or "generale"
+    action = val("action_corrective")
+    cible, conforme = _controler_cuisson(date_cuisson, heure_debut, heure_fin,
+                                         temperature, degre, action)
+    reception_ligne_id, fabrication_id = val("reception_ligne_id"), val("fabrication_id")
+    catalogue_vente_id = val("catalogue_vente_id")
+    dlc_finale, dlc_ajustee, dlc_origine = await _dlc_cuisson(
+        db, date_cuisson, reception_ligne_id, fabrication_id, catalogue_vente_id,
+    )
+    type_cuisson = (val("type_cuisson") or "rotissoire").lower()
+    if type_cuisson not in TYPES_CUISSON:
+        raise HTTPException(status_code=422, detail=f"Type de cuisson invalide : {type_cuisson!r}.")
+    valeurs = {
+        "type_cuisson":             type_cuisson,
+        "date_cuisson":             date_cuisson,
+        "personnel_id":             existante["personnel_id"] if existante else body.personnel_id,
+        "produit_id":               val("produit_id"),
+        "catalogue_fournisseur_id": val("catalogue_fournisseur_id"),
+        "catalogue_vente_id":       catalogue_vente_id,
+        "reception_ligne_id":       reception_ligne_id,
+        "fabrication_id":           fabrication_id,
+        "quantite":                 val("quantite"),
+        "unite":                    val("unite") or "kg",
+        "heure_debut":              heure_debut,
+        "heure_fin":                heure_fin,
+        "temperature_sortie":       temperature,
+        "temperature_cible":        cible,
+        "degre_cuisson":            degre,
+        "conforme":                 conforme,
+        "action_corrective":        (action or "").strip() or None,
+        "dlc_finale":               dlc_finale,
+    }
+    if existante:
+        sets = ", ".join(f"{k} = ?" for k in valeurs)
+        await db.execute(f"UPDATE cuissons SET {sets} WHERE id = ?",
+                         (*valeurs.values(), existante["id"]))
+        fiche_id = existante["id"]
+    else:
+        cols = ", ".join(valeurs)
+        marques = ", ".join("?" * len(valeurs))
+        cur = await db.execute(f"INSERT INTO cuissons ({cols}) VALUES ({marques})",
+                               tuple(valeurs.values()))
+        fiche_id = cur.lastrowid
+    return fiche_id, {"dlc_ajustee": dlc_ajustee, "dlc_origine": dlc_origine}
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +791,9 @@ async def _lots_disponibles(
                   SELECT 1 FROM dlc_devenir d
                   WHERE d.source_type = 'reception_ligne' AND d.source_id = rl.id
               )
-            ORDER BY r.date_reception DESC, r.id DESC
+            -- FIFO d'abord : trié par date de réception décroissante, le LIMIT pouvait
+            -- couper précisément le lot le plus urgent.
+            ORDER BY COALESCE(rl.dlc, rl.dluo, '9999-12-31') ASC, r.date_reception ASC, r.id ASC
             LIMIT ?
             """,
             ((param_reception, limit) if param_reception is not None else (limit,)),

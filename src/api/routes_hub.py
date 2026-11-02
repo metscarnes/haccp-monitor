@@ -438,6 +438,24 @@ async def taches_resume():
         except Exception as exc:
             logger.warning("hub résumé production à cuire : %s", exc)
 
+        # ── 5 bis. Fiches cuisson / refroidissement à compléter (v8.7) ─
+        # Rattrapage du soir : la fiche ouverte dans la journée (ou la cuisson sans
+        # refroidissement) doit être finie, sinon le registre HACCP reste troué.
+        try:
+            from src.api.routes_cuisson import compter_fiches_a_completer
+            n_fiches = await compter_fiches_a_completer(db)
+            if n_fiches:
+                aujourd_hui.append({
+                    "code":    "cuisson_a_completer",
+                    "libelle": "Cuisson / refroidissement à compléter",
+                    "url":     "/cuisson.html",
+                    "icone":   "🔥",
+                    "etat":    "a_faire",
+                    "detail":  f"{n_fiches} fiche(s) à terminer",
+                })
+        except Exception as exc:
+            logger.warning("hub résumé cuisson à compléter : %s", exc)
+
         # ── 6. Produits à ajouter au catalogue de vente ─────────
         # Étiquette prix imprimée pour un article absent du catalogue = l'équipe a
         # mis un nouveau produit en rayon (cf. src/produits_a_creer.py).

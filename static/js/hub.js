@@ -428,8 +428,8 @@ const TUILES = [
   { id: 'classeur-pms',        href: '/classeur-pms.html',         icone: '📂', titre: 'CLASSEUR PMS',        statut: 'Procédures & traçabilité' },
   // Production
   { id: 'fabrication',         href: '/etiquettes.html',           icone: '🔪', titre: 'FABRICATION',         statut: 'Étiquettes & traçabilité' },
-  { id: 'cuisson',             href: '/cuisson.html',              icone: '🔥', titre: 'CUISSON',             statut: 'Rôtissoire — T° ≥ 75 °C' },
-  { id: 'refroidissement',     href: '/refroidissement.html',      icone: '❄️', titre: 'REFROIDISSEMENT',     statut: '≤ 10 °C en ≤ 2 h' },
+  { id: 'cuisson',             href: '/cuisson.html',              icone: '🔥', titre: 'CUISSON',             statut: 'Cuisson & refroidissement' },
+  { id: 'refroidissement',     href: '/cuisson.html',              icone: '❄️', titre: 'REFROIDISSEMENT',     statut: 'Fiches à compléter' },
   { id: 'catalogue-vente',     href: '/catalogue-vente.html',      icone: '🏷️', titre: 'CATALOGUE VENTE',     statut: 'Produits finis fabriqués' },
   // Achats
   { id: 'fournisseurs',        href: '/fournisseurs.html',         icone: '🏢', titre: 'FOURNISSEURS',        statut: 'Fiches fournisseurs' },
