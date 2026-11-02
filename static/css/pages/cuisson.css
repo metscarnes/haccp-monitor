@@ -433,6 +433,21 @@
   cursor: pointer;
 }
 .cu-btn-danger:disabled { opacity: .55; cursor: not-allowed; }
+.cu-bandeau-alerte {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  background: #FEF3C7;
+  border: 1.5px solid #B45309;
+  color: #92400E;
+  border-radius: 12px;
+  padding: .75rem .9rem;
+  font-weight: 700;
+}
+.cu-bandeau-alerte > span { flex: 1; min-width: 200px; }
+.cu-modal-close.cu-bandeau-fermer { color: #92400E; }
+.cu-bloc-correction { border-color: #B45309; background: #FFFBEB; }
 .cu-btn-poubelle {
   background: none;
   border: 1.5px solid #e8d9c4;

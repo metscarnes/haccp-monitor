@@ -16,6 +16,7 @@ GET  /api/cuisson/fiches/{id}
 POST /api/cuisson/fiches
 PUT  /api/cuisson/fiches/{id}
 POST /api/cuisson/fiches/{id}/supprimer  (mot de passe admin si la fiche contient des mesures)
+POST /api/cuisson/fiches/{id}/corriger   (mot de passe admin — date, heures, T°)
 """
 
 import logging
@@ -29,7 +30,8 @@ from src.database import (
     get_db, get_stock_unifie, create_dlc_devenir, _insert_dlc_devenir, DLC_JOURS_TRANSFORMATION,
 )
 from src.api.routes_refroidissement import (
-    RefroidissementCreate, enregistrer_refroidissement,
+    RefroidissementCreate, enregistrer_refroidissement, _duree_minutes,
+    TEMPERATURE_CIBLE as T_MAX_REFROID, DUREE_MAX_MINUTES as DUREE_MAX_REFROID,
     maintenant_local, minutes_hhmm, verifier_pas_dans_le_futur,
 )
 
@@ -494,6 +496,144 @@ async def supprimer_fiche(fiche_id: int, body: SuppressionFiche, request: Reques
         refroid_ids or "aucun", (body.motif or "").strip() or "—",
     )
     return {"ok": True}
+
+
+class CorrectionRefroidissement(BaseModel):
+    heure_debut:        Optional[str]   = None
+    heure_fin:          Optional[str]   = None
+    temperature_finale: Optional[float] = None
+    action_corrective:  Optional[str]   = None
+
+
+class CorrectionFiche(BaseModel):
+    password:           Optional[str]   = None   # mot de passe ADMINISTRATEUR
+    motif:              Optional[str]   = None
+    date_cuisson:       Optional[str]   = None
+    type_cuisson:       Optional[str]   = None
+    quantite:           Optional[float] = None
+    unite:              Optional[str]   = None
+    heure_debut:        Optional[str]   = None
+    heure_fin:          Optional[str]   = None
+    temperature_sortie: Optional[float] = None
+    degre_cuisson:      Optional[str]   = None
+    action_corrective:  Optional[str]   = None
+    refroidissement:    Optional[CorrectionRefroidissement] = None
+
+
+def _texte(v: Optional[str]) -> Optional[str]:
+    return (v or "").strip() or None
+
+
+@router.post("/fiches/{fiche_id}/corriger")
+async def corriger_fiche(fiche_id: int, body: CorrectionFiche, request: Request):
+    """Corrige une fiche dont la cuisson est terminée : date, type, quantité, heures,
+    T°, degré, et le refroidissement s'il existe. Mot de passe administrateur.
+
+    Mêmes contrôles qu'à la saisie. Les DLC (cuisson, refroidissement) sont
+    recalculées ; le refroidissement suit la date de la cuisson. Une correction qui
+    ferait passer le produit de « jeté » à « non jeté » (ou l'inverse) est refusée :
+    le produit a réellement été jeté ou gardé — supprimer et ressaisir la fiche.
+    `etiquette_a_reimprimer` signale une étiquette imprimée avec une DLC devenue fausse.
+    Champ absent (None) = valeur inchangée.
+    """
+    from src.api.routes_auth import verifier_mot_de_passe_admin
+    verifier_mot_de_passe_admin(request, body.password)
+
+    async with get_db() as db:
+        avant = await _lire_fiche(db, fiche_id)
+        if avant["heure_fin"] is None:
+            raise HTTPException(status_code=422,
+                                detail="Cuisson pas encore terminée : utilisez « Compléter ».")
+
+        def val(source, champ, cle=None):
+            v = getattr(source, champ)
+            return avant[cle or champ] if v is None else v
+
+        date_cuisson = val(body, "date_cuisson")
+        heure_debut, heure_fin = val(body, "heure_debut"), val(body, "heure_fin")
+        temperature = val(body, "temperature_sortie")
+        degre = val(body, "degre_cuisson") or "generale"
+        action = val(body, "action_corrective")
+        type_cuisson = (val(body, "type_cuisson") or "rotissoire").lower()
+        if type_cuisson not in TYPES_CUISSON:
+            raise HTTPException(status_code=422, detail=f"Type de cuisson invalide : {type_cuisson!r}.")
+        cible, conforme = _controler_cuisson(date_cuisson, heure_debut, heure_fin,
+                                             temperature, degre, action)
+        dlc_cuisson, _, _ = await _dlc_cuisson(
+            db, date_cuisson, avant["reception_ligne_id"], avant["fabrication_id"],
+            avant["catalogue_vente_id"],
+        )
+
+        refroid = None
+        if avant["refroid_id"]:
+            rb = body.refroidissement or CorrectionRefroidissement()
+            r_debut = val(rb, "heure_debut", "refroid_debut")
+            r_fin = val(rb, "heure_fin", "refroid_fin")
+            r_temp = val(rb, "temperature_finale", "refroid_temperature")
+            r_action = val(rb, "action_corrective", "refroid_action")
+            duree = _duree_minutes(r_debut, r_fin)
+            verifier_pas_dans_le_futur(date_cuisson, r_fin, "Fin de refroidissement")
+            if minutes_hhmm(r_debut) < minutes_hhmm(heure_fin):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Mise au froid ({r_debut}) avant la fin de la cuisson ({heure_fin}).",
+                )
+            if not (-30 <= r_temp <= 120):
+                raise HTTPException(status_code=422, detail="T° après refroidissement hors plage (-30 à 120 °C).")
+            temp_ok, duree_ok = r_temp <= T_MAX_REFROID, duree <= DUREE_MAX_REFROID
+            r_conforme = temp_ok and duree_ok
+            if ((not temp_ok) and (not duree_ok)) != bool(avant["refroid_jeter"]):
+                raise HTTPException(
+                    status_code=422,
+                    detail="Cette correction change la décision de jeter le produit. "
+                           "Supprimez la fiche et ressaisissez-la.",
+                )
+            if not r_conforme and not _texte(r_action):
+                raise HTTPException(status_code=422,
+                                    detail="Refroidissement non conforme : action corrective obligatoire.")
+            refroid = (date_cuisson, r_debut, r_fin, duree, temperature, r_temp,
+                       1 if r_conforme else 0, _texte(r_action), dlc_cuisson, avant["refroid_id"])
+
+        await db.execute(
+            """UPDATE cuissons SET date_cuisson = ?, type_cuisson = ?, quantite = ?, unite = ?,
+                   heure_debut = ?, heure_fin = ?, temperature_sortie = ?, temperature_cible = ?,
+                   degre_cuisson = ?, conforme = ?, action_corrective = ?, dlc_finale = ?
+               WHERE id = ?""",
+            (date_cuisson, type_cuisson, val(body, "quantite"), val(body, "unite") or "kg",
+             heure_debut, heure_fin, temperature, cible, degre, conforme,
+             None if conforme else _texte(action), dlc_cuisson, fiche_id),
+        )
+        if refroid:
+            await db.execute(
+                """UPDATE refroidissements SET date_refroidissement = ?, heure_debut = ?,
+                       heure_fin = ?, duree_minutes = ?, temperature_initiale = ?,
+                       temperature_finale = ?, conforme = ?, action_corrective = ?, dlc_finale = ?
+                   WHERE id = ?""",
+                refroid,
+            )
+
+        # Étiquettes déjà imprimées dont la DLC n'est plus la bonne.
+        cur = await db.execute(
+            """SELECT COUNT(*) FROM etiquettes_generees
+               WHERE dlc <> ? AND ((source_type = 'cuisson' AND source_id = ?)
+                                   OR (source_type = 'refroidissement' AND source_id = ?))""",
+            (dlc_cuisson, fiche_id, avant["refroid_id"] or -1),
+        )
+        etiquette_a_reimprimer = (await cur.fetchone())[0] > 0
+        await db.commit()
+        apres = await _lire_fiche(db, fiche_id)
+
+    # Trace dans le journal : une correction du registre doit rester retrouvable.
+    champs = ("date_cuisson", "type_cuisson", "quantite", "heure_debut", "heure_fin",
+              "temperature_sortie", "degre_cuisson", "action_corrective", "dlc_finale",
+              "refroid_debut", "refroid_fin", "refroid_temperature", "refroid_action", "refroid_dlc")
+    changes = [f"{c} {avant[c]}→{apres[c]}" for c in champs if avant[c] != apres[c]]
+    logger.warning("Fiche cuisson #%d CORRIGÉE (mot de passe admin) — %s — %s — motif : %s",
+                   fiche_id, apres["produit_nom"], ", ".join(changes) or "aucun changement",
+                   _texte(body.motif) or "—")
+    apres["etiquette_a_reimprimer"] = etiquette_a_reimprimer
+    apres["dlc_avant"] = avant["dlc_finale"]
+    return apres
 
 
 async def _enregistrer_fiche(db, existante: Optional[dict], body: FicheCuisson) -> dict:

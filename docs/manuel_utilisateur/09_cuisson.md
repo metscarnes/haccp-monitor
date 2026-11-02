@@ -109,6 +109,28 @@ L'enregistrement est **tout ou rien** : si le refroidissement est refusé, la cu
 
 L'écran ne revient pas tout seul au Hub pendant qu'une fiche est ouverte (seulement après 5 min d'inactivité sur l'accueil).
 
+### 4.6 Corriger une fiche (✏️)
+
+Le crayon ✏️ apparaît sur toute carte dont la cuisson est terminée. Il rouvre la fiche avec les valeurs enregistrées : **date, type, quantité, heures, températures, degré** de la cuisson, et **heures / T° du refroidissement** s'il existe. La suite (refroidi / vendu chaud) ne se corrige pas.
+
+- **Mot de passe administrateur** obligatoire, motif facultatif.
+- Mêmes contrôles qu'à la saisie (chronologie, pas de futur, action corrective si non conforme).
+- Les **DLC sont recalculées** (cuisson et refroidissement) et le refroidissement suit la nouvelle date.
+- Une correction qui changerait la décision de **jeter** le produit (dans un sens ou dans l'autre) est refusée : supprimer la fiche et la ressaisir.
+- Si une **étiquette déjà imprimée** porte une DLC devenue fausse, un bandeau jaune s'affiche sur l'accueil : *« la DLC passe du … au … : réimprimez-la »*, avec le bouton **🖨 Réimprimer**.
+- Chaque correction est inscrite dans le journal du serveur (ancienne → nouvelle valeur, motif).
+
+### 4.7 Supprimer une fiche (🗑)
+
+La poubelle 🗑 est sur chaque carte, et un bouton **🗑 Supprimer** apparaît dans une fiche à compléter.
+
+| Fiche | Confirmation |
+|---|---|
+| Sans aucune mesure (produit + lot seulement) | Simple confirmation |
+| Avec heure de fin, T° ou refroidissement | **Mot de passe administrateur** |
+
+La suppression retire la cuisson, son refroidissement et leurs sorties de stock ; si la fiche avait sorti le lot cru (« lot entièrement utilisé »), il **revient en stock**. Elle est inscrite dans le journal du serveur avec le motif.
+
 ---
 
 ## 5. Règles enregistrées par le serveur

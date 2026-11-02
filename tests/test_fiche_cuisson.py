@@ -300,7 +300,6 @@ async def test_supprimer_fiche_sans_mesure_libre_et_lot_rendu(app_client, db):
 
 @pytest.mark.anyio
 async def test_supprimer_fiche_avec_mesures_exige_mot_de_passe_admin(app_client, db):
-    import os
     achat, rl_id, pers = await _lot_boeuf(app_client, db, "FC17")
     r = await app_client.post("/api/cuisson/fiches", json=_fiche(
         achat, rl_id, pers, heure_debut="09:00", heure_fin="10:00", temperature_sortie=80,
@@ -308,13 +307,96 @@ async def test_supprimer_fiche_avec_mesures_exige_mot_de_passe_admin(app_client,
         refroidissement={"heure_debut": "10:05", "heure_fin": "11:30", "temperature_finale": 6}))
     fid = r.json()["id"]
 
+    _mdp_admin()
     for corps in ({}, {"password": "faux"}):
         r = await app_client.post(f"/api/cuisson/fiches/{fid}/supprimer", json=corps)
         assert r.status_code == 401
     assert (await app_client.get(f"/api/cuisson/fiches/{fid}")).status_code == 200
 
     r = await app_client.post(f"/api/cuisson/fiches/{fid}/supprimer",
-                              json={"password": os.environ["ADMIN_PASSWORD"]})
+                              json={"password": _mdp_admin()})
     assert r.status_code == 200, r.text
     cur = await db.execute("SELECT COUNT(*) FROM refroidissements WHERE cuisson_id = ?", (fid,))
     assert (await cur.fetchone())[0] == 0
+
+
+# ── Correction d'une fiche terminée ────────────────────────────────────────
+
+def _mdp_admin():
+    import os
+    from src.api import routes_auth
+    routes_auth._login_tentatives.clear()   # limite anti-brute-force partagée entre tests
+    return os.environ["ADMIN_PASSWORD"]
+
+
+async def _fiche_refroidie(app_client, db, code, **kw):
+    achat, rl_id, pers = await _lot_boeuf(app_client, db, code)
+    corps = _fiche(achat, rl_id, pers, heure_debut="09:00", heure_fin="10:00",
+                   temperature_sortie=80, suite="refroidi",
+                   refroidissement={"heure_debut": "10:05", "heure_fin": "11:30",
+                                    "temperature_finale": 6})
+    corps.update(kw)
+    r = await app_client.post("/api/cuisson/fiches", json=corps)
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
+@pytest.mark.anyio
+async def test_corriger_date_heures_et_temperatures(app_client, db):
+    fiche = await _fiche_refroidie(app_client, db, "FC18")
+    fid = fiche["id"]
+    avant_hier = (date.today() - timedelta(days=2)).isoformat()
+
+    _mdp_admin()
+    r = await app_client.post(f"/api/cuisson/fiches/{fid}/corriger", json={"date_cuisson": avant_hier})
+    assert r.status_code == 401          # mot de passe administrateur obligatoire
+
+    r = await app_client.post(f"/api/cuisson/fiches/{fid}/corriger", json={
+        "password": _mdp_admin(), "motif": "Saisie sur la mauvaise date",
+        "date_cuisson": avant_hier, "heure_fin": "10:20", "temperature_sortie": 79,
+        "refroidissement": {"heure_debut": "10:25", "heure_fin": "11:40", "temperature_finale": 5},
+    })
+    assert r.status_code == 200, r.text
+    f = r.json()
+    assert (f["date_cuisson"], f["heure_fin"], f["temperature_sortie"]) == (avant_hier, "10:20", 79)
+    assert (f["refroid_debut"], f["refroid_fin"], f["refroid_temperature"]) == ("10:25", "11:40", 5)
+    assert f["refroid_duree"] == 75
+    # DLC recalculée (J+3 de la nouvelle date) et reprise par le refroidi.
+    assert f["dlc_finale"] == (date.today() + timedelta(days=1)).isoformat()
+    assert f["refroid_dlc"] == f["dlc_finale"]
+    cur = await db.execute("SELECT date_refroidissement FROM refroidissements WHERE id = ?", (f["refroid_id"],))
+    assert (await cur.fetchone())[0] == avant_hier
+    assert f["etiquette_a_reimprimer"] is False
+
+
+@pytest.mark.anyio
+async def test_corriger_signale_etiquette_a_reimprimer(app_client, db):
+    fiche = await _fiche_refroidie(app_client, db, "FC19")
+    await db.execute(
+        """INSERT INTO etiquettes_generees (boutique_id, produit_nom, type_date, date_etiquette,
+               dlc, operateur, numero_lot, lot_type, source_type, source_id)
+           VALUES (1, 'Rosbeef', 'fabrication', ?, ?, 'Test', 'LOT', 'interne', 'refroidissement', ?)""",
+        (JOUR, fiche["refroid_dlc"], fiche["refroid_id"]))
+    await db.commit()
+    avant_hier = (date.today() - timedelta(days=2)).isoformat()
+    r = await app_client.post(f"/api/cuisson/fiches/{fiche['id']}/corriger",
+                              json={"password": _mdp_admin(), "date_cuisson": avant_hier})
+    assert r.status_code == 200, r.text
+    assert r.json()["etiquette_a_reimprimer"] is True
+
+
+@pytest.mark.anyio
+async def test_corriger_refuse_les_incoherences(app_client, db):
+    fiche = await _fiche_refroidie(app_client, db, "FC20")
+    url = f"/api/cuisson/fiches/{fiche['id']}/corriger"
+    # Fin de cuisson après la mise au froid.
+    r = await app_client.post(url, json={"password": _mdp_admin(), "heure_fin": "10:30"})
+    assert r.status_code == 422
+    # Correction qui ferait jeter un produit gardé.
+    r = await app_client.post(url, json={"password": _mdp_admin(), "refroidissement": {
+        "heure_fin": "13:00", "temperature_finale": 15, "action_corrective": "x"}})
+    assert r.status_code == 422
+    assert "jeter" in r.json()["detail"]
+    # Rien n'a changé.
+    f = (await app_client.get(f"/api/cuisson/fiches/{fiche['id']}")).json()
+    assert (f["heure_fin"], f["refroid_fin"]) == ("10:00", "11:30")

@@ -173,6 +173,7 @@ const state = {
   typeCuisson: 'four',
   suite:     '',          // '' (plus tard) | 'refroidi' | 'vendu_chaud'
   refroidDebutManuel: false,
+  correction: false,      // fiche terminée rouverte pour correction (mot de passe admin)
   envoiEnCours: false,
 };
 
@@ -264,6 +265,9 @@ function carteFiche(f, terminee) {
     ? (f.refroid_jeter === 1 || f.heure_fin == null ? ''
        : `<button type="button" class="cu-btn-secondaire" data-etiquette="${f.id}">🖨 Étiquette</button>`)
     : `<button type="button" class="cu-btn-primaire cu-btn-petit" data-completer="${f.id}">Compléter →</button>`;
+  const crayon = f.heure_fin != null
+    ? `<button type="button" class="cu-btn-poubelle" data-corriger="${f.id}"
+         aria-label="Corriger la fiche" title="Corriger date, heures, températures">✏️</button>` : '';
   const poubelle = `<button type="button" class="cu-btn-poubelle" data-supprimer="${f.id}"
                      aria-label="Supprimer la fiche" title="Supprimer la fiche">🗑</button>`;
   return `
@@ -274,7 +278,7 @@ function carteFiche(f, terminee) {
         ${lignes ? `<div class="cu-fiche-lignes">${lignes}</div>` : ''}
         ${terminee ? '' : `<div class="cu-fiche-etat">${ETATS[f.etat] ?? ''}</div>`}
       </div>
-      <div class="cu-fiche-action">${action}${poubelle}</div>
+      <div class="cu-fiche-action">${action}${crayon}${poubelle}</div>
     </div>`;
 }
 
@@ -296,10 +300,17 @@ function ficheParId(id) {
 }
 
 [elListeAC, elListeTerm].forEach(el => el.addEventListener('click', e => {
-  const btn = e.target.closest('[data-supprimer]');
-  if (!btn) return;
-  const f = ficheParId(Number(btn.dataset.supprimer));
-  if (f) ouvrirSuppression(f);
+  const suppr = e.target.closest('[data-supprimer]');
+  if (suppr) {
+    const f = ficheParId(Number(suppr.dataset.supprimer));
+    if (f) ouvrirSuppression(f);
+    return;
+  }
+  const corr = e.target.closest('[data-corriger]');
+  if (corr) {
+    const f = ficheParId(Number(corr.dataset.corriger));
+    if (f) ouvrirFiche(f, null, { correction: true });
+  }
 }));
 
 elListeAC.addEventListener('click', e => {
@@ -328,11 +339,12 @@ function montrerAccueil() {
 
 // ═══ Fiche ═════════════════════════════════════════════════
 function cuissonDejaTerminee() {
-  return !!(state.fiche && state.fiche.heure_fin != null);
+  return !!(state.fiche && state.fiche.heure_fin != null) && !state.correction;
 }
 
-function ouvrirFiche(fiche, prefill = null) {
+function ouvrirFiche(fiche, prefill = null, { correction = false } = {}) {
   state.fiche = fiche;
+  state.correction = correction && !!fiche;
   state.produit = null;
   state.lots = [];
   state.devient = null;
@@ -377,7 +389,14 @@ function ouvrirFiche(fiche, prefill = null) {
     elDegreWrap.hidden = true;
   }
 
-  $('cu-btn-supprimer').hidden = !fiche;
+  $('cu-btn-supprimer').hidden = !fiche || state.correction;
+  elOperateurs.closest('.cu-champ').hidden = state.correction;
+  $('cu-bloc-correction').hidden = !state.correction;
+  $('cu-btn-corriger').hidden = !state.correction;
+  elBtnSave.hidden = state.correction;
+  elBtnSaveEtiq.hidden = state.correction;
+  $('cu-corr-motif').value = '';
+  $('cu-corr-mdp').value = '';
   const figee = cuissonDejaTerminee();
   elDate.disabled = figee;
   elQuantite.disabled = figee;
@@ -389,6 +408,19 @@ function ouvrirFiche(fiche, prefill = null) {
       <span class="cu-aide">Cuisson enregistrée — elle n'est plus modifiable.</span>`;
   } else if (fiche) {
     if (fiche.heure_debut) elHeureDebut.value = fiche.heure_debut;
+  }
+  if (state.correction) {
+    // Valeurs enregistrées, à corriger sur place.
+    elHeureFin.value = fiche.heure_fin ?? '';
+    elTemperature.value = fiche.temperature_sortie ?? '';
+    elAction.value = fiche.action_corrective ?? '';
+    if (fiche.refroid_id) {
+      state.refroidDebutManuel = true;      // garder la mise au froid enregistrée
+      elRefroidDebut.value = fiche.refroid_debut ?? '';
+      elRefroidFin.value = fiche.refroid_fin ?? '';
+      elRefroidTemp.value = fiche.refroid_temperature ?? '';
+      elRefroidAction.value = fiche.refroid_action ?? '';
+    }
   }
 
   majDegre();
@@ -402,7 +434,7 @@ function ouvrirFiche(fiche, prefill = null) {
   if (prefill) appliquerPrefill(prefill);
 }
 
-$('cu-btn-annuler').addEventListener('click', montrerAccueil);
+$('cu-btn-annuler').addEventListener('click', () => { state.correction = false; montrerAccueil(); });
 $('cu-btn-supprimer').addEventListener('click', () => { if (state.fiche) ouvrirSuppression(state.fiche); });
 
 // ── Opérateur ──────────────────────────────────────────────
@@ -688,6 +720,12 @@ function majCuisson() {
 
 // ── Ensuite ────────────────────────────────────────────────
 function majSuite() {
+  elBlocSuite.hidden = state.correction;
+  if (state.correction) {
+    // La suite ne se corrige pas : seul le refroidissement existant est modifiable.
+    elBlocRefroid.hidden = !state.fiche.refroid_id;
+    return;
+  }
   const complete = cuissonComplete();
   const verrouillee = !!(state.fiche && state.fiche.suite);   // suite déjà enregistrée
   elBlocSuite.querySelectorAll('.cu-suite-btn').forEach(b => {
@@ -931,7 +969,107 @@ async function enregistrer(avecEtiquette) {
   }
 }
 
-elForm.addEventListener('submit', e => { e.preventDefault(); enregistrer(false); });
+elForm.addEventListener('submit', e => {
+  e.preventDefault();
+  if (state.correction) enregistrerCorrection(); else enregistrer(false);
+});
+
+/** Contrôles de la correction (le serveur refait les mêmes) → corps, ou null. */
+function construireCorrection() {
+  const f = state.fiche;
+  const date = elDate.value;
+  if (!date) return afficherErreur('Date de la cuisson requise.');
+  if (date > aujourdhuiISO()) return afficherErreur('La date de cuisson est dans le futur.');
+  const debut = elHeureDebut.value, fin = elHeureFin.value, t = nombre(elTemperature);
+  if (!(debut && fin && t != null)) return afficherErreur('Cuisson : début, fin ET T° à cœur sont obligatoires.');
+  if (minutes(fin) <= minutes(debut)) return afficherErreur('Cuisson : la fin est avant le début.');
+  const maintenant = new Date().getHours() * 60 + new Date().getMinutes();
+  if (date === aujourdhuiISO() && minutes(fin) > maintenant + 5) {
+    return afficherErreur("Cuisson : heure dans le futur. Saisissez l'heure réelle.");
+  }
+  if (t < cibleCuisson() && !elAction.value.trim()) {
+    return afficherErreur(`Action corrective obligatoire (T° < ${cibleCuisson()} °C).`);
+  }
+  const corps = {
+    password: $('cu-corr-mdp').value,
+    motif: $('cu-corr-motif').value.trim() || null,
+    date_cuisson: date,
+    type_cuisson: state.typeCuisson,
+    quantite: nombre(elQuantite),
+    unite: elUnite.value || 'kg',
+    heure_debut: debut,
+    heure_fin: fin,
+    temperature_sortie: t,
+    degre_cuisson: state.degre,
+    action_corrective: t < cibleCuisson() ? elAction.value.trim() : null,
+  };
+  if (f.refroid_id) {
+    const r = etatRefroid();
+    if (!(elRefroidDebut.value && elRefroidFin.value && r.t != null)) {
+      return afficherErreur('Refroidissement : mise au froid, fin ET T° à cœur sont obligatoires.');
+    }
+    if (r.f <= r.d) return afficherErreur('Refroidissement : la fin est avant la mise au froid.');
+    if (r.d < minutes(fin)) return afficherErreur('Refroidissement : la mise au froid est avant la fin de la cuisson.');
+    if (date === aujourdhuiISO() && r.f > maintenant + 5) {
+      return afficherErreur("Refroidissement : heure de fin dans le futur. Saisissez l'heure réelle.");
+    }
+    const ok = r.tempOk && r.dureeOk;
+    if (!ok && !r.jeter && !elRefroidAction.value.trim()) {
+      return afficherErreur('Refroidissement non conforme : action corrective obligatoire.');
+    }
+    corps.refroidissement = {
+      heure_debut: elRefroidDebut.value,
+      heure_fin: elRefroidFin.value,
+      temperature_finale: r.t,
+      action_corrective: ok ? null : (elRefroidAction.value.trim() || f.refroid_action || null),
+    };
+  }
+  if (!corps.password) return afficherErreur('Mot de passe administrateur requis pour corriger.');
+  return corps;
+}
+
+async function enregistrerCorrection() {
+  if (state.envoiEnCours) return;
+  elErreur.hidden = true;
+  const corps = construireCorrection();
+  if (!corps) return;
+  state.envoiEnCours = true;
+  $('cu-btn-corriger').disabled = true;
+  try {
+    const fiche = await apiFetch(`/api/cuisson/fiches/${state.fiche.id}/corriger`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+    afficherToast('✏️ Fiche corrigée', true);
+    state.correction = false;
+    await Promise.all([chargerFiches(), chargerProduits()]);
+    montrerAccueil();
+    if (fiche.etiquette_a_reimprimer) proposerReimpression(fiche);
+  } catch (err) {
+    afficherErreur(err.message);
+  } finally {
+    state.envoiEnCours = false;
+    $('cu-btn-corriger').disabled = false;
+  }
+}
+$('cu-btn-corriger').addEventListener('click', enregistrerCorrection);
+
+// ── Bandeau « étiquette à réimprimer » (DLC changée par une correction) ─
+let ficheAReimprimer = null;
+function proposerReimpression(fiche) {
+  ficheAReimprimer = fiche;
+  $('cu-bandeau-reimprimer-texte').textContent =
+    `⚠ ${fiche.produit_nom ?? 'Produit'} (lot ${fiche.numero_lot ?? '—'}) : la DLC passe du `
+    + `${formatDate(fiche.dlc_avant)} au ${formatDate(fiche.refroid_dlc ?? fiche.dlc_finale)}. `
+    + "L'étiquette déjà collée est fausse : réimprimez-la.";
+  $('cu-bandeau-reimprimer').hidden = false;
+}
+$('cu-btn-reimprimer').addEventListener('click', async () => {
+  if (!ficheAReimprimer) return;
+  await imprimer(ficheAReimprimer, ficheAReimprimer.personnel_id);
+  $('cu-bandeau-reimprimer').hidden = true;
+});
+$('cu-btn-reimprimer-fermer').addEventListener('click', () => {
+  $('cu-bandeau-reimprimer').hidden = true;
+});
 elBtnSaveEtiq.addEventListener('click', () => enregistrer(true));
 
 // ── Suppression ────────────────────────────────────────────

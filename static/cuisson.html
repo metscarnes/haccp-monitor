@@ -60,6 +60,12 @@
 
     <!-- ═══ Accueil : fiches à compléter + terminées ═══ -->
     <section id="cu-vue-accueil" class="cu-vue">
+      <div id="cu-bandeau-reimprimer" class="cu-bandeau-alerte" hidden>
+        <span id="cu-bandeau-reimprimer-texte"></span>
+        <button type="button" id="cu-btn-reimprimer" class="cu-btn-primaire cu-btn-petit">🖨 Réimprimer</button>
+        <button type="button" id="cu-btn-reimprimer-fermer" class="cu-modal-close cu-bandeau-fermer" aria-label="Fermer">✕</button>
+      </div>
+
       <button type="button" id="cu-btn-nouvelle" class="cu-btn-primaire cu-btn-nouvelle">
         + Nouvelle cuisson
       </button>
@@ -253,6 +259,22 @@
           </label>
         </section>
 
+        <!-- ── Correction d'une fiche terminée (mot de passe administrateur) ── -->
+        <section class="cu-carte cu-bloc cu-bloc-correction" id="cu-bloc-correction" hidden>
+          <h2 class="cu-carte-titre">✏️ Correction</h2>
+          <p class="cu-aide">La correction est notée dans le journal (ancienne et nouvelle valeur).
+            Les DLC sont recalculées ; si une étiquette déjà imprimée porte une DLC devenue fausse,
+            vous serez invité à la réimprimer.</p>
+          <label class="cu-champ">
+            <span class="cu-label">Motif <span class="cu-label-hint">(facultatif)</span></span>
+            <input type="text" id="cu-corr-motif" class="cu-input" placeholder="Ex. saisie sur la mauvaise date" autocomplete="off">
+          </label>
+          <label class="cu-champ">
+            <span class="cu-label">Mot de passe administrateur <span class="cu-req">*</span></span>
+            <input type="password" id="cu-corr-mdp" class="cu-input" autocomplete="off">
+          </label>
+        </section>
+
         <div id="cu-erreur" class="cu-erreur" hidden></div>
 
         <div class="cu-actions">
@@ -260,6 +282,7 @@
           <button type="button" id="cu-btn-supprimer" class="cu-btn-secondaire cu-btn-secondaire--danger" hidden>🗑 Supprimer</button>
           <span class="cu-espace"></span>
           <button type="submit" id="cu-btn-save" class="cu-btn-secondaire cu-btn-fort">Enregistrer</button>
+          <button type="button" id="cu-btn-corriger" class="cu-btn-primaire" hidden>✏️ Enregistrer la correction</button>
           <button type="button" id="cu-btn-save-etiquette" class="cu-btn-primaire">Enregistrer + étiquette</button>
         </div>
       </form>
