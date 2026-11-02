@@ -264,6 +264,8 @@ function carteFiche(f, terminee) {
     ? (f.refroid_jeter === 1 || f.heure_fin == null ? ''
        : `<button type="button" class="cu-btn-secondaire" data-etiquette="${f.id}">🖨 Étiquette</button>`)
     : `<button type="button" class="cu-btn-primaire cu-btn-petit" data-completer="${f.id}">Compléter →</button>`;
+  const poubelle = `<button type="button" class="cu-btn-poubelle" data-supprimer="${f.id}"
+                     aria-label="Supprimer la fiche" title="Supprimer la fiche">🗑</button>`;
   return `
     <div class="cu-fiche-carte${terminee ? ' cu-fiche-carte--terminee' : ''}">
       <div class="cu-fiche-info">
@@ -272,7 +274,7 @@ function carteFiche(f, terminee) {
         ${lignes ? `<div class="cu-fiche-lignes">${lignes}</div>` : ''}
         ${terminee ? '' : `<div class="cu-fiche-etat">${ETATS[f.etat] ?? ''}</div>`}
       </div>
-      <div class="cu-fiche-action">${action}</div>
+      <div class="cu-fiche-action">${action}${poubelle}</div>
     </div>`;
 }
 
@@ -287,6 +289,18 @@ function afficherAccueil() {
     ? te.map(f => carteFiche(f, true)).join('')
     : '<div class="cu-vide">Aucune fiche terminée ces 7 derniers jours.</div>';
 }
+
+function ficheParId(id) {
+  const { a_completer: ac = [], terminees: te = [] } = state.fiches;
+  return ac.concat(te).find(x => x.id === id) ?? null;
+}
+
+[elListeAC, elListeTerm].forEach(el => el.addEventListener('click', e => {
+  const btn = e.target.closest('[data-supprimer]');
+  if (!btn) return;
+  const f = ficheParId(Number(btn.dataset.supprimer));
+  if (f) ouvrirSuppression(f);
+}));
 
 elListeAC.addEventListener('click', e => {
   const btn = e.target.closest('[data-completer]');
@@ -363,6 +377,7 @@ function ouvrirFiche(fiche, prefill = null) {
     elDegreWrap.hidden = true;
   }
 
+  $('cu-btn-supprimer').hidden = !fiche;
   const figee = cuissonDejaTerminee();
   elDate.disabled = figee;
   elQuantite.disabled = figee;
@@ -388,6 +403,7 @@ function ouvrirFiche(fiche, prefill = null) {
 }
 
 $('cu-btn-annuler').addEventListener('click', montrerAccueil);
+$('cu-btn-supprimer').addEventListener('click', () => { if (state.fiche) ouvrirSuppression(state.fiche); });
 
 // ── Opérateur ──────────────────────────────────────────────
 function afficherOperateurs() {
@@ -917,6 +933,77 @@ async function enregistrer(avecEtiquette) {
 
 elForm.addEventListener('submit', e => { e.preventDefault(); enregistrer(false); });
 elBtnSaveEtiq.addEventListener('click', () => enregistrer(true));
+
+// ── Suppression ────────────────────────────────────────────
+const elModalSuppr   = $('cu-modal-suppr');
+const elSupprMdpWrap = $('cu-suppr-mdp-wrap');
+const elSupprMdp     = $('cu-suppr-mdp');
+const elSupprMotif   = $('cu-suppr-motif');
+const elSupprErreur  = $('cu-suppr-erreur');
+const elSupprOk      = $('cu-suppr-confirmer');
+let ficheASupprimer = null;
+
+/** Sans heure de fin, T° ni refroidissement : rien du registre n'est effacé. */
+function ficheSansMesure(f) {
+  return f.heure_fin == null && f.temperature_sortie == null && !f.refroid_id;
+}
+
+function ouvrirSuppression(f) {
+  ficheASupprimer = f;
+  const lignes = [ligneCuisson(f), ligneRefroid(f)].filter(Boolean).join('<br>');
+  $('cu-suppr-resume').innerHTML = `
+    <div class="cu-produit-resume-nom">${escHtml(f.produit_nom ?? '—')}</div>
+    <div class="cu-produit-resume-meta">Lot ${escHtml(f.numero_lot ?? '—')} · ${formatJour(f.date_cuisson)}</div>
+    ${lignes ? `<div class="cu-fiche-lignes">${lignes}</div>` : ''}`;
+  const libre = ficheSansMesure(f);
+  $('cu-suppr-explication').textContent = libre
+    ? "Aucune mesure n'a encore été saisie sur cette fiche. Le lot cru, s'il avait été sorti du stock, y revient."
+    : 'Cette fiche contient des mesures du registre HACCP (cuisson et/ou refroidissement) : '
+      + "la suppression est définitive et demande le mot de passe administrateur. Le lot cru, s'il avait été sorti du stock, y revient.";
+  elSupprMdpWrap.hidden = libre;
+  elSupprMdp.value = '';
+  elSupprMotif.value = '';
+  elSupprErreur.hidden = true;
+  elModalSuppr.hidden = false;
+  (libre ? elSupprMotif : elSupprMdp).focus();
+}
+
+function fermerSuppression() {
+  elModalSuppr.hidden = true;
+  ficheASupprimer = null;
+}
+$('cu-suppr-annuler').addEventListener('click', fermerSuppression);
+$('cu-suppr-fermer').addEventListener('click', fermerSuppression);
+
+elSupprOk.addEventListener('click', async () => {
+  const f = ficheASupprimer;
+  if (!f) return;
+  if (!elSupprMdpWrap.hidden && !elSupprMdp.value) {
+    elSupprErreur.textContent = 'Mot de passe administrateur requis.';
+    elSupprErreur.hidden = false;
+    return;
+  }
+  elSupprOk.disabled = true;
+  try {
+    await apiFetch(`/api/cuisson/fiches/${f.id}/supprimer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        password: elSupprMdpWrap.hidden ? null : elSupprMdp.value,
+        motif: elSupprMotif.value.trim() || null,
+      }),
+    });
+    fermerSuppression();
+    afficherToast('🗑 Fiche supprimée', true);
+    await Promise.all([chargerFiches(), chargerProduits()]);
+    montrerAccueil();
+  } catch (err) {
+    elSupprErreur.textContent = err.message;
+    elSupprErreur.hidden = false;
+  } finally {
+    elSupprOk.disabled = false;
+  }
+});
 
 // ── Étiquette ──────────────────────────────────────────────
 function remplirGabaritEtiquette(data) {

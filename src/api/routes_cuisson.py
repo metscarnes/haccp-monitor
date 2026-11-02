@@ -15,13 +15,14 @@ GET  /api/cuisson/fiches                 (v8.7 — fiche unique cuisson + refroi
 GET  /api/cuisson/fiches/{id}
 POST /api/cuisson/fiches
 PUT  /api/cuisson/fiches/{id}
+POST /api/cuisson/fiches/{id}/supprimer  (mot de passe admin si la fiche contient des mesures)
 """
 
 import logging
 from datetime import date as _date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from src.database import (
@@ -434,6 +435,65 @@ async def completer_fiche(fiche_id: int, body: FicheCuisson):
     async with get_db() as db:
         existante = await _lire_fiche(db, fiche_id)
         return await _enregistrer_fiche(db, existante, body)
+
+
+class SuppressionFiche(BaseModel):
+    password: Optional[str] = None   # mot de passe ADMINISTRATEUR (fiche avec mesures)
+    motif:    Optional[str] = None
+
+
+def _fiche_sans_mesure(f: dict) -> bool:
+    """Fiche ouverte dans la journée (produit + lot) sans aucune mesure saisie :
+    la supprimer n'efface rien du registre HACCP."""
+    return f["heure_fin"] is None and f["temperature_sortie"] is None and not f["refroid_id"]
+
+
+@router.post("/fiches/{fiche_id}/supprimer")
+async def supprimer_fiche(fiche_id: int, body: SuppressionFiche, request: Request):
+    """Supprime une fiche (cuisson + refroidissement + sorties de stock qu'elle a créées).
+
+    Sans mesure saisie → libre (erreur de produit, fiche en double…). Dès qu'il y a
+    une heure de fin, une T° ou un refroidissement, c'est un enregistrement du registre
+    HACCP : mot de passe administrateur obligatoire, comme pour les commandes.
+    Le lot cru que la fiche avait sorti du stock (« lot entièrement utilisé ») y revient.
+    """
+    async with get_db() as db:
+        fiche = await _lire_fiche(db, fiche_id)
+        protegee = not _fiche_sans_mesure(fiche)
+        if protegee:
+            from src.api.routes_auth import verifier_mot_de_passe_admin
+            verifier_mot_de_passe_admin(request, body.password)
+
+        cur = await db.execute("SELECT id FROM refroidissements WHERE cuisson_id = ?", (fiche_id,))
+        refroid_ids = [r[0] for r in await cur.fetchall()]
+        for rid in refroid_ids:
+            await db.execute(
+                "DELETE FROM dlc_devenir WHERE source_type = 'refroidissement' AND source_id = ?", (rid,))
+        await db.execute("DELETE FROM refroidissements WHERE cuisson_id = ?", (fiche_id,))
+        await db.execute(
+            "DELETE FROM dlc_devenir WHERE source_type = 'cuisson' AND source_id = ?", (fiche_id,))
+        # Seule la sortie créée PAR cette fiche est annulée : un lot jeté ou vendu
+        # par ailleurs reste sorti.
+        for source_type, source_id in (("reception_ligne", fiche["reception_ligne_id"]),
+                                       ("fabrication", fiche["fabrication_id"])):
+            if source_id:
+                await db.execute(
+                    "DELETE FROM dlc_devenir WHERE source_type = ? AND source_id = ? "
+                    "AND statut = 'consomme' AND commentaire = ?",
+                    (source_type, source_id, f"Utilisé en cuisson (fiche #{fiche_id})"),
+                )
+        await db.execute("DELETE FROM cuissons WHERE id = ?", (fiche_id,))
+        await db.commit()
+
+    # Trace dans le journal du serveur : une suppression du registre doit rester retrouvable.
+    logger.warning(
+        "Fiche cuisson #%d SUPPRIMÉE (%s) — %s, lot %s, du %s, %s→%s, T° %s, refroid. %s — motif : %s",
+        fiche_id, "mot de passe admin" if protegee else "sans mesure",
+        fiche["produit_nom"], fiche["numero_lot"], fiche["date_cuisson"],
+        fiche["heure_debut"], fiche["heure_fin"], fiche["temperature_sortie"],
+        refroid_ids or "aucun", (body.motif or "").strip() or "—",
+    )
+    return {"ok": True}
 
 
 async def _enregistrer_fiche(db, existante: Optional[dict], body: FicheCuisson) -> dict:

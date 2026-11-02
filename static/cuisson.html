@@ -257,6 +257,8 @@
 
         <div class="cu-actions">
           <button type="button" id="cu-btn-annuler" class="cu-btn-secondaire">← Retour</button>
+          <button type="button" id="cu-btn-supprimer" class="cu-btn-secondaire cu-btn-secondaire--danger" hidden>🗑 Supprimer</button>
+          <span class="cu-espace"></span>
           <button type="submit" id="cu-btn-save" class="cu-btn-secondaire cu-btn-fort">Enregistrer</button>
           <button type="button" id="cu-btn-save-etiquette" class="cu-btn-primaire">Enregistrer + étiquette</button>
         </div>
@@ -274,6 +276,33 @@
         <button type="button" id="cu-modal-close" class="cu-modal-close" aria-label="Fermer">✕</button>
       </div>
       <div id="cu-modal-corps" class="cu-modal-corps"></div>
+    </div>
+  </div>
+
+  <!-- ── Modale : suppression d'une fiche ── -->
+  <div id="cu-modal-suppr" class="cu-modal" hidden role="dialog" aria-modal="true" aria-labelledby="cu-suppr-titre">
+    <div class="cu-modal-panel">
+      <div class="cu-modal-head cu-modal-head--danger">
+        <div class="cu-modal-titre" id="cu-suppr-titre">Supprimer la fiche ?</div>
+        <button type="button" id="cu-suppr-fermer" class="cu-modal-close" aria-label="Fermer">✕</button>
+      </div>
+      <div class="cu-modal-corps">
+        <div id="cu-suppr-resume" class="cu-produit-resume"></div>
+        <p id="cu-suppr-explication" class="cu-aide"></p>
+        <label class="cu-champ">
+          <span class="cu-label">Motif <span class="cu-label-hint">(facultatif)</span></span>
+          <input type="text" id="cu-suppr-motif" class="cu-input" placeholder="Ex. mauvais produit, fiche en double…" autocomplete="off">
+        </label>
+        <label class="cu-champ" id="cu-suppr-mdp-wrap" hidden>
+          <span class="cu-label">Mot de passe administrateur <span class="cu-req">*</span></span>
+          <input type="password" id="cu-suppr-mdp" class="cu-input" autocomplete="off">
+        </label>
+        <div id="cu-suppr-erreur" class="cu-erreur" hidden></div>
+        <div class="cu-actions cu-actions--modal">
+          <button type="button" id="cu-suppr-annuler" class="cu-btn-secondaire">Annuler</button>
+          <button type="button" id="cu-suppr-confirmer" class="cu-btn-danger">🗑 Supprimer définitivement</button>
+        </div>
+      </div>
     </div>
   </div>
 

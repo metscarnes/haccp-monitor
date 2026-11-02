@@ -386,7 +386,8 @@
   gap: .6rem;
   padding-bottom: 2rem;
 }
-.cu-actions .cu-btn-secondaire:first-child { margin-right: auto; }
+.cu-espace { flex: 1; }
+.cu-actions--modal { padding-bottom: 0; }
 
 .cu-btn-primaire {
   background: #6B3A1F;
@@ -418,6 +419,32 @@
 }
 .cu-btn-secondaire:active { background: #f5ede0; }
 .cu-btn-secondaire:disabled { opacity: .55; cursor: not-allowed; }
+.cu-btn-secondaire--danger { border-color: #C0392B; color: #C0392B; }
+.cu-btn-danger {
+  background: #C0392B;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: .8rem 1.2rem;
+  min-height: 52px;
+  cursor: pointer;
+}
+.cu-btn-danger:disabled { opacity: .55; cursor: not-allowed; }
+.cu-btn-poubelle {
+  background: none;
+  border: 1.5px solid #e8d9c4;
+  border-radius: 10px;
+  min-width: 46px;
+  min-height: 46px;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.cu-btn-poubelle:active { background: #FCE6E3; }
+.cu-fiche-action { display: flex; gap: .5rem; align-items: center; }
+.cu-modal-head.cu-modal-head--danger { background: #C0392B; }
 .cu-btn-fort { min-height: 54px; font-size: 1rem; font-weight: 800; }
 
 /* ── Toast ───────────────────────────────────── */

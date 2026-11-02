@@ -278,3 +278,43 @@ async def test_calendrier_dlc_montre_les_cuissons_catalogue(app_client, db):
         "date_debut": JOUR, "date_fin": fiche["dlc_finale"], "source": "cuisson"})).json()
     items = cal if isinstance(cal, list) else cal.get("items", [])
     assert any(i["source_id"] == fiche["id"] and i["produit_nom"] for i in items), cal
+
+
+# ── Suppression d'une fiche ────────────────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_supprimer_fiche_sans_mesure_libre_et_lot_rendu(app_client, db):
+    achat, rl_id, pers = await _lot_boeuf(app_client, db, "FC16")
+    r = await app_client.post("/api/cuisson/fiches", json=_fiche(achat, rl_id, pers, lot_epuise=True))
+    fid = r.json()["id"]
+    lots = (await app_client.get(f"/api/cuisson/lots?catalogue_fournisseur_id={achat}")).json()
+    assert not any(l["reception_ligne_id"] == rl_id for l in lots)
+
+    r = await app_client.post(f"/api/cuisson/fiches/{fid}/supprimer", json={"motif": "Mauvais produit"})
+    assert r.status_code == 200, r.text
+    assert (await app_client.get(f"/api/cuisson/fiches/{fid}")).status_code == 404
+    # Le lot cru revient en stock.
+    lots = (await app_client.get(f"/api/cuisson/lots?catalogue_fournisseur_id={achat}")).json()
+    assert any(l["reception_ligne_id"] == rl_id for l in lots)
+
+
+@pytest.mark.anyio
+async def test_supprimer_fiche_avec_mesures_exige_mot_de_passe_admin(app_client, db):
+    import os
+    achat, rl_id, pers = await _lot_boeuf(app_client, db, "FC17")
+    r = await app_client.post("/api/cuisson/fiches", json=_fiche(
+        achat, rl_id, pers, heure_debut="09:00", heure_fin="10:00", temperature_sortie=80,
+        suite="refroidi",
+        refroidissement={"heure_debut": "10:05", "heure_fin": "11:30", "temperature_finale": 6}))
+    fid = r.json()["id"]
+
+    for corps in ({}, {"password": "faux"}):
+        r = await app_client.post(f"/api/cuisson/fiches/{fid}/supprimer", json=corps)
+        assert r.status_code == 401
+    assert (await app_client.get(f"/api/cuisson/fiches/{fid}")).status_code == 200
+
+    r = await app_client.post(f"/api/cuisson/fiches/{fid}/supprimer",
+                              json={"password": os.environ["ADMIN_PASSWORD"]})
+    assert r.status_code == 200, r.text
+    cur = await db.execute("SELECT COUNT(*) FROM refroidissements WHERE cuisson_id = ?", (fid,))
+    assert (await cur.fetchone())[0] == 0
