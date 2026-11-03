@@ -1013,30 +1013,28 @@ function blocRepriseFiche(fiche) {
   const fourn    = fiche.fournisseur_nom ? ` — ${fiche.fournisseur_nom}` : '';
   const qui      = fiche.personnel_prenom ? ` (par ${fiche.personnel_prenom})` : '';
   const nb       = fiche.nb_lignes || 0;
+  const nbBr     = fiche.nb_brouillon || 0;   // produits saisis pas encore validés
 
   const txt = document.createElement('div');
   txt.className = 'rec-reprise-txt';
-  // Fiche vide : rien à « reprendre », seul l'abandon est proposé (il débloque la
-  // commande liée) — rouvrir un assistant vide ressemblerait à une nouvelle réception.
-  txt.textContent = nb === 0
-    ? `⚠️ Réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${fourn}${qui} : `
-      + `démarrée mais aucun produit saisi, jamais clôturée. Abandonnez-la pour `
-      + `débloquer la commande liée.`
-    : `⚠️ Réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${fourn}${qui} : `
-      + `non clôturée (${nb} produit${nb > 1 ? 's' : ''} saisi${nb > 1 ? 's' : ''}). `
-      + `Tant qu'elle n'est pas clôturée, ses produits n'apparaissent ni au stock `
-      + `ni en attente, et la commande liée reste bloquée.`;
+  const quand = `⚠️ Réception du ${dateTxt}${heureTxt ? ' à ' + heureTxt : ''}${fourn}${qui}`;
+  const detail = [];
+  if (nb)   detail.push(`${nb} produit${nb > 1 ? 's' : ''} enregistré${nb > 1 ? 's' : ''}`);
+  if (nbBr) detail.push(`${nbBr} produit${nbBr > 1 ? 's' : ''} en cours de saisie`);
+  txt.textContent = detail.length
+    ? `${quand} : non clôturée (${detail.join(', ')}). Reprenez-la pour la terminer : `
+      + `rien n'entre au stock tant qu'elle n'est pas clôturée.`
+    : `${quand} : démarrée mais aucun produit saisi. Reprenez-la pour continuer, `
+      + `ou abandonnez-la pour débloquer la commande liée.`;
 
   const actions = document.createElement('div');
   actions.className = 'rec-reprise-actions';
-  if (nb > 0) {
-    const btnRep = document.createElement('button');
-    btnRep.type = 'button';
-    btnRep.className = 'rec-toggle-btn ok-sel';
-    btnRep.textContent = '↩︎ Reprendre la saisie';
-    btnRep.addEventListener('click', () => reprendreReceptionEnCours(fiche, btnRep));
-    actions.appendChild(btnRep);
-  }
+  const btnRep = document.createElement('button');
+  btnRep.type = 'button';
+  btnRep.className = 'rec-toggle-btn ok-sel';
+  btnRep.textContent = '↩︎ Reprendre la saisie';
+  btnRep.addEventListener('click', () => reprendreReceptionEnCours(fiche, btnRep));
+  actions.appendChild(btnRep);
   const btnAb = document.createElement('button');
   btnAb.type = 'button';
   btnAb.className = 'rec-toggle-btn';
@@ -1095,32 +1093,58 @@ async function reprendreReceptionEnCours(fiche, btn) {
 
     elRepriseBandeau.hidden = true;
 
-    // Vue produits classique (formulaire unitaire) : l'opérateur ajoute les
-    // produits restants puis clôture normalement.
-    // ATTENTION : si la fiche avait été saisie en mode liste-commande (batch),
-    // seules les lignes déjà POSTées (donc déjà en base) sont restaurées ci-dessus —
-    // toute carte en cours de saisie au moment de l'interruption (dont un éventuel
-    // article ajouté hors commande) n'a jamais atteint le serveur et est perdue ici,
-    // faute de pouvoir reconstruire l'état exact du formulaire batch. On prévient
-    // explicitement pour que l'opérateur revérifie contre le bon de livraison papier
-    // avant de clôturer, plutôt que de découvrir un produit manquant après coup.
-    sortirModeBatch();
+    // Fournisseur rattaché par défaut aux produits ajoutés (comme à la création).
+    const f0 = fournisseursListe[0];
+    if (f0 && (f0.id || (f0.nom || '').trim())) {
+      fournisseurProduitSelected = { id: f0.id || null, nom: (f0.nom || '').trim() || null };
+    }
     reinitFormProduit();
     majListeLignes();
     majSelectorFournisseur();
     majBlocOcr();
+
+    const brouillon = rec.brouillon;
+    if (brouillon && (brouillon.cartes || []).length) {
+      // Liste commande / BL lu : on retrouve les cartes telles qu'elles étaient.
+      restaurerBrouillonBatch(brouillon);
+      if (brouillon.ocrFait && elOcrBloc) elOcrBloc.hidden = true;
+    } else if (!lignesAjoutees.length && commandeIds.length) {
+      // Rien de saisi mais une commande liée : on reconstruit la liste commande.
+      commandeLignes = await chargerLignesCommandes(commandeIds);
+      if (commandeLignes.length) entrerModeBatch(); else sortirModeBatch();
+    } else {
+      // Produits déjà validés : formulaire unitaire pour compléter puis clôturer.
+      sortirModeBatch();
+    }
     allerEtape(3);
-    alert(
-      `Reprise de la réception : ${lignesAjoutees.length} produit(s) déjà enregistré(s) `
-      + `ont été restaurés. Si des produits étaient en cours de saisie au moment de la `
-      + `coupure (dont un article ajouté hors commande), ils n'ont PAS été sauvegardés — `
-      + `vérifiez la liste ci-dessous contre le bon de livraison avant de clôturer.`
-    );
+    if (modeBatch) planifierSauvegardeBrouillon();
   } catch (e) {
     alert('Impossible de reprendre la réception : ' + e.message);
     receptionEnCours = null;
     btn.disabled = false;
   }
+}
+
+// Lignes des commandes liées (même forme que construireLignesCommandes), lues
+// directement : à la reprise, la commande n'est plus dans la liste des
+// commandes disponibles puisqu'elle est déjà rattachée à cette fiche.
+async function chargerLignesCommandes(ids) {
+  const lignes = [];
+  for (const cid of ids.filter(Boolean)) {
+    try {
+      const cmd = await apiFetch(`/api/achats/commandes/${cid}`);
+      if (!toutesCommandes.some(c => c.id === cid)) toutesCommandes.push(cmd);
+      (cmd.lignes || []).forEach(l => lignes.push({
+        ...l,
+        _fournisseur_id:  cmd.fournisseur_id || null,
+        _fournisseur_nom: cmd.fournisseur_nom || null,
+      }));
+      if (cmd.fournisseur_id) await chargerCatalogueBl(cmd.fournisseur_id);
+    } catch (e) {
+      console.warn('[haccp] Commande liée illisible :', cid, e);
+    }
+  }
+  return lignes;
 }
 
 async function abandonnerReceptionEnCours(fiche, bloc, btn) {
@@ -3614,6 +3638,8 @@ async function lancerExtractionOcr() {
       afficherHintBl('N° BL extrait du BL — vérifier puis cliquer « Valider ».', false);
     }
     prefillBatchDepuisOcr(lignes);
+    ocrFaitBrouillon = true;
+    planifierSauvegardeBrouillon();
 
     const nbSuspect = lignes.filter(l => l.dlc_suspecte).length;
     elOcrBloc.hidden = true;  // l'extraction est faite, on masque le bouton
@@ -4052,10 +4078,186 @@ const elBatchTpl    = document.getElementById('rec-batch-ligne-tpl');
 const elFormProduit = document.getElementById('rec-form-produit');
 const elListeAjoutee = document.getElementById('rec-produits-liste-ajoutee-wrap');
 
+// ── Brouillon de la liste (sauvegarde automatique) ─────────────────────────
+// Les cartes ne deviennent des lignes de réception qu'au clic « Récap → ».
+// Jusque-là, leur contenu est sauvegardé tel quel sur la fiche (PUT .../brouillon)
+// pour être retrouvé après un rafraîchissement ou une coupure. Le brouillon
+// n'entre jamais au stock : il est effacé à la validation et à la clôture.
+const DELAI_BROUILLON = 1200;
+let timerBrouillon = null;
+let restaurationBrouillon = false;   // true pendant la reconstruction des cartes
+let fileBrouillon = Promise.resolve();
+let ocrFaitBrouillon = false;        // l'OCR du BL a déjà rempli les cartes
+
+function serialiserCarte(etat) {
+  const c = etat.el;
+  const val = sel => (c.querySelector(sel)?.value ?? '');
+  return {
+    ligneCmd:     etat.ligneCmd,
+    designation:  etat.designation,
+    produitId:    etat.produit ? etat.produit.id : null,
+    dlcType:      etat.dlcType,
+    catalogueId:  etat.catalogueId,
+    fournisseur:  etat.fournisseur,
+    recu:         etat.recu,
+    unitePrix:    etat.unitePrix,
+    montantBl:    etat.montantBl,
+    criteres:     etat.criteres,
+    observations: etat.observations,
+    lotInterne:   etat.lotInterne,
+    nbLotsInternesGeneres: etat.nbLotsInternesGeneres,
+    lotsEnregistres: etat.lotsEnregistres ? [...etat.lotsEnregistres] : [],
+    lot:     val('.rec-batch-lot'),
+    date:    val('.rec-batch-date'),
+    poids:   val('.rec-batch-poids'),
+    nbColis: val('.rec-batch-nb-colis'),
+    prix:    val('.rec-batch-prix'),
+    origine: val('.rec-batch-origine'),
+    ph:      val('.rec-batch-ph'),
+    lotsSupp: [...c.querySelectorAll('.rec-batch-lot-supp-row')].map(row => {
+      const inp = row.querySelector('.rec-batch-lot-supp-input');
+      return {
+        lot:     inp?.value || '',
+        dlc:     row.querySelector('.rec-batch-lot-supp-dlc')?.value || '',
+        poids:   row.querySelector('.rec-batch-lot-supp-poids')?.value || '',
+        interne: !!(inp && inp.dataset.interne),
+      };
+    }),
+    suspect: c.classList.contains('rec-batch-ocr-suspect'),
+    alertes: [...c.querySelectorAll('.rec-batch-ocr-alerte')].map(n => ({
+      texte: n.textContent, prix: n.classList.contains('rec-batch-ocr-alerte-prix'),
+    })),
+  };
+}
+
+function etatBrouillon() {
+  if (!modeBatch || !batchLignes.length) return null;
+  return {
+    version: 1,
+    titre: document.getElementById('rec-batch-titre')?.textContent || '',
+    ocrFait: ocrFaitBrouillon,
+    cartes: batchLignes.map(serialiserCarte),
+  };
+}
+
+function envoyerBrouillon(keepalive = false) {
+  if (!receptionId) return Promise.resolve();
+  const rid = receptionId;
+  const body = JSON.stringify({ brouillon: etatBrouillon() });
+  // Envois en file : un ancien état ne doit jamais écraser un plus récent.
+  fileBrouillon = fileBrouillon.then(() => fetch(`/api/receptions/${rid}/brouillon`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+    keepalive,
+  }).catch(e => console.warn('[haccp] Sauvegarde du brouillon échouée :', e)));
+  return fileBrouillon;
+}
+
+function planifierSauvegardeBrouillon() {
+  if (restaurationBrouillon || !receptionId || !modeBatch) return;
+  clearTimeout(timerBrouillon);
+  timerBrouillon = setTimeout(() => { timerBrouillon = null; envoyerBrouillon(); }, DELAI_BROUILLON);
+}
+
+// Envoi immédiat (validation de la liste, sortie de page).
+function sauvegarderBrouillonMaintenant(keepalive = false) {
+  clearTimeout(timerBrouillon);
+  timerBrouillon = null;
+  return envoyerBrouillon(keepalive);
+}
+
+// Rafraîchissement / fermeture / mise en veille de la tablette : on pousse la
+// dernière saisie sans attendre la fin du délai.
+window.addEventListener('pagehide', () => { if (timerBrouillon) sauvegarderBrouillonMaintenant(true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && timerBrouillon) sauvegarderBrouillonMaintenant(true);
+});
+
+// Champs sans recalcul propre (origine, pH, observations…) : délégation.
+if (elBatchListe) {
+  elBatchListe.addEventListener('input',  planifierSauvegardeBrouillon);
+  elBatchListe.addEventListener('change', planifierSauvegardeBrouillon);
+}
+
+// Recrée une carte à l'identique depuis le brouillon.
+function restaurerCarte(d) {
+  creerCarteBatch(d.ligneCmd || { designation: d.designation });
+  const etat = batchLignes[batchLignes.length - 1];
+  const c = etat.el;
+  const setVal = (sel, v) => { const el = c.querySelector(sel); if (el && v != null) el.value = v; };
+
+  etat.designation = d.designation || etat.designation;
+  c.querySelector('.rec-batch-nom').textContent = etat.designation;
+  if (d.produitId) etat.produit = tousProduits.find(p => p.id === d.produitId) || etat.produit;
+  if (d.fournisseur) etat.fournisseur = d.fournisseur;
+  if (d.catalogueId !== undefined) etat.catalogueId = d.catalogueId;
+  etat.montantBl = d.montantBl ?? null;
+  etat.nbLotsInternesGeneres = d.nbLotsInternesGeneres || 0;
+  etat.lotsEnregistres = new Set(d.lotsEnregistres || []);
+  if (d.unitePrix) etat.definirUnitePrix(d.unitePrix);
+
+  setVal('.rec-batch-date', d.date);
+  setVal('.rec-batch-poids', d.poids);
+  setVal('.rec-batch-nb-colis', d.nbColis);
+  setVal('.rec-batch-prix', d.prix);
+  setVal('.rec-batch-origine', d.origine);
+  setVal('.rec-batch-ph', d.ph);
+  if (d.lotInterne && d.lot) etat.appliquerLotInternePrincipal(d.lot);
+  else setVal('.rec-batch-lot', d.lot);
+
+  (d.lotsSupp || []).forEach(l => ajouterChampLotSuppBatch(etat, l.lot, l.dlc, l.poids, l.interne));
+
+  // Critères NC : on rejoue le clic « ✗ NC » pour retrouver l'affichage exact.
+  const rows = c.querySelectorAll('.rec-batch-criteres .rec-critere-row');
+  CRITERES.forEach((crit, i) => {
+    if (!d.criteres || d.criteres[crit] !== 0 || !rows[i]) return;
+    rows[i].querySelector('.rec-toggle-btn[data-val="0"]')?.click();
+    const obs = rows[i].querySelector('.rec-obs-input');
+    if (obs) obs.value = (d.observations && d.observations[crit]) || '';
+    etat.observations[crit] = obs ? obs.value : '';
+  });
+
+  if (d.suspect) c.classList.add('rec-batch-ocr-suspect');
+  (d.alertes || []).forEach(a => {
+    const note = document.createElement('div');
+    note.className = 'rec-batch-ocr-alerte' + (a.prix ? ' rec-batch-ocr-alerte-prix' : '');
+    note.textContent = a.texte;
+    c.querySelector('.rec-batch-champs')?.before(note);
+  });
+
+  if (d.recu === false) c.querySelector('.rec-batch-recu-non')?.click();
+  majBadgeCarte(etat);
+}
+
+// Reconstruit la liste complète (reprise d'une réception non terminée).
+function restaurerBrouillonBatch(brouillon) {
+  restaurationBrouillon = true;
+  try {
+    modeBatch = true;
+    batchLignes = [];
+    if (elBatchListe) elBatchListe.innerHTML = '';
+    if (elBatchWrap)  elBatchWrap.hidden = false;
+    if (elFormProduit)  elFormProduit.hidden = true;
+    if (elListeAjoutee) elListeAjoutee.hidden = true;
+    if (elBtnAjouter)   elBtnAjouter.hidden = true;
+    const elTitre = document.getElementById('rec-batch-titre');
+    if (elTitre && brouillon.titre) elTitre.textContent = brouillon.titre;
+    ocrFaitBrouillon = !!brouillon.ocrFait;
+    (brouillon.cartes || []).forEach(restaurerCarte);
+  } finally {
+    restaurationBrouillon = false;
+  }
+  majBtnTerminerBatch();
+  majTotalReception();
+  comparerPrixToutesCartes();
+}
+
 // Bascule l'étape 3 en mode liste commande (toutes les lignes d'un coup).
 function entrerModeBatch() {
   modeBatch = true;
   batchLignes = [];
+  ocrFaitBrouillon = false;
   if (elBatchListe) elBatchListe.innerHTML = '';
   if (elBatchWrap)  elBatchWrap.hidden = false;
   // Masquer le formulaire unitaire et la liste « produits ajoutés »
@@ -4527,6 +4729,61 @@ function ajouterArticleLibreBatch(article) {
   nouvelleCarte.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// ── Création d'un article achat depuis la réception ───────────────────────
+// Même popup et même tunnel que le module Catalogue achats (proposition de lien
+// au catalogue de vente comprise), avec le fournisseur de la réception imposé.
+// L'article créé rejoint le catalogue chargé puis est ajouté à la saisie.
+function fournisseurCourantReception() {
+  if (!modeBatch && fournisseurProduitSelected
+      && (fournisseurProduitSelected.id || fournisseurProduitSelected.nom)) {
+    return fournisseurProduitSelected;
+  }
+  const f0 = fournisseursListe[0] || {};
+  return { id: f0.id || null, nom: (f0.nom || nomFournisseurBloc(0) || '').trim() || null };
+}
+
+function ouvrirCreationArticleAchat(designation) {
+  if (typeof PopupArticleAchat === 'undefined') {
+    alert("Module de création d'article indisponible : rechargez la page.");
+    return;
+  }
+  const fourn = fournisseurCourantReception();
+  PopupArticleAchat.ouvrir({
+    fournisseurId:  fourn.id,
+    fournisseurNom: fourn.nom,
+    designation:    (designation || '').trim(),
+    onCree(article) {
+      if (!article.fournisseur_nom) article.fournisseur_nom = fourn.nom || null;
+      const fid = article.fournisseur_id;
+      if (fid) {
+        const liste = cataloguesParFourn.get(fid) || [];
+        liste.push(article);
+        cataloguesParFourn.set(fid, liste);
+        recalculerCatalogueBl();
+      }
+      // Fournisseur saisi en texte libre sur la fiche : son catalogue n'est pas
+      // dans la recherche, on y ajoute au moins l'article créé.
+      if (!catalogueBl.includes(article)) catalogueBl.push(article);
+      if (modeBatch) {
+        ajouterArticleLibreBatch(article);
+      } else {
+        selectionnerProduit(article);
+      }
+    },
+  });
+}
+
+const elBtnCreerArticleBatch = document.getElementById('rec-btn-creer-article-batch');
+if (elBtnCreerArticleBatch) {
+  elBtnCreerArticleBatch.addEventListener('click', () =>
+    ouvrirCreationArticleAchat(elBatchAjoutSearch ? elBatchAjoutSearch.value : ''));
+}
+const elBtnCreerArticle = document.getElementById('rec-btn-creer-article');
+if (elBtnCreerArticle) {
+  elBtnCreerArticle.addEventListener('click', () =>
+    ouvrirCreationArticleAchat(elProdSearch ? elProdSearch.value : ''));
+}
+
 // ── Total HT de la livraison ──────────────────────────────────────────────
 // Somme le montant HT (prix × poids) de chaque carte batch reçue avec un prix
 // et un poids saisis. Purement indicatif (le montant définitif vient de la
@@ -4599,6 +4856,7 @@ function afficherTotalCarte(etat, t) {
 // Recalcule le total de chaque carte et celui de la livraison (indicatif : le
 // montant définitif vient de la facture).
 function majTotalReception() {
+  planifierSauvegardeBrouillon();
   if (!elTotalBar) return;
   let total = 0;
   let nbAvecTotal = 0;
@@ -4624,7 +4882,7 @@ function majTotalReception() {
 // Ajoute un champ « n° de lot + DLC + poids » supplémentaire sur une carte batch.
 // Mêmes critères/origine que le lot principal ; lot, DLC et poids sont propres au
 // lot. `valeur`/`dlcVal`/`poidsVal` permettent de pré-remplir (OCR multi-lot).
-function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '') {
+function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '', interne = false) {
   const cont = etat.el.querySelector('.rec-batch-lots-supp');
   if (!cont) return;
   const row = document.createElement('div');
@@ -4746,12 +5004,22 @@ function ajouterChampLotSuppBatch(etat, valeur = '', dlcVal = '', poidsVal = '')
   poidsRow.appendChild(poidsLabel);
   poidsRow.appendChild(poidsInput);
 
+  // Sous-lot interne déjà généré (reprise d'un brouillon) : même rendu qu'après le clic.
+  if (interne && valeur) {
+    input.readOnly = true;
+    input.style.background = '#f0faf3';
+    input.dataset.interne = '1';
+    btnLotInterneSupp.hidden = true;
+    btnAnnulerSupp.hidden = false;
+  }
+
   row.appendChild(lotRow);
   row.appendChild(dlcRow);
   row.appendChild(poidsRow);
   cont.appendChild(row);
   majLotsSuppHintBatch(etat);
-  if (!valeur) input.focus();
+  if (!valeur && !restaurationBrouillon) input.focus();
+  planifierSauvegardeBrouillon();
 }
 
 // Lots supplémentaires saisis sur une carte batch : [{lot, dlc, poids, interne}]
@@ -4812,6 +5080,7 @@ function initRechercheProduitCarte(carte, etat) {
 
 // Met à jour le badge de statut d'une carte (non reçu / en attente / OK / NC).
 function majBadgeCarte(etat) {
+  planifierSauvegardeBrouillon();
   const badge = etat.el.querySelector('.rec-batch-badge');
   etat.el.classList.remove('en-attente', 'nc', 'non-recu');
 
@@ -5039,6 +5308,10 @@ async function validerBatch() {
 
   elBtnTerminer.disabled = false;
   elBtnTerminer.textContent = txt;
+
+  // Les cartes enregistrées sont devenues des lignes : le brouillon ne garde
+  // plus que celles en échec (ou est effacé si tout est passé).
+  await sauvegarderBrouillonMaintenant();
 
   if (echecs.length) {
     alert(

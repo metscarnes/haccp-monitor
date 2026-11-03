@@ -2221,6 +2221,11 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # ce que devient le produit cuit. Le passage des heures/T° en nullable exige
             # un rebuild de table → _migrer_cuissons_fiche_v87(), en fin de init_db().
             "ALTER TABLE cuissons ADD COLUMN suite TEXT",
+            # v8.9 — Brouillon de saisie d'une réception non clôturée (JSON des cartes
+            # « liste commande » : lot, DLC, poids, prix…). Ce n'est PAS du stock : il
+            # sert seulement à retrouver la saisie après un rafraîchissement de page.
+            # Vidé à la clôture.
+            "ALTER TABLE receptions ADD COLUMN brouillon_saisie TEXT",
         ]
         for sql in migrations:
             try:
@@ -4488,7 +4493,7 @@ async def cloturer_reception(
         UPDATE receptions
         SET conformite_globale = ?, livraison_refusee = ?,
             information_ddpp = ?, commentaire_nc = ?,
-            statut = 'cloturee'
+            statut = 'cloturee', brouillon_saisie = NULL
         WHERE id = ?
         """,
         (conformite_globale, int(livraison_refusee),
@@ -5523,7 +5528,8 @@ async def get_receptions_non_terminees(db: aiosqlite.Connection) -> list[dict]:
                r.personnel_id, r.numero_bon_livraison,
                TRIM(p.prenom || ' ' || COALESCE(p.nom, '')) AS personnel_prenom,
                COALESCE(f.nom, r.fournisseur_nom) AS fournisseur_nom,
-               (SELECT COUNT(*) FROM reception_lignes rl WHERE rl.reception_id = r.id) AS nb_lignes
+               (SELECT COUNT(*) FROM reception_lignes rl WHERE rl.reception_id = r.id) AS nb_lignes,
+               r.brouillon_saisie
         FROM receptions r
         LEFT JOIN personnel    p ON p.id = r.personnel_id
         LEFT JOIN fournisseurs f ON f.id = r.fournisseur_principal_id
@@ -5531,7 +5537,21 @@ async def get_receptions_non_terminees(db: aiosqlite.Connection) -> list[dict]:
         ORDER BY r.created_at DESC, r.id DESC
         """
     )
-    return [dict(r) for r in await cursor.fetchall()]
+    out = []
+    for row in await cursor.fetchall():
+        d = dict(row)
+        # Nombre de produits du brouillon (cartes pas encore enregistrées) : le
+        # bandeau « reprise » propose de reprendre même si aucune ligne n'est en base.
+        nb_brouillon = 0
+        brut = d.pop("brouillon_saisie", None)
+        if brut:
+            try:
+                nb_brouillon = len((json.loads(brut) or {}).get("cartes") or [])
+            except (ValueError, TypeError, AttributeError):
+                nb_brouillon = 0
+        d["nb_brouillon"] = nb_brouillon
+        out.append(d)
+    return out
 
 
 async def get_reception_en_cours(db: aiosqlite.Connection) -> Optional[dict]:

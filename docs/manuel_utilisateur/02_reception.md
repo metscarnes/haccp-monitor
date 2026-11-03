@@ -164,6 +164,14 @@ Actif dès qu'au moins 1 produit a été ajouté. Passe à l'étape 4.
 
 En mode multi-fournisseur, après chaque ajout de produit, un dialog s'affiche : *"Même fournisseur que le produit précédent ? (NomFournisseur)"*. Répondre `Oui` pré-sélectionne le même fournisseur pour le produit suivant.
 
+#### Bouton "＋ Créer un nouvel article achat"
+
+Sous la recherche produit (et sous « ＋ Ajouter un article » en mode liste commande). Ouvre le **même formulaire que le Catalogue achats** (« Nouvel article »), avec le **fournisseur de la réception déjà choisi et verrouillé** et la désignation reprise de la recherche. Après « Enregistrer » :
+- l'article est ajouté au catalogue achats et directement à la réception (nouvelle carte en mode liste, ou produit sélectionné en mode unitaire) ;
+- si sa famille est Viande, Charcuterie ou Traiteur, la fenêtre **« Suivre la marge de cet article ? »** propose, comme dans le Catalogue achats, de créer un produit de vente et de le lier, de le lier à un produit de vente existant, ou d'ignorer.
+
+Réservé au compte **administrateur** (comme dans le Catalogue achats) : en session équipe, le formulaire affiche un message l'expliquant.
+
 ---
 
 ### 4.5 Étape 4 — Récapitulatif & Clôture
@@ -295,6 +303,16 @@ Si aucune interaction pendant **5 minutes** :
 ### 6.2 Anti-crash sessionStorage
 
 Avant toute redirection vers PCR01 (`/pcr01.html`), l'état complet du wizard (receptionId, personnelId, personnelPrenom, fournisseurId, lignesAjoutees, tempCamion, propreteCamion) est sauvegardé en `sessionStorage`. Au retour de PCR01, le wizard reprend exactement à l'étape 4 avec toutes les données intactes.
+
+### 6.2 bis Sauvegarde automatique et reprise après rafraîchissement
+
+Une fois la fiche créée (fin de l'étape 2), tout ce qui est saisi dans la liste des produits (cartes de la commande ou du BL lu : lot, DLC, poids, prix, nombre de colis, lots supplémentaires, critères visuels, « Non reçu »…) est **sauvegardé automatiquement** sur la fiche, environ une seconde après chaque modification et immédiatement si la page est quittée ou rafraîchie.
+
+Ce brouillon **n'entre jamais au stock** : les produits ne deviennent des lignes de réception qu'au clic sur « Récap → », et le stock ne compte que les réceptions **clôturées**. Le brouillon est effacé à la clôture.
+
+Après un rafraîchissement, l'écran d'accueil de la réception affiche la fiche non terminée avec **« ↩︎ Reprendre la saisie »** (même si aucun produit n'a encore été validé) et « 🗑 Abandonner ». Reprendre rouvre l'étape produits avec la liste exactement comme elle était. Si rien n'avait été saisi mais qu'une commande était liée, la liste de la commande est reconstruite.
+
+À savoir : les photos du BL ne sont pas réaffichées dans la reprise (elles restent enregistrées sur la fiche), donc le bouton « Voir le bon de livraison » des cartes et la lecture automatique du BL ne sont pas proposés après une reprise.
 
 ### 6.3 Horloge temps réel
 

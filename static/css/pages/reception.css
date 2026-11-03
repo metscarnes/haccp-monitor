@@ -867,6 +867,23 @@ body.rec-body {
   margin-top: .5rem;
   position: relative;
 }
+/* Article absent du catalogue achats → popup « Nouvel article » */
+.rec-btn-creer-article {
+  display: block;
+  width: 100%;
+  margin-top: .5rem;
+  padding: .65rem .8rem;
+  min-height: 44px;
+  background: #F7F1E6;
+  border: 1px solid rgba(107,58,31,.25);
+  border-radius: var(--radius-sm, 8px);
+  color: var(--noyer, #6B3A1F);
+  font-size: .85rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.rec-btn-creer-article:active { background: #F0E8D4; }
 
 /* ── Total HT de la livraison ─────────────────────────────── */
 .rec-total-bar {

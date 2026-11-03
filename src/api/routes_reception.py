@@ -10,16 +10,18 @@ POST   /api/receptions/{id}/lignes                → ajouter ligne produit
 PUT    /api/receptions/{id}/cloturer              → clôturer la fiche
 GET    /api/receptions                            → historique (filtres)
 GET    /api/receptions/textes-aide-visuel         → référentiel contrôle visuel
-GET    /api/receptions/{id}                       → détail + lignes
+GET    /api/receptions/{id}                       → détail + lignes (+ brouillon de saisie)
+PUT    /api/receptions/{id}/brouillon             → sauvegarde auto de la saisie non validée
 GET    /api/receptions/{id}/photo-bl              → BL photo (FileResponse)
 GET    /api/receptions/{id}/photo-proprete        → Photo NC propreté camion (FileResponse)
 """
 
 import asyncio
 import io
+import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
@@ -1005,7 +1007,42 @@ async def detail_reception(reception_id: int):
         rec = await get_reception(db, reception_id)
     if not rec:
         raise HTTPException(404, "Réception non trouvée")
+    brut = rec.pop("brouillon_saisie", None)
+    try:
+        rec["brouillon"] = json.loads(brut) if brut else None
+    except (ValueError, TypeError):
+        rec["brouillon"] = None
     return rec
+
+
+class BrouillonBody(BaseModel):
+    """Saisie en cours de l'étape « produits » (cartes liste commande), telle que
+    l'écran la reconstruit. Opaque pour le serveur."""
+    brouillon: Optional[Dict[str, Any]] = None
+
+
+@router.put("/receptions/{reception_id}/brouillon")
+async def enregistrer_brouillon(reception_id: int, body: BrouillonBody):
+    """Sauvegarde automatique de la saisie non encore validée d'une réception en
+    cours, pour la retrouver après un rafraîchissement de page ou une coupure.
+
+    Rien n'est écrit dans reception_lignes : le brouillon n'entre jamais au stock.
+    Les lignes ne sont créées qu'à la validation de la liste, et le stock ne compte
+    que les réceptions clôturées. `brouillon: null` efface le brouillon.
+    """
+    if body.brouillon is not None:
+        texte = json.dumps(body.brouillon, ensure_ascii=False)
+        if len(texte) > 2_000_000:
+            raise HTTPException(413, "Brouillon trop volumineux")
+    else:
+        texte = None
+    async with get_db() as db:
+        await _reception_modifiable(db, reception_id)
+        await db.execute(
+            "UPDATE receptions SET brouillon_saisie = ? WHERE id = ?", (texte, reception_id)
+        )
+        await db.commit()
+    return {"ok": True}
 
 
 @router.get("/receptions/{reception_id}/photo-bl")
