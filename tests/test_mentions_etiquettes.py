@@ -29,6 +29,7 @@ def test_normalisation_ordre_et_maximum():
     assert brother.lire_mentions('["race_viande", "label_rouge"]') == ["label_rouge", "race_viande"]
     assert brother.lire_mentions("pas du json") == [] and brother.lire_mentions(None) == []
     assert brother.mentions_json([]) is None
+    assert brother.normaliser_mentions(["local", "bio"]) == ["bio", "local"]   # Bio (marque AB)
 
 
 def test_bandeau_en_bas_et_texte_au_dessus():
@@ -57,7 +58,7 @@ async def test_fiche_produit_jusqu_a_l_impression(app_client, db, monkeypatch):
 
     r = await app_client.put(f"/api/vente/catalogue/{pid}", json={"mentions": ["aop", "igp", "local"]})
     assert r.status_code == 422                                   # 3 mentions : refusé
-    r = await app_client.put(f"/api/vente/catalogue/{pid}", json={"mentions": ["bio"]})
+    r = await app_client.put(f"/api/vente/catalogue/{pid}", json={"mentions": ["demeter"]})
     assert r.status_code == 422                                   # mention inconnue
     r = await app_client.put(f"/api/vente/catalogue/{pid}", json={"mentions": ["race_viande", "label_rouge"]})
     assert r.status_code == 200 and r.json()["mentions"] == ["label_rouge", "race_viande"]

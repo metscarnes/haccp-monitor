@@ -15,6 +15,7 @@ window.MentionsEtiquette = (function () {
     { cle: 'aop',          libelle: 'AOP' },
     { cle: 'igp',          libelle: 'IGP' },
     { cle: 'label_rouge',  libelle: 'Label Rouge' },
+    { cle: 'bio',          libelle: 'Bio (AB)' },
     { cle: 'artisanal',    libelle: 'Artisanal' },
     { cle: 'sans_nitrite', libelle: 'Sans nitrite ajouté' },
     { cle: 'local',        libelle: 'Local' },

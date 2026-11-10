@@ -98,7 +98,8 @@ def geometrie_fait_maison(w: int, h: int, marge_h: int) -> dict:
 # à l'étiquette = taille du fichier × (hauteur du bandeau / MENTION_REFERENCE).
 # Géométrie en fraction de la HAUTEUR de l'étiquette — miroir de prix_etiquettes.js.
 MENTIONS_DIR       = Path(__file__).parent.parent.parent / "static" / "img" / "mentions"
-MENTIONS_ORDRE     = ("aop", "igp", "label_rouge", "artisanal", "sans_nitrite", "local", "race_viande")
+MENTIONS_ORDRE     = ("aop", "igp", "label_rouge", "bio", "artisanal", "sans_nitrite", "local",
+                      "race_viande")
 MENTIONS_MAX       = 2
 MENTION_REFERENCE  = 300
 MENTION_BANDEAU    = 0.20     # hauteur d'une mention ordinaire

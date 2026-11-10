@@ -6,7 +6,7 @@ couleur du texte par l'impression (brother_ql_prix) et l'aperçu (prix_etiquette
 Chaque fichier est rendu à une hauteur de REFERENCE × facteur : le facteur (plus grand
 pour AOP/IGP, dont la légende est sous le cercle) est donc dans la taille du fichier.
 
-- AOP, IGP, Label Rouge : logos officiels de l'INAO (inao.gouv.fr, « Logos et règles
+- AOP, IGP, Label Rouge, Bio (marque AB) : logos officiels de l'INAO (inao.gouv.fr, « Logos et règles
   d'étiquetage »), convertis en une encre par scripts/convertir_logos_officiels.py →
   scripts/sources_mentions/. Dessin non modifié, posé sur une pastille claire ; AOP et
   IGP ont leur sigle écrit en gros dessous (le texte du cercle est illisible en petit).
@@ -153,6 +153,7 @@ MENTIONS = {
     "aop":          (lambda h: logo_officiel("aop", h, "AOP"), 1.6),
     "igp":          (lambda h: logo_officiel("igp", h, "IGP"), 1.6),
     "label_rouge":  (lambda h: logo_officiel("label_rouge", h), 1.1),
+    "bio":          (lambda h: logo_officiel("bio", h), 1.4),
     "artisanal":    (lambda h: pastille("ARTISANAL", picto_couperet, h), 1.0),
     "sans_nitrite": (lambda h: pastille("", picto_feuille, h, ["SANS NITRITE", "AJOUTÉ"]), 1.0),
     "local":        (lambda h: pastille("LOCAL", picto_pin, h), 1.0),
