@@ -2185,6 +2185,9 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             "ALTER TABLE catalogue_vente ADD COLUMN mentions TEXT",
             "ALTER TABLE impressions_etiquettes ADD COLUMN mentions TEXT",
             "ALTER TABLE produits_a_creer ADD COLUMN mentions TEXT",
+            # v9.0 — Mentions aussi sur l'article d'ACHAT (Label Rouge, AOP… ne sont plus
+            # écrits dans la désignation) : reprises à la création du produit de vente.
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN mentions TEXT",
             # v8.4 — Pilotage CA : jour de fermeture enregistrable (CA 0, éteint le
             # rappel du Hub) et exclu des moyennes / paniers / profils.
             "ALTER TABLE ca_journalier ADD COLUMN ferme INTEGER NOT NULL DEFAULT 0",

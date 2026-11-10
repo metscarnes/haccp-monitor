@@ -68,7 +68,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from src.printing.brother_ql_prix import mentions_json
 
 from src.api.routes_auth import require_admin
 from src.database import get_db
@@ -116,6 +118,14 @@ class FournisseurUpdate(BaseModel):
     actif: Optional[bool] = None
 
 
+def _article_lu(row) -> dict:
+    """Ligne catalogue_fournisseur → dict, mentions en liste."""
+    from src.printing.brother_ql_prix import lire_mentions
+    a = dict(row)
+    a["mentions"] = lire_mentions(a.get("mentions"))
+    return a
+
+
 class CatalogueArticleCreate(BaseModel):
     fournisseur_id: int
     code_article: str
@@ -130,6 +140,14 @@ class CatalogueArticleCreate(BaseModel):
     famille: Optional[str] = None
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = "dlc"
+    # v9.0 : mentions (Label Rouge, AOP…) — reprises par le produit de vente créé ensuite.
+    mentions: Optional[list[str]] = None
+
+    @field_validator("mentions")
+    @classmethod
+    def _mentions(cls, v):
+        from src.printing.brother_ql_prix import valider_mentions
+        return valider_mentions(v)
 
 
 class CatalogueArticleUpdate(BaseModel):
@@ -147,6 +165,13 @@ class CatalogueArticleUpdate(BaseModel):
     sous_famille: Optional[str] = None
     dlc_type: Optional[str] = None
     actif: Optional[bool] = None
+    mentions: Optional[list[str]] = None
+
+    @field_validator("mentions")
+    @classmethod
+    def _mentions(cls, v):
+        from src.printing.brother_ql_prix import valider_mentions
+        return valider_mentions(v)
 
 
 class ComparatifGroupeCreate(BaseModel):
@@ -485,7 +510,7 @@ async def get_catalogue(
             params.append(sous_famille)
         sql += " ORDER BY f.nom, c.famille, c.sous_famille, c.designation"
         cur = await db.execute(sql, params)
-        articles = [dict(r) for r in await cur.fetchall()]
+        articles = [_article_lu(r) for r in await cur.fetchall()]
 
         # Prix au kilo normalisé (None si incalculable) — attendu par le comparateur et
         # tout consommateur de ce catalogue ; les écrans qui l'ignorent ne sont pas affectés.
@@ -1303,17 +1328,17 @@ async def create_article(body: CatalogueArticleCreate, _=Depends(require_admin))
             """INSERT INTO catalogue_fournisseur
                (fournisseur_id, code_article, designation, prix_achat_ht, format_prix,
                 qte_par_colis, poids_unitaire_kg, poids_colis_kg, tva_percent, conditionnement,
-                unites_autorisees, famille, sous_famille, dlc_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                unites_autorisees, famille, sous_famille, dlc_type, mentions)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.fournisseur_id, body.code_article, body.designation, body.prix_achat_ht,
              format_prix, body.qte_par_colis, body.poids_unitaire_kg,
              poids_colis, body.tva_percent, body.conditionnement,
              body.unites_autorisees or 'kg,piece,colis',
-             body.famille, body.sous_famille, body.dlc_type)
+             body.famille, body.sous_famille, body.dlc_type, mentions_json(body.mentions))
         )
         await db.commit()
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (cur.lastrowid,))
-        article = dict(await cur2.fetchone())
+        article = _article_lu(await cur2.fetchone())
         # Champs dérivés (mêmes règles métier que le catalogue) : la modale de liaison
         # au produit de vente s'en sert pour afficher la marge et pré-remplir le poids.
         article["prix_kg"] = _prix_kg_article(article)
@@ -1340,6 +1365,8 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
 
         if "format_prix" in fields:
             fields["format_prix"] = _normaliser_format_prix(fields["format_prix"])
+        if "mentions" in fields:                  # liste → JSON en base ([] = aucune)
+            fields["mentions"] = mentions_json(fields["mentions"])
 
         # Recalcule le poids du colis si une des deux données brutes est modifiée,
         # en repartant des valeurs existantes pour celle qui ne change pas.
@@ -1366,7 +1393,7 @@ async def update_article(article_id: int, body: CatalogueArticleUpdate, _=Depend
                 raise HTTPException(409, "Ce code article existe déjà pour ce fournisseur")
 
         cur2 = await db.execute("SELECT * FROM catalogue_fournisseur WHERE id = ?", (article_id,))
-        article = dict(await cur2.fetchone())
+        article = _article_lu(await cur2.fetchone())
         article["prix_kg"] = _prix_kg_article(article)
         article["prix_piece"] = _prix_piece_article(article)
         return article

@@ -84,3 +84,23 @@ async def test_fiche_produit_jusqu_a_l_impression(app_client, db, monkeypatch):
     assert h[1]["lignes"][0]["mentions"] == ["local"]
     d = (await app_client.get("/api/prix-etiquettes/produits-a-creer")).json()["demandes"]
     assert [x["mentions"] for x in d if x["nom"] == "Jambon sans nitrite HC"] == [["artisanal", "sans_nitrite"]]
+
+
+async def test_mentions_de_l_article_d_achat(app_client, db):
+    """Le label n'est plus écrit dans la désignation : il se coche sur l'article d'achat."""
+    from tests.test_commande_numerotation import _fournisseur
+    fid = await _fournisseur(app_client, "Fournisseur mentions")
+    corps = {"fournisseur_id": fid, "code_article": "LR-1", "designation": "Poulet fermier",
+             "prix_achat_ht": 8.5}
+    r = await app_client.post("/api/achats/catalogue", json={**corps, "mentions": ["aop", "igp", "local"]})
+    assert r.status_code == 422                                   # 3 mentions : refusé
+    r = await app_client.post("/api/achats/catalogue", json={**corps, "mentions": ["local", "label_rouge"]})
+    assert r.status_code == 201 and r.json()["mentions"] == ["label_rouge", "local"]
+    aid = r.json()["id"]
+    liste = (await app_client.get(f"/api/achats/catalogue?fournisseur_id={fid}")).json()
+    assert [a["mentions"] for a in liste if a["id"] == aid] == [["label_rouge", "local"]]
+    r = await app_client.put(f"/api/achats/catalogue/{aid}", json={"mentions": []})
+    assert r.status_code == 200 and r.json()["mentions"] == []
+    # Un article sans mention (champ non fourni) renvoie une liste vide.
+    r = await app_client.post("/api/achats/catalogue", json={**corps, "code_article": "LR-2"})
+    assert r.status_code == 201 and r.json()["mentions"] == []

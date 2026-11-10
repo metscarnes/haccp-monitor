@@ -54,15 +54,8 @@ router = APIRouter(prefix="/api/vente", tags=["vente"])
 
 def _valider_mentions(v):
     """Mentions des étiquettes : clés connues, 2 au maximum (422 sinon)."""
-    from src.printing.brother_ql_prix import MENTIONS_MAX, MENTIONS_ORDRE, normaliser_mentions
-    if v is None:
-        return v
-    inconnues = [m for m in v if m not in MENTIONS_ORDRE]
-    if inconnues:
-        raise ValueError(f"Mention inconnue : {', '.join(inconnues)}")
-    if len(set(v)) > MENTIONS_MAX:
-        raise ValueError(f"{MENTIONS_MAX} mentions au maximum par étiquette.")
-    return normaliser_mentions(v)
+    from src.printing.brother_ql_prix import valider_mentions
+    return valider_mentions(v)
 
 
 def _produit_lu(row) -> dict:

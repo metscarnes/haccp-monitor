@@ -29,6 +29,7 @@ const COLONNES = [
   { key: 'temperature_conservation', label: 'Température' },
   { key: 'famille',                  label: 'Famille' },
   { key: 'sous_famille',             label: 'Sous-famille' },
+  { key: 'mentions',                 label: 'Mentions' },
 ];
 
 // État de liaison achat (cf. GET /api/vente/catalogue) → aspect du bouton 🔗
@@ -66,6 +67,20 @@ function majMentions() {
   const cases = [...document.querySelectorAll('.v-mention')];
   const pleines = cases.filter(c => c.checked).length >= MENTIONS_MAX;
   cases.forEach(c => { c.disabled = pleines && !c.checked; });
+}
+
+// Libellés des mentions d'un produit, dans l'ordre d'affichage (colonne + tri).
+function libellesMentions(p) {
+  const choisies = new Set(Array.isArray(p.mentions) ? p.mentions : []);
+  return MENTIONS.filter(m => choisies.has(m.cle)).map(m => m.libelle);
+}
+
+// Filtre « Mention » : une mention, « Fait maison », ou « Sans mention ».
+function aLaMention(p, filtre) {
+  const mentions = Array.isArray(p.mentions) ? p.mentions : [];
+  if (filtre === 'fait_maison') return !!p.fait_maison;
+  if (filtre === 'aucune') return mentions.length === 0;
+  return mentions.includes(filtre);
 }
 
 function lireMentions() {
@@ -150,6 +165,7 @@ function bindEvents() {
   document.getElementById('filtre-inactifs').addEventListener('change', charger);
   document.getElementById('filtre-sans-prix').addEventListener('change', filtrer);
   document.getElementById('filtre-non-relies').addEventListener('change', filtrer);
+  document.getElementById('filtre-mention').addEventListener('change', filtrer);
   document.getElementById('filtre-famille').addEventListener('change', () => {
     const fam = document.getElementById('filtre-famille').value;
     const sel = document.getElementById('filtre-sous-famille');
@@ -225,12 +241,14 @@ function filtrer() {
   const sousFamille = document.getElementById('filtre-sous-famille').value;
   const sansPrixOnly = document.getElementById('filtre-sans-prix').checked;
   const nonReliesOnly = document.getElementById('filtre-non-relies').checked;
+  const mention     = document.getElementById('filtre-mention').value;
 
   listeFiltree = produits.filter(p => {
     if (famille     && p.famille     !== famille)      return false;
     if (sousFamille && p.sous_famille !== sousFamille)  return false;
     if (sansPrixOnly && p.prix_vente_ttc > 0)           return false;
     if (nonReliesOnly && p.liaison_achat !== 'non_relie') return false;
+    if (mention && !aLaMention(p, mention))              return false;
     if (search && !(p.nom || '').toLowerCase().includes(search)
                && !(p.code_vente || '').toLowerCase().includes(search)) return false;
     return true;
@@ -244,6 +262,7 @@ function filtrer() {
 // le sens du tri (ni la meilleure ni la pire marge, on ne les mélange pas aux vraies valeurs).
 function valeurTri(produit, cle) {
   if (cle === 'marge') return produit.marge?.taux_marge ?? null;
+  if (cle === 'mentions') return libellesMentions(produit).join(', ');
   return produit[cle] ?? '';
 }
 
@@ -322,6 +341,9 @@ function afficherTable(liste) {
       <td>${escHtml(p.temperature_conservation || '—')}</td>
       <td>${p.famille ? escHtml(p.famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>${libellesMentions(p).length
+        ? libellesMentions(p).map(l => `<span class="ach-badge" style="white-space:nowrap;">${escHtml(l)}</span>`).join(' ')
+        : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEdition(${p.id})">Modifier</button>
         <button class="ach-btn ach-btn--small ${liaison.classe}" onclick="ouvrirModalAchatLie(${p.id})" title="${liaison.titre}">${liaison.icone}</button>

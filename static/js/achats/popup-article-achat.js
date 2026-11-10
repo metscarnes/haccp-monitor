@@ -137,6 +137,8 @@
             <option value="no_dlc">Sans DLC</option>
           </select>
         </div>
+        <!-- Label Rouge, AOP… (plus dans la désignation) : core/mentions-etiquette.js -->
+        <div class="ach-champ ach-champ--full" id="paa-mentions"></div>
         <div id="paa-erreur" class="ach-form-erreur" hidden></div>
         <div class="ach-modal-footer">
           <button type="button" class="ach-btn" id="paa-annuler">Annuler</button>
@@ -325,6 +327,8 @@
     return warns;
   }
 
+  let mentionsArticle = null;   // mentions de l'article (Label Rouge, AOP…), sans « Fait maison »
+
   async function ouvrir(opts = {}) {
     options = opts;
     injecter();
@@ -352,6 +356,8 @@
     $('paa-famille').value = '';
     majSousFamilleForm('');
     $('paa-dlc-type').value = 'dlc';
+    mentionsArticle = mentionsArticle || MentionsEtiquette.monter($('paa-mentions'), { faitMaison: false });
+    mentionsArticle.ecrire({ mentions: [] });
     $('paa-erreur').hidden = true;
     $('paa-modal-article').hidden = false;
     (opts.codeArticle ? $('paa-designation') : $('paa-code')).focus();
@@ -376,6 +382,7 @@
       famille:           $('paa-famille').value || null,
       sous_famille:      $('paa-sous-famille').value || null,
       dlc_type:          $('paa-dlc-type').value,
+      mentions:          mentionsArticle ? mentionsArticle.lire().mentions : [],
     };
     const zErr = $('paa-erreur');
     if (!body.fournisseur_id) {
@@ -546,7 +553,7 @@
     if (!a) return;
     montrerEcran('creer');
     etiquette = etiquette || MentionsEtiquette.monter($('paa-mvpc-etiquette'));
-    etiquette.ecrire({ fait_maison: false, mentions: [] });
+    etiquette.ecrire({ fait_maison: false, mentions: a.mentions || [] });   // labels de l'achat
     $('paa-mvpc-nom').value = a.designation || '';
     $('paa-mvpc-prix').value = '';
     const unite = uniteVenteParDefaut(a.format_prix);

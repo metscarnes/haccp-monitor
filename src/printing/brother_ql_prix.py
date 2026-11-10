@@ -113,6 +113,19 @@ def normaliser_mentions(mentions) -> list[str]:
     return [m for m in MENTIONS_ORDRE if m in choisies][:MENTIONS_MAX]
 
 
+def valider_mentions(mentions):
+    """Saisie d'un formulaire : clés connues, MENTIONS_MAX au plus. ValueError sinon
+    (→ 422 dans les modèles Pydantic). None reste None (champ non fourni)."""
+    if mentions is None:
+        return None
+    inconnues = [m for m in mentions if m not in MENTIONS_ORDRE]
+    if inconnues:
+        raise ValueError(f"Mention inconnue : {', '.join(inconnues)}")
+    if len(set(mentions)) > MENTIONS_MAX:
+        raise ValueError(f"{MENTIONS_MAX} mentions au maximum par étiquette.")
+    return normaliser_mentions(mentions)
+
+
 def mentions_json(mentions) -> Optional[str]:
     """Liste de mentions → texte JSON pour la base (None si aucune)."""
     import json

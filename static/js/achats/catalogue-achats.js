@@ -633,6 +633,14 @@ async function toggleActif(id, actif) {
 }
 
 // ── Modal article ────────────────────────────────────────────
+// Mentions de l'article (Label Rouge, AOP…), montées au premier usage.
+let blocMentionsArticle = null;
+function mentionsArticle() {
+  blocMentionsArticle = blocMentionsArticle
+    || MentionsEtiquette.monter(document.getElementById('a-mentions'), { faitMaison: false });
+  return blocMentionsArticle;
+}
+
 function ouvrirNouveauModal() {
   modeEdition = false;
   document.getElementById('modal-titre').textContent = 'Nouvel article';
@@ -641,6 +649,7 @@ function ouvrirNouveauModal() {
   const hp = document.getElementById('hist-prix');
   if (hp) hp.hidden = true;  // pas d'historique pour un nouvel article
   viderForm();
+  mentionsArticle().ecrire({ mentions: [] });
   document.getElementById('modal-article').hidden = false;
   document.getElementById('a-code').focus();
 }
@@ -665,6 +674,7 @@ function ouvrirEditionModal(id) {
   document.getElementById('a-famille').value = a.famille || '';
   majSousFamilleForm(a.sous_famille || '');
   document.getElementById('a-dlc-type').value = a.dlc_type || 'dlc';
+  mentionsArticle().ecrire({ mentions: a.mentions || [] });
   recalcPoidsColis();
   document.getElementById('btn-supprimer-article').hidden = false;
   document.getElementById('btn-relier-vente').hidden = false;
@@ -1173,7 +1183,7 @@ function creerEtLierProduitVente() {
   if (!a) return;
   mvpMontrerEcran('creer');
   mvpcEtiquette = mvpcEtiquette || MentionsEtiquette.monter(document.getElementById('mvpc-etiquette'));
-  mvpcEtiquette.ecrire({ fait_maison: false, mentions: [] });
+  mvpcEtiquette.ecrire({ fait_maison: false, mentions: a.mentions || [] });   // labels de l'achat
   document.getElementById('mvpc-nom').value = a.designation || '';
   document.getElementById('mvpc-prix').value = '';
   const unite = uniteVenteParDefaut(a.format_prix);
@@ -1401,6 +1411,7 @@ async function sauver(e) {
     famille:         document.getElementById('a-famille').value || null,
     sous_famille:    document.getElementById('a-sous-famille').value || null,
     dlc_type:        document.getElementById('a-dlc-type').value,
+    mentions:        mentionsArticle().lire().mentions,
   };
 
   // Alerte non-bloquante sur les saisies suspectes (conversions faussées).
