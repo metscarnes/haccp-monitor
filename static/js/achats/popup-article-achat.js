@@ -205,6 +205,8 @@
             <input type="number" id="paa-mvpc-poids-piece" min="0" step="0.001" placeholder="Ex : 0.185" inputmode="decimal">
             <div id="paa-mvpc-poids-aide" style="margin-top:4px;font-size:var(--text-xs);color:#6b7280;" hidden></div>
           </div>
+          <!-- Fait maison + mentions (AOP, Label Rouge…) : core/mentions-etiquette.js -->
+          <div class="ach-champ ach-champ--full" id="paa-mvpc-etiquette"></div>
           <p style="font-size:var(--text-sm);color:#6b7280;margin:6px 0 0;">
             La famille <strong id="paa-mvpc-famille-lbl"></strong> et la sous-famille sont reprises de l'article.
           </p>
@@ -537,10 +539,14 @@
     return (formatAchat === 'piece' || formatAchat === 'colis') ? 'piece' : 'kg';
   }
 
+  let etiquette = null;      // bloc « Fait maison + mentions », monté au premier affichage
+
   function ecranCreer() {
     const a = article;
     if (!a) return;
     montrerEcran('creer');
+    etiquette = etiquette || MentionsEtiquette.monter($('paa-mvpc-etiquette'));
+    etiquette.ecrire({ fait_maison: false, mentions: [] });
     $('paa-mvpc-nom').value = a.designation || '';
     $('paa-mvpc-prix').value = '';
     const unite = uniteVenteParDefaut(a.format_prix);
@@ -654,6 +660,7 @@
           poids_piece_kg: (unite === 'piece' && !isNaN(poids)) ? poids : null,
           famille: a.famille || null,
           sous_famille: a.sous_famille || null,
+          ...(etiquette ? etiquette.lire() : {}),   // fait_maison + mentions
         }),
       });
       if (!rv.ok) throw new Error(await lireErreur(rv, 'Création du produit impossible'));

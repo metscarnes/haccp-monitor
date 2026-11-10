@@ -425,6 +425,8 @@
             <input type="number" id="mvpc-poids-piece" min="0" step="0.001" placeholder="Ex : 0.185">
             <div id="mvpc-poids-aide" style="margin-top:4px;font-size:var(--text-xs);color:#6b7280;" hidden></div>
           </div>
+          <!-- Fait maison + mentions (AOP, Label Rouge…) : core/mentions-etiquette.js -->
+          <div class="ach-champ ach-champ--full" id="mvpc-etiquette"></div>
           <p style="font-size:var(--text-sm);color:#6b7280;margin:6px 0 0;">
             La famille <strong id="mvpc-famille-lbl"></strong> et la sous-famille sont reprises de l'article.
           </p>
@@ -504,6 +506,7 @@
   </div>
 
   <script src="/static/js/core/familles.js"></script>
+  <script src="/static/js/core/mentions-etiquette.js"></script>
   <script src="/static/js/achats/catalogue-achats.js"></script>
 </body>
 </html>

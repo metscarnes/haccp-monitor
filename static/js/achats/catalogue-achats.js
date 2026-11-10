@@ -1165,10 +1165,15 @@ function uniteVenteParDefaut(formatAchat) {
 // ── Étape 3 — Créer un produit de vente + lier ───────────────────────
 // Ouvre le formulaire pré-rempli depuis l'article achat. La famille / sous-famille
 // sont héritées (masquées, envoyées telles quelles au catalogue de vente).
+// Bloc « Fait maison + mentions » du formulaire (monté une fois, au premier affichage).
+let mvpcEtiquette = null;
+
 function creerEtLierProduitVente() {
   const a = dernierArticleCree;
   if (!a) return;
   mvpMontrerEcran('creer');
+  mvpcEtiquette = mvpcEtiquette || MentionsEtiquette.monter(document.getElementById('mvpc-etiquette'));
+  mvpcEtiquette.ecrire({ fait_maison: false, mentions: [] });
   document.getElementById('mvpc-nom').value = a.designation || '';
   document.getElementById('mvpc-prix').value = '';
   const unite = uniteVenteParDefaut(a.format_prix);
@@ -1315,6 +1320,7 @@ async function mvpValiderCreation() {
         poids_piece_kg: (unite === 'piece' && !isNaN(poids)) ? poids : null,
         famille: a.famille || null,
         sous_famille: a.sous_famille || null,
+        ...(mvpcEtiquette ? mvpcEtiquette.lire() : {}),   // fait_maison + mentions
       }),
     });
     if (!rv.ok) throw new Error((await rv.json()).detail || 'Création du produit impossible');
