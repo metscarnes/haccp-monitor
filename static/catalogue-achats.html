@@ -110,6 +110,21 @@
         <option value="no_dlc">Sans DLC</option>
       </select>
     </div>
+    <div class="ach-filtre">
+      <label>Mention</label>
+      <select id="filtre-mention">
+        <option value="">Toutes</option>
+        <option value="aop">AOP</option>
+        <option value="igp">IGP</option>
+        <option value="label_rouge">Label Rouge</option>
+        <option value="bio">Bio (AB)</option>
+        <option value="artisanal">Artisanal</option>
+        <option value="sans_nitrite">Sans nitrite ajouté</option>
+        <option value="local">Local</option>
+        <option value="race_viande">Race à viande</option>
+        <option value="aucune">Sans mention</option>
+      </select>
+    </div>
     <div class="ach-filtre ach-filtre--search">
       <label>Recherche</label>
       <input type="search" id="filtre-search" placeholder="Code article ou désignation…">
@@ -209,11 +224,12 @@
           <th id="th-famille"         onclick="changerTri('famille')"         style="cursor:pointer;user-select:none;">Famille ⇅</th>
           <th id="th-sous_famille"    onclick="changerTri('sous_famille')"    style="cursor:pointer;user-select:none;">Sous-famille ⇅</th>
           <th id="th-dlc_type"        onclick="changerTri('dlc_type')"        style="cursor:pointer;user-select:none;">DLC type ⇅</th>
+          <th id="th-mentions"        onclick="changerTri('mentions')"        style="cursor:pointer;user-select:none;">Mentions ⇅</th>
           <th class="ach-col-actions">Actions</th>
         </tr>
       </thead>
       <tbody id="tbody-catalogue">
-        <tr><td colspan="15" class="ach-vide">Chargement…</td></tr>
+        <tr><td colspan="16" class="ach-vide">Chargement…</td></tr>
       </tbody>
     </table>
   </div>

@@ -47,7 +47,21 @@ const COLONNES = [
   { key: 'famille',         label: 'Famille' },
   { key: 'sous_famille',    label: 'Sous-famille' },
   { key: 'dlc_type',        label: 'DLC type' },
+  { key: 'mentions',        label: 'Mentions' },
 ];
+
+// Mentions (Label Rouge, AOP…) d'un article : libellés dans l'ordre d'affichage
+// (liste partagée : core/mentions-etiquette.js).
+function libellesMentions(a) {
+  const choisies = new Set(Array.isArray(a.mentions) ? a.mentions : []);
+  return MentionsEtiquette.MENTIONS.filter(m => choisies.has(m.cle)).map(m => m.libelle);
+}
+
+// Filtre « Mention » : une mention, ou « Sans mention ».
+function aLaMention(a, filtre) {
+  const mentions = Array.isArray(a.mentions) ? a.mentions : [];
+  return filtre === 'aucune' ? mentions.length === 0 : mentions.includes(filtre);
+}
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -151,6 +165,7 @@ function bindEvents() {
   });
   document.getElementById('filtre-sous-famille').addEventListener('change', filtrer);
   document.getElementById('filtre-dlc').addEventListener('change', filtrer);
+  document.getElementById('filtre-mention').addEventListener('change', filtrer);
   document.getElementById('filtre-search').addEventListener('input', filtrer);
   document.getElementById('filtre-afficher-test').addEventListener('change', filtrer);
   document.getElementById('filtre-inactifs').addEventListener('change', filtrer);
@@ -251,6 +266,7 @@ function filtrer() {
   const famille          = document.getElementById('filtre-famille').value;
   const sousFamille      = document.getElementById('filtre-sous-famille').value;
   const dlc              = document.getElementById('filtre-dlc').value;
+  const mention          = document.getElementById('filtre-mention').value;
   const search           = document.getElementById('filtre-search').value.toLowerCase();
   const afficherTest     = document.getElementById('filtre-afficher-test').checked;
   const afficherInactifs  = document.getElementById('filtre-inactifs').checked;
@@ -265,6 +281,7 @@ function filtrer() {
     if (famille    && a.famille !== famille)                         return false;
     if (sousFamille && a.sous_famille !== sousFamille)               return false;
     if (dlc        && a.dlc_type !== dlc)                            return false;
+    if (mention    && !aLaMention(a, mention))                       return false;
     if (sansPrixOnly   && a.prix_achat_ht > 0)                      return false;
     if (incompletsOnly && !estIncomplet(a))                         return false;
     if (search && !a.designation.toLowerCase().includes(search)
@@ -278,8 +295,8 @@ function filtrer() {
 function trier() {
   const k = triColonne;
   listeFiltree.sort((a, b) => {
-    let va = a[k] ?? '';
-    let vb = b[k] ?? '';
+    let va = k === 'mentions' ? libellesMentions(a).join(', ') : a[k] ?? '';
+    let vb = k === 'mentions' ? libellesMentions(b).join(', ') : b[k] ?? '';
     if (typeof va === 'number' && typeof vb === 'number') {
       return triSens === 'asc' ? va - vb : vb - va;
     }
@@ -359,6 +376,9 @@ function afficherTable(liste) {
           ${DLC_LABELS[a.dlc_type] || a.dlc_type}
         </span>
       </td>
+      <td>${libellesMentions(a).length
+        ? libellesMentions(a).map(l => `<span class="ach-badge" style="white-space:nowrap;">${escHtml(l)}</span>`).join(' ')
+        : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEditionModal(${a.id})">Modifier</button>
         <button class="ach-btn ach-btn--small" onclick="ouvrirEtiquettePrix(${JSON.stringify({id: a.id, designation: a.designation, prix_unitaire_ht: a.prix_achat_ht, unite_commande: a.format_prix === 'kg' ? 'kg' : 'colis', fournisseur_nom: a.fournisseur_nom})})" title="Créer une étiquette prix">🏷️</button>
