@@ -26,7 +26,7 @@ const DLC_LABELS = { dlc: 'DLC', date_abattage: 'Abattage', no_dlc: 'Sans DLC' }
 // Familles dont les articles sont susceptibles d'être revendus au comptoir :
 // on ne propose le rattachement au suivi de marge que pour celles-ci
 // (on exclut « Aide culinaire » et « Hygiène et emballage »).
-const FAMILLES_VENDABLES = new Set(['Viande', 'Charcuterie', 'Traiteur']);
+const FAMILLES_VENDABLES = new Set(['Viande', 'Charcuterie', 'Traiteur', 'Festif']);
 
 // Dernier article créé, mémorisé pour la modale « proposer un produit de vente ».
 let dernierArticleCree = null;

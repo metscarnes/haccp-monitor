@@ -25,7 +25,7 @@
 
   const API_CAT   = '/api/achats/catalogue';
   const API_FOURN = '/api/achats/fournisseurs';
-  const FAMILLES_VENDABLES = new Set(['Viande', 'Charcuterie', 'Traiteur']);
+  const FAMILLES_VENDABLES = new Set(['Viande', 'Charcuterie', 'Traiteur', 'Festif']);
   const UNITES_IDS = { kg: 'paa-unite-kg', piece: 'paa-unite-piece', colis: 'paa-unite-colis' };
 
   let injecte = false;
