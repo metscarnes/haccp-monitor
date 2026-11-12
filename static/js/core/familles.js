@@ -8,6 +8,7 @@ const FAMILLES = {
   'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
                            'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
   'Hygiène et emballage': ['Hygiène', 'Emballage'],
+  'Festif':               ['Volaille', 'Traiteur'],
 };
 
 /**

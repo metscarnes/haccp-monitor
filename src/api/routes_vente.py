@@ -292,7 +292,7 @@ async def download_template_vente():
          "Référence interne (PLU, code barre…). Facultatif.",
          "MRG-001"),
         ("famille",                  "Famille",
-         "Catégorie : Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage. Facultatif.",
+         "Catégorie : Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage | Festif. Facultatif.",
          "Charcuterie"),
         ("sous_famille",             "Sous-famille",
          "Sous-catégorie selon la famille choisie. Facultatif.",
@@ -376,6 +376,7 @@ async def download_template_vente():
         'Aide culinaire':       ['Épices et Aromates', 'Boyaux et Ficellerie', 'Marinades, Sauces et huile',
                                  'Bases et Liants', 'Fruits secs et Inclusions', 'Alcools de cuisson'],
         'Hygiène et emballage': ['Hygiène', 'Emballage'],
+        'Festif':               ['Volaille', 'Traiteur'],
     }
     ws_listes = wb.create_sheet("Listes")
     ws_listes.sheet_state = "hidden"
@@ -402,7 +403,7 @@ async def download_template_vente():
     fam_letter = ws.cell(row=1, column=fam_col).column_letter
     dv_fam = DataValidation(
         type="list",
-        formula1='"Viande,Charcuterie,Traiteur,Aide culinaire,Hygiène et emballage"',
+        formula1='"Viande,Charcuterie,Traiteur,Aide culinaire,Hygiène et emballage,Festif"',
         allow_blank=True, showErrorMessage=True,
         errorTitle="Famille invalide", error="Choisissez une famille dans la liste.",
     )
@@ -476,7 +477,7 @@ async def download_template_vente():
         ("", False, "333333", None, 11),
         ("3. Famille  [facultatif]", True, "8B1A1A", None, 11),
         ("   Catégorie principale (liste déroulante) :", False, "333333", None, 11),
-        ("   Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage", False, "8A6D3B", "FFF8E1", 10),
+        ("   Viande | Charcuterie | Traiteur | Aide culinaire | Hygiène et emballage | Festif", False, "8A6D3B", "FFF8E1", 10),
         ("", False, "333333", None, 11),
         ("4. Sous-famille  [facultatif]", True, "8B1A1A", None, 11),
         ("   Sous-catégorie selon la famille choisie.", False, "333333", None, 11),
