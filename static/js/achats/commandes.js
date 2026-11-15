@@ -142,7 +142,9 @@ async function chargerCommandes() {
 
 async function chargerCatalogueTous() {
   try {
-    const r = await fetch(`${API_CAT}?avec_stock=true`);
+    // Inactifs inclus : affichés seulement lors d'une recherche texte (grisés,
+    // commandables quand même). Partout ailleurs on filtre sur a.actif.
+    const r = await fetch(`${API_CAT}?avec_stock=true&actif_only=false`);
     catalogueTous = await r.json();
   } catch(e) {
     catalogueTous = [];
@@ -618,7 +620,7 @@ function afficherSuggestions() {
 
   // Suggestions affichables : l'article doit exister dans le catalogue chargé.
   // Les articles « arrêtés » (plus commandés depuis 3× leur rythme) ne sont plus suggérés.
-  const visibles = suggestionsCmd.filter(s => !s.arrete && catalogueTous.some(a => a.id === s.catalogue_fournisseur_id));
+  const visibles = suggestionsCmd.filter(s => !s.arrete && catalogueTous.some(a => a.id === s.catalogue_fournisseur_id && a.actif));
   if (!visibles.length) { panneau.hidden = true; return; }
   panneau.hidden = false;
 
@@ -855,7 +857,7 @@ function trierCataloguePanier(champ) {
 
 // Affiche le catalogue filtré, avec stepper de quantité par ligne
 function afficherCataloguePanier() {
-  const q      = document.getElementById('panier-search').value.toLowerCase().trim();
+  const q      = sansAccents(document.getElementById('panier-search').value.trim());
   const fourn  = document.getElementById('panier-filtre-fournisseur').value;
   const fam    = document.getElementById('panier-filtre-famille').value;
   const sfam   = document.getElementById('panier-filtre-sousfamille').value;
@@ -865,13 +867,20 @@ function afficherCataloguePanier() {
   const tbody  = document.getElementById('tbody-panier-catalogue');
 
   let liste = catalogueTous.filter(a => {
+    if (selOnly && !panierQte(String(a.id))) return false;
+    // Recherche texte : « si je le cherche, c'est que je ne l'ai pas trouvé » →
+    // on cherche dans TOUT le catalogue, filtres ignorés, articles inactifs
+    // compris (grisés mais commandables).
+    if (q) {
+      return sansAccents(a.designation).includes(q) || sansAccents(a.code_article).includes(q);
+    }
+    if (!a.actif && !panierQte(String(a.id))) return false;
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
     if (fam && a.famille !== fam) return false;
     // « Masquer produits festifs » : ignoré si on a explicitement choisi la
     // famille Festif ; un article festif déjà au panier reste visible.
     if (sansFestif && fam !== 'Festif' && a.famille === 'Festif' && !panierQte(String(a.id))) return false;
     if (sfam && a.sous_famille !== sfam) return false;
-    if (selOnly && !panierQte(String(a.id))) return false;
     // Choix « Afficher » : Mes habituels = ⭐ OU déjà commandé (avant 15/11/2026
     // les deux cases se cumulaient en ET et cachaient les produits commandés
     // sans ⭐ → ruptures). Un article déjà au panier reste toujours visible.
@@ -879,9 +888,10 @@ function afficherCataloguePanier() {
       if (vue === 'references' && !estReference(a.id)) return false;
       if (vue === 'habituels' && !estProduitHabituel(a.id)) return false;
     }
-    if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
   });
+  // En recherche, les inactifs passent en bas de la liste.
+  if (q) liste.sort((a, b) => (b.actif ? 1 : 0) - (a.actif ? 1 : 0));
 
   // Applique le tri si défini
   if (triPanier.champ === 'derniere_qte') {
@@ -924,10 +934,11 @@ function afficherCataloguePanier() {
       return `<strong>${qteAff} ${unite}</strong>${dateAff ? `<br><span style="font-size:.7em;color:#9ca3af">${dateAff}</span>` : ''}`;
     })();
     return `
-      <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}${desossageAuto ? ' ach-row--auto' : ''}">
+      <tr class="${qte > 0 ? 'ach-row--au-panier' : ''}${desossageAuto ? ' ach-row--auto' : ''}"
+          ${a.actif ? '' : 'style="opacity:.55;" title="Article désactivé — commandable quand même"'}>
         <td class="ach-cell-nom">${escHtml(a.fournisseur_nom)}</td>
         <td><code>${escHtml(a.code_article)}</code></td>
-        <td class="ach-cell-nom">${escHtml(a.designation)}${badgeReference(a)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}</td>
+        <td class="ach-cell-nom">${escHtml(a.designation)}${badgeReference(a)}${desossageAuto ? ' <span class="ach-badge ach-badge--dlc">désossage auto</span>' : ''}${a.actif ? '' : ' <span class="ach-badge ach-badge--annulee">inactif</span>'}</td>
         <td class="ach-col-num">${fmtPrix(a.prix_achat_ht)} ${formatLbl}</td>
         <td class="ach-col-num">${cellDerniereCmd}</td>
         <td>
@@ -973,7 +984,7 @@ function afficherCataloguePanier() {
         <td style="text-align:center; white-space:nowrap;">${estReference(a.id) ? `
           <button type="button" onclick="retirerReferencePanier(${a.id})"
                   title="Retirer l'étoile ⭐ dans les commandes (le comparatif et les marges ne changent pas)"
-                  style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">☆</button>` : ''}${(qte > 0 || desossageAuto) ? '' : `
+                  style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">☆</button>` : ''}${(qte > 0 || desossageAuto || !a.actif) ? '' : `
           <button type="button" onclick="desactiverArticlePanier(${a.id})"
                   title="Je ne commande plus cet article : le désactiver (réactivable depuis Catalogue achats)"
                   style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">🚫</button>`}</td>
@@ -985,28 +996,24 @@ function afficherCataloguePanier() {
 
 // ── Désactiver un article depuis la fenêtre de commande ──────
 // Passe l'article en « inactif » dans le catalogue achats (même effet que le
-// bouton Désactiver de la page Catalogue achats). Il disparaît des commandes ;
-// on le réactive depuis Catalogue achats (case « afficher les inactifs ») ou
-// via « Annuler » juste après.
+// bouton Désactiver de la page Catalogue achats). Il disparaît des listes de
+// commande (on le retrouve grisé par la recherche texte) ; on le réactive depuis
+// Catalogue achats (case « afficher les inactifs ») ou via « Annuler » juste après.
 async function desactiverArticlePanier(id) {
-  const idx = catalogueTous.findIndex(a => a.id === id);
-  if (idx < 0) return;
-  const art = catalogueTous[idx];
+  const art = catalogueTous.find(a => a.id === id);
+  if (!art) return;
   if (panierQte(String(id))) return;   // jamais un article déjà au panier
   if (!confirm(`Désactiver « ${art.designation} » (${art.fournisseur_nom}) ?\n\n`
-             + `Il n'apparaîtra plus dans les commandes, ni dans la réception.\n`
+             + `Il n'apparaîtra plus dans les listes de commande ni dans la réception\n`
+             + `(on le retrouve, grisé, en le cherchant par son nom).\n`
              + `Vous pourrez le réactiver depuis Catalogue achats.`)) return;
   if (!await majActifArticle(id, false)) return;
-  catalogueTous.splice(idx, 1);
-  remplirFiltresPanier();
+  art.actif = 0;
   afficherCataloguePanier();
   afficherSuggestions();
   afficherBandeauAnnuler(`« ${art.designation} » désactivé`, async () => {
     if (!await majActifArticle(art.id, true)) return;
-    if (!catalogueTous.some(a => a.id === art.id)) {
-      catalogueTous.splice(Math.min(idx, catalogueTous.length), 0, art);
-    }
-    remplirFiltresPanier();
+    art.actif = 1;
     afficherCataloguePanier();
     afficherSuggestions();
   });
@@ -1101,7 +1108,7 @@ async function verifierOublis(lignes) {
   oublis = oublis.filter(o => {
     if (panierQte(String(o.catalogue_fournisseur_id))) return false;          // déjà au panier
     const a = catalogueTous.find(x => x.id === o.catalogue_fournisseur_id);
-    if (!a || estDesossageAuto(a)) return false;                              // inactif / auto
+    if (!a || !a.actif || estDesossageAuto(a)) return false;                  // inactif / auto
     if (sansFestif && a.famille === 'Festif') return false;
     return true;
   });
@@ -1203,7 +1210,7 @@ function synchroniserDesossage() {
   // 2) Pour chaque fournisseur ayant du veau, trouver SON article 99864-1
   for (const [fid, kg] of Object.entries(veauKgParFourn)) {
     const prest = catalogueTous.find(
-      x => x.fournisseur_id === parseInt(fid) && x.code_article === CODE_PREST_DESOSSAGE
+      x => x.fournisseur_id === parseInt(fid) && x.code_article === CODE_PREST_DESOSSAGE && x.actif
     );
     if (!prest) {
       const f = fournisseurs.find(x => x.id === parseInt(fid));
@@ -1858,6 +1865,10 @@ function afficherErreur(msg) {
 }
 function fmtDate(d) { if (!d) return '—'; return d.split('-').reverse().join('/'); }
 function fmtPrix(v) { return (v ?? 0).toFixed(2).replace('.', ','); }
+// Minuscules sans accents, pour une recherche « epaule » = « Épaule ».
+function sansAccents(str) {
+  return String(str || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
 function escHtml(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
