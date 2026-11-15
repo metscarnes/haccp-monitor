@@ -81,6 +81,7 @@ function bindEvents() {
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-reference').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-habituels').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-sans-festif').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
   document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
 
@@ -540,6 +541,7 @@ async function ouvrirPanier() {
   document.getElementById('panier-filtre-selection').checked = false;
   document.getElementById('panier-filtre-reference').checked = true;
   document.getElementById('panier-filtre-habituels').checked = true;   // « on commande toujours la même chose »
+  document.getElementById('panier-filtre-sans-festif').checked = true; // Festif masqué par défaut
   remplirFiltresPanier();   // alimente Famille / Sous-famille depuis le catalogue
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
   panierSauver();
@@ -861,11 +863,15 @@ function afficherCataloguePanier() {
   const selOnly = document.getElementById('panier-filtre-selection').checked;
   const refOnly = document.getElementById('panier-filtre-reference').checked;
   const habituels = document.getElementById('panier-filtre-habituels').checked;
+  const sansFestif = document.getElementById('panier-filtre-sans-festif').checked;
   const tbody  = document.getElementById('tbody-panier-catalogue');
 
   let liste = catalogueTous.filter(a => {
     if (fourn && String(a.fournisseur_id) !== fourn) return false;
     if (fam && a.famille !== fam) return false;
+    // « Masquer produits festifs » : ignoré si on a explicitement choisi la
+    // famille Festif ; un article festif déjà au panier reste visible.
+    if (sansFestif && fam !== 'Festif' && a.famille === 'Festif' && !panierQte(String(a.id))) return false;
     if (sfam && a.sous_famille !== sfam) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
     // « Références ⭐ » et « Mes produits habituels » se cumulent en INTERSECTION (ET) :

@@ -133,6 +133,13 @@
           </label>
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
+          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;"
+                 title="Cache les articles de la famille Festif (sauf si la famille Festif est choisie dans le filtre ou si l'article est déjà au panier)">
+            <input type="checkbox" id="panier-filtre-sans-festif" checked style="width:18px; height:18px; accent-color:var(--color-accent);">
+            Masquer produits festifs
+          </label>
+        </div>
+        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <button type="button" class="ach-btn ach-btn--primary" id="btn-cadencier">🧠 Panier intelligent</button>
         </div>
       </div>
@@ -397,6 +404,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/commandes.js?v=7"></script>
+  <script src="/static/js/achats/commandes.js?v=8"></script>
 </body>
 </html>
