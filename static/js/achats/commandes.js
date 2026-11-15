@@ -79,8 +79,7 @@ function bindEvents() {
   });
   document.getElementById('panier-filtre-sousfamille').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-selection').addEventListener('change', afficherCataloguePanier);
-  document.getElementById('panier-filtre-reference').addEventListener('change', afficherCataloguePanier);
-  document.getElementById('panier-filtre-habituels').addEventListener('change', afficherCataloguePanier);
+  document.getElementById('panier-filtre-vue').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-filtre-sans-festif').addEventListener('change', afficherCataloguePanier);
   document.getElementById('panier-suggestions-toggle').addEventListener('click', basculerSuggestions);
   document.getElementById('btn-suggestions-tout').addEventListener('click', suggestionsAjouterEcheance);
@@ -539,8 +538,7 @@ async function ouvrirPanier() {
   document.getElementById('panier-filtre-famille').value = '';
   document.getElementById('panier-filtre-sousfamille').value = '';
   document.getElementById('panier-filtre-selection').checked = false;
-  document.getElementById('panier-filtre-reference').checked = true;
-  document.getElementById('panier-filtre-habituels').checked = true;   // « on commande toujours la même chose »
+  document.getElementById('panier-filtre-vue').value = 'habituels';    // ⭐ + déjà commandés
   document.getElementById('panier-filtre-sans-festif').checked = true; // Festif masqué par défaut
   remplirFiltresPanier();   // alimente Famille / Sous-famille depuis le catalogue
   const alertes = synchroniserDesossage();   // recalcule depuis le panier (localStorage/BDD)
@@ -619,7 +617,8 @@ function afficherSuggestions() {
   const btnTout = document.getElementById('btn-suggestions-tout');
 
   // Suggestions affichables : l'article doit exister dans le catalogue chargé.
-  const visibles = suggestionsCmd.filter(s => catalogueTous.some(a => a.id === s.catalogue_fournisseur_id));
+  // Les articles « arrêtés » (plus commandés depuis 3× leur rythme) ne sont plus suggérés.
+  const visibles = suggestionsCmd.filter(s => !s.arrete && catalogueTous.some(a => a.id === s.catalogue_fournisseur_id));
   if (!visibles.length) { panneau.hidden = true; return; }
   panneau.hidden = false;
 
@@ -861,8 +860,7 @@ function afficherCataloguePanier() {
   const fam    = document.getElementById('panier-filtre-famille').value;
   const sfam   = document.getElementById('panier-filtre-sousfamille').value;
   const selOnly = document.getElementById('panier-filtre-selection').checked;
-  const refOnly = document.getElementById('panier-filtre-reference').checked;
-  const habituels = document.getElementById('panier-filtre-habituels').checked;
+  const vue = document.getElementById('panier-filtre-vue').value;   // habituels | references | tout
   const sansFestif = document.getElementById('panier-filtre-sans-festif').checked;
   const tbody  = document.getElementById('tbody-panier-catalogue');
 
@@ -874,12 +872,12 @@ function afficherCataloguePanier() {
     if (sansFestif && fam !== 'Festif' && a.famille === 'Festif' && !panierQte(String(a.id))) return false;
     if (sfam && a.sous_famille !== sfam) return false;
     if (selOnly && !panierQte(String(a.id))) return false;
-    // « Références ⭐ » et « Mes produits habituels » se cumulent en INTERSECTION (ET) :
-    // si les deux sont cochées, l'article doit satisfaire LES DEUX critères.
-    // Un article déjà au panier reste toujours visible (pour pouvoir l'ajuster).
-    if ((refOnly || habituels) && !panierQte(String(a.id))) {
-      if (refOnly && !estReference(a.id)) return false;
-      if (habituels && !estProduitHabituel(a.id)) return false;
+    // Choix « Afficher » : Mes habituels = ⭐ OU déjà commandé (avant 15/11/2026
+    // les deux cases se cumulaient en ET et cachaient les produits commandés
+    // sans ⭐ → ruptures). Un article déjà au panier reste toujours visible.
+    if (vue !== 'tout' && !panierQte(String(a.id))) {
+      if (vue === 'references' && !estReference(a.id)) return false;
+      if (vue === 'habituels' && !estProduitHabituel(a.id)) return false;
     }
     if (q && !(a.designation.toLowerCase().includes(q) || a.code_article.toLowerCase().includes(q))) return false;
     return true;
@@ -972,7 +970,10 @@ function afficherCataloguePanier() {
         <td class="ach-col-num">${totalLigne !== null
             ? `<strong>${fmtPrix(totalLigne)} €</strong>`
             : '<span style="color:#9ca3af">—</span>'}</td>
-        <td style="text-align:center;">${(qte > 0 || desossageAuto) ? '' : `
+        <td style="text-align:center; white-space:nowrap;">${estReference(a.id) ? `
+          <button type="button" onclick="retirerReferencePanier(${a.id})"
+                  title="Retirer l'étoile ⭐ dans les commandes (le comparatif et les marges ne changent pas)"
+                  style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">☆</button>` : ''}${(qte > 0 || desossageAuto) ? '' : `
           <button type="button" onclick="desactiverArticlePanier(${a.id})"
                   title="Je ne commande plus cet article : le désactiver (réactivable depuis Catalogue achats)"
                   style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">🚫</button>`}</td>
@@ -999,7 +1000,48 @@ async function desactiverArticlePanier(id) {
   catalogueTous.splice(idx, 1);
   remplirFiltresPanier();
   afficherCataloguePanier();
-  afficherBandeauAnnulerDesactivation(art, idx);
+  afficherSuggestions();
+  afficherBandeauAnnuler(`« ${art.designation} » désactivé`, async () => {
+    if (!await majActifArticle(art.id, true)) return;
+    if (!catalogueTous.some(a => a.id === art.id)) {
+      catalogueTous.splice(Math.min(idx, catalogueTous.length), 0, art);
+    }
+    remplirFiltresPanier();
+    afficherCataloguePanier();
+    afficherSuggestions();
+  });
+}
+
+// ── Retirer l'étoile ⭐ d'un article (page Commandes seulement) ──
+// Le comparatif n'est pas modifié : la ligne de référence reste utilisée pour
+// les marges. On cache juste l'étoile ici (colonne ref_masquee_commande).
+async function retirerReferencePanier(id) {
+  const ref = referencesAchat[id];
+  if (!ref) return;
+  const art = catalogueTous.find(a => a.id === id);
+  if (!await majRefMasquee(id, true)) return;
+  delete referencesAchat[id];
+  afficherCataloguePanier();
+  afficherBandeauAnnuler(`⭐ retirée de « ${art ? art.designation : 'l’article'} »`, async () => {
+    if (!await majRefMasquee(id, false)) return;
+    referencesAchat[id] = ref;
+    afficherCataloguePanier();
+  });
+}
+
+async function majRefMasquee(id, masquee) {
+  try {
+    const r = await fetch(`${API_PANIER_REF}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ masquee }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return true;
+  } catch (e) {
+    alert(`Impossible de modifier l'étoile : ${e.message}`);
+    return false;
+  }
 }
 
 async function majActifArticle(id, actif) {
@@ -1018,33 +1060,101 @@ async function majActifArticle(id, actif) {
   }
 }
 
-// Bandeau « Article désactivé — Annuler », visible 8 secondes.
-let timerBandeauDesactivation = null;
-function afficherBandeauAnnulerDesactivation(art, idx) {
-  let b = document.getElementById('bandeau-desactivation');
+// Bandeau « … — Annuler », visible 8 secondes.
+let timerBandeauAnnuler = null;
+function afficherBandeauAnnuler(texte, surAnnuler) {
+  let b = document.getElementById('bandeau-annuler');
   if (!b) {
     b = document.createElement('div');
-    b.id = 'bandeau-desactivation';
+    b.id = 'bandeau-annuler';
     b.style.cssText = 'position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:10000;'
       + 'background:#3b2412; color:#fff; padding:10px 14px; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.25);'
       + 'display:flex; gap:14px; align-items:center; font-size:var(--text-sm); max-width:calc(100vw - 32px);';
     document.body.appendChild(b);
   }
-  b.innerHTML = `<span>« ${escHtml(art.designation)} » désactivé</span>
+  b.innerHTML = `<span>${escHtml(texte)}</span>
     <button type="button" style="background:#fff; color:#3b2412; border:none; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer;">Annuler</button>`;
   b.hidden = false;
-  clearTimeout(timerBandeauDesactivation);
-  timerBandeauDesactivation = setTimeout(() => { b.hidden = true; }, 8000);
+  clearTimeout(timerBandeauAnnuler);
+  timerBandeauAnnuler = setTimeout(() => { b.hidden = true; }, 8000);
   b.querySelector('button').onclick = async () => {
-    clearTimeout(timerBandeauDesactivation);
+    clearTimeout(timerBandeauAnnuler);
     b.hidden = true;
-    if (!await majActifArticle(art.id, true)) return;
-    if (!catalogueTous.some(a => a.id === art.id)) {
-      catalogueTous.splice(Math.min(idx, catalogueTous.length), 0, art);
-    }
-    remplirFiltresPanier();
-    afficherCataloguePanier();
+    await surAnnuler();
   };
+}
+
+// ── Pop-up « Vous avez oublié ? » avant de générer les commandes ──
+// Règle côté serveur (/panier/oublis) : article présent dans au moins la moitié
+// des 8 dernières commandes du fournisseur ET dans une des 3 dernières.
+// Seulement les fournisseurs du panier. Résout : 'continuer' | 'retour'.
+async function verifierOublis(lignes) {
+  const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];
+  let oublis = [];
+  try {
+    const r = await fetch(`${API_PANIER}/oublis?fournisseur_ids=${fournIds.join(',')}`);
+    if (!r.ok) return 'continuer';          // en cas de souci, on ne bloque pas la commande
+    oublis = await r.json();
+  } catch (e) { return 'continuer'; }
+
+  const sansFestif = document.getElementById('panier-filtre-sans-festif').checked;
+  oublis = oublis.filter(o => {
+    if (panierQte(String(o.catalogue_fournisseur_id))) return false;          // déjà au panier
+    const a = catalogueTous.find(x => x.id === o.catalogue_fournisseur_id);
+    if (!a || estDesossageAuto(a)) return false;                              // inactif / auto
+    if (sansFestif && a.famille === 'Festif') return false;
+    return true;
+  });
+  if (!oublis.length) return 'continuer';
+
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.className = 'ach-modal';
+    m.innerHTML = `
+      <div class="ach-modal-card" style="max-width:640px;">
+        <header class="ach-modal-header">
+          <h2 class="ach-modal-titre">🤔 Vous n'oubliez rien ?</h2>
+          <button class="ach-modal-fermer" data-action="retour" title="Revenir au panier">✕</button>
+        </header>
+        <div style="padding:var(--space-4);">
+          <p style="margin:0 0 var(--space-3); color:#4b5563; font-size:var(--text-sm);">
+            Ces articles sont d'habitude dans vos commandes chez ces fournisseurs, mais pas dans ce panier.
+          </p>
+          <div style="max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+            ${oublis.map(o => `
+              <label style="display:flex; gap:10px; align-items:center; padding:8px 10px; border:1px solid #e8d9c4; border-radius:8px; cursor:pointer;">
+                <input type="checkbox" data-id="${o.catalogue_fournisseur_id}" checked style="width:20px; height:20px; accent-color:var(--color-accent); flex:none;">
+                <span style="flex:1; min-width:0;">
+                  <strong>${escHtml(o.designation)}</strong>
+                  <span style="display:block; font-size:.8em; color:#6b7280;">
+                    ${escHtml(o.fournisseur_nom)} · dans ${o.nb_presences} des ${o.nb_commandes} dernières commandes · dernière le ${fmtDate(String(o.derniere_date).slice(0, 10))}
+                  </span>
+                </span>
+                <span style="white-space:nowrap; font-weight:600;">${fmtKg(o.derniere_qte)} ${uniteLabel(o.derniere_unite)}</span>
+              </label>`).join('')}
+          </div>
+          <div style="display:flex; gap:var(--space-3); justify-content:flex-end; flex-wrap:wrap; margin-top:var(--space-4);">
+            <button type="button" class="ach-btn" data-action="tel-quel">Non, commander tel quel</button>
+            <button type="button" class="ach-btn ach-btn--ok" data-action="ajouter">Ajouter les cochés et continuer</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const fin = choix => { m.remove(); resolve(choix); };
+    m.querySelector('[data-action="retour"]').onclick = () => fin('retour');
+    m.querySelector('[data-action="tel-quel"]').onclick = () => fin('continuer');
+    m.querySelector('[data-action="ajouter"]').onclick = () => {
+      const coches = [...m.querySelectorAll('input[type=checkbox]:checked')].map(c => parseInt(c.dataset.id));
+      oublis.filter(o => coches.includes(o.catalogue_fournisseur_id)).forEach(o =>
+        ajouterArticleSuggere({
+          catalogue_fournisseur_id: o.catalogue_fournisseur_id,
+          quantite_suggeree: o.derniere_qte,
+          unite_suggeree: o.derniere_unite,
+        }));
+      if (coches.length) rafraichirApresAjout();
+      fin('continuer');
+    };
+  });
 }
 
 function majTotalPanier() {
@@ -1186,7 +1296,7 @@ function panierSetUnite(catId, unite) {
 
 // ── Génération des commandes ──────────────────────────────────
 async function panierGenerer() {
-  const lignes = panierVersLignes();
+  let lignes = panierVersLignes();
   if (!lignes.length) {
     alert('Le panier est vide.');
     return;
@@ -1197,6 +1307,10 @@ async function panierGenerer() {
     document.getElementById('panier-livraison').focus();
     return;
   }
+
+  // Articles habituels oubliés ? (pop-up seulement s'il y en a)
+  if (await verifierOublis(lignes) === 'retour') return;
+  lignes = panierVersLignes();   // le pop-up a pu ajouter des articles
 
   // Sauvegarde le panier en BDD juste avant génération (l'endpoint /generer lit la BDD)
   const fournIds = [...new Set(lignes.map(l => l.fournisseur_id))];

@@ -113,23 +113,19 @@
           <label>Recherche</label>
           <input type="search" id="panier-search" placeholder="Code article ou désignation…" autocomplete="off">
         </div>
-        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
-          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;"
-                 title="Articles déjà commandés ou produits de référence du comparatif">
-            <input type="checkbox" id="panier-filtre-habituels" checked style="width:18px; height:18px; accent-color:var(--color-accent);">
-            Mes produits habituels
-          </label>
+        <div class="ach-filtre">
+          <label>Afficher</label>
+          <select id="panier-filtre-vue"
+                  title="Les articles déjà au panier restent toujours affichés">
+            <option value="habituels">Mes habituels (⭐ + déjà commandés)</option>
+            <option value="references">⭐ Références seulement</option>
+            <option value="tout">Tout le catalogue</option>
+          </select>
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
           <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
             <input type="checkbox" id="panier-filtre-selection" style="width:18px; height:18px; accent-color:var(--color-accent);">
             Articles du panier seulement
-          </label>
-        </div>
-        <div class="ach-filtre" style="display:flex; align-items:flex-end;">
-          <label style="display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); font-weight:600; color:#4b5563; cursor:pointer;">
-            <input type="checkbox" id="panier-filtre-reference" style="width:18px; height:18px; accent-color:var(--color-accent);">
-            ⭐ Références seulement
           </label>
         </div>
         <div class="ach-filtre" style="display:flex; align-items:flex-end;">
@@ -177,7 +173,7 @@
               <th class="ach-col-num" style="cursor:pointer;" onclick="trierCataloguePanier('derniere_qte')" title="Cliquer pour trier">Dernière cmd</th>
               <th style="text-align:center; min-width:300px;">Quantité</th>
               <th class="ach-col-num">Total estimé HT</th>
-              <th style="width:44px;" title="Désactiver un article que vous ne commandez plus"></th>
+              <th style="width:88px;" title="☆ retirer des références · 🚫 désactiver un article que vous ne commandez plus"></th>
             </tr>
           </thead>
           <tbody id="tbody-panier-catalogue">
@@ -405,6 +401,6 @@
     </div>
   </div>
 
-  <script src="/static/js/achats/commandes.js?v=9"></script>
+  <script src="/static/js/achats/commandes.js?v=10"></script>
 </body>
 </html>

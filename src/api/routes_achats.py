@@ -38,7 +38,9 @@ PUT    /api/achats/panier                                → sauvegarder le pani
 DELETE /api/achats/panier                                → vider le panier
 POST   /api/achats/panier/generer                        → générer les commandes (1/fournisseur)
 GET    /api/achats/panier/references                     → lignes d'achat ⭐ du comparatif
+PUT    /api/achats/panier/references/{id}                → cacher / remettre l'étoile ⭐ dans Commandes
 GET    /api/achats/panier/suggestions                    → suggestions (récurrence + score)
+GET    /api/achats/panier/oublis?fournisseur_ids=        → articles habituels absents (pop-up avant génération)
 GET    /api/achats/panier/cadencier                      → cadencier par semaine/mois
 
 GET    /api/achats/pilotage/ca                            → historique CA (filtre période)
@@ -1870,11 +1872,34 @@ async def get_panier_references():
                    COUNT(gv.catalogue_vente_id)         AS nb_produits_vente
             FROM comparatif_groupe_vente gv
             JOIN comparatif_groupe g ON g.id = gv.groupe_id
+            JOIN catalogue_fournisseur cf ON cf.id = gv.ligne_choisie_id
             WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1
+              AND COALESCE(cf.ref_masquee_commande, 0) = 0
             GROUP BY gv.ligne_choisie_id
             """
         )
         return [dict(r) for r in await cur.fetchall()]
+
+
+class RefMasqueeBody(BaseModel):
+    masquee: bool
+
+
+@router.put("/panier/references/{catalogue_id}")
+async def masquer_reference_commande(catalogue_id: int, body: RefMasqueeBody):
+    """Cache (ou remet) l'étoile ⭐ d'un article dans la page Commandes.
+
+    Ne modifie PAS le comparatif : la ligne de référence reste celle utilisée
+    pour les calculs de marge."""
+    async with get_db() as db:
+        cur = await db.execute(
+            "UPDATE catalogue_fournisseur SET ref_masquee_commande = ? WHERE id = ?",
+            (1 if body.masquee else 0, catalogue_id),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Article introuvable")
+        await db.commit()
+    return {"ok": True, "catalogue_fournisseur_id": catalogue_id, "masquee": body.masquee}
 
 
 async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
@@ -1921,12 +1946,27 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
     )
     nb_commandes_total = (await cur_n.fetchone())["n"]
 
+    # Nombre de commandes PAR FOURNISSEUR : la fréquence d'un article se mesure
+    # sur les commandes de SON fournisseur. (Avant : sur toutes les commandes, un
+    # article présent dans 100 % des commandes Saveurs n'avait que 33 % si
+    # Elivia était commandé deux fois plus souvent — audit du 15/11/2026.)
+    cur_nf = await db.execute(
+        """SELECT fournisseur_id, COUNT(*) AS n FROM commandes
+           WHERE boutique_id = 1 AND statut IN ('confirmee', 'livree')
+             AND date_commande >= ?
+           GROUP BY fournisseur_id""",
+        (date_debut.isoformat(),),
+    )
+    nb_cmd_par_fourn = {r["fournisseur_id"]: r["n"] for r in await cur_nf.fetchall()}
+
     # Lignes de référence du comparatif (⭐) pour marquage.
     cur_ref = await db.execute(
         """SELECT DISTINCT gv.ligne_choisie_id AS id
            FROM comparatif_groupe_vente gv
            JOIN comparatif_groupe g ON g.id = gv.groupe_id
-           WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1"""
+           JOIN catalogue_fournisseur cf ON cf.id = gv.ligne_choisie_id
+           WHERE gv.ligne_choisie_id IS NOT NULL AND g.boutique_id = 1
+             AND COALESCE(cf.ref_masquee_commande, 0) = 0"""
     )
     refs = {r["id"] for r in await cur_ref.fetchall()}
 
@@ -1986,20 +2026,32 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
 
         # ── Consommation induite ────────────────────────────────────
         # Le commerce est irrégulier : on ne prédit pas QUAND commander, on
-        # estime le besoin MAINTENANT. Tout ce qui a été commandé entre la
-        # première commande et aujourd'hui est supposé consommé →
-        # conso/jour = total commandé ÷ jours d'activité. Le besoin estimé =
-        # conso/jour × jours depuis la dernière commande, plafonné à la plus
-        # grosse commande passée (jamais suggérer plus qu'un maximum connu :
-        # un long trou — congés, saison — ne doit pas gonfler la suggestion).
+        # estime le besoin MAINTENANT. Ce qui a été commandé AVANT la dernière
+        # commande a été consommé entre la première et la dernière commande →
+        # conso/jour = quantités hors dernière commande ÷ (dernière − première).
+        # (Avant : total y compris la dernière commande ÷ jours jusqu'à
+        # aujourd'hui, ce qui comptait comme consommée une livraison encore en
+        # chambre froide.) Le besoin estimé = conso/jour × jours depuis la
+        # dernière commande, plafonné à la plus grosse commande passée (un long
+        # trou — congés, saison — ne doit pas gonfler la suggestion).
         premiere = dates[0]
-        jours_activite = (aujourd_hui - premiere).days
+        jours_activite = (derniere - premiere).days
         conso_jour = None
         if len(dates) >= 2 and jours_activite >= SUGGESTION_MIN_JOURS_CONSO:
-            conso_jour = sum(qtes) / jours_activite
+            qtes_avant = [o["quantite_commandee"] or 0 for o in occ
+                          if (o["unite"] or "kg") == unite_dominante
+                          and date.fromisoformat(o["date_commande"][:10]) < derniere]
+            conso_jour = sum(qtes_avant) / jours_activite
         besoin_estime = None
         if conso_jour:
             besoin_estime = round(min(conso_jour * jours_depuis, qte_max), 3)
+
+        # Article ARRÊTÉ (ou saisonnier) : plus commandé depuis plus de 3 fois
+        # son rythme habituel (au moins 14 j). Il n'est plus « à commander »
+        # (avant : un article arrêté depuis 100 j restait « à commander »).
+        arrete = bool(
+            intervalle_moyen and jours_depuis > max(3 * intervalle_moyen, 14)
+        )
 
         # Quantité suggérée : le besoin estimé si calculable, sinon la
         # commande type (moyenne) — répond à « combien je commande, là ».
@@ -2008,10 +2060,13 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
         # ── Score de prédominance (0-100) ───────────────────────────
         # fréquence : part des commandes de la fenêtre contenant l'article —
         # « on commande toujours la même chose », c'est elle qui domine.
-        frequence = min(1.0, nb_cmd / nb_commandes_total) if nb_commandes_total else 0.0
+        nb_cmd_fourn = nb_cmd_par_fourn.get(a["fournisseur_id"]) or 0
+        frequence = min(1.0, nb_cmd / nb_cmd_fourn) if nb_cmd_fourn else 0.0
         # besoin : besoin estimé rapporté à la commande type. Neutre (0.5)
         # quand la consommation n'est pas encore calculable.
-        if besoin_estime is not None and quantite_moyenne > 0:
+        if arrete:
+            besoin = 0.0          # article arrêté : aucun besoin, il descend dans la liste
+        elif besoin_estime is not None and quantite_moyenne > 0:
             besoin = min(1.0, besoin_estime / quantite_moyenne)
         else:
             besoin = 0.5
@@ -2021,7 +2076,8 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
         ))
 
         a_commander = bool(
-            besoin_estime is not None and quantite_moyenne > 0
+            not arrete
+            and besoin_estime is not None and quantite_moyenne > 0
             and besoin_estime >= SUGGESTION_SEUIL_BESOIN * quantite_moyenne
         )
 
@@ -2050,6 +2106,7 @@ async def _calculer_suggestions(db, date_debut: date, fenetre_jours: int):
                 "besoin": round(besoin, 3),
             },
             "a_commander": a_commander,
+            "arrete": arrete,
         })
 
     suggestions.sort(key=lambda s: s["score"], reverse=True)
@@ -2078,6 +2135,85 @@ async def get_panier_suggestions(fenetre_jours: int = Query(180, ge=7, le=730)):
         "nb_commandes_total": nb_total,
         "suggestions": suggestions,
     }
+
+
+# ── Oublis probables (pop-up avant de générer une commande) ──────────────────
+# Règle volontairement simple et explicable, indépendante du moteur de
+# suggestions : pour chaque fournisseur du panier, on regarde ses N dernières
+# commandes passées. Un article est un « oubli probable » s'il était dans au
+# moins la moitié d'entre elles ET dans au moins une des 3 dernières (sinon il
+# est considéré comme arrêté / saisonnier).
+OUBLIS_NB_COMMANDES = 8
+OUBLIS_SEUIL_PRESENCE = 0.5
+OUBLIS_RECENCE = 3
+OUBLIS_MIN_HISTORIQUE = 3
+
+
+@router.get("/panier/oublis")
+async def get_panier_oublis(fournisseur_ids: str = Query(..., description="ids séparés par des virgules")):
+    """Articles habituellement commandés chez ces fournisseurs (voir règle
+    ci-dessus). Le front retire ceux déjà au panier."""
+    try:
+        ids = [int(x) for x in fournisseur_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, "fournisseur_ids invalide")
+    resultats = []
+    async with get_db() as db:
+        for fid in ids:
+            cur = await db.execute(
+                """SELECT id, date_commande FROM commandes
+                   WHERE boutique_id = 1 AND fournisseur_id = ?
+                     AND statut IN ('confirmee', 'livree')
+                   ORDER BY date_commande DESC, id DESC LIMIT ?""",
+                (fid, OUBLIS_NB_COMMANDES),
+            )
+            cmds = [dict(r) for r in await cur.fetchall()]
+            if len(cmds) < OUBLIS_MIN_HISTORIQUE:
+                continue   # pas assez d'historique : on ne devine rien
+            rang = {c["id"]: i for i, c in enumerate(cmds)}   # 0 = la plus récente
+            ph = ",".join("?" * len(cmds))
+            cur = await db.execute(
+                f"""SELECT cl.commande_id, cl.catalogue_fournisseur_id, cl.quantite_commandee,
+                           cl.unite, cf.designation, cf.code_article, cf.famille,
+                           cf.sous_famille, f.nom AS fournisseur_nom
+                    FROM commande_lignes cl
+                    JOIN catalogue_fournisseur cf ON cf.id = cl.catalogue_fournisseur_id
+                    JOIN fournisseurs f ON f.id = cf.fournisseur_id
+                    WHERE cl.commande_id IN ({ph})
+                      AND cf.actif = 1 AND cf.code_article != ?""",
+                [c["id"] for c in cmds] + [CODE_PREST_DESOSSAGE],
+            )
+            par_article: dict = {}
+            for l in await cur.fetchall():
+                l = dict(l)
+                a = par_article.setdefault(l["catalogue_fournisseur_id"], {"rangs": set(), "lignes": []})
+                a["rangs"].add(rang[l["commande_id"]])
+                a["lignes"].append(l)
+            for cat_id, a in par_article.items():
+                nb = len(a["rangs"])
+                if nb / len(cmds) < OUBLIS_SEUIL_PRESENCE:
+                    continue
+                if min(a["rangs"]) >= OUBLIS_RECENCE:
+                    continue
+                # Quantité de la commande la plus récente qui le contenait.
+                r_min = min(a["rangs"])
+                derniere = next(l for l in a["lignes"] if rang[l["commande_id"]] == r_min)
+                resultats.append({
+                    "catalogue_fournisseur_id": cat_id,
+                    "fournisseur_id": fid,
+                    "fournisseur_nom": derniere["fournisseur_nom"],
+                    "designation": derniere["designation"],
+                    "code_article": derniere["code_article"],
+                    "famille": derniere["famille"],
+                    "sous_famille": derniere["sous_famille"],
+                    "nb_presences": nb,
+                    "nb_commandes": len(cmds),
+                    "derniere_qte": derniere["quantite_commandee"],
+                    "derniere_unite": derniere["unite"] or "kg",
+                    "derniere_date": cmds[r_min]["date_commande"],
+                })
+    resultats.sort(key=lambda r: (r["fournisseur_nom"], -r["nb_presences"], r["designation"]))
+    return resultats
 
 
 MOIS_COURTS = ["janv", "févr", "mars", "avr", "mai", "juin",

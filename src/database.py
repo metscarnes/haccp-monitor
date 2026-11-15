@@ -2229,6 +2229,10 @@ CREATE TABLE IF NOT EXISTS fiches_incident (
             # sert seulement à retrouver la saisie après un rafraîchissement de page.
             # Vidé à la clôture.
             "ALTER TABLE receptions ADD COLUMN brouillon_saisie TEXT",
+            # v9.1 — Étoile ⭐ « référence » cachée dans la page Commandes seulement.
+            # La ligne choisie du comparatif (comparatif_groupe_vente.ligne_choisie_id)
+            # n'est PAS touchée : elle sert aux calculs de marge.
+            "ALTER TABLE catalogue_fournisseur ADD COLUMN ref_masquee_commande INTEGER NOT NULL DEFAULT 0",
         ]
         for sql in migrations:
             try:
