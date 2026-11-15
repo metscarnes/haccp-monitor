@@ -898,7 +898,7 @@ function afficherCataloguePanier() {
   }
 
   if (!liste.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="ach-vide">Aucun article</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="ach-vide">Aucun article</td></tr>';
     majTotalPanier();
     return;
   }
@@ -972,10 +972,79 @@ function afficherCataloguePanier() {
         <td class="ach-col-num">${totalLigne !== null
             ? `<strong>${fmtPrix(totalLigne)} €</strong>`
             : '<span style="color:#9ca3af">—</span>'}</td>
+        <td style="text-align:center;">${(qte > 0 || desossageAuto) ? '' : `
+          <button type="button" onclick="desactiverArticlePanier(${a.id})"
+                  title="Je ne commande plus cet article : le désactiver (réactivable depuis Catalogue achats)"
+                  style="background:none; border:1px solid #e5d5c0; border-radius:6px; padding:4px 7px; cursor:pointer; font-size:1rem; line-height:1;">🚫</button>`}</td>
       </tr>`;
   }).join('');
 
   majTotalPanier();
+}
+
+// ── Désactiver un article depuis la fenêtre de commande ──────
+// Passe l'article en « inactif » dans le catalogue achats (même effet que le
+// bouton Désactiver de la page Catalogue achats). Il disparaît des commandes ;
+// on le réactive depuis Catalogue achats (case « afficher les inactifs ») ou
+// via « Annuler » juste après.
+async function desactiverArticlePanier(id) {
+  const idx = catalogueTous.findIndex(a => a.id === id);
+  if (idx < 0) return;
+  const art = catalogueTous[idx];
+  if (panierQte(String(id))) return;   // jamais un article déjà au panier
+  if (!confirm(`Désactiver « ${art.designation} » (${art.fournisseur_nom}) ?\n\n`
+             + `Il n'apparaîtra plus dans les commandes, ni dans la réception.\n`
+             + `Vous pourrez le réactiver depuis Catalogue achats.`)) return;
+  if (!await majActifArticle(id, false)) return;
+  catalogueTous.splice(idx, 1);
+  remplirFiltresPanier();
+  afficherCataloguePanier();
+  afficherBandeauAnnulerDesactivation(art, idx);
+}
+
+async function majActifArticle(id, actif) {
+  try {
+    const r = await fetch(`${API_CAT}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actif }),
+    });
+    if (r.status === 403) throw new Error('réservé au compte administrateur');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return true;
+  } catch (e) {
+    alert(`Impossible de ${actif ? 'réactiver' : 'désactiver'} l'article : ${e.message}`);
+    return false;
+  }
+}
+
+// Bandeau « Article désactivé — Annuler », visible 8 secondes.
+let timerBandeauDesactivation = null;
+function afficherBandeauAnnulerDesactivation(art, idx) {
+  let b = document.getElementById('bandeau-desactivation');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'bandeau-desactivation';
+    b.style.cssText = 'position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:10000;'
+      + 'background:#3b2412; color:#fff; padding:10px 14px; border-radius:10px; box-shadow:0 4px 16px rgba(0,0,0,.25);'
+      + 'display:flex; gap:14px; align-items:center; font-size:var(--text-sm); max-width:calc(100vw - 32px);';
+    document.body.appendChild(b);
+  }
+  b.innerHTML = `<span>« ${escHtml(art.designation)} » désactivé</span>
+    <button type="button" style="background:#fff; color:#3b2412; border:none; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer;">Annuler</button>`;
+  b.hidden = false;
+  clearTimeout(timerBandeauDesactivation);
+  timerBandeauDesactivation = setTimeout(() => { b.hidden = true; }, 8000);
+  b.querySelector('button').onclick = async () => {
+    clearTimeout(timerBandeauDesactivation);
+    b.hidden = true;
+    if (!await majActifArticle(art.id, true)) return;
+    if (!catalogueTous.some(a => a.id === art.id)) {
+      catalogueTous.splice(Math.min(idx, catalogueTous.length), 0, art);
+    }
+    remplirFiltresPanier();
+    afficherCataloguePanier();
+  };
 }
 
 function majTotalPanier() {
