@@ -6281,6 +6281,7 @@ async def imprimer_facture(facture_id: int):
 
     html = f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
 <title>Rapprochement facture {esc(fac.get('numero_facture') or '')}</title>
 <style>
   * {{ box-sizing: border-box; }}

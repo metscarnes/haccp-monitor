@@ -230,6 +230,20 @@ async def controle_acces(request: Request, call_next):
 
     return await call_next(request)
 
+
+# ---------------------------------------------------------------------------
+# Outil privé : interdire l'indexation par les moteurs de recherche.
+# En-tête « X-Robots-Tag » ajouté à TOUTES les réponses (pages, /api/, fichiers,
+# redirections et refus 401 compris). Déclaré APRÈS controle_acces : il
+# l'enveloppe donc et voit aussi les réponses qu'il produit lui-même.
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def interdire_indexation(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
 # Routes API — Phase 1
 app.include_router(router_boutiques)
 app.include_router(router_enceintes)

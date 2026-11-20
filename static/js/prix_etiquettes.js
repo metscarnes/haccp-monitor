@@ -554,7 +554,7 @@ async function imprimerImagesSansPopup(images, lCm, hCm, titre) {
   const doc = cadre.contentDocument;
   doc.open();
   doc.write(`<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"><title>${escHtml(titre)}</title>
+<html lang="fr"><head><meta charset="utf-8"><meta name="robots" content="noindex, nofollow"><title>${escHtml(titre)}</title>
 <style>
   @page { size: ${lCm}cm ${hCm}cm; margin: 0; }
   html, body { margin: 0; padding: 0; }
