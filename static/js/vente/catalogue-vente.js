@@ -21,12 +21,10 @@ let triSens    = 'asc';
 
 const COLONNES = [
   { key: 'nom',                      label: 'Nom' },
-  { key: 'code_vente',               label: 'Code' },
   { key: 'prix_vente_ttc',           label: 'Prix TTC' },
+  { key: 'unite_vente',              label: 'Vendu' },
   { key: 'tva_percent',              label: 'TVA' },
   { key: 'marge',                    label: 'Marge' },
-  { key: 'dlc_jours',               label: 'DLC (j)' },
-  { key: 'temperature_conservation', label: 'Température' },
   { key: 'famille',                  label: 'Famille' },
   { key: 'sous_famille',             label: 'Sous-famille' },
   { key: 'mentions',                 label: 'Mentions' },
@@ -351,12 +349,12 @@ function afficherTable(liste) {
         ${escHtml(p.nom)}${p.fait_maison ? ' <span title="Fait maison : logo sur ses étiquettes prix">🏠</span>' : ''}
         ${!p.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
       </td>
-      <td>${p.code_vente ? `<code>${escHtml(p.code_vente)}</code>` : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${p.prix_vente_ttc != null ? p.prix_vente_ttc.toFixed(2) + ' €' : '<span style="color:#9ca3af">—</span>'}</td>
+      <td>${p.unite_vente === 'piece'
+        ? `<span class="ach-badge ach-badge--no-dlc" style="white-space:nowrap;">à la pièce</span>`
+        : '<span class="ach-badge ach-badge--dlc" style="white-space:nowrap;">au kg</span>'}</td>
       <td>${fmtTva(p.tva_percent)}%</td>
       <td class="ach-col-num">${tauxMarge}</td>
-      <td class="ach-col-num">${p.dlc_jours ?? '—'}</td>
-      <td>${escHtml(p.temperature_conservation || '—')}</td>
       <td>${p.famille ? escHtml(p.famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${libellesMentions(p).length
