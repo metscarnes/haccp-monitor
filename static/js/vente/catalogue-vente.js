@@ -23,7 +23,6 @@ const COLONNES = [
   { key: 'nom',                      label: 'Nom' },
   { key: 'prix_vente_ttc',           label: 'Prix TTC' },
   { key: 'unite_vente',              label: 'Vendu' },
-  { key: 'tva_percent',              label: 'TVA' },
   { key: 'marge',                    label: 'Marge' },
   { key: 'famille',                  label: 'Famille' },
   { key: 'sous_famille',             label: 'Sous-famille' },
@@ -353,7 +352,6 @@ function afficherTable(liste) {
       <td>${p.unite_vente === 'piece'
         ? `<span class="ach-badge ach-badge--no-dlc" style="white-space:nowrap;">à la pièce</span>`
         : '<span class="ach-badge ach-badge--dlc" style="white-space:nowrap;">au kg</span>'}</td>
-      <td>${fmtTva(p.tva_percent)}%</td>
       <td class="ach-col-num">${tauxMarge}</td>
       <td>${p.famille ? escHtml(p.famille) : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${p.sous_famille ? escHtml(p.sous_famille) : '<span style="color:#9ca3af">—</span>'}</td>
