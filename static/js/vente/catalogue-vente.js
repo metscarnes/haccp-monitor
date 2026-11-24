@@ -21,6 +21,7 @@ let triSens    = 'asc';
 
 const COLONNES = [
   { key: 'nom',                      label: 'Nom' },
+  { key: 'prix_achat',               label: 'Prix achat HT' },
   { key: 'prix_vente_ttc',           label: 'Prix TTC' },
   { key: 'unite_vente',              label: 'Vendu' },
   { key: 'marge',                    label: 'Marge' },
@@ -277,8 +278,24 @@ function filtrer() {
 // le sens du tri (ni la meilleure ni la pire marge, on ne les mélange pas aux vraies valeurs).
 function valeurTri(produit, cle) {
   if (cle === 'marge') return produit.marge?.taux_marge ?? null;
+  if (cle === 'prix_achat') return coutAchat(produit);
   if (cle === 'mentions') return libellesMentions(produit).join(', ');
   return produit[cle] ?? '';
+}
+
+// Coût HT de l'achat de référence dans l'unité de VENTE (comparable au prix TTC à côté).
+// Miroir de _cout_matiere : kg → €/kg ; pièce → €/kg × poids pièce, sinon prix d'une pièce.
+// null si pas d'achat de référence actif ou coût non dérivable.
+function coutAchat(p) {
+  const ref = p.achat_ref;
+  if (!ref) return null;
+  const kg = ref.prix_kg != null ? Number(ref.prix_kg) : null;
+  if (p.unite_vente === 'piece') {
+    const poids = Number(p.poids_piece_kg);
+    if (kg != null && poids > 0) return kg * poids;
+    return ref.prix_piece != null ? Number(ref.prix_piece) : null;
+  }
+  return kg;
 }
 
 function trier() {
@@ -348,6 +365,9 @@ function afficherTable(liste) {
         ${escHtml(p.nom)}${p.fait_maison ? ' <span title="Fait maison : logo sur ses étiquettes prix">🏠</span>' : ''}
         ${!p.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
       </td>
+      <td class="ach-col-num"${p.achat_ref ? ` title="${escHtml(p.achat_ref.designation || '')}${p.achat_ref.fournisseur_nom ? ' — ' + escHtml(p.achat_ref.fournisseur_nom) : ''}"` : ''}>${coutAchat(p) != null
+        ? coutAchat(p).toFixed(2) + ' €'
+        : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${p.prix_vente_ttc != null ? p.prix_vente_ttc.toFixed(2) + ' €' : '<span style="color:#9ca3af">—</span>'}</td>
       <td>${p.unite_vente === 'piece'
         ? `<span class="ach-badge ach-badge--no-dlc" style="white-space:nowrap;">à la pièce</span>`
