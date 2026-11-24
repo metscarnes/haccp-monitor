@@ -168,15 +168,19 @@ async def liste_catalogue_vente(
             """
             SELECT gv.catalogue_vente_id, gv.ligne_choisie_id, cf.id AS cf_id, cf.actif AS cf_actif,
                    cf.format_prix, cf.prix_achat_ht, cf.poids_colis_kg, cf.famille,
-                   cf.poids_unitaire_kg, cf.qte_par_colis
+                   cf.poids_unitaire_kg, cf.qte_par_colis, cf.designation, f.nom AS fournisseur_nom
             FROM   comparatif_groupe_vente gv
             LEFT   JOIN catalogue_fournisseur cf ON cf.id = gv.ligne_choisie_id
+            LEFT   JOIN fournisseurs f ON f.id = cf.fournisseur_id
             """
         )
         liaisons = {r["catalogue_vente_id"]: dict(r) for r in await cur_liaison.fetchall()}
 
         for p in produits:
             liaison = liaisons.get(p["id"])
+            # Coût de l'achat de référence, pour recalculer la marge EN DIRECT dans la fiche
+            # (même règle que _calc_marge, miroir JS). None si pas de référence active.
+            p["achat_ref"] = None
             if liaison is None:
                 p["liaison_achat"] = "non_relie"
                 p["marge"] = None
@@ -192,6 +196,12 @@ async def liste_catalogue_vente(
                 continue
             achat_ref_kg    = _prix_kg_article(liaison)
             achat_ref_piece = _prix_piece_article(liaison)
+            p["achat_ref"] = {
+                "designation": liaison.get("designation"),
+                "fournisseur_nom": liaison.get("fournisseur_nom"),
+                "prix_kg": achat_ref_kg,
+                "prix_piece": achat_ref_piece,
+            }
             marge = _calc_marge(
                 p.get("prix_vente_ttc"),
                 p.get("tva_percent"),

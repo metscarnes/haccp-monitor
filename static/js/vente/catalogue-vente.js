@@ -204,6 +204,9 @@ function bindEvents() {
 
   // Unité de vente : le champ « poids d'une pièce » n'apparaît qu'en mode pièce.
   document.getElementById('v-unite').addEventListener('change', majAffichagePoids);
+  // Marge en direct dans la fiche (prix, unité, poids, TVA)
+  ['v-prix', 'v-poids'].forEach(id => document.getElementById(id).addEventListener('input', majMargeFiche));
+  ['v-unite', 'v-tva'].forEach(id => document.getElementById(id).addEventListener('change', majMargeFiche));
 
   // Checkbox "tout sélectionner"
   document.getElementById('chk-tout').addEventListener('change', e => {
@@ -674,7 +677,9 @@ function ouvrirNouveau() {
   document.getElementById('modal-titre').textContent = 'Nouveau produit fini';
   document.getElementById('btn-supprimer').hidden = true;
   document.getElementById('btn-relier-achat').hidden = true;  // pas d'id tant que non créé
+  ficheProduit = null;
   viderForm();
+  majMargeFiche();
   peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), '');
   document.getElementById('modal-vente').hidden = false;
   document.getElementById('v-nom').focus();
@@ -710,7 +715,63 @@ function ouvrirEdition(id) {
   document.getElementById('btn-supprimer').hidden = false;
   document.getElementById('btn-relier-achat').hidden = false;
   document.getElementById('form-erreur').hidden = true;
+  ficheProduit = p;
+  majMargeFiche();
   document.getElementById('modal-vente').hidden = false;
+}
+
+// ── Marge en direct dans la fiche ────────────────────────────
+// Recalculée à chaque frappe sur le prix / unité / poids / TVA, à partir du coût de l'achat
+// de référence (p.achat_ref, fourni par GET /api/vente/catalogue). Miroir de _calc_marge :
+// HT = TTC / (1 + TVA) ; kg → coût = €/kg ; pièce → €/kg × poids (prioritaire), sinon prix
+// d'une pièce côté achat. Jamais de chiffre inventé : sinon on explique pourquoi.
+let ficheProduit = null;   // produit ouvert en édition (null = création)
+
+function majMargeFiche() {
+  const zone = document.getElementById('v-marge');
+  const p = ficheProduit;
+  if (!p) { zone.hidden = true; return; }
+  const gris = t => { zone.innerHTML = `<span style="color:#6b7280;font-weight:400;">${t}</span>`; zone.hidden = false; };
+
+  const ref = p.achat_ref;
+  if (!ref) {
+    if (p.liaison_achat === 'reference_inactive') gris("⚠ L'achat de référence est désactivé — marge non calculable (bouton 🔗 Achats liés).");
+    else if (p.liaison_achat === 'relie_sans_reference') gris('Aucun achat de référence choisi — marge non calculable (bouton 🔗 Achats liés).');
+    else gris('Aucun article d\'achat lié — marge non suivie (bouton 🔗 Achats liés).');
+    return;
+  }
+  const ttc = parseFloat(document.getElementById('v-prix').value);
+  if (!(ttc > 0)) { gris('Saisis un prix pour voir la marge.'); return; }
+  const tva = parseFloat(document.getElementById('v-tva').value);
+  const venteHt = ttc / (1 + (isNaN(tva) ? 5.5 : tva) / 100);
+  const piece = document.getElementById('v-unite').value === 'piece';
+  const poids = parseFloat(document.getElementById('v-poids').value);
+  const achatKg = ref.prix_kg != null ? Number(ref.prix_kg) : null;
+  const achatPiece = ref.prix_piece != null ? Number(ref.prix_piece) : null;
+
+  let cout;
+  if (piece) {
+    if (achatKg != null && poids > 0) cout = achatKg * poids;
+    else if (achatPiece != null) cout = achatPiece;
+    else { gris('Coût d\'une pièce inconnu : renseigne le poids d\'une pièce.'); return; }
+  } else {
+    if (achatKg == null) { gris('Prix d\'achat au kg inconnu (poids du colis manquant côté achat).'); return; }
+    cout = achatKg;
+  }
+  const u = piece ? 'pièce' : 'kg';
+  const marge = venteHt - cout;
+  const taux = venteHt > 0 ? ` · ${(marge / venteHt * 100).toFixed(0)} %` : '';
+  const coef = cout > 0 ? ` · coef ${(venteHt / cout).toFixed(2)}` : '';
+  const col = marge >= 0 ? '#2f7d3a' : '#c1452c';
+  const equiv = piece && poids > 0
+    ? `<div style="color:#6b7280;font-weight:400;font-size:var(--text-xs);">≈ vendu ${fmtPrix(venteHt / poids)} €/kg HT · acheté ${fmtPrix(achatKg != null ? achatKg : cout / poids)} €/kg</div>`
+    : '';
+  zone.innerHTML =
+      `<span style="color:${col};">Marge : ${fmtPrix(marge)} € / ${u}${taux}</span>`
+    + `<span style="color:#6b7280;font-weight:400;">${coef} · achat ${fmtPrix(cout)} €/${u} HT</span>`
+    + equiv
+    + `<div style="color:#9ca3af;font-weight:400;font-size:var(--text-xs);">Achat de référence : ${escHtml(ref.designation || '')}${ref.fournisseur_nom ? ' (' + escHtml(ref.fournisseur_nom) + ')' : ''}</div>`;
+  zone.hidden = false;
 }
 
 function fermerModal() {

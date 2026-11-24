@@ -235,6 +235,22 @@ async def test_lier_direct_et_voir_des_deux_cotes(app_client, db):
 
 
 @pytest.mark.asyncio
+async def test_catalogue_vente_expose_achat_ref_pour_marge_en_direct(app_client, db):
+    """GET /api/vente/catalogue renvoie le coût de l'achat de référence (marge en direct fiche)."""
+    fid = await _fournisseur(app_client, "Boucherie Test")
+    a1 = await _article(app_client, fid, "R1", "Rumsteck", prix_achat_ht=20.0)
+    vente = await _produit_vente(app_client, "Rumsteck", prix_vente_ttc=35.0)
+    seul = await _produit_vente(app_client, "Sans lien", prix_vente_ttc=10.0)
+    await app_client.post("/api/achats/comparatif/lier",
+                          json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a1})
+    produits = {p["id"]: p for p in (await app_client.get("/api/vente/catalogue")).json()}
+    ref = produits[vente]["achat_ref"]
+    assert ref["prix_kg"] == pytest.approx(20.0)
+    assert ref["designation"] == "Rumsteck" and ref["fournisseur_nom"] == "Boucherie Test"
+    assert produits[seul]["achat_ref"] is None
+
+
+@pytest.mark.asyncio
 async def test_lier_reprend_reference_si_ancienne_inactive(app_client, db):
     """Groupe existant dont la référence a été désactivée : un nouveau lien la remplace."""
     fid = await _fournisseur(app_client, "Boucherie Test")
