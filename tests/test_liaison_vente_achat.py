@@ -184,3 +184,67 @@ async def test_from_vente_refuse_doublon(app_client, db):
     r2 = await app_client.post("/api/achats/comparatif/groupes/from-vente",
                                json={"catalogue_vente_id": vente})
     assert r2.status_code == 409, r2.text
+
+
+@pytest.mark.asyncio
+async def test_lier_direct_et_voir_des_deux_cotes(app_client, db):
+    """POST /comparatif/lier : crée le groupe, prend le 1er achat comme référence ; un 2e achat
+    s'ajoute SANS voler la référence ; reference=True la bascule. Les deux vues de lecture
+    (liaison-vente / liaison-achat) reflètent l'état."""
+    fid = await _fournisseur(app_client, "Boucherie Test")
+    a1 = await _article(app_client, fid, "ENT01", "Entrecôte A", prix_achat_ht=18.0)
+    a2 = await _article(app_client, fid, "ENT02", "Entrecôte B", prix_achat_ht=16.0)
+    vente = await _produit_vente(app_client, "Entrecôte", prix_vente_ttc=30.0,
+                                 tva_percent=5.5, unite_vente="kg")
+
+    # Non relié au départ.
+    r0 = await app_client.get(f"/api/achats/comparatif/liaison-vente/{vente}")
+    assert r0.status_code == 200 and r0.json()["groupe_id"] is None
+    assert (await app_client.get(f"/api/achats/comparatif/liaison-achat/{a1}")).json()["ventes"] == []
+
+    # 1er lien → groupe créé + référence = a1 + marge.
+    r1 = await app_client.post("/api/achats/comparatif/lier",
+                               json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a1})
+    assert r1.status_code == 200, r1.text
+    l1 = r1.json()
+    assert l1["reference_id"] == a1
+    assert l1["marge"]["marge"] == pytest.approx(30 / 1.055 - 18.0, abs=0.01)
+
+    # 2e lien sans précision → ajouté, la référence reste a1.
+    l2 = (await app_client.post("/api/achats/comparatif/lier",
+                                json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a2})).json()
+    assert l2["groupe_id"] == l1["groupe_id"]
+    assert l2["reference_id"] == a1
+    assert {a["id"] for a in l2["achats"]} == {a1, a2}
+    assert l2["achats"][0]["id"] == a1 and l2["achats"][0]["est_reference"]
+
+    # Côté achat : a2 voit la vente, sans en être la référence (réf = Entrecôte A).
+    va = (await app_client.get(f"/api/achats/comparatif/liaison-achat/{a2}")).json()["ventes"]
+    assert len(va) == 1 and va[0]["id"] == vente
+    assert va[0]["est_reference"] is False
+    assert va[0]["reference_designation"] == "Entrecôte A"
+
+    # reference=True → bascule sur a2.
+    l3 = (await app_client.post("/api/achats/comparatif/lier",
+                                json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a2,
+                                      "reference": True})).json()
+    assert l3["reference_id"] == a2
+    assert l3["marge"]["marge"] == pytest.approx(30 / 1.055 - 16.0, abs=0.01)
+    vb = (await app_client.get(f"/api/achats/comparatif/liaison-achat/{a2}")).json()["ventes"]
+    assert vb[0]["est_reference"] is True
+
+
+@pytest.mark.asyncio
+async def test_lier_reprend_reference_si_ancienne_inactive(app_client, db):
+    """Groupe existant dont la référence a été désactivée : un nouveau lien la remplace."""
+    fid = await _fournisseur(app_client, "Boucherie Test")
+    a1 = await _article(app_client, fid, "X1", "Bavette A", prix_achat_ht=14.0)
+    a2 = await _article(app_client, fid, "X2", "Bavette B", prix_achat_ht=15.0)
+    vente = await _produit_vente(app_client, "Bavette", prix_vente_ttc=25.0)
+    await app_client.post("/api/achats/comparatif/lier",
+                          json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a1})
+    await db.execute("UPDATE catalogue_fournisseur SET actif = 0 WHERE id = ?", (a1,))
+    await db.commit()
+    l = (await app_client.post("/api/achats/comparatif/lier",
+                               json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a2})).json()
+    assert l["reference_id"] == a2

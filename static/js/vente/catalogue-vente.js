@@ -99,7 +99,17 @@ document.addEventListener('DOMContentLoaded', () => {
   construireMentions();
   peuplerSelectFamille(document.getElementById('v-famille'), document.getElementById('v-sous-famille'), '');
   bindEvents();
-  charger();
+  // Deep-link depuis le catalogue achats (« Voir la fiche ») : ?edit=<id> ouvre la fiche.
+  const editId = Number(new URLSearchParams(location.search).get('edit'));
+  charger().then(async () => {
+    if (!editId) return;
+    if (!produits.some(p => p.id === editId)) {
+      // Produit inactif : on recharge avec les inactifs pour pouvoir l'ouvrir.
+      document.getElementById('filtre-inactifs').checked = true;
+      await charger();
+    }
+    ouvrirEdition(editId);
+  });
 });
 
 // ── Badge « Prix à revoir » : propositions de prix de vente en attente ──
@@ -147,9 +157,7 @@ function bindEvents() {
   });
   document.getElementById('mal-fermer').addEventListener('click', fermerModalAchatLie);
   document.getElementById('mal-annuler').addEventListener('click', fermerModalAchatLie);
-  document.getElementById('mal-succes-ok').addEventListener('click', fermerModalAchatLie);
   document.getElementById('mal-comparateur').addEventListener('click', ouvrirComparateurDepuisVente);
-  document.getElementById('mal-succes-comparateur').addEventListener('click', ouvrirComparateurDepuisVente);
   document.getElementById('mal-search').addEventListener('input', e => {
     clearTimeout(malRechercheTimer);
     const q = e.target.value.trim();
@@ -157,8 +165,14 @@ function bindEvents() {
   });
   document.getElementById('mal-resultats').addEventListener('click', e => {
     const btn = e.target.closest('button[data-aid]');
-    if (!btn) return;
-    malLierAArticle(btn.dataset.aid, btn.dataset.gid || null);
+    if (!btn || btn.disabled) return;
+    malLierAArticle(Number(btn.dataset.aid));
+  });
+  document.getElementById('mal-lies').addEventListener('click', e => {
+    const ref = e.target.closest('[data-ref]');
+    const ret = e.target.closest('[data-retirer]');
+    if (ref) malPrendreReference(Number(ref.dataset.ref));
+    else if (ret) malRetirerAchat(Number(ret.dataset.retirer));
   });
 
   // Filtres
@@ -848,44 +862,160 @@ function escHtml(str) {
 }
 function fmtPrix(v) { return (v ?? 0).toFixed(2); }
 
-// ── Modal « Relier à un article d'achat » (suivi de marge) ───
-// Miroir du flux achat→vente (modale mvp-* de catalogue-achats.js), sens inverse :
-// on part d'un produit de VENTE et on lui rattache un article d'ACHAT. La liaison
-// passe par le groupe comparatif : from-vente crée le groupe si besoin, /lignes ajoute
-// l'article d'achat, puis la référence est fixée pour un calcul de marge immédiat.
+// ── Modal « Articles d'achat liés » (suivi de marge) ─────────
+// Montre d'abord CE QUI EST LIÉ au produit de vente (l'achat de référence de la marge en
+// tête, les autres achats comparés dessous), puis permet d'en ajouter un. La liaison est
+// portée par le groupe comparatif, mais tout passe par 3 routes dédiées :
+//   GET  /comparatif/liaison-vente/{id}  — état
+//   POST /comparatif/lier                — ajoute (crée le groupe si besoin, prend la
+//                                          référence si le produit n'en a pas de valable)
+//   PUT  …/ventes/{id}/reference, DELETE …/lignes/{cf} — changer la référence / retirer
 let malProduitCourant = null;   // produit de vente ciblé par la modale
-let malGroupeCourant  = null;   // groupe du produit (connu après liaison) → deep-link comparateur
+let malGroupeCourant  = null;   // groupe du produit → deep-link comparateur
+let malLiaison        = null;   // dernière réponse liaison-vente
+let malModifie        = false;  // recharger le tableau à la fermeture
 let malRechercheTimer = null;
 
-function ouvrirModalAchatLie(produitId) {
+function malHeaders(json) {
+  const token = localStorage.getItem('admin_token');
+  const h = token ? { Authorization: 'Bearer ' + token } : {};
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+async function ouvrirModalAchatLie(produitId) {
   const p = produits.find(x => x.id === produitId);
   if (!p) return;
   malProduitCourant = p;
   malGroupeCourant  = null;
+  malLiaison        = null;
+  malModifie        = false;
   document.getElementById('mal-nom').textContent = p.nom || '(sans nom)';
   document.getElementById('mal-erreur').hidden = true;
-  document.getElementById('mal-succes').hidden = true;
-  document.getElementById('mal-lier').hidden = false;
-  document.getElementById('mal-resultats').innerHTML =
-    '<p style="color:#9ca3af;font-size:var(--text-sm);">Tapez pour rechercher…</p>';
+  document.getElementById('mal-marge').innerHTML = '<span style="color:#9ca3af;">Chargement…</span>';
+  document.getElementById('mal-lies').innerHTML = '';
+  document.getElementById('mal-resultats').innerHTML = '';
   const input = document.getElementById('mal-search');
   input.value = '';
   document.getElementById('modal-achat-lie').hidden = false;
-  // Pré-remplit avec le nom du produit pour proposer d'emblée les achats proches.
-  const pref = (p.nom || '').trim();
-  if (pref) { input.value = pref; malRechercherAchats(pref); }
-  input.focus();
+
+  await malChargerLies();
+  // Pas encore relié → on propose d'emblée les achats au nom proche.
+  if (malLiaison && !malLiaison.achats.length) {
+    const pref = (p.nom || '').trim();
+    if (pref) { input.value = pref; malRechercherAchats(pref); }
+    input.focus();
+  }
 }
 
 function fermerModalAchatLie() {
   document.getElementById('modal-achat-lie').hidden = true;
   malProduitCourant = null;
   malGroupeCourant  = null;
+  malLiaison        = null;
+  if (malModifie) charger();   // icônes 🔗 + colonne marge à jour
+  malModifie = false;
 }
 
 function malErreur(msg) {
   const z = document.getElementById('mal-erreur');
   z.textContent = msg; z.hidden = false;
+}
+
+async function malChargerLies() {
+  const p = malProduitCourant;
+  if (!p) return;
+  try {
+    const r = await fetch(`/api/achats/comparatif/liaison-vente/${p.id}`, { headers: malHeaders() });
+    if (!r.ok) throw new Error('Lecture des liens impossible');
+    malAfficherLies(await r.json());
+  } catch (e) {
+    malErreur('Erreur : ' + e.message);
+  }
+}
+
+function malAfficherLies(l) {
+  malLiaison = l;
+  malGroupeCourant = l.groupe_id || null;
+  const zMarge = document.getElementById('mal-marge');
+  const zLies  = document.getElementById('mal-lies');
+
+  if (!l.achats.length) {
+    zMarge.innerHTML = "Aucun article d'achat lié : la marge n'est pas suivie. Cherche l'article ci-dessous.";
+    zLies.innerHTML = '';
+    return;
+  }
+
+  const m = l.marge;
+  if (l.reference_inactive) {
+    zMarge.innerHTML = `<span style="color:#c1452c;font-weight:600;">⚠ L'achat de référence est désactivé.</span> Choisis-en un autre avec « Prendre comme référence ».`;
+  } else if (m && m.marge != null) {
+    const u = m.unite === 'piece' ? 'pièce' : 'kg';
+    const taux = m.taux_marge != null ? ` (${(m.taux_marge * 100).toFixed(0)} %)` : '';
+    const col = m.marge >= 0 ? '#2f7d3a' : '#c1452c';
+    zMarge.innerHTML = `Marge brute : <strong style="color:${col};">${fmtPrix(m.marge)} € / ${u}${taux}</strong>
+      <span style="color:#6b7280;"> — vente HT ${fmtPrix(m.prix_vente_ht)} € − coût ${fmtPrix(m.cout_matiere)} €</span>`;
+  } else if (l.reference_id == null) {
+    zMarge.innerHTML = "Aucun achat de référence choisi : clique « Prendre comme référence » sur l'article qui sert à calculer la marge.";
+  } else {
+    zMarge.innerHTML = 'Marge non calculable : complète le prix de vente ou le prix / poids de l\'achat.';
+  }
+
+  zLies.innerHTML = l.achats.map(a => {
+    const prix = a.prix_kg != null ? `${fmtPrix(a.prix_kg)} € HT/kg` : '€/kg indisponible';
+    const badges = [
+      a.est_reference ? '<span class="ach-badge ach-badge--dlc">⭐ Référence marge</span>' : '',
+      a.meilleur && !a.est_reference ? '<span class="ach-badge">moins cher</span>' : '',
+      !a.actif ? '<span class="ach-badge ach-badge--annulee">Inactif</span>' : '',
+    ].join(' ');
+    return `
+      <div style="border:1px solid ${a.est_reference ? '#2f7d3a' : '#e5dccd'};border-radius:8px;padding:8px 10px;background:#fff;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+          <span>
+            <strong>${escHtml(a.designation)}</strong> ${badges}<br>
+            <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(a.fournisseur_nom || '')}${a.code_article ? ' · ' + escHtml(a.code_article) : ''} — ${prix}</span>
+          </span>
+          <span style="display:flex;gap:4px;flex-wrap:wrap;">
+            <a class="ach-btn ach-btn--small" href="/catalogue-achats.html?edit=${a.id}" title="Ouvrir la fiche dans le catalogue achats">Voir la fiche</a>
+            ${!a.est_reference && a.actif ? `<button type="button" class="ach-btn ach-btn--small" data-ref="${a.id}" title="La marge sera calculée sur cet achat">⭐ Prendre comme référence</button>` : ''}
+            <button type="button" class="ach-btn ach-btn--small ach-btn--danger" data-retirer="${a.id}" title="Retirer le lien">Retirer</button>
+          </span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function malPrendreReference(articleId) {
+  const p = malProduitCourant;
+  if (!p || !malGroupeCourant) return;
+  try {
+    const r = await fetch(`/api/achats/comparatif/groupes/${malGroupeCourant}/ventes/${p.id}/reference`, {
+      method: 'PUT', headers: malHeaders(true),
+      body: JSON.stringify({ ligne_choisie_id: articleId }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Changement de référence impossible');
+    malModifie = true;
+    await malChargerLies();
+  } catch (e) { malErreur('Erreur : ' + e.message); }
+}
+
+async function malRetirerAchat(articleId) {
+  const p = malProduitCourant;
+  if (!p || !malGroupeCourant || !malLiaison) return;
+  const a = malLiaison.achats.find(x => x.id === articleId);
+  const autres = malLiaison.autres_ventes || [];
+  let msg = `Retirer « ${a?.designation || 'cet article'} » des achats liés à « ${p.nom} » ?`;
+  if (autres.length) msg += `\n\nIl sera aussi retiré pour : ${autres.join(', ')} (même groupe du comparateur).`;
+  if (a?.est_reference) msg += '\n\nC\'est l\'achat de référence : la marge ne sera plus calculée tant qu\'un autre n\'est pas choisi.';
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch(`/api/achats/comparatif/groupes/${malGroupeCourant}/lignes/${articleId}`, {
+      method: 'DELETE', headers: malHeaders(),
+    });
+    if (!r.ok) throw new Error('Retrait impossible');
+    malModifie = true;
+    await malChargerLies();
+  } catch (e) { malErreur('Erreur : ' + e.message); }
 }
 
 // Marge qu'un article d'achat donnerait POUR le produit de vente courant (malProduitCourant).
@@ -923,10 +1053,10 @@ function malCalcMarge(article) {
 
 async function malRechercherAchats(q) {
   const zone = document.getElementById('mal-resultats');
+  if (!q) { zone.innerHTML = ''; return; }
+  const dejaLies = new Set((malLiaison?.achats || []).map(a => a.id));
   try {
-    const token = localStorage.getItem('admin_token');
-    const headers = token ? { Authorization: 'Bearer ' + token } : {};
-    const r = await fetch(`/api/achats/comparatif/recherche-achats?q=${encodeURIComponent(q)}`, { headers });
+    const r = await fetch(`/api/achats/comparatif/recherche-achats?q=${encodeURIComponent(q)}`, { headers: malHeaders() });
     if (!r.ok) throw new Error('Recherche impossible');
     const data = await r.json();
     const articles = data.articles || [];
@@ -935,9 +1065,12 @@ async function malRechercherAchats(q) {
       return;
     }
     zone.innerHTML = articles.map(a => {
-      const relie = a.groupe_id
-        ? `<span class="ach-badge ach-badge--dlc" style="margin-left:6px;">groupe : ${escHtml(a.groupe_nom || '')}</span>`
-        : '<span class="ach-badge ach-badge--no-dlc" style="margin-left:6px;">sans suivi</span>';
+      const deja = dejaLies.has(a.id);
+      const relie = deja
+        ? '<span class="ach-badge ach-badge--dlc" style="margin-left:6px;">✓ déjà lié</span>'
+        : a.groupe_id
+        ? `<span class="ach-badge" style="margin-left:6px;" title="Déjà comparé dans un autre groupe du comparateur">aussi dans : ${escHtml(a.groupe_nom || '')}</span>`
+        : '';
       const prix = a.prix_kg != null
         ? `${fmtPrix(a.prix_kg)} € HT/kg`
         : '€/kg indisponible';
@@ -953,8 +1086,9 @@ async function malRechercherAchats(q) {
                    + `<span style="color:#6b7280;font-size:var(--text-xs);">${equiv}</span>`;
       }
       return `
-        <button type="button" class="ach-btn" data-aid="${a.id}" data-gid="${a.groupe_id || ''}"
-                style="justify-content:space-between;text-align:left;padding:10px 12px;width:100%;">
+        <button type="button" class="ach-btn" data-aid="${a.id}" ${deja ? 'disabled' : ''}
+                title="${deja ? 'Déjà lié à ce produit' : 'Lier cet article à ce produit de vente'}"
+                style="justify-content:space-between;text-align:left;padding:10px 12px;width:100%;${deja ? 'opacity:.6;' : ''}">
           <span>
             <strong>${escHtml(a.designation)}</strong>${relie}<br>
             <span style="color:#6b7280;font-size:var(--text-xs);">${escHtml(a.fournisseur_nom || '')}${a.code_article ? ' · ' + escHtml(a.code_article) : ''} — ${prix}</span>${margeLigne}
@@ -966,103 +1100,38 @@ async function malRechercherAchats(q) {
   }
 }
 
-// Rattache l'article d'achat choisi au produit de vente courant. Crée le groupe du produit
-// s'il n'en a pas encore, ajoute l'article comme ligne fournisseur, puis (groupe neuf) le
-// définit comme référence pour que la marge se calcule immédiatement.
-async function malLierAArticle(articleId, articleGroupeId) {
+// Lie l'article d'achat choisi au produit de vente courant, en UN appel serveur : groupe
+// retrouvé ou créé, article ajouté, et pris comme référence de marge si le produit n'en
+// avait pas de valable (sinon la référence existante est respectée → bouton ⭐ pour changer).
+async function malLierAArticle(articleId) {
   const p = malProduitCourant;
   if (!p) return;
-  const token = localStorage.getItem('admin_token');
-  const authHeaders = token ? { Authorization: 'Bearer ' + token } : {};
-  const jsonHeaders = { 'Content-Type': 'application/json', ...authHeaders };
+  document.getElementById('mal-erreur').hidden = true;
   try {
-    // 1) Groupe du produit de vente : réutilise s'il existe, sinon le crée (from-vente).
-    let groupeId = await malGroupeDuProduit(p.id, jsonHeaders);
-    const groupeNouveau = !groupeId;
-    if (!groupeId) {
-      const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
-        method: 'POST', headers: jsonHeaders,
-        body: JSON.stringify({ catalogue_vente_id: p.id }),
-      });
-      if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');
-      groupeId = (await rg.json()).id;
-    }
-    malGroupeCourant = groupeId;
-
-    // 2) Ajoute l'article d'achat comme ligne fournisseur du groupe.
-    const rl = await fetch(`/api/achats/comparatif/groupes/${groupeId}/lignes`, {
-      method: 'POST', headers: jsonHeaders,
-      body: JSON.stringify({ catalogue_fournisseur_id: Number(articleId) }),
+    const r = await fetch('/api/achats/comparatif/lier', {
+      method: 'POST', headers: malHeaders(true),
+      body: JSON.stringify({ catalogue_vente_id: p.id, catalogue_fournisseur_id: articleId }),
     });
-    if (!rl.ok) throw new Error((await rl.json()).detail || 'Liaison impossible');
-
-    // 3) Sur un groupe NEUF, définir cet achat comme référence du produit → marge calculable.
-    //    Sur un groupe existant, on respecte la référence déjà choisie par l'utilisateur.
-    let detail = null;
-    try {
-      if (groupeNouveau) {
-        const rr = await fetch(`/api/achats/comparatif/groupes/${groupeId}/ventes/${p.id}/reference`, {
-          method: 'PUT', headers: jsonHeaders,
-          body: JSON.stringify({ ligne_choisie_id: Number(articleId) }),
-        });
-        if (rr.ok) detail = await rr.json();
-      } else {
-        const rd = await fetch(`/api/achats/comparatif/groupes/${groupeId}`, { headers: authHeaders });
-        if (rd.ok) detail = await rd.json();
-      }
-    } catch (_) { /* marge = bonus, on continue */ }
-
-    const pv = detail ? (detail.produits_vente || []).find(x => x.id === p.id) : null;
-    malAfficherSucces(pv?.marge || null);
+    if (!r.ok) throw new Error((await r.json()).detail || 'Liaison impossible');
+    malModifie = true;
+    malAfficherLies(await r.json());
+    document.getElementById('mal-search').value = '';
+    document.getElementById('mal-resultats').innerHTML =
+      '<p style="color:#2f7d3a;font-size:var(--text-sm);font-weight:600;">✅ Article lié.</p>';
   } catch (e) {
     malErreur('Erreur : ' + e.message);
   }
-}
-
-// Retrouve le groupe déjà associé à un produit de vente (via recherche-ventes), ou null.
-async function malGroupeDuProduit(venteId, headers) {
-  try {
-    const nom = (malProduitCourant?.nom || '').trim();
-    const r = await fetch(`/api/achats/comparatif/recherche-ventes?q=${encodeURIComponent(nom)}`, { headers });
-    if (!r.ok) return null;
-    const data = await r.json();
-    const trouve = (data.produits || []).find(x => x.id === venteId);
-    return trouve?.groupe_id || null;
-  } catch (_) { return null; }
-}
-
-function malAfficherSucces(marge) {
-  const zone = document.getElementById('mal-succes-marge');
-  if (marge && marge.marge != null) {
-    const taux = marge.taux_marge != null ? ` (${(marge.taux_marge * 100).toFixed(0)} %)` : '';
-    const u = marge.unite === 'piece' ? 'pièce' : 'kg';
-    zone.innerHTML = `
-      Marge brute : <strong style="color:#2f7d3a;">${fmtPrix(marge.marge)} € / ${u}${taux}</strong><br>
-      <span style="font-size:var(--text-sm);color:#6b7280;">
-        Vente HT ${fmtPrix(marge.prix_vente_ht)} € − coût matière ${fmtPrix(marge.cout_matiere)} €
-      </span>`;
-  } else {
-    zone.innerHTML = `<span style="color:#6b7280;">
-      Marge non calculable pour l'instant : complétez le prix de vente et le poids/prix d'achat.
-    </span>`;
-  }
-  document.getElementById('mal-lier').hidden = true;
-  document.getElementById('mal-succes').hidden = false;
-  document.getElementById('mal-erreur').hidden = true;
 }
 
 // Redirige vers le comparateur sur le groupe du produit (le crée si nécessaire).
 async function ouvrirComparateurDepuisVente() {
   const p = malProduitCourant;
   if (!p) return;
-  const token = localStorage.getItem('admin_token');
-  const authHeaders = token ? { Authorization: 'Bearer ' + token } : {};
-  const jsonHeaders = { 'Content-Type': 'application/json', ...authHeaders };
   try {
-    let groupeId = malGroupeCourant || await malGroupeDuProduit(p.id, jsonHeaders);
+    let groupeId = malGroupeCourant;
     if (!groupeId) {
       const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
-        method: 'POST', headers: jsonHeaders,
+        method: 'POST', headers: malHeaders(true),
         body: JSON.stringify({ catalogue_vente_id: p.id }),
       });
       if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');

@@ -3097,6 +3097,172 @@ async def comparatif_recherche_achats(q: str = "", _=Depends(require_admin)):
         return {"total": len(articles), "articles": articles}
 
 
+# ── Liaison directe vente ↔ achat (sans passer par l'écran du comparateur) ──────────
+# La liaison reste portée par le groupe comparatif (cf. get_comparatif) : ces routes ne
+# font que la LIRE / l'ÉCRIRE depuis un produit de vente ou un article d'achat.
+
+def _achat_resume(ligne: dict, reference_id) -> dict:
+    return {
+        "id": ligne["id"],
+        "designation": ligne.get("designation"),
+        "code_article": ligne.get("code_article"),
+        "fournisseur_nom": ligne.get("fournisseur_nom"),
+        "format_prix": ligne.get("format_prix"),
+        "prix_achat_ht": ligne.get("prix_achat_ht"),
+        "prix_kg": ligne.get("prix_kg"),
+        "prix_piece": _prix_piece_article(ligne),
+        "actif": bool(ligne.get("actif")),
+        "meilleur": bool(ligne.get("meilleur")),
+        "est_reference": ligne["id"] == reference_id,
+    }
+
+
+async def _liaison_vente(cv_id: int, auth) -> dict:
+    async with get_db() as db:
+        cur = await db.execute(
+            "SELECT groupe_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?", (cv_id,)
+        )
+        r = await cur.fetchone()
+    if not r:
+        return {"catalogue_vente_id": cv_id, "groupe_id": None, "groupe_nom": None,
+                "reference_id": None, "reference_inactive": False, "marge": None,
+                "achats": [], "autres_ventes": []}
+    detail = await get_comparatif(r["groupe_id"], auth)
+    pv = next((p for p in detail["produits_vente"] if p["id"] == cv_id), None) or {}
+    ref = pv.get("ligne_choisie_id")
+    return {
+        "catalogue_vente_id": cv_id,
+        "groupe_id": detail["groupe"]["id"],
+        "groupe_nom": detail["groupe"]["nom"],
+        "reference_id": ref,
+        "reference_inactive": bool(pv.get("reference_inactive")),
+        "marge": pv.get("marge"),
+        # Référence d'abord, puis les autres achats du groupe.
+        "achats": sorted((_achat_resume(l, ref) for l in detail["lignes"]),
+                         key=lambda a: not a["est_reference"]),
+        # Autres produits de vente qui partagent ce groupe (retirer un achat les concerne aussi).
+        "autres_ventes": [p["nom"] for p in detail["produits_vente"] if p["id"] != cv_id],
+    }
+
+
+@router.get("/comparatif/liaison-vente/{cv_id}")
+async def comparatif_liaison_vente(cv_id: int, _=Depends(require_admin)):
+    """Articles d'ACHAT liés à un produit de VENTE (ceux de son groupe), la référence en tête,
+    + la marge du produit. groupe_id null = produit non relié."""
+    return await _liaison_vente(cv_id, _)
+
+
+@router.get("/comparatif/liaison-achat/{cf_id}")
+async def comparatif_liaison_achat(cf_id: int, _=Depends(require_admin)):
+    """Produits de VENTE liés à un article d'ACHAT (via les groupes qui contiennent l'article).
+    Pour chacun : cet article est-il SA référence de marge ? sinon, quel achat l'est."""
+    async with get_db() as db:
+        cur = await db.execute(
+            """SELECT gl.groupe_id FROM comparatif_groupe_ligne gl
+               JOIN comparatif_groupe g ON g.id = gl.groupe_id AND g.boutique_id = 1
+               WHERE gl.catalogue_fournisseur_id = ? ORDER BY gl.groupe_id""",
+            (cf_id,),
+        )
+        groupes = [r["groupe_id"] for r in await cur.fetchall()]
+    ventes = []
+    for gid in groupes:
+        detail = await get_comparatif(gid, _)
+        par_id = {l["id"]: l for l in detail["lignes"]}
+        for pv in detail["produits_vente"]:
+            ref = pv.get("ligne_choisie_id")
+            ref_ligne = par_id.get(ref)
+            ventes.append({
+                "id": pv["id"],
+                "nom": pv.get("nom"),
+                "prix_vente_ttc": pv.get("prix_vente_ttc"),
+                "unite_vente": pv.get("unite_vente") or "kg",
+                "actif": bool(pv.get("actif")),
+                "groupe_id": gid,
+                "groupe_nom": detail["groupe"]["nom"],
+                "est_reference": ref == cf_id,
+                "reference_designation": ref_ligne.get("designation") if ref_ligne else None,
+                "reference_fournisseur": ref_ligne.get("fournisseur_nom") if ref_ligne else None,
+                "reference_inactive": bool(pv.get("reference_inactive")),
+                "marge": pv.get("marge"),
+            })
+    return {"catalogue_fournisseur_id": cf_id, "ventes": ventes}
+
+
+class LiaisonDirecte(BaseModel):
+    catalogue_vente_id: int
+    catalogue_fournisseur_id: int
+    # True = devient la référence de marge du produit ; None = seulement si le produit
+    # n'a pas encore de référence valable ; False = ne touche pas à la référence.
+    reference: Optional[bool] = None
+
+
+@router.post("/comparatif/lier")
+async def comparatif_lier(body: LiaisonDirecte, _=Depends(require_admin)):
+    """Relie en un appel un produit de vente et un article d'achat : retrouve (ou crée) le
+    groupe du produit de vente, y ajoute l'article, et le prend comme référence de marge si
+    demandé ou si le produit n'en a pas encore. Renvoie l'état de liaison du produit."""
+    cv_id, cf_id = body.catalogue_vente_id, body.catalogue_fournisseur_id
+    async with get_db() as db:
+        cur_v = await db.execute(
+            "SELECT nom, sous_famille FROM catalogue_vente WHERE id = ? AND boutique_id = 1",
+            (cv_id,),
+        )
+        v = await cur_v.fetchone()
+        if not v:
+            raise HTTPException(404, "Produit de vente introuvable")
+        cur_a = await db.execute(
+            """SELECT c.id FROM catalogue_fournisseur c
+               JOIN fournisseurs f ON f.id = c.fournisseur_id
+               WHERE c.id = ? AND f.boutique_id = 1""",
+            (cf_id,),
+        )
+        if not await cur_a.fetchone():
+            raise HTTPException(404, "Article d'achat introuvable")
+
+        cur_g = await db.execute(
+            "SELECT groupe_id, ligne_choisie_id FROM comparatif_groupe_vente WHERE catalogue_vente_id = ?",
+            (cv_id,),
+        )
+        gv = await cur_g.fetchone()
+        if gv:
+            groupe_id, ref_actuelle = gv["groupe_id"], gv["ligne_choisie_id"]
+        else:
+            cur_n = await db.execute(
+                "INSERT INTO comparatif_groupe (boutique_id, nom, sous_famille) VALUES (1, ?, ?)",
+                (v["nom"], v["sous_famille"]),
+            )
+            groupe_id, ref_actuelle = cur_n.lastrowid, None
+            await db.execute(
+                "INSERT INTO comparatif_groupe_vente (groupe_id, catalogue_vente_id) VALUES (?, ?)",
+                (groupe_id, cv_id),
+            )
+        await db.execute(
+            "INSERT OR IGNORE INTO comparatif_groupe_ligne (groupe_id, catalogue_fournisseur_id) VALUES (?, ?)",
+            (groupe_id, cf_id),
+        )
+
+        # La référence actuelle est-elle encore valable (dans le groupe ET active) ?
+        ref_valable = False
+        if ref_actuelle is not None:
+            cur_r = await db.execute(
+                """SELECT c.actif FROM comparatif_groupe_ligne gl
+                   JOIN catalogue_fournisseur c ON c.id = gl.catalogue_fournisseur_id
+                   WHERE gl.groupe_id = ? AND gl.catalogue_fournisseur_id = ?""",
+                (groupe_id, ref_actuelle),
+            )
+            rr = await cur_r.fetchone()
+            ref_valable = bool(rr and rr["actif"])
+        await db.commit()
+
+    prendre_ref = body.reference is True or (body.reference is None and not ref_valable)
+    if prendre_ref and ref_actuelle != cf_id:
+        # Même porte que le comparateur (suivi des variations de coût → prix à revoir).
+        await set_comparatif_vente_reference(
+            groupe_id, cv_id, ComparatifReferenceUpdate(ligne_choisie_id=cf_id), _
+        )
+    return await _liaison_vente(cv_id, _)
+
+
 @router.post("/comparatif/groupes/from-vente", status_code=201)
 async def create_groupe_from_vente(body: ComparatifVenteLink, _=Depends(require_admin)):
     """Crée un groupe de comparaison nommé d'après un produit de vente et lui associe ce produit,

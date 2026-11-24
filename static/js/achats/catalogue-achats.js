@@ -100,13 +100,27 @@ function bindEvents() {
   document.getElementById('modal-fermer').addEventListener('click', fermerModal);
   document.getElementById('btn-annuler').addEventListener('click', fermerModal);
   document.getElementById('btn-supprimer-article').addEventListener('click', supprimerArticle);
-  // Relier un article EXISTANT à un produit de vente (réutilise la modale de création).
+  // Voir / gérer les produits de vente liés à un article EXISTANT.
   document.getElementById('btn-relier-vente').addEventListener('click', () => {
     const id = parseInt(document.getElementById('a-id').value);
-    const a = articles.find(x => x.id === id);
-    if (!a) return;
+    if (!id) return;
     fermerModal();
-    ouvrirModalVentePropose(a);
+    ouvrirModalVentesLiees(id);
+  });
+  document.getElementById('mvl-fermer').addEventListener('click', fermerModalVentesLiees);
+  document.getElementById('mvl-ok').addEventListener('click', fermerModalVentesLiees);
+  document.getElementById('mvl-ajouter').addEventListener('click', () => {
+    const a = mvlArticle;
+    if (!a) return;
+    mvlRetour = a.id;   // à la fermeture de la modale d'ajout, on revient ici
+    document.getElementById('modal-ventes-liees').hidden = true;
+    ouvrirModalVentePropose(a, true);
+  });
+  document.getElementById('mvl-liste').addEventListener('click', e => {
+    const ref = e.target.closest('[data-ref-vente]');
+    const del = e.target.closest('[data-delier-groupe]');
+    if (ref) mvlPrendreReference(Number(ref.dataset.refGroupe), Number(ref.dataset.refVente));
+    else if (del) mvlDelier(Number(del.dataset.delierGroupe), del.dataset.nom);
   });
   document.getElementById('import-fermer').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
   document.getElementById('import-annuler').addEventListener('click', () => { document.getElementById('modal-import').hidden = true; });
@@ -381,6 +395,8 @@ function afficherTable(liste) {
         : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-actions">
         <button class="ach-btn ach-btn--small" onclick="ouvrirEditionModal(${a.id})">Modifier</button>
+        <button class="ach-btn ach-btn--small${a.groupe_id ? ' ach-btn--liaison-ok' : ''}" onclick="ouvrirModalVentesLiees(${a.id})"
+                title="${a.groupe_id ? 'Voir le(s) produit(s) de vente lié(s)' : 'Relier à un produit de vente (suivi de marge)'}">🔗</button>
         <button class="ach-btn ach-btn--small" onclick="ouvrirEtiquettePrix(${JSON.stringify({id: a.id, designation: a.designation, prix_unitaire_ht: a.prix_achat_ht, unite_commande: a.format_prix === 'kg' ? 'kg' : 'colis', fournisseur_nom: a.fournisseur_nom})})" title="Créer une étiquette prix">🏷️</button>
         ${a.actif
           ? `<button class="ach-btn ach-btn--small ach-btn--danger" onclick="toggleActif(${a.id}, false)" title="Désactiver">✕</button>`
@@ -1032,8 +1048,9 @@ function fermerModal() {
 // ── Modal « Proposer un produit de vente » (suivi de marge) ──────────
 // Ouverte après création d'un article d'une famille vendable. Permet de relier
 // l'article au comparateur (groupe → produit de vente) pour calculer la marge.
-function ouvrirModalVentePropose(article) {
+function ouvrirModalVentePropose(article, existant = false) {
   dernierArticleCree = article;
+  document.getElementById('mvp-entete').textContent = existant ? 'Article :' : '✅ Article créé :';
   document.getElementById('mvp-designation').textContent = article.designation || '(sans nom)';
   mvpMontrerEcran('choix');
   document.getElementById('modal-vente-propose').hidden = false;
@@ -1042,6 +1059,124 @@ function ouvrirModalVentePropose(article) {
 function fermerModalVentePropose() {
   document.getElementById('modal-vente-propose').hidden = true;
   dernierArticleCree = null;
+  // Ouverte depuis « Produits de vente liés » → on y revient, liste à jour.
+  if (mvlRetour) { const id = mvlRetour; mvlRetour = null; ouvrirModalVentesLiees(id); }
+}
+
+// ── Modal « Produits de vente liés » à un article d'achat ────────────
+// Lecture : GET /comparatif/liaison-achat/{id} (via les groupes du comparateur). Pour chaque
+// produit de vente : cet achat est-il SA référence de marge ? sinon lequel l'est.
+let mvlArticle = null;   // article d'achat affiché
+let mvlRetour  = null;   // id à rouvrir après la modale d'ajout
+let mvlModifie = false;
+let mvlVentes  = [];     // dernière liste lue (pour prévenir d'un délier partagé)
+
+async function ouvrirModalVentesLiees(articleId) {
+  let a = articles.find(x => x.id === articleId);
+  if (!a) {
+    // Article absent de la liste affichée (inactif, filtre…) : on le relit.
+    try { const r = await fetch(`/api/achats/catalogue/${articleId}`); if (r.ok) a = await r.json(); } catch (_) {}
+  }
+  if (!a) return;
+  mvlArticle = a;
+  document.getElementById('mvl-designation').textContent = a.designation || '(sans nom)';
+  document.getElementById('mvl-sous-titre').textContent =
+    `${a.fournisseur_nom || ''}${a.code_article ? ' · ' + a.code_article : ''}`;
+  document.getElementById('mvl-erreur').hidden = true;
+  document.getElementById('mvl-liste').innerHTML = '<span style="color:#9ca3af;">Chargement…</span>';
+  document.getElementById('modal-ventes-liees').hidden = false;
+  await mvlCharger();
+}
+
+function fermerModalVentesLiees() {
+  document.getElementById('modal-ventes-liees').hidden = true;
+  mvlArticle = null;
+  if (mvlModifie) chargerCatalogue();
+  mvlModifie = false;
+}
+
+function mvlErreur(msg) {
+  const z = document.getElementById('mvl-erreur');
+  z.textContent = msg; z.hidden = false;
+}
+
+async function mvlCharger() {
+  const a = mvlArticle;
+  if (!a) return;
+  const zone = document.getElementById('mvl-liste');
+  try {
+    const r = await fetch(`/api/achats/comparatif/liaison-achat/${a.id}`);
+    if (!r.ok) throw new Error('Lecture des liens impossible');
+    const ventes = (await r.json()).ventes || [];
+    mvlVentes = ventes;
+    if (!ventes.length) {
+      zone.innerHTML = `<p style="color:#6b7280;font-size:var(--text-sm);margin:0;">
+        Aucun produit de vente lié à cet article. Clique « Relier à un produit de vente » pour suivre sa marge.</p>`;
+      return;
+    }
+    zone.innerHTML = ventes.map(v => {
+      const u = v.unite_vente === 'piece' ? 'pièce' : 'kg';
+      const prix = v.prix_vente_ttc != null ? `${fmtPrix(v.prix_vente_ttc)} € TTC/${u}` : 'prix non renseigné';
+      let ligneRef;
+      if (v.est_reference) {
+        const m = v.marge;
+        const marge = m && m.marge != null
+          ? ` — marge <strong style="color:${m.marge >= 0 ? '#2f7d3a' : '#c1452c'};">${fmtPrix(m.marge)} € / ${m.unite === 'piece' ? 'pièce' : 'kg'}${m.taux_marge != null ? ` (${(m.taux_marge * 100).toFixed(0)} %)` : ''}</strong>`
+          : ' — marge non calculable (prix ou poids manquant)';
+        ligneRef = `<span class="ach-badge ach-badge--dlc">⭐ Marge calculée sur cet achat</span>${marge}`;
+      } else if (v.reference_designation) {
+        ligneRef = `<span style="color:#6b7280;">Marge calculée sur : ${escHtml(v.reference_designation)}${v.reference_fournisseur ? ' (' + escHtml(v.reference_fournisseur) + ')' : ''}</span>`;
+      } else {
+        ligneRef = '<span style="color:#b45309;">Aucun achat de référence : marge non suivie</span>';
+      }
+      return `
+        <div style="border:1px solid ${v.est_reference ? '#2f7d3a' : '#e5dccd'};border-radius:8px;padding:8px 10px;background:#fff;">
+          <strong>${escHtml(v.nom)}</strong>${!v.actif ? ' <span class="ach-badge ach-badge--annulee">Inactif</span>' : ''}
+          <span style="color:#6b7280;font-size:var(--text-xs);"> — ${prix}</span><br>
+          <span style="font-size:var(--text-sm);">${ligneRef}</span>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px;">
+            <a class="ach-btn ach-btn--small" href="/catalogue-vente.html?edit=${v.id}" title="Ouvrir la fiche dans le catalogue vente">Voir la fiche</a>
+            ${!v.est_reference && a.actif ? `<button type="button" class="ach-btn ach-btn--small" data-ref-groupe="${v.groupe_id}" data-ref-vente="${v.id}" title="La marge de ce produit sera calculée sur cet achat">⭐ Utiliser cet achat pour la marge</button>` : ''}
+            <button type="button" class="ach-btn ach-btn--small ach-btn--danger" data-delier-groupe="${v.groupe_id}" data-nom="${escHtml(v.nom)}">Délier</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    zone.innerHTML = '';
+    mvlErreur('Erreur : ' + e.message);
+  }
+}
+
+async function mvlPrendreReference(groupeId, venteId) {
+  const a = mvlArticle;
+  if (!a) return;
+  try {
+    const r = await fetch(`/api/achats/comparatif/groupes/${groupeId}/ventes/${venteId}/reference`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ligne_choisie_id: a.id }),
+    });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Changement impossible');
+    mvlModifie = true;
+    await mvlCharger();
+  } catch (e) { mvlErreur('Erreur : ' + e.message); }
+}
+
+// Délier = retirer l'article du groupe du comparateur. Si plusieurs produits de vente
+// partagent ce groupe, ils sont tous déliés de cet achat (ils apparaissent dans la liste).
+async function mvlDelier(groupeId, nom) {
+  const a = mvlArticle;
+  if (!a) return;
+  const autres = mvlVentes.filter(v => v.groupe_id === groupeId && v.nom !== nom).map(v => v.nom);
+  let msg = `Délier « ${a.designation} » de « ${nom} » ?`;
+  if (autres.length) msg += `\n\nIl sera aussi délié de : ${autres.join(', ')} (même groupe du comparateur).`;
+  msg += "\n\nSi c'était l'achat de référence, la marge ne sera plus calculée tant qu'un autre achat n'est pas choisi.";
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch(`/api/achats/comparatif/groupes/${groupeId}/lignes/${a.id}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Retrait impossible');
+    mvlModifie = true;
+    await mvlCharger();
+  } catch (e) { mvlErreur('Erreur : ' + e.message); }
 }
 
 // Bascule entre les écrans de la modale : 'choix' | 'lier' | 'creer' | 'succes'.
@@ -1114,63 +1249,39 @@ async function mvpRechercherVentes(q) {
 // Rattache l'article achat créé au produit de vente choisi (crée le groupe si besoin),
 // définit cet achat comme ligne de référence du produit de vente (pour que la marge se
 // calcule immédiatement), puis affiche la marge obtenue.
-async function mvpLierAuProduit(venteId, groupeId) {
+async function mvpLierAuProduit(venteId) {
   const articleId = dernierArticleCree?.id;
   if (!articleId) return;
-  // Groupe préexistant → le produit peut déjà avoir une ligne de référence choisie par
-  // l'utilisateur : on ne la surcharge PAS. On n'auto-définit la référence que sur un
-  // groupe fraîchement créé (aucune référence possible).
-  const groupeNouveau = !groupeId;
+  // Un seul appel serveur : groupe du produit retrouvé (ou créé), article ajouté, et pris
+  // comme référence de marge si le produit n'en a pas de valable. Une référence existante
+  // choisie par l'utilisateur est respectée (changeable via 🔗 → « Utiliser cet achat »).
   try {
-    // 1) Le produit de vente n'a pas de groupe → on en crée un et on l'y associe.
-    if (!groupeId) {
-      const rg = await fetch('/api/achats/comparatif/groupes/from-vente', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ catalogue_vente_id: Number(venteId) }),
-      });
-      if (!rg.ok) throw new Error((await rg.json()).detail || 'Création du groupe impossible');
-      groupeId = (await rg.json()).id;
-    }
-    // 2) On ajoute l'article achat comme ligne fournisseur du groupe.
-    const rl = await fetch(`/api/achats/comparatif/groupes/${groupeId}/lignes`, {
+    const r = await fetch('/api/achats/comparatif/lier', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ catalogue_fournisseur_id: Number(articleId) }),
+      body: JSON.stringify({ catalogue_vente_id: Number(venteId), catalogue_fournisseur_id: Number(articleId) }),
     });
-    if (!rl.ok) throw new Error((await rl.json()).detail || 'Liaison impossible');
-
-    // 3) Sur un groupe NEUF, définir cet achat comme ligne de référence du produit de vente
-    //    → marge calculable sans repasser par le comparateur. La réponse renvoie le détail.
-    //    (Best-effort : un échec ne bloque pas la liaison.)
-    let detail = null;
-    try {
-      if (groupeNouveau) {
-        const rr = await fetch(`/api/achats/comparatif/groupes/${groupeId}/ventes/${venteId}/reference`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ligne_choisie_id: Number(articleId) }),
-        });
-        if (rr.ok) detail = await rr.json();
-      } else {
-        // Groupe existant : on lit juste l'état courant (référence de l'utilisateur préservée).
-        const rd = await fetch(`/api/achats/comparatif/groupes/${groupeId}`);
-        if (rd.ok) detail = await rd.json();
-      }
-    } catch (_) { /* marge = bonus, on continue */ }
-
-    const pv = detail ? (detail.produits_vente || []).find(p => p.id === Number(venteId)) : null;
+    if (!r.ok) throw new Error((await r.json()).detail || 'Liaison impossible');
+    const liaison = await r.json();
     await chargerCatalogue();
-    mvpAfficherSucces(pv?.marge || null);
+    // Marge affichée seulement si elle est calculée sur CET achat.
+    const autreRef = liaison.reference_id != null && liaison.reference_id !== Number(articleId)
+      ? (liaison.achats.find(x => x.est_reference)?.designation || 'un autre achat') : null;
+    mvpAfficherSucces(autreRef ? null : liaison.marge, autreRef);
   } catch (e) {
     mvpErreur('Erreur : ' + e.message);
   }
 }
 
 // Écran de succès : affiche la marge si calculable, sinon invite à compléter les prix.
-function mvpAfficherSucces(marge) {
+function mvpAfficherSucces(marge, autreRef = null) {
   const zone = document.getElementById('mvp-succes-marge');
-  if (marge && marge.marge != null) {
+  if (autreRef) {
+    zone.innerHTML = `<span style="color:#6b7280;">
+      Lié. La marge de ce produit reste calculée sur son achat de référence :
+      <strong>${escHtml(autreRef)}</strong>. Pour la calculer sur cet article, ouvre 🔗 sur sa ligne
+      puis « Utiliser cet achat pour la marge ».</span>`;
+  } else if (marge && marge.marge != null) {
     const taux = marge.taux_marge != null ? ` (${(marge.taux_marge * 100).toFixed(0)} %)` : '';
     const u = marge.unite === 'piece' ? 'pièce' : 'kg';
     zone.innerHTML = `

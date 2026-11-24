@@ -364,12 +364,34 @@
         <div class="ach-modal-footer" style="justify-content:space-between;">
           <button type="button" class="ach-btn ach-btn--danger" id="btn-supprimer-article" hidden>Supprimer</button>
           <div style="display:flex;gap:var(--space-2);">
-            <button type="button" class="ach-btn" id="btn-relier-vente" hidden>🔗 Relier à une vente</button>
+            <button type="button" class="ach-btn" id="btn-relier-vente" hidden>🔗 Ventes liées</button>
             <button type="button" class="ach-btn" id="btn-annuler">Annuler</button>
             <button type="submit" class="ach-btn ach-btn--primary" id="btn-sauver">Enregistrer</button>
           </div>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- ── Modal « Produits de vente liés » à un article d'achat (bouton 🔗 de la ligne) ── -->
+  <div class="ach-modal" id="modal-ventes-liees" hidden>
+    <div class="ach-modal-card" style="max-width:560px;">
+      <header class="ach-modal-header">
+        <h2 class="ach-modal-titre">Produits de vente liés</h2>
+        <button class="ach-modal-fermer" id="mvl-fermer">✕</button>
+      </header>
+      <div style="padding:var(--space-3);">
+        <p style="margin:0 0 var(--space-2);color:#5a3e28;">
+          Article d'achat : <strong id="mvl-designation"></strong><br>
+          <span id="mvl-sous-titre" style="color:#6b7280;font-size:var(--text-sm);"></span>
+        </p>
+        <div id="mvl-liste" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div id="mvl-erreur" class="ach-form-erreur" hidden style="margin-top:var(--space-2);"></div>
+        <div style="margin-top:var(--space-3);display:flex;gap:var(--space-2);justify-content:space-between;flex-wrap:wrap;">
+          <button type="button" class="ach-btn" id="mvl-ajouter">➕ Relier à un produit de vente</button>
+          <button type="button" class="ach-btn ach-btn--primary" id="mvl-ok">Fermer</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -386,7 +408,7 @@
 
       <div style="padding:var(--space-3);">
         <p style="margin:0 0 var(--space-3);color:#5a3e28;">
-          ✅ Article créé : <strong id="mvp-designation"></strong><br>
+          <span id="mvp-entete">✅ Article créé :</span> <strong id="mvp-designation"></strong><br>
           <span style="color:#6b7280;font-size:var(--text-sm);">
             Le vends-tu au comptoir ? Relie-le à un produit de vente pour connaître ta marge brute.
           </span>
