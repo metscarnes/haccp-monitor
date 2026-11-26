@@ -96,7 +96,7 @@
         </div>
         <div class="ach-champ">
           <label>Poids unitaire (kg) <span style="font-weight:400;color:#9ca3af;">(1 pièce, ex : 0.185)</span></label>
-          <input type="number" id="paa-poids-unitaire" min="0" step="0.001" placeholder="Ex : 0.185" inputmode="decimal">
+          <input type="number" id="paa-poids-unitaire" min="0" step="any" placeholder="Ex : 0.185" inputmode="decimal">
         </div>
         <div class="ach-champ">
           <label>Poids total colis (kg)</label>
@@ -204,7 +204,7 @@
           </div>
           <div class="ach-champ" id="paa-mvpc-zone-poids" hidden>
             <label>Poids d'une pièce (kg)</label>
-            <input type="number" id="paa-mvpc-poids-piece" min="0" step="0.001" placeholder="Ex : 0.185" inputmode="decimal">
+            <input type="number" id="paa-mvpc-poids-piece" min="0" step="any" placeholder="Ex : 0.185" inputmode="decimal">
             <div id="paa-mvpc-poids-aide" style="margin-top:4px;font-size:var(--text-xs);color:#6b7280;" hidden></div>
           </div>
           <!-- Fait maison + mentions (AOP, Label Rouge…) : core/mentions-etiquette.js -->

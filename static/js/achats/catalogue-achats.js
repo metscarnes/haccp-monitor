@@ -379,7 +379,7 @@ function afficherTable(liste) {
         <span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : a.format_prix === 'piece' ? 'no-dlc' : 'abattage'}">${fmtFormatPrix(a.format_prix)}</span>
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'qte_par_colis','number')" style="cursor:pointer;${estColis && hl('Qté/colis')}">${a.qte_par_colis != null ? a.qte_par_colis : '<span style="color:#9ca3af">—</span>'}</td>
-      <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'poids_unitaire_kg','number')" style="cursor:pointer;${estColis && hl('Poids unitaire')}">${a.poids_unitaire_kg != null ? a.poids_unitaire_kg.toFixed(3) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
+      <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'poids_unitaire_kg','number')" style="cursor:pointer;${estColis && hl('Poids unitaire')}">${a.poids_unitaire_kg != null ? Number(a.poids_unitaire_kg.toFixed(6)) + ' kg' : '<span style="color:#9ca3af">—</span>'}</td>
       <td class="ach-col-num">${a.poids_colis_kg != null ? '<strong>' + a.poids_colis_kg.toFixed(3) + ' kg</strong>' : '<span style="color:#9ca3af">—</span>'}</td>
       <td ondblclick="editerInline(this,${a.id},'tva_percent','number')" style="cursor:pointer;">${a.tva_percent ?? 5.5}%</td>
       <td>${fmtUnitesAutorisees(a.unites_autorisees)}</td>
