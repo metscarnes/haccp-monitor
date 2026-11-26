@@ -38,6 +38,7 @@ const COLONNES = [
   { key: 'code_article',    label: 'Code article' },
   { key: 'designation',     label: 'Désignation' },
   { key: 'prix_achat_ht',   label: 'Prix HT' },
+  { key: 'marge_tri',       label: 'Vente · marge' },
   { key: 'format_prix',     label: 'Format' },
   { key: 'qte_par_colis',     label: 'Qté/colis' },
   { key: 'poids_unitaire_kg', label: 'Poids unit.' },
@@ -226,6 +227,12 @@ async function chargerCatalogue() {
   try {
     const r = await fetch(`${API_CAT}?actif_only=false`);
     articles = await r.json();
+    // Clé de tri de la colonne « Vente · marge » : le PLUS FAIBLE taux de marque des produits
+    // liés (le produit à surveiller). Sans marge calculable → en fin de liste.
+    articles.forEach(a => {
+      const taux = (a.ventes || []).map(v => v.marge?.taux_marge).filter(t => t != null);
+      a.marge_tri = taux.length ? Math.min(...taux) : null;
+    });
     afficherStats();
     filtrer();
   } catch(e) {
@@ -309,6 +316,11 @@ function filtrer() {
 function trier() {
   const k = triColonne;
   listeFiltree.sort((a, b) => {
+    if (k === 'marge_tri') {
+      // Sans marge → toujours en bas, quel que soit le sens.
+      if (a.marge_tri == null || b.marge_tri == null) return (a.marge_tri == null) - (b.marge_tri == null);
+      return triSens === 'asc' ? a.marge_tri - b.marge_tri : b.marge_tri - a.marge_tri;
+    }
     let va = k === 'mentions' ? libellesMentions(a).join(', ') : a[k] ?? '';
     let vb = k === 'mentions' ? libellesMentions(b).join(', ') : b[k] ?? '';
     if (typeof va === 'number' && typeof vb === 'number') {
@@ -375,6 +387,7 @@ function afficherTable(liste) {
         ${estIncomplet(a) ? `<span style="font-size:var(--text-xs);color:#e8913a;font-weight:600;margin-left:6px;">⚠ ${[...manque].join(', ')}</span>` : ''}
       </td>
       <td class="ach-col-num" ondblclick="editerInline(this,${a.id},'prix_achat_ht','number')" style="cursor:pointer;${hl('Prix HT')}">${fmtPrix(a.prix_achat_ht)} €</td>
+      ${celluleVenteMarge(a)}
       <td ondblclick="editerInline(this,${a.id},'format_prix','select')" style="cursor:pointer;${hl('Format')}">
         <span class="ach-badge ach-badge--${a.format_prix === 'kg' ? 'dlc' : a.format_prix === 'piece' ? 'no-dlc' : 'abattage'}">${fmtFormatPrix(a.format_prix)}</span>
       </td>
@@ -408,6 +421,43 @@ function afficherTable(liste) {
 
   // Reset checkbox "tout sélectionner"
   document.getElementById('chk-tout').checked = false;
+}
+
+// ── Colonne « Vente · marge » ────────────────────────────────
+// Marge calculée sur le coût de CET article (taux de marque, base HT).
+// 0 produit : tiret · 1 produit : prix + marge · plusieurs : nombre + fourchette de taux,
+// couleur du moins bon. Clic → détail produit par produit (modale « Ventes liées »).
+function couleurTaux(t) {
+  if (t == null) return '#6b7280';
+  return t < 0 ? '#c1452c' : t < 0.25 ? '#b45309' : '#2f7d3a';
+}
+function fmtTaux(t) { return `${(t * 100).toFixed(0)} %`; }
+
+function celluleVenteMarge(a) {
+  const ventes = a.ventes || [];
+  if (!ventes.length) return '<td class="ach-col-num"><span style="color:#9ca3af">—</span></td>';
+  const unite = v => v.unite_vente === 'piece' ? 'pièce' : 'kg';
+  const detail = ventes.map(v => {
+    const prix = v.prix_vente_ttc != null ? `${fmtPrix(v.prix_vente_ttc)} € TTC/${unite(v)}` : 'prix ?';
+    const m = v.marge?.taux_marge != null ? ` — marge ${fmtPrix(v.marge.marge)} € (${fmtTaux(v.marge.taux_marge)})` : ' — marge non calculable';
+    return `${v.est_reference ? '⭐ ' : ''}${v.nom} : ${prix}${m}`;
+  }).join('\n');
+  const titre = `Avec cet achat :\n${detail}\n\nCliquer pour le détail.`;
+  const ouvrir = `onclick="ouvrirModalVentesLiees(${a.id})" title="${escHtml(titre)}" style="cursor:pointer;white-space:nowrap;"`;
+
+  if (ventes.length === 1) {
+    const v = ventes[0];
+    const prix = v.prix_vente_ttc != null ? `${fmtPrix(v.prix_vente_ttc)} €/${unite(v)}` : 'prix ?';
+    const t = v.marge?.taux_marge;
+    return `<td class="ach-col-num" ${ouvrir}>${prix}<br>
+      <small style="color:${couleurTaux(t)};font-weight:600;">${t != null ? `${fmtPrix(v.marge.marge)} € · ${fmtTaux(t)}` : 'marge ?'}</small></td>`;
+  }
+  const taux = ventes.map(v => v.marge?.taux_marge).filter(t => t != null);
+  const min = taux.length ? Math.min(...taux) : null;
+  const max = taux.length ? Math.max(...taux) : null;
+  const fourchette = min == null ? 'marge ?' : min === max ? fmtTaux(min) : `${fmtTaux(min)} → ${fmtTaux(max)}`;
+  return `<td class="ach-col-num" ${ouvrir}>${ventes.length} produits<br>
+    <small style="color:${couleurTaux(min)};font-weight:600;">${fourchette}</small></td>`;
 }
 
 // ── Sélection & Actions en masse ─────────────────────────────
@@ -1117,17 +1167,17 @@ async function mvlCharger() {
     zone.innerHTML = ventes.map(v => {
       const u = v.unite_vente === 'piece' ? 'pièce' : 'kg';
       const prix = v.prix_vente_ttc != null ? `${fmtPrix(v.prix_vente_ttc)} € TTC/${u}` : 'prix non renseigné';
-      let ligneRef;
-      if (v.est_reference) {
-        const m = v.marge;
-        const marge = m && m.marge != null
-          ? ` — marge <strong style="color:${m.marge >= 0 ? '#2f7d3a' : '#c1452c'};">${fmtPrix(m.marge)} € / ${m.unite === 'piece' ? 'pièce' : 'kg'}${m.taux_marge != null ? ` (${(m.taux_marge * 100).toFixed(0)} %)` : ''}</strong>`
-          : ' — marge non calculable (prix ou poids manquant)';
-        ligneRef = `<span class="ach-badge ach-badge--dlc">⭐ Marge calculée sur cet achat</span>${marge}`;
-      } else if (v.reference_designation) {
-        ligneRef = `<span style="color:#6b7280;">Marge calculée sur : ${escHtml(v.reference_designation)}${v.reference_fournisseur ? ' (' + escHtml(v.reference_fournisseur) + ')' : ''}</span>`;
-      } else {
-        ligneRef = '<span style="color:#b45309;">Aucun achat de référence : marge non suivie</span>';
+      const fmtM = m => m && m.marge != null
+        ? `<strong style="color:${couleurTaux(m.taux_marge)};">${fmtPrix(m.marge)} € / ${m.unite === 'piece' ? 'pièce' : 'kg'}${m.taux_marge != null ? ` (${fmtTaux(m.taux_marge)} · coef ${m.coef != null ? m.coef.toFixed(2) : '?'})` : ''}</strong>`
+        : 'non calculable (prix ou poids manquant)';
+      // Toujours : la marge que donnerait CET achat.
+      let ligneRef = v.est_reference
+        ? `<span class="ach-badge ach-badge--dlc">⭐ Marge officielle calculée sur cet achat</span> — ${fmtM(v.marge_cet_achat || v.marge)}`
+        : `Avec cet achat : ${fmtM(v.marge_cet_achat)}`;
+      if (!v.est_reference) {
+        ligneRef += v.reference_designation
+          ? `<br><span style="color:#6b7280;">Marge officielle (sur ${escHtml(v.reference_designation)}${v.reference_fournisseur ? ' — ' + escHtml(v.reference_fournisseur) : ''}) : ${fmtM(v.marge)}</span>`
+          : '<br><span style="color:#b45309;">Aucun achat de référence : marge officielle non suivie</span>';
       }
       return `
         <div style="border:1px solid ${v.est_reference ? '#2f7d3a' : '#e5dccd'};border-radius:8px;padding:8px 10px;background:#fff;">

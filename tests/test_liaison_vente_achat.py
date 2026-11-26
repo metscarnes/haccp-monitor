@@ -264,3 +264,51 @@ async def test_lier_reprend_reference_si_ancienne_inactive(app_client, db):
     l = (await app_client.post("/api/achats/comparatif/lier",
                                json={"catalogue_vente_id": vente, "catalogue_fournisseur_id": a2})).json()
     assert l["reference_id"] == a2
+
+
+@pytest.mark.asyncio
+async def test_catalogue_achats_expose_ventes_liees_et_marge_cet_achat(app_client, db):
+    """GET /achats/catalogue : chaque article porte ses produits de vente liés, avec la marge
+    calculée sur CE coût d'achat — même quand l'achat sert plusieurs produits (escargots
+    vendus ×12 et ×24) ou n'est pas la référence officielle du produit."""
+    fid = await _fournisseur(app_client, "Dipsa Test")
+    # Colis 16,45 € HT, 48 escargots, 500 g.
+    esc = await _article(app_client, fid, "062303", "Escargots de Bourgogne",
+                         prix_achat_ht=16.45, format_prix="colis",
+                         qte_par_colis=48, poids_unitaire_kg=0.5 / 48)
+    autre = await _article(app_client, fid, "AUT", "Escargots autre", prix_achat_ht=40.0)
+    v12 = await _produit_vente(app_client, "Escargots x12", prix_vente_ttc=19.90,
+                               tva_percent=5.5, unite_vente="piece", poids_piece_kg=0.125)
+    v24 = await _produit_vente(app_client, "Escargots x24", prix_vente_ttc=36.00,
+                               tva_percent=5.5, unite_vente="piece", poids_piece_kg=0.25)
+    # x24 a pour référence un AUTRE achat ; on y ajoute quand même les escargots Dipsa.
+    await app_client.post("/api/achats/comparatif/lier",
+                          json={"catalogue_vente_id": v12, "catalogue_fournisseur_id": esc})
+    await app_client.post("/api/achats/comparatif/lier",
+                          json={"catalogue_vente_id": v24, "catalogue_fournisseur_id": autre})
+    await app_client.post("/api/achats/comparatif/lier",
+                          json={"catalogue_vente_id": v24, "catalogue_fournisseur_id": esc,
+                                "reference": False})
+
+    cat = {a["id"]: a for a in (await app_client.get("/api/achats/catalogue")).json()}
+    ventes = {v["id"]: v for v in cat[esc]["ventes"]}
+    assert set(ventes) == {v12, v24}
+    assert ventes[v12]["est_reference"] is True
+    assert ventes[v24]["est_reference"] is False
+    # x12 : coût 32,90 €/kg × 0,125 = 4,1125 → coef 4,59, taux de marque 78 %.
+    m12 = ventes[v12]["marge"]
+    assert m12["cout_matiere"] == pytest.approx(4.1125, abs=1e-4)
+    assert m12["coef"] == pytest.approx(4.587, abs=1e-3)
+    assert m12["marge"] == pytest.approx(19.90 / 1.055 - 4.1125, abs=0.01)
+    # x24 calculé sur CET achat (32,90 × 0,25), pas sur l'achat de référence à 40 €/kg.
+    assert ventes[v24]["marge"]["cout_matiere"] == pytest.approx(8.225, abs=1e-4)
+    # Article sans lien → liste vide.
+    sans = await _article(app_client, fid, "SL", "Sans lien")
+    cat2 = {a["id"]: a for a in (await app_client.get("/api/achats/catalogue")).json()}
+    assert cat2[sans]["ventes"] == []
+
+    # Vue détail côté achat : marge avec cet achat + marge officielle (sur l'autre achat).
+    va = {v["id"]: v for v in (await app_client.get(
+        f"/api/achats/comparatif/liaison-achat/{esc}")).json()["ventes"]}
+    assert va[v24]["marge_cet_achat"]["cout_matiere"] == pytest.approx(8.225, abs=1e-4)
+    assert va[v24]["marge"]["cout_matiere"] == pytest.approx(40.0 * 0.25, abs=1e-4)

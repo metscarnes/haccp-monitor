@@ -521,12 +521,67 @@ async def get_catalogue(
             a["prix_kg"] = _prix_kg_article(a)
             a["prix_piece"] = _prix_piece_article(a)
 
+        # Produits de vente liés + marge calculée AVEC CET ACHAT (1 requête pour tout le catalogue).
+        ventes_par_article = await _ventes_liees_par_article(db)
+        for a in articles:
+            a["ventes"] = _ventes_avec_marge(a, ventes_par_article.get(a["id"], []))
+
         if avec_stock and articles:
             stocks = await _compter_stock_par_article(db)
             for a in articles:
                 a["stock"] = stocks.get(a["id"], 0)
 
         return articles
+
+
+async def _ventes_liees_par_article(db) -> dict:
+    """{catalogue_fournisseur_id: [produits de vente ACTIFS liés via un groupe comparatif]}.
+    Un article peut être dans plusieurs groupes et un groupe porter plusieurs ventes : on
+    dédoublonne par produit de vente."""
+    cur = await db.execute(
+        """
+        SELECT gl.catalogue_fournisseur_id AS cf_id, v.id, v.nom, v.prix_vente_ttc,
+               v.tva_percent, v.unite_vente, v.poids_piece_kg, gv.ligne_choisie_id
+        FROM comparatif_groupe_ligne gl
+        JOIN comparatif_groupe g        ON g.id = gl.groupe_id AND g.boutique_id = 1
+        JOIN comparatif_groupe_vente gv ON gv.groupe_id = gl.groupe_id
+        JOIN catalogue_vente v          ON v.id = gv.catalogue_vente_id
+        WHERE v.boutique_id = 1 AND COALESCE(v.actif, 1) = 1
+        ORDER BY v.nom
+        """
+    )
+    res, vus = {}, set()
+    for r in await cur.fetchall():
+        cle = (r["cf_id"], r["id"])
+        if cle in vus:
+            continue
+        vus.add(cle)
+        res.setdefault(r["cf_id"], []).append(dict(r))
+    return res
+
+
+def _ventes_avec_marge(article: dict, ventes: list) -> list:
+    """Pour chaque produit de vente lié : prix + marge calculée sur le coût de CET article
+    (même règle que _calc_marge). est_reference = la marge officielle du produit est
+    calculée sur cet achat ; sinon elle l'est sur un autre achat du groupe."""
+    out = []
+    for v in ventes:
+        out.append({
+            "id": v["id"],
+            "nom": v["nom"],
+            "prix_vente_ttc": v["prix_vente_ttc"],
+            "unite_vente": v["unite_vente"] or "kg",
+            "est_reference": v["ligne_choisie_id"] == article["id"],
+            "marge": _calc_marge(
+                v["prix_vente_ttc"], v["tva_percent"], article.get("prix_kg"),
+                unite_vente=v["unite_vente"] or "kg",
+                poids_piece_kg=v["poids_piece_kg"],
+                achat_ref_piece=article.get("prix_piece"),
+            ),
+        })
+    # Référence d'abord, puis par nom.
+    out.sort(key=lambda x: (not x["est_reference"], (x["nom"] or "").lower()))
+    return out
 
 
 async def _compter_stock_par_article(db) -> dict:
@@ -3168,9 +3223,17 @@ async def comparatif_liaison_achat(cf_id: int, _=Depends(require_admin)):
     for gid in groupes:
         detail = await get_comparatif(gid, _)
         par_id = {l["id"]: l for l in detail["lignes"]}
+        cette_ligne = par_id.get(cf_id) or {}
         for pv in detail["produits_vente"]:
             ref = pv.get("ligne_choisie_id")
             ref_ligne = par_id.get(ref)
+            # Marge si ce produit était calculé sur CET achat (= la marge officielle s'il est la réf).
+            marge_cet_achat = _calc_marge(
+                pv.get("prix_vente_ttc"), pv.get("tva_percent"), cette_ligne.get("prix_kg"),
+                unite_vente=pv.get("unite_vente") or "kg",
+                poids_piece_kg=pv.get("poids_piece_kg"),
+                achat_ref_piece=_prix_piece_article(cette_ligne) if cette_ligne else None,
+            )
             ventes.append({
                 "id": pv["id"],
                 "nom": pv.get("nom"),
@@ -3184,6 +3247,7 @@ async def comparatif_liaison_achat(cf_id: int, _=Depends(require_admin)):
                 "reference_fournisseur": ref_ligne.get("fournisseur_nom") if ref_ligne else None,
                 "reference_inactive": bool(pv.get("reference_inactive")),
                 "marge": pv.get("marge"),
+                "marge_cet_achat": marge_cet_achat,
             })
     return {"catalogue_fournisseur_id": cf_id, "ventes": ventes}
 
