@@ -83,15 +83,43 @@
     $('imp-file-liste').innerHTML = [...state.file.values()].map(e => {
       const dans = imp.panier.has(e.catalogue_vente_id);
       const avant = e.prix_ancien_ttc != null ? `${prixTexte(e.prix_ancien_ttc)} → ` : 'nouveau · ';
-      return `<button class="pe-imp-chip ${dans ? 'pe-imp-chip--ajoute' : ''}" data-id="${e.catalogue_vente_id}">
-                <strong>${dans ? '✓ ' : '+ '}${escHtml(e.nom)}</strong>
-                <span>${avant}${prixTexte(e.prix_actuel_ttc)}</span></button>`;
+      return `<span class="pe-imp-chip-bloc">
+                <button class="pe-imp-chip ${dans ? 'pe-imp-chip--ajoute' : ''}" data-id="${e.catalogue_vente_id}">
+                  <strong>${dans ? '✓ ' : '+ '}${escHtml(e.nom)}</strong>
+                  <span>${avant}${prixTexte(e.prix_actuel_ttc)}</span></button>
+                <button class="pe-imp-chip-retirer" data-retirer="${e.catalogue_vente_id}"
+                        title="Retirer de la liste sans imprimer"
+                        aria-label="Retirer ${escHtml(e.nom)} de la liste sans imprimer">✕</button>
+              </span>`;
     }).join('');
     $('imp-file-liste').querySelectorAll('[data-id]').forEach(b =>
       b.addEventListener('click', () => {
         const id = +b.dataset.id;
         if (!imp.panier.has(id)) ajouter(id); else { imp.selection = id; rendre(); }
       }));
+    $('imp-file-liste').querySelectorAll('[data-retirer]').forEach(b =>
+      b.addEventListener('click', () => {
+        const e = state.file.get(+b.dataset.retirer);
+        if (e && confirm(`Retirer « ${e.nom} » de la liste sans imprimer d'étiquette ?`)) {
+          retirerDeLaFile([e.catalogue_vente_id]);
+        }
+      }));
+  }
+
+  // Sortie de la file SANS impression (« pas besoin d'étiquette ») : statut « retirée »,
+  // gardé dans l'historique de la file. Le produit reste dans le panier s'il y était.
+  async function retirerDeLaFile(ids) {
+    try {
+      await apiFetch('/api/prix-etiquettes/a-reimprimer/sortir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produit_ids: ids, statut: 'retiree', mode: 'manuel' }),
+      });
+    } catch (err) {
+      alert('Erreur : ' + err.message);
+    }
+    await chargerFile();
+    rendre();
   }
 
   function rendreFamilles() {
@@ -660,6 +688,14 @@
 
   $('imp-file-tout').addEventListener('click', () => {
     state.file.forEach((_, id) => { if (!imp.panier.has(id)) ajouter(id); });
+  });
+
+  $('imp-file-vider').addEventListener('click', () => {
+    const n = state.file.size;
+    if (!n) return;
+    if (!confirm(`Retirer les ${n} étiquette${n > 1 ? 's' : ''} de la liste « à refaire » `
+        + 'sans les imprimer ?')) return;
+    retirerDeLaFile([...state.file.keys()]);
   });
   $('imp-vider').addEventListener('click', () => {
     imp.panier.clear();

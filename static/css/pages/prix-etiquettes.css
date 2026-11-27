@@ -704,6 +704,21 @@ body:not([data-onglet="imprimer"]) .pe-vue-imprimer { display: none !important; 
 .pe-imp-file-tete { display: contents; }
 .pe-imp-file-titre { flex-shrink: 0; max-width: 14rem; font-weight: 700; color: #8a4b00; }
 .pe-imp-file #imp-file-tout { order: 2; flex-shrink: 0; }
+.pe-imp-file #imp-file-vider { order: 3; flex-shrink: 0; }
+/* Étiquette à refaire + petit ✕ « retirer sans imprimer » collé à droite. */
+.pe-imp-chip-bloc { flex-shrink: 0; display: flex; align-items: stretch; }
+.pe-imp-chip-bloc .pe-imp-chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pe-imp-chip-retirer {
+  min-width: 44px;
+  border: 1.5px solid rgba(200,120,0,.45);
+  border-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: #fff;
+  color: #a33;
+  font-size: var(--text-base);
+  cursor: pointer;
+}
+.pe-imp-chip-retirer:active { background: rgba(170,51,51,.12); }
 .pe-imp-file-liste {
   order: 1;
   flex: 1;
